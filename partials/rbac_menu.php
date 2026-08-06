@@ -63,23 +63,13 @@ $master_menu = [
     ['id'=>'database_management','label'=>'Database Management','ico'=>'fas fa-database','href'=>'database_management.php','permissions'=>['manage_stations'],'station_specific'=>false],
 
     // 6. Audit Trail  ← ONLY place for audit trail
-    // 6. Integration Settings
-    ['id'=>'integration_settings','label'=>'Integration Settings','ico'=>'fas fa-plug','href'=>'superadmin_integration_settings.php?section=pos_import','permissions'=>['manage_stations', 'approve_transactions'],'station_specific'=>false,'sub_items'=>[
-        ['id'=>'int_pos_import',      'label'=>'POS Import Config',   'href'=>'superadmin_integration_settings.php?section=pos_import',      'permissions'=>['manage_stations', 'approve_transactions']],
-        ['id'=>'int_api_connections', 'label'=>'API Connections',     'href'=>'superadmin_integration_settings.php?section=api_connections', 'permissions'=>['manage_stations', 'approve_transactions']],
-        ['id'=>'int_git_workflow',    'label'=>'Git Workflow',        'href'=>'superadmin_integration_settings.php?section=git_workflow',    'permissions'=>['manage_stations', 'approve_transactions']],
-        ['id'=>'int_external_sync',   'label'=>'External System Sync','href'=>'superadmin_integration_settings.php?section=external_sync',   'permissions'=>['manage_stations', 'approve_transactions']],
-    ]],
+
 
     // 7. System Settings
     ['id'=>'system_settings','label'=>'System Settings','ico'=>'fas fa-cog','href'=>'superadmin_system_settings.php','permissions'=>['manage_stations'],'station_specific'=>false],
 
-    // 8. Reports (Developer View)
-    ['id'=>'superadmin_reports','label'=>'Reports','ico'=>'fas fa-chart-line','href'=>'reports_technical.php','permissions'=>['manage_stations'],'station_specific'=>false,'sub_items'=>[
-        ['id'=>'rpt_dev_technical', 'label'=>'Technical Reports',  'href'=>'reports_technical.php',      'permissions'=>['manage_stations']],
-        ['id'=>'rpt_dev_security',  'label'=>'Security Reports',   'href'=>'reports_security.php',       'permissions'=>['manage_stations']],
-        ['id'=>'rpt_dev_audit',     'label'=>'Dev Audit Reports',  'href'=>'reports_developer_audit.php','permissions'=>['manage_stations']],
-    ]],
+    // 8. System Reports (Developer & Super Admin View)
+    ['id'=>'superadmin_reports','label'=>'System Reports','ico'=>'fas fa-chart-line','href'=>'reports_technical.php','permissions'=>['manage_stations'],'station_specific'=>false],
 
     // 9. Audit Trail
     ['id'=>'audit_trail','label'=>'Audit Trail','ico'=>'fas fa-history','href'=>'superadmin_audit_trail.php','permissions'=>['manage_stations'],'station_specific'=>false],
@@ -571,11 +561,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 continue;
             }
 
-            // Integration Settings — SuperAdmin / Developer / Admin can view (Manager excluded)
-            if (in_array(($item['id'] ?? ''), ['integration_settings','int_pos_import','int_api_connections','int_git_workflow','int_external_sync'], true)
-                && !in_array($user_role, ['superadmin', 'developer', 'admin'], true)) {
-                continue;
-            }
+
 
             // Reports (Developer View) — SuperAdmin / Developer only
             if (in_array(($item['id'] ?? ''), ['superadmin_reports','rpt_dev_technical','rpt_dev_security','rpt_dev_audit'], true)

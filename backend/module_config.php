@@ -34,6 +34,8 @@ class ModuleConfig {
             module_description TEXT,
             is_enabled TINYINT(1) DEFAULT 1,
             module_order INT DEFAULT 0,
+            version VARCHAR(20) DEFAULT 'v1.0',
+            last_updated VARCHAR(50) DEFAULT 'Aug 05, 2026',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         )";
@@ -73,6 +75,15 @@ class ModuleConfig {
         
         try {
             self::$pdo->exec($modulesSql);
+            // Ensure columns exist if table was created previously without them
+            try {
+                self::$pdo->exec("ALTER TABLE module_settings ADD COLUMN IF NOT EXISTS version VARCHAR(20) DEFAULT 'v1.0'");
+                self::$pdo->exec("ALTER TABLE module_settings ADD COLUMN IF NOT EXISTS last_updated VARCHAR(50) DEFAULT 'Aug 05, 2026'");
+                self::$pdo->exec("ALTER TABLE module_settings ADD COLUMN IF NOT EXISTS user_access VARCHAR(255) DEFAULT 'Admin, Manager, Staff'");
+                self::$pdo->exec("UPDATE module_settings SET user_access = 'Admin, Manager, Staff' WHERE user_access IS NULL OR user_access = '' OR user_access = 'Admin, Manager' OR user_access = 'Admin,Manager'");
+            } catch (Exception $ex) {
+                // Skip if error
+            }
             self::$pdo->exec($configSql);
             self::$pdo->exec($auditSql);
             self::insertDefaultModules();
@@ -85,161 +96,235 @@ class ModuleConfig {
      * Insert default modules and configurations
      */
     private static function insertDefaultModules() {
-        // Default modules
+        // Strict Developer Modules
         $defaultModules = [
-            'transactions' => [
-                'name' => 'Transactions',
-                'description' => 'Point of Sale and transaction management system',
+            'dashboard' => [
+                'name' => 'Dashboard',
+                'description' => 'System dashboard KPI cards, real-time charts, and quick action configurations.',
                 'enabled' => 1,
                 'order' => 1,
+                'version' => 'v1.0',
+                'last_updated' => 'Aug 05, 2026',
                 'settings' => [
-                    'auto_pull_enabled' => ['value' => '1', 'type' => 'boolean', 'category' => 'logic', 'desc' => 'Enable automatic data pulling for transactions'],
-                    'auto_pull_interval' => ['value' => '30', 'type' => 'integer', 'category' => 'logic', 'desc' => 'Auto-pull interval in seconds'],
-                    'computation_formula' => ['value' => '(present - previous - calibration) * price_per_liter', 'type' => 'string', 'category' => 'formula', 'desc' => 'Fuel transaction computation formula'],
-                    'max_transaction_amount' => ['value' => '10000', 'type' => 'decimal', 'category' => 'validation', 'desc' => 'Maximum transaction amount allowed'],
-                    'require_manager_approval' => ['value' => '0', 'type' => 'boolean', 'category' => 'approval', 'desc' => 'Require manager approval for transactions above threshold']
+                    'default_landing_page' => ['value' => 'dashboard', 'type' => 'string', 'category' => 'General', 'desc' => 'Default Landing Page'],
+                    'dashboard_refresh_interval' => ['value' => '30', 'type' => 'integer', 'category' => 'General', 'desc' => 'Dashboard Refresh Interval (seconds)'],
+                    'enable_kpi_cards' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable KPI Cards'],
+                    'enable_charts' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Real-time Charts'],
+                    'enable_quick_actions' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Quick Actions']
                 ]
             ],
-            'job_orders' => [
-                'name' => 'Job Orders',
-                'description' => 'Service and maintenance job order management',
+            'transactions' => [
+                'name' => 'Transactions',
+                'description' => 'Auto numbering formats, POS transaction defaults, and void approval controls.',
                 'enabled' => 1,
                 'order' => 2,
+                'version' => 'v1.0',
+                'last_updated' => 'Aug 05, 2026',
                 'settings' => [
-                    'auto_assign_jobs' => ['value' => '0', 'type' => 'boolean', 'category' => 'logic', 'desc' => 'Enable automatic job assignment'],
-                    'job_status_workflow' => ['value' => 'pending,in_progress,completed,cancelled', 'type' => 'string', 'category' => 'workflow', 'desc' => 'Job order status workflow (comma-separated)'],
-                    'auto_complete_hours' => ['value' => '24', 'type' => 'integer', 'category' => 'logic', 'desc' => 'Hours after which jobs are auto-completed'],
-                    'priority_levels' => ['value' => 'low,medium,high,urgent', 'type' => 'string', 'category' => 'classification', 'desc' => 'Job priority levels']
+                    'auto_transaction_numbering' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Auto Transaction Numbering'],
+                    'or_number_format' => ['value' => 'OR-{YYYY}{MM}{DD}-{6DIGITS}', 'type' => 'string', 'category' => 'General', 'desc' => 'Official Receipt (OR) Number Format'],
+                    'job_order_number_format' => ['value' => 'JO-{YYYY}{MM}{DD}-{6DIGITS}', 'type' => 'string', 'category' => 'General', 'desc' => 'Job Order Number Format'],
+                    'default_transaction_status' => ['value' => 'pending', 'type' => 'string', 'category' => 'General', 'desc' => 'Default Transaction Status'],
+                    'enable_void_transaction' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Void Transaction Option']
                 ]
             ],
             'fuel_management' => [
                 'name' => 'Fuel Management',
-                'description' => 'Fuel inventory, readings, and reconciliation system',
+                'description' => 'Fuel reconciliation tolerance rules, calibration computation, and meter validations.',
                 'enabled' => 1,
                 'order' => 3,
+                'version' => 'v1.0',
+                'last_updated' => 'Aug 05, 2026',
                 'settings' => [
-                    'auto_pull_readings' => ['value' => '1', 'type' => 'boolean', 'category' => 'logic', 'desc' => 'Enable automatic fuel readings pulling'],
-                    'calibration_formula' => ['value' => 'present - previous', 'type' => 'string', 'category' => 'formula', 'desc' => 'Calibration computation formula'],
-                    'low_stock_threshold' => ['value' => '500', 'type' => 'decimal', 'category' => 'alert', 'desc' => 'Low stock alert threshold in liters'],
-                    'critical_stock_threshold' => ['value' => '200', 'type' => 'decimal', 'category' => 'alert', 'desc' => 'Critical stock alert threshold in liters'],
-                    'reconciliation_tolerance' => ['value' => '5', 'type' => 'decimal', 'category' => 'validation', 'desc' => 'Reconciliation tolerance percentage']
-                ]
-            ],
-            'calendar' => [
-                'name' => 'Calendar',
-                'description' => 'Shift scheduling and calendar management',
-                'enabled' => 1,
-                'order' => 4,
-                'settings' => [
-                    'auto_schedule_shifts' => ['value' => '0', 'type' => 'boolean', 'category' => 'logic', 'desc' => 'Enable automatic shift scheduling'],
-                    'shift_duration_hours' => ['value' => '8', 'type' => 'integer', 'category' => 'scheduling', 'desc' => 'Default shift duration in hours'],
-                    'max_shifts_per_day' => ['value' => '3', 'type' => 'integer', 'category' => 'scheduling', 'desc' => 'Maximum shifts per day'],
-                    'advance_booking_days' => ['value' => '30', 'type' => 'integer', 'category' => 'booking', 'desc' => 'Days in advance for shift booking']
-                ]
-            ],
-            'reports' => [
-                'name' => 'Reports',
-                'description' => 'System reports, analytics, and compliance documentation',
-                'enabled' => 1,
-                'order' => 5,
-                'settings' => [
-                    'auto_generate_reports' => ['value' => '1', 'type' => 'boolean', 'category' => 'automation', 'desc' => 'Enable automatic report generation'],
-                    'report_retention_days' => ['value' => '365', 'type' => 'integer', 'category' => 'retention', 'desc' => 'Number of days to retain reports'],
-                    'audit_log_retention_days' => ['value' => '730', 'type' => 'integer', 'category' => 'retention', 'desc' => 'Number of days to retain audit logs'],
-                    'export_formats' => ['value' => 'pdf,excel,csv', 'type' => 'string', 'category' => 'export', 'desc' => 'Available export formats (comma-separated)'],
-                    'compliance_check_enabled' => ['value' => '1', 'type' => 'boolean', 'category' => 'compliance', 'desc' => 'Enable compliance checking']
+                    'enable_fuel_reconciliation' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Fuel Reconciliation'],
+                    'enable_calibration' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Calibration Computations'],
+                    'enable_meter_reading_validation' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Meter Reading Validation'],
+                    'decimal_precision' => ['value' => '3', 'type' => 'integer', 'category' => 'General', 'desc' => 'Decimal Precision for Liters'],
+                    'default_fuel_unit' => ['value' => 'Liters', 'type' => 'string', 'category' => 'General', 'desc' => 'Default Fuel Measurement Unit']
                 ]
             ],
             'inventory' => [
                 'name' => 'Inventory',
-                'description' => 'Merchandise and fuel inventory management, stock requests, and history',
+                'description' => 'FIFO accounting rules, low/critical stock threshold levels, and batch tracking.',
                 'enabled' => 1,
-                'order' => 6,
+                'order' => 4,
+                'version' => 'v1.0',
+                'last_updated' => 'Aug 05, 2026',
                 'settings' => [
-                    'low_stock_alert_enabled' => ['value' => '1', 'type' => 'boolean', 'category' => 'alert', 'desc' => 'Enable low stock alerts'],
-                    'low_stock_threshold_qty' => ['value' => '10', 'type' => 'integer', 'category' => 'alert', 'desc' => 'Low stock alert threshold (units)'],
-                    'stock_request_approval' => ['value' => '1', 'type' => 'boolean', 'category' => 'approval', 'desc' => 'Require manager approval for stock requests'],
-                    'auto_deduct_on_sale' => ['value' => '1', 'type' => 'boolean', 'category' => 'logic', 'desc' => 'Automatically deduct inventory on sale'],
-                    'track_inventory_history' => ['value' => '1', 'type' => 'boolean', 'category' => 'logic', 'desc' => 'Track full inventory change history']
+                    'enable_batch_tracking' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Batch Tracking'],
+                    'enable_expiration_monitoring' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Expiration Monitoring'],
+                    'enable_fifo' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable FIFO (First In, First Out)'],
+                    'enable_low_stock_alert' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Low Stock Alert'],
+                    'enable_critical_stock_alert' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Critical Stock Alert']
                 ]
             ],
             'customers' => [
                 'name' => 'Customers',
-                'description' => 'Customer management, loyalty, balances, and transaction linkage',
+                'description' => 'Customer registration setup, vehicle service history logs, credit and fleet cards.',
+                'enabled' => 1,
+                'order' => 5,
+                'version' => 'v1.0',
+                'last_updated' => 'Aug 05, 2026',
+                'settings' => [
+                    'enable_customer_registration' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Customer Registration'],
+                    'enable_vehicle_history' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Vehicle Service History'],
+                    'enable_credit_account' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Customer Credit Account'],
+                    'enable_fleet_card' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Fleet Card Integration']
+                ]
+            ],
+            'product_pricing' => [
+                'name' => 'Product & Pricing',
+                'description' => 'SKU/Barcode code validation, price change approval workflows, and price histories.',
+                'enabled' => 1,
+                'order' => 6,
+                'version' => 'v1.0',
+                'last_updated' => 'Aug 05, 2026',
+                'settings' => [
+                    'enable_sku_validation' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable SKU Validation'],
+                    'enable_barcode' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Barcode System'],
+                    'enable_price_approval_workflow' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Price Approval Workflow'],
+                    'enable_price_history' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Price History Auditing']
+                ]
+            ],
+            'calendar' => [
+                'name' => 'Calendar',
+                'description' => 'Public holidays config, shift reminder notifications, and equipment schedules.',
                 'enabled' => 1,
                 'order' => 7,
+                'version' => 'v1.0',
+                'last_updated' => 'Aug 05, 2026',
                 'settings' => [
-                    'loyalty_program_enabled' => ['value' => '1', 'type' => 'boolean', 'category' => 'loyalty', 'desc' => 'Enable customer loyalty program'],
-                    'credit_limit_default' => ['value' => '5000', 'type' => 'decimal', 'category' => 'credit', 'desc' => 'Default customer credit limit'],
-                    'require_customer_on_sale' => ['value' => '0', 'type' => 'boolean', 'category' => 'validation', 'desc' => 'Require customer linkage on every sale'],
-                    'balance_alert_threshold' => ['value' => '1000', 'type' => 'decimal', 'category' => 'alert', 'desc' => 'Outstanding balance alert threshold']
+                    'enable_holidays' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Holidays on Calendar'],
+                    'enable_reminder_notifications' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Reminder Notifications'],
+                    'enable_maintenance_schedule' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Maintenance Schedule']
                 ]
             ],
-            'deliveries' => [
-                'name' => 'Deliveries',
-                'description' => 'Fuel and merchandise delivery management, validation, and oversight',
+            'reports' => [
+                'name' => 'Reports',
+                'description' => 'PDF, Excel, and CSV export modules, header/footer branding setups.',
                 'enabled' => 1,
                 'order' => 8,
+                'version' => 'v1.0',
+                'last_updated' => 'Aug 05, 2026',
                 'settings' => [
-                    'require_manager_validation' => ['value' => '1', 'type' => 'boolean', 'category' => 'approval', 'desc' => 'Require manager validation for deliveries'],
-                    'auto_update_inventory' => ['value' => '1', 'type' => 'boolean', 'category' => 'logic', 'desc' => 'Auto-update inventory on delivery confirmation'],
-                    'delivery_variance_tolerance' => ['value' => '2', 'type' => 'decimal', 'category' => 'validation', 'desc' => 'Delivery quantity variance tolerance (%)'],
-                    'require_supplier_confirmation' => ['value' => '0', 'type' => 'boolean', 'category' => 'approval', 'desc' => 'Require supplier confirmation before processing']
+                    'enable_pdf_export' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable PDF Export'],
+                    'enable_excel_export' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Excel Export'],
+                    'enable_csv_export' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable CSV Export'],
+                    'default_paper_size' => ['value' => 'A4', 'type' => 'string', 'category' => 'General', 'desc' => 'Default Paper Size'],
+                    'report_header' => ['value' => 'PETRON CORPORATION - STATION REPORT', 'type' => 'string', 'category' => 'General', 'desc' => 'Report Header Logo/Text'],
+                    'report_footer' => ['value' => 'Thank you for choosing Petron. This is a system-generated report.', 'type' => 'string', 'category' => 'General', 'desc' => 'Report Footer Disclaimer']
                 ]
             ],
-            'purchase_orders' => [
-                'name' => 'Purchase Orders',
-                'description' => 'Purchase order creation, approval workflow, and supplier management',
+            'notifications' => [
+                'name' => 'Notifications',
+                'description' => 'Alert banner durations, low stock alerts, backups, and approval popups.',
                 'enabled' => 1,
                 'order' => 9,
+                'version' => 'v1.0',
+                'last_updated' => 'Aug 05, 2026',
                 'settings' => [
-                    'require_admin_approval' => ['value' => '1', 'type' => 'boolean', 'category' => 'approval', 'desc' => 'Require admin approval for purchase orders'],
-                    'auto_generate_po_number' => ['value' => '1', 'type' => 'boolean', 'category' => 'logic', 'desc' => 'Auto-generate purchase order numbers'],
-                    'po_expiry_days' => ['value' => '30', 'type' => 'integer', 'category' => 'validation', 'desc' => 'Purchase order expiry in days'],
-                    'max_po_amount' => ['value' => '500000', 'type' => 'decimal', 'category' => 'validation', 'desc' => 'Maximum purchase order amount']
+                    'success_banner_duration' => ['value' => '5', 'type' => 'integer', 'category' => 'General', 'desc' => 'Success Banner Duration (seconds)'],
+                    'error_banner_duration' => ['value' => '10', 'type' => 'integer', 'category' => 'General', 'desc' => 'Error Banner Duration (seconds)'],
+                    'enable_low_stock_alert' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Low Stock Alert'],
+                    'enable_approval_alert' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Approval Alert'],
+                    'enable_backup_alert' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Backup Alert']
                 ]
             ],
-            'staff_management' => [
-                'name' => 'Staff Management',
-                'description' => 'Staff oversight, attendance, performance tracking, and shift management',
+            'backup_restore' => [
+                'name' => 'Backup & Restore',
+                'description' => 'Automated background DB backups, retention policies, and storage cleanup.',
                 'enabled' => 1,
                 'order' => 10,
+                'version' => 'v1.0',
+                'last_updated' => 'Aug 05, 2026',
                 'settings' => [
-                    'track_attendance' => ['value' => '1', 'type' => 'boolean', 'category' => 'attendance', 'desc' => 'Enable staff attendance tracking'],
-                    'overtime_threshold_hours' => ['value' => '8', 'type' => 'integer', 'category' => 'scheduling', 'desc' => 'Daily hours threshold before overtime'],
-                    'performance_review_enabled' => ['value' => '1', 'type' => 'boolean', 'category' => 'performance', 'desc' => 'Enable staff performance reviews'],
-                    'max_staff_per_shift' => ['value' => '5', 'type' => 'integer', 'category' => 'scheduling', 'desc' => 'Maximum staff per shift']
+                    'enable_scheduled_backup' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Scheduled Backup'],
+                    'backup_frequency' => ['value' => 'daily', 'type' => 'string', 'category' => 'General', 'desc' => 'Backup Frequency (daily, weekly, monthly)'],
+                    'storage_location' => ['value' => 'C:/xampp/backups/', 'type' => 'string', 'category' => 'General', 'desc' => 'Storage Location'],
+                    'retention_period' => ['value' => '30', 'type' => 'integer', 'category' => 'General', 'desc' => 'Retention Period (days)'],
+                    'auto_cleanup' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Auto Cleanup Old Backups']
                 ]
             ],
-            'admin_unlock' => [
-                'name' => 'Admin Unlock',
-                'description' => 'Admin-level unlock for locked transactions, voided entries, and override approvals',
+            'audit_trail' => [
+                'name' => 'Audit Trail',
+                'description' => 'System error monitoring, log levels, automated database log archiving.',
                 'enabled' => 1,
                 'order' => 11,
+                'version' => 'v1.0',
+                'last_updated' => 'Aug 05, 2026',
                 'settings' => [
-                    'unlock_requires_reason' => ['value' => '1', 'type' => 'boolean', 'category' => 'validation', 'desc' => 'Require reason for every unlock action'],
-                    'unlock_audit_enabled' => ['value' => '1', 'type' => 'boolean', 'category' => 'audit', 'desc' => 'Log all unlock actions to audit trail'],
-                    'max_unlocks_per_day' => ['value' => '10', 'type' => 'integer', 'category' => 'validation', 'desc' => 'Maximum unlock actions per admin per day'],
-                    'notify_superadmin_on_unlock' => ['value' => '0', 'type' => 'boolean', 'category' => 'notification', 'desc' => 'Notify SuperAdmin when unlock is performed']
+                    'enable_audit_logs' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Audit Logs'],
+                    'enable_error_logs' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Enable Error Logs'],
+                    'log_retention' => ['value' => '365', 'type' => 'integer', 'category' => 'General', 'desc' => 'Log Retention Period (days)'],
+                    'auto_archive_logs' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'Auto Archive Logs']
+                ]
+            ],
+            'api_integration' => [
+                'name' => 'API / Integration',
+                'description' => 'Third-party REST integrations, webhooks, SMTP, and SMS Gateways.',
+                'enabled' => 1,
+                'order' => 12,
+                'version' => 'v1.0',
+                'last_updated' => 'Aug 05, 2026',
+                'settings' => [
+                    'api_status' => ['value' => '1', 'type' => 'boolean', 'category' => 'General', 'desc' => 'API Status (Active)'],
+                    'api_keys' => ['value' => 'petron_live_key_9f81a7b0', 'type' => 'string', 'category' => 'General', 'desc' => 'API Keys'],
+                    'webhook_settings' => ['value' => 'http://localhost/group31petron_system_official4/api/webhook.php', 'type' => 'string', 'category' => 'General', 'desc' => 'Webhook URL'],
+                    'smtp_email_settings' => ['value' => 'smtp.gmail.com:587', 'type' => 'string', 'category' => 'General', 'desc' => 'SMTP Email Settings'],
+                    'sms_gateway' => ['value' => 'Twilio Gateway SMS Integration (future-ready)', 'type' => 'string', 'category' => 'General', 'desc' => 'SMS Gateway (future-ready)']
                 ]
             ]
         ];
         
         try {
-            // Insert modules
+            // Delete old non-developer modules and settings to clear the database cleanly
+            $newKeys = array_keys($defaultModules);
+            $placeholders = implode(',', array_fill(0, count($newKeys), '?'));
+            
+            $stmt = self::$pdo->prepare("DELETE FROM module_config WHERE module_key NOT IN ($placeholders)");
+            $stmt->execute($newKeys);
+            
+            $stmt = self::$pdo->prepare("DELETE FROM module_settings WHERE module_key NOT IN ($placeholders)");
+            $stmt->execute($newKeys);
+            
+            // Insert or Update the 12 Strict Developer Modules
             foreach ($defaultModules as $moduleKey => $moduleData) {
-                $stmt = self::$pdo->prepare("INSERT IGNORE INTO module_settings (module_key, module_name, module_description, is_enabled, module_order) VALUES (?, ?, ?, ?, ?)");
-                $stmt->execute([$moduleKey, $moduleData['name'], $moduleData['description'], $moduleData['enabled'], $moduleData['order']]);
+                $stmt = self::$pdo->prepare("
+                    INSERT INTO module_settings (module_key, module_name, module_description, is_enabled, module_order, version, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        module_name = VALUES(module_name),
+                        module_description = VALUES(module_description),
+                        module_order = VALUES(module_order),
+                        version = VALUES(version),
+                        last_updated = VALUES(last_updated)
+                ");
+                $stmt->execute([
+                    $moduleKey,
+                    $moduleData['name'],
+                    $moduleData['description'],
+                    $moduleData['enabled'],
+                    $moduleData['order'],
+                    $moduleData['version'],
+                    $moduleData['last_updated']
+                ]);
                 
-                // Insert module settings
+                // Insert or Update configurations for each module
                 foreach ($moduleData['settings'] as $configKey => $configData) {
-                    $stmt = self::$pdo->prepare("INSERT IGNORE INTO module_config (module_key, config_key, config_value, config_type, config_category, description) VALUES (?, ?, ?, ?, ?, ?)");
+                    $stmt = self::$pdo->prepare("
+                        INSERT INTO module_config (module_key, config_key, config_value, config_type, config_category, description)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE
+                            config_type = VALUES(config_type),
+                            config_category = VALUES(config_category),
+                            description = VALUES(description)
+                    ");
                     $stmt->execute([
-                        $moduleKey, 
-                        $configKey, 
-                        $configData['value'], 
-                        $configData['type'], 
-                        $configData['category'], 
+                        $moduleKey,
+                        $configKey,
+                        $configData['value'],
+                        $configData['type'],
+                        $configData['category'],
                         $configData['desc']
                     ]);
                 }
@@ -255,7 +340,7 @@ class ModuleConfig {
     private static function loadConfig() {
         try {
             // Load modules
-            $stmt = self::$pdo->query("SELECT module_key, module_name, module_description, is_enabled, module_order FROM module_settings ORDER BY module_order");
+            $stmt = self::$pdo->query("SELECT module_key, module_name, module_description, is_enabled, user_access, module_order, version, last_updated FROM module_settings ORDER BY module_order");
             self::$config['modules'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             // Load module configurations

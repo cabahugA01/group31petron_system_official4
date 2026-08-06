@@ -5,11 +5,11 @@ require_once __DIR__ . '/db_connect.php';
 require_once __DIR__ . '/../backend/module_config.php';
 require_login();
 
-// Only allow SuperAdmin access
+// Only allow SuperAdmin, Developer, Admin, and Manager access to Module Configuration page (Staff are limited)
 $me = current_user();
 $my_role = role_key($me['role'] ?? 'staff');
 
-if ($my_role !== 'superadmin') {
+if (!in_array($my_role, ['superadmin', 'developer', 'admin', 'manager'], true)) {
     header("Location: dashboard.php");
     exit;
 }
@@ -53,6 +53,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $configArray = json_decode($configData, true);
                 
                 if ($moduleKey && is_array($configArray)) {
+                    // Update main status if sent
+                    if (isset($_POST['is_enabled'])) {
+                        $enabled = $_POST['is_enabled'] === '1';
+                        ModuleConfig::setModuleStatus($moduleKey, $enabled, $me['id'], $my_role);
+                    }
+
+                    // Update user access if sent
+                    if (isset($_POST['user_access']) || isset($configArray['user_access'])) {
+                        $rawRoles = $_POST['user_access'] ?? $configArray['user_access'] ?? [];
+                        $rolesArr = is_array($rawRoles) ? $rawRoles : explode(',', $rawRoles);
+                        $userAccessStr = implode(', ', array_map('trim', array_filter($rolesArr)));
+                        if (!empty($userAccessStr)) {
+                            try {
+                                $pdo->prepare("UPDATE module_settings SET user_access = ? WHERE module_key = ?")->execute([$userAccessStr, $moduleKey]);
+                            } catch (Exception $e) {
+                                error_log("Failed to update user_access in module_settings: " . $e->getMessage());
+                            }
+                        }
+                    }
+                    
                     // Resolve station name for logging
                     $stationName = 'All Stations (Global)';
                     if ($stationId && $stationId !== 'all') {
@@ -65,6 +85,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                         } catch (Exception $e) {
                             error_log("Failed to fetch station name: " . $e->getMessage());
+                        }
+                    }
+                    
+                    // If global config, also sync back to individual module_config entries
+                    if ($stationId === 'all' || !$stationId) {
+                        foreach ($configArray as $cKey => $cVal) {
+                            $strVal = is_bool($cVal) ? ($cVal ? '1' : '0') : (string)$cVal;
+                            ModuleConfig::updateModuleSetting($moduleKey, $cKey, $strVal, $me['id'], $my_role);
                         }
                     }
                     
@@ -108,21 +136,101 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
                 
             case 'add_module':
-                $moduleKey = $_POST['module_key'] ?? '';
-                $moduleName = $_POST['module_name'] ?? '';
-                $moduleDesc = $_POST['module_description'] ?? '';
-                $moduleIcon = $_POST['module_icon'] ?? 'cube';
-                $isEnabled = isset($_POST['is_enabled']) && $_POST['is_enabled'] === '1';
-                $stationIds = $_POST['stations'] ?? [];
-                
-                // Validate module key format
-                if (!preg_match('/^[a-z_]+$/', $moduleKey)) {
-                    $msg = "Invalid module key format. Use lowercase letters and underscores only.";
+                $moduleName  = trim($_POST['module_name'] ?? '');
+                $moduleCode  = trim($_POST['module_code'] ?? '');
+                $moduleDesc  = trim($_POST['module_description'] ?? '');
+                $moduleVersion = trim($_POST['module_version'] ?? 'v1.0.0') ?: 'v1.0.0';
+                $isEnabled   = ($_POST['module_status'] ?? 'enabled') === 'enabled' ? 1 : 0;
+                $accessRoles = $_POST['user_access'] ?? [];
+                $userAccess  = !empty($accessRoles) ? implode(', ', array_map('trim', $accessRoles)) : 'Admin, Manager, Staff';
+                // Generate module_key from module_code: lowercase + underscores
+                $moduleKey   = strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $moduleCode));
+                $moduleKey   = trim($moduleKey, '_');
+
+                if (empty($moduleName)) {
+                    $msg = "Module Name is required.";
+                } elseif (empty($moduleCode)) {
+                    $msg = "Module Code is required.";
+                } elseif (empty($moduleKey)) {
+                    $msg = "Module Code produced an invalid key. Use letters and numbers only.";
                 } else {
-                    // TODO: Add module to database
-                    // For now, just show success message
-                    $success = "Module '{$moduleName}' added successfully! Assigned to " . count($stationIds) . " station(s).";
-                    log_activity($pdo, $me['id'], 'Module Configuration', "Added new module: {$moduleName} ({$moduleKey})");
+                    try {
+                        $checkStmt = $pdo->prepare("SELECT COUNT(*) FROM module_settings WHERE module_key = ?");
+                        $checkStmt->execute([$moduleKey]);
+                        if ($checkStmt->fetchColumn() > 0) {
+                            $msg = "Module code &lsquo;{$moduleCode}&rsquo; already exists. Choose a different code.";
+                        } else {
+                            $orderStmt = $pdo->query("SELECT COALESCE(MAX(module_order), 0) FROM module_settings");
+                            $nextOrder = (int)$orderStmt->fetchColumn() + 1;
+
+                            $insertStmt = $pdo->prepare("
+                                INSERT INTO module_settings
+                                    (module_key, module_code, module_name, module_description,
+                                     is_enabled, user_access, module_order, version, last_updated)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, DATE_FORMAT(NOW(), '%b %d, %Y'))
+                            ");
+                            $insertStmt->execute([
+                                $moduleKey, $moduleCode, $moduleName, $moduleDesc,
+                                $isEnabled, $userAccess, $nextOrder, $moduleVersion
+                            ]);
+
+                            $success = "<strong>Module &lsquo;{$moduleName}&rsquo;</strong> has been registered successfully!";
+                            log_activity($pdo, $me['id'], 'Module Configuration',
+                                "Registered new module: {$moduleName} (code: {$moduleCode})");
+                        }
+                    } catch (Exception $e) {
+                        $msg = "Error adding module: " . $e->getMessage();
+                    }
+                }
+                break;
+
+            case 'reset_module_config':
+                $moduleKey = $_POST['module_key'] ?? '';
+                $stationId = $_POST['station_id'] ?? 'all';
+
+                if (!$moduleKey) {
+                    $msg = "No module key provided for reset.";
+                    break;
+                }
+
+                try {
+                    // Remove station-specific saved config
+                    $pdo->prepare(
+                        "DELETE FROM module_station_config WHERE module_key = ? AND station_id = ?"
+                    )->execute([$moduleKey, $stationId]);
+
+                    // Also wipe global config entries from module_config table for this module
+                    $pdo->prepare(
+                        "DELETE FROM module_config WHERE module_key = ?"
+                    )->execute([$moduleKey]);
+
+                    $stationLabel = ($stationId === 'all' || !$stationId) ? 'All Stations (Global)' : 'Station #' . $stationId;
+                    $success = "Configuration for '<strong>{$moduleKey}</strong>' has been restored to defaults for <strong>{$stationLabel}</strong>.";
+                    log_activity($pdo, $me['id'], 'Module Configuration', "Reset config to default for {$moduleKey} @ {$stationLabel}");
+                } catch (Exception $e) {
+                    $msg = "Error resetting configuration: " . $e->getMessage();
+                }
+                break;
+
+            case 'delete_module':
+                $moduleKey = $_POST['module_key'] ?? '';
+                // Define core developer modules that CANNOT be deleted
+                $coreModules = ['dashboard','transactions','fuel_management','inventory','customers','product_pricing','calendar','reports','notifications','backup_restore','audit_trail','api_integration'];
+                
+                if (in_array($moduleKey, $coreModules)) {
+                    $msg = "Core system module cannot be deleted.";
+                } elseif (empty($moduleKey)) {
+                    $msg = "No module specified.";
+                } else {
+                    try {
+                        // Delete configs and settings
+                        $pdo->prepare("DELETE FROM module_config WHERE module_key = ?")->execute([$moduleKey]);
+                        $pdo->prepare("DELETE FROM module_settings WHERE module_key = ?")->execute([$moduleKey]);
+                        $success = "Module &lsquo;{$moduleKey}&rsquo; has been removed from the system.";
+                        log_activity($pdo, $me['id'], 'Module Configuration', "Deleted module: {$moduleKey}");
+                    } catch (Exception $e) {
+                        $msg = "Error deleting module: " . $e->getMessage();
+                    }
                 }
                 break;
         }
@@ -132,6 +240,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Get all modules and their settings
 $modules = ModuleConfig::getModules();
 $enabledModules = ModuleConfig::getEnabledModules();
+
+// Build config map for JavaScript populate
+$moduleConfigMap = [];
+foreach ($modules as $m) {
+    $mSettings = ModuleConfig::getModuleSettings($m['module_key']);
+    $moduleConfigMap[$m['module_key']] = [];
+    foreach ($mSettings as $s) {
+        $moduleConfigMap[$m['module_key']][$s['config_key']] = $s['config_value'];
+    }
+}
+
+// Build station config map for JavaScript populate
+$stationConfigsMap = [];
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS module_station_config (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            module_key VARCHAR(100) NOT NULL,
+            station_id VARCHAR(20) NOT NULL DEFAULT 'all',
+            config_data JSON NOT NULL,
+            updated_by INT,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_module_station (module_key, station_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+    $stmt = $pdo->query("SELECT module_key, station_id, config_data FROM module_station_config");
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $mKey = $row['module_key'];
+        $sId = $row['station_id'];
+        $cData = json_decode($row['config_data'], true) ?: [];
+        if (!isset($stationConfigsMap[$mKey])) {
+            $stationConfigsMap[$mKey] = [];
+        }
+        $stationConfigsMap[$mKey][$sId] = $cData;
+    }
+} catch (Exception $e) {
+    error_log("Failed to load station configs: " . $e->getMessage());
+}
+
 
 // Fetch all stations from database
 $stations = [];
@@ -155,23 +302,83 @@ if (empty($stations)) {
 }
 ?>
 
+<div style="padding: 24px 32px 60px 32px;">
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-cogs"></i> Station-Dependent Module Control</h1>
-        <div class="sub">Enable or disable modules per branch station. Changes cascade to sidebar and page access for that station's users.</div>
     </div>
 </div>
 
-<?php if($msg): ?>
-<div class="card" style="padding:15px; margin-bottom:20px; background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;">
-    <?php echo $msg; ?>
+<?php if($success): ?>
+<div id="toastNotification" style="
+    position: fixed;
+    top: 72px;
+    right: 20px;
+    z-index: 999999;
+    width: 380px;
+    background: #ffffff;
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.22), 0 2px 8px rgba(0,0,0,0.10);
+    animation: toastSlideIn 0.35s cubic-bezier(0.16,1,0.3,1);
+">
+    <div style="display:flex; align-items:flex-start; gap:12px; padding:16px;">
+        <div style="flex-shrink:0; background:#dcfce7; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center;">
+            <i class="fas fa-check-circle" style="color:#16a34a; font-size:18px;"></i>
+        </div>
+        <div style="flex:1; min-width:0;">
+            <div style="font-size:13px; font-weight:700; color:#15803d; margin-bottom:3px;">Configuration Saved</div>
+            <div style="font-size:12px; color:#374151; line-height:1.55; font-weight:400;"><?php echo strip_tags($success, ''); ?></div>
+        </div>
+    </div>
 </div>
+<style>
+@keyframes toastSlideIn {
+    from { opacity:0; transform:translateX(110%); }
+    to   { opacity:1; transform:translateX(0); }
+}
+@keyframes toastProgress {
+    from { transform:scaleX(1); }
+    to   { transform:scaleX(0); }
+}
+</style>
+<script>
+function dismissToast(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(110%)';
+    setTimeout(function(){ el.remove(); }, 320);
+}
+setTimeout(function(){ dismissToast('toastNotification'); }, 5000);
+</script>
 <?php endif; ?>
 
-<?php if($success): ?>
-<div class="card" style="padding:15px; margin-bottom:20px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb;">
-    <?php echo $success; ?>
+<?php if($msg): ?>
+<div id="toastError" style="
+    position: fixed;
+    top: 72px;
+    right: 20px;
+    z-index: 999999;
+    width: 380px;
+    background: #ffffff;
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.22), 0 2px 8px rgba(0,0,0,0.10);
+    animation: toastSlideIn 0.35s cubic-bezier(0.16,1,0.3,1);
+">
+    <div style="display:flex; align-items:flex-start; gap:12px; padding:16px;">
+        <div style="flex-shrink:0; background:#fee2e2; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center;">
+            <i class="fas fa-exclamation-circle" style="color:#dc2626; font-size:18px;"></i>
+        </div>
+        <div style="flex:1; min-width:0;">
+            <div style="font-size:13px; font-weight:700; color:#dc2626; margin-bottom:3px;">Error</div>
+            <div style="font-size:12px; color:#374151; line-height:1.55; font-weight:400;"><?php echo strip_tags($msg, ''); ?></div>
+        </div>
+    </div>
 </div>
+<script>
+setTimeout(function(){ dismissToast('toastError'); }, 7000);
+</script>
 <?php endif; ?>
 
 <!-- Station-Dependent Configuration Section -->
@@ -209,25 +416,21 @@ if (empty($stations)) {
                 </div>
             </div>
         </div>
-        <div id="noStationWarning" style="padding: 12px 16px; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 6px; margin-top: 15px;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <i class="fas fa-exclamation-triangle" style="color: #f59e0b; font-size: 18px;"></i>
-                <div style="flex: 1; color: #92400e; font-size: 13px;">
-                    <strong>Please select a station</strong> to configure modules for that specific location.
-                </div>
-            </div>
-        </div>
+        <div id="noStationWarning" style="display: none !important;"></div>
     </div>
 </div>
 
 <!-- Global Module Settings Section -->
+<?php
+$coreModules = ['dashboard','transactions','fuel_management','inventory','customers','product_pricing','calendar','reports','notifications','backup_restore','audit_trail','api_integration'];
+?>
 <div class="card">
     <div class="card-header" style="background: #f8f9fa; border-bottom: 2px solid #e9ecef; display: flex; justify-content: space-between; align-items: center;">
         <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--petron-blue, #00264D);">
             <i class="fas fa-globe" style="color: #10b981;"></i> Global Module Settings
         </h3>
-        <button class="btn-add-module" onclick="openAddModuleModal()" title="Add New Module">
-            <i class="fas fa-plus"></i> Add Module
+        <button class="btn-register-module" onclick="openAddModuleModal()" style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:transparent !important;color:#00264D !important;border:1.5px solid #00264D !important;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;">
+            <i class="fas fa-plus-circle" style="color:#0057b8 !important;"></i> Register New Module
         </button>
     </div>
     <div class="card-body" style="padding: 20px 20px 10px;">
@@ -238,7 +441,7 @@ if (empty($stations)) {
                    style="flex: 1; padding: 10px 15px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;"
                    oninput="filterModules()">
             <select id="statusFilter" 
-                    style="padding: 10px 15px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; "
+                    style="padding: 10px 15px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;"
                     onchange="filterModules()">
                 <option value="">All Status</option>
                 <option value="enabled">Enabled</option>
@@ -250,47 +453,59 @@ if (empty($stations)) {
         <table class="module-table">
             <thead>
                 <tr>
-                    <th style="width: 30%;">Module</th>
-                    <th style="width: 40%;">Description</th>
+                    <th style="width: 50%;">Module</th>
+                    <th style="width: 15%; text-align: center;">Version</th>
                     <th style="width: 15%; text-align: center;">Status</th>
-                    <th style="width: 10%; text-align: center;">Enable/Disable</th>
-                    <th style="width: 10%; text-align: center;">Actions</th>
+                    <th style="width: 20%; text-align: center;">Action</th>
                 </tr>
             </thead>
             <tbody id="moduleTableBody">
                 <?php foreach ($modules as $module): ?>
+                <?php $isCore = in_array($module['module_key'], $coreModules); ?>
                 <tr data-module="<?php echo $module['module_key']; ?>" 
-                    data-status="<?php echo $module['is_enabled'] ? 'enabled' : 'disabled'; ?>">
+                    data-status="<?php echo $module['is_enabled'] ? 'enabled' : 'disabled'; ?>"
+                    style="<?php echo !$isCore ? 'background: #f0fff4;' : ''; ?>">
                     <td>
-                        <h4 style="margin: 0; font-size: 15px; font-weight: 600; color: #1f2937;">
-                            <?php echo htmlspecialchars($module['module_name']); ?>
-                        </h4>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <?php if (!$isCore): ?>
+                            <span title="Custom Module" style="background:#10b981;color:white;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.5px;text-transform:uppercase;">CUSTOM</span>
+                            <?php endif; ?>
+                            <div>
+                                <h4 style="margin: 0; font-size: 15px; font-weight: 600; color: #1f2937;">
+                                    <?php echo htmlspecialchars($module['module_name']); ?>
+                                </h4>
+                                <p style="margin: 4px 0 0 0; color: #6b7280; font-size: 12px; line-height: 1.4;">
+                                    <?php echo htmlspecialchars($module['module_description'] ?: 'No description provided.'); ?>
+                                </p>
+                            </div>
+                        </div>
                     </td>
-                    <td>
-                        <p style="margin: 0; color: #6b7280; font-size: 13px; line-height: 1.5;">
-                            <?php echo htmlspecialchars($module['module_description']); ?>
-                        </p>
-                    </td>
-                    <td style="text-align: center;">
-                        <span class="status-badge status-<?php echo $module['is_enabled'] ? 'enabled' : 'disabled'; ?>">
-                            <?php echo $module['is_enabled'] ? 'Enabled' : 'Disabled'; ?>
-                        </span>
-                    </td>
-                    <td style="text-align: center;">
-                        <label class="toggle-switch">
-                            <input type="checkbox" 
-                                   id="module_<?php echo $module['module_key']; ?>" 
-                                   <?php echo $module['is_enabled'] ? 'checked' : ''; ?>
-                                   onchange="toggleModule('<?php echo $module['module_key']; ?>', this.checked)">
-                            <span class="toggle-slider"></span>
-                        </label>
+                    <td style="text-align: center; font-weight: 600; color: #374151; font-family: monospace; font-size: 13px;">
+                        <?php echo htmlspecialchars($module['version'] ?? 'v1.0'); ?>
                     </td>
                     <td style="text-align: center;">
-                        <button class="btn-action btn-configure" 
-                                onclick="showModuleSettings('<?php echo $module['module_key']; ?>')"
-                                title="Configure Module">
-                            <i class="fas fa-cog"></i> Configure
-                        </button>
+                        <?php if ($module['is_enabled']): ?>
+                            <span style="display:inline-block;background:#dcfce7;color:#15803d;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;">Enabled</span>
+                        <?php else: ?>
+                            <span style="display:inline-block;background:#fee2e2;color:#dc2626;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;">Disabled</span>
+                        <?php endif; ?>
+                    </td>
+                    <td style="text-align: center;">
+                        <div style="display:inline-flex;gap:6px;justify-content:center;align-items:center;flex-wrap:wrap;">
+                            <button class="btn-action btn-configure" 
+                                    onclick="showModuleSettings('<?php echo $module['module_key']; ?>')"
+                                    style="background:#002F6C;color:white;"
+                                    title="Configure Module">
+                                <i class="fas fa-cog"></i> Configure
+                            </button>
+                            <?php if (!$isCore): ?>
+                            <button onclick="deleteModule('<?php echo $module['module_key']; ?>','<?php echo htmlspecialchars(addslashes($module['module_name'])); ?>')"
+                                    style="background:#ef4444;color:white;border:none;padding:6px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;"
+                                    title="Delete Custom Module">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            <?php endif; ?>
+                        </div>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -315,28 +530,38 @@ if (empty($stations)) {
 </div>
 
 <!-- Module Configuration Modal -->
-<div id="moduleConfigModal" class="modal-overlay" style="display: none;">
-    <div class="modal-content modal-large">
-        <div class="modal-header">
-            <h3><i class="fas fa-cog"></i> <span id="configModuleTitle">Module Configuration</span></h3>
-            <button class="modal-close" onclick="closeModuleConfigModal()">&times;</button>
-        </div>
-        <form id="moduleConfigForm" onsubmit="saveModuleConfig(event)">
-            <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
-                <div id="moduleConfigContent">
-                    <!-- Configuration content will be loaded here -->
+<div id="moduleConfigModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.55); z-index: 9999; align-items: center; justify-content: center; padding: 40px 20px;">
+    <div class="modal-content modal-large" style="width: 100%; max-width: 580px; display: flex; flex-direction: column; max-height: 82vh; margin: auto; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4); background: #ffffff;">
+        <!-- Header -->
+        <div class="modal-header" style="background: #ffffff; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e5e7eb; border-top-left-radius: 12px; border-top-right-radius: 12px; flex-shrink: 0;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="background: #eff6ff; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid #bfdbfe;">
+                    <i class="fas fa-cog" style="color: #0057b8 !important; font-size: 17px;"></i>
+                </div>
+                <div>
+                    <h3 style="margin: 0; color: #00264D !important; font-size: 16px; font-weight: 700; letter-spacing: 0.3px;"><span id="configModuleTitle" style="color: #00264D !important;">Module Configuration</span></h3>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="resetModuleConfig()">
-                    <i class="fas fa-undo"></i> Reset to Default
+            <!-- X button removed for clean layout -->
+        </div>
+        <form id="moduleConfigForm" onsubmit="saveModuleConfig(event)" style="display: flex; flex-direction: column; flex: 1; overflow: hidden; margin: 0;">
+            <div class="modal-body" style="padding: 24px 26px 30px 26px; flex: 1; overflow-y: auto; background: #ffffff;">
+                <div id="moduleConfigContent">
+                    <!-- Dynamic configuration content loaded here -->
+                </div>
+            </div>
+            <div class="modal-footer" style="background: #ffffff; border-top: 2px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; flex-shrink: 0;">
+                <button type="button" class="btn btn-secondary" style="background: #ef4444 !important; color: white !important; border: none; font-weight: 700; font-size: 12px; padding: 9px 18px; border-radius: 7px; cursor: pointer;" onclick="resetModuleConfig()">
+                    Restore Default
                 </button>
-                <button type="button" class="btn btn-ghost" onclick="closeModuleConfigModal()">
-                    <i class="fas fa-times"></i> Cancel
-                </button>
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-save"></i> Save Configuration
-                </button>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button type="button" style="padding: 9px 22px; border: 1px solid #d1d5db !important; border-radius: 7px; background: #ffffff !important; cursor: pointer; font-size: 13px; font-weight: 600; color: #374151 !important;" onclick="closeModuleConfigModal()">
+                        Cancel
+                    </button>
+                    <button type="submit" style="padding: 9px 24px; border: none !important; border-radius: 7px; background: #16a34a !important; color: #ffffff !important; font-size: 13px; font-weight: 700; cursor: pointer; letter-spacing: 0.2px;">
+                        Save Configuration
+                    </button>
+                </div>
             </div>
         </form>
     </div>
@@ -356,67 +581,148 @@ if (empty($stations)) {
         </div>
     </div>
 </div>
-
-<!-- Add Module Modal -->
-<div id="addModuleModal" class="modal-overlay" style="display: none;">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3><i class="fas fa-plus-circle"></i> Add New Module</h3>
-            <button class="modal-close" onclick="closeAddModuleModal()">&times;</button>
-        </div>
-        <form id="addModuleForm" method="POST" action="">
-            <div class="modal-body">
-                <input type="hidden" name="action" value="add_module">
-                
-                <div class="form-group">
-                    <label>Module Key <span style="color: #dc2626;">*</span></label>
-                    <input type="text" name="module_key" class="form-input" placeholder="e.g., inventory_management" required>
-                    <small>Unique identifier (lowercase, underscores only)</small>
+<!-- Add Module Modal -->
+<div id="addModuleModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.55); z-index: 9999; align-items: center; justify-content: center; padding: 45px 20px;">
+    <div class="modal-content" style="max-width: 540px; width: 100%; display: flex; flex-direction: column; max-height: 80vh; margin: auto; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4); background: #ffffff;">
+        <!-- Header (Clean White Header, No Dark Blue, No Subtext, No X Icon) -->
+        <div class="modal-header" style="background: #ffffff; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e5e7eb; flex-shrink: 0;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="background: #eff6ff; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid #bfdbfe;">
+                    <i class="fas fa-puzzle-piece" style="color: #0057b8 !important; font-size: 18px;"></i>
                 </div>
-                
-                <div class="form-group">
-                    <label>Module Name <span style="color: #dc2626;">*</span></label>
-                    <input type="text" name="module_name" class="form-input" placeholder="e.g., Inventory Management" required>
-                </div>
-                
-                <div class="form-group">
-                    <label>Description</label>
-                    <textarea name="module_description" class="form-input" rows="3" placeholder="Brief description of the module"></textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label>Icon (Font Awesome class)</label>
-                    <input type="text" name="module_icon" class="form-input" placeholder="e.g., fa-boxes">
-                    <small>Enter Font Awesome icon class (without 'fas' prefix)</small>
-                </div>
-                
-                <div class="form-group">
-                    <label>Assign to Stations</label>
-                    <select name="stations[]" class="form-input" multiple size="5">
-                        <option value="all">All Stations</option>
-                        <?php foreach ($stations as $st): ?>
-                        <option value="<?php echo $st['id']; ?>"><?php echo htmlspecialchars($st['name']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                    <small>Hold Ctrl/Cmd to select multiple stations</small>
-                </div>
-                
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; gap: 8px;">
-                        <input type="checkbox" name="is_enabled" value="1" checked>
-                        Enable module immediately
-                    </label>
+                <div>
+                    <h3 style="margin: 0; color: #00264D !important; font-size: 17px; font-weight: 700; letter-spacing: 0.3px;">Register Module</h3>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeAddModuleModal()">
-                    <i class="fas fa-times"></i> Cancel
+        </div>
+
+        <form id="addModuleForm" method="POST" action="" style="display: flex; flex-direction: column; flex: 1; overflow: hidden; margin: 0;">
+            <input type="hidden" name="action" value="add_module">
+            <div class="modal-body" style="padding: 28px 26px 36px 26px; flex: 1; overflow-y: auto; background: #ffffff;">
+
+                <!-- Section: Module Information -->
+                <div style="margin-top: 5px; margin-bottom: 24px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e5e7eb;">
+                        <i class="fas fa-info-circle" style="color: #0057b8;"></i>
+                        <span style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px;">Module Information</span>
+                    </div>
+
+                    <!-- Module Name -->
+                    <div style="margin-bottom: 16px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Module Name <span style="color: #dc2626;">*</span></label>
+                        <input type="text" name="module_name" class="form-input"
+                               placeholder="e.g., Loyalty Rewards"
+                               required style="width: 100%; font-size: 14px;">
+                    </div>
+
+                    <!-- Module Code -->
+                    <div style="margin-bottom: 16px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Module Code <span style="color: #dc2626;">*</span></label>
+                        <input type="text" name="module_code" id="moduleCodeInput" class="form-input"
+                               placeholder="e.g., LOYALTY_REWARDS"
+                               required style="width: 100%; font-size: 14px; font-family: monospace;"
+                               oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9_]/g,'');">
+                        <small style="color: #6b7280; margin-top: 4px; display: block;">Uppercase letters, numbers, underscores only. Unique identifier for this module.</small>
+                    </div>
+
+                    <!-- Description -->
+                    <div style="margin-bottom: 16px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Module Description</label>
+                        <textarea name="module_description" class="form-input" rows="3"
+                                  placeholder="Brief description of what this module does..."
+                                  style="width: 100%; resize: vertical; font-size: 13px;"></textarea>
+                    </div>
+
+                    <!-- Version -->
+                    <div style="margin-bottom: 6px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Module Version</label>
+                        <input type="text" name="module_version" class="form-input"
+                               placeholder="e.g., v1.0.0" value="v1.0.0"
+                               style="width: 160px; font-family: monospace; font-size: 13px;">
+                    </div>
+                </div>
+
+                <!-- Section: Status -->
+                <div style="margin-bottom: 24px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e5e7eb;">
+                        <i class="fas fa-toggle-on" style="color: #10b981;"></i>
+                        <span style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px;">Module Status</span>
+                    </div>
+                    <div style="display: flex; gap: 24px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #16a34a;">
+                            <input type="radio" name="module_status" value="enabled" checked
+                                   style="width: 16px; height: 16px; accent-color: #16a34a;">
+                            <span>Enabled</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #6b7280;">
+                            <input type="radio" name="module_status" value="disabled"
+                                   style="width: 16px; height: 16px; accent-color: #6b7280;">
+                            <span>Disabled</span>
+                        </label>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Footer -->
+            <div class="modal-footer" style="background: #ffffff; border-top: 2px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 14px; align-items: center; padding: 18px 26px; flex-shrink: 0;">
+                <button type="button" onclick="closeAddModuleModal()"
+                        style="padding: 10px 24px; border: 1px solid #d1d5db !important; border-radius: 7px; background: #ffffff !important; cursor: pointer; font-size: 13px; font-weight: 600; color: #374151 !important; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                    Cancel
                 </button>
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-plus"></i> Add Module
+                <button type="submit"
+                        style="padding: 10px 24px; border: none !important; border-radius: 7px; background: #16a34a !important; color: #ffffff !important; font-size: 13px; font-weight: 700; cursor: pointer; letter-spacing: 0.2px; box-shadow: 0 2px 6px rgba(22,163,74,0.3);">
+                    Register Module
                 </button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Disable Module Confirmation Modal -->
+<div id="disableConfirmModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); z-index: 10000; align-items: center; justify-content: center; padding: 40px 20px;">
+    <div class="modal-content" style="max-width: 480px; width: 100%; border-radius: 12px; overflow: hidden; background: #ffffff; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+        <div class="modal-header" style="background: #dc2626; padding: 18px 22px; color: white; display: flex; align-items: center; justify-content: space-between; border-top-left-radius: 12px; border-top-right-radius: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-exclamation-triangle" style="font-size: 20px; color: white;"></i>
+                <h3 style="margin: 0; color: white !important; font-size: 16px; font-weight: 700;">Disable Module Confirmation</h3>
+            </div>
+        </div>
+        <div class="modal-body" style="padding: 24px; background: #ffffff;">
+            <div style="font-size: 15px; font-weight: 700; color: #1f2937; margin-bottom: 8px;">
+                Disable <span id="disableModuleName"></span> Module?
+            </div>
+            <p style="font-size: 13px; color: #4b5563; margin-bottom: 14px;">
+                You are about to disable the <strong id="disableModuleNameText"></strong> module.
+            </p>
+            
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px; margin-bottom: 18px;">
+                <div style="font-size: 11px; font-weight: 700; color: #991b1b; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">Effects:</div>
+                <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #7f1d1d; line-height: 1.6;">
+                    <li><span id="disableModuleNameMenu"></span> menu will be hidden.</li>
+                    <li>Users will no longer access the <span id="disableModuleNameAccess"></span>.</li>
+                    <li>Existing data will <strong>NOT</strong> be deleted.</li>
+                    <li>This module can be enabled again anytime.</li>
+                </ul>
+            </div>
+            
+            <div style="margin-bottom: 14px;">
+                <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">
+                    Type <strong style="color: #dc2626;">CONFIRM</strong> to continue:
+                </label>
+                <input type="text" id="confirmDisableInput" class="form-input" placeholder="CONFIRM" autocomplete="off"
+                       style="width: 100%; padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 7px; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;"
+                       oninput="checkConfirmDisableInput(this.value)">
+            </div>
+        </div>
+        <div class="modal-footer" style="background: #ffffff; border-top: 2px solid #e5e7eb; padding: 16px 22px; display: flex; justify-content: flex-end; gap: 10px;">
+            <button type="button" onclick="closeDisableConfirmModal()" style="padding: 9px 20px; border: 1px solid #d1d5db; border-radius: 7px; background: white; cursor: pointer; font-size: 13px; font-weight: 600; color: #374151;">
+                Cancel
+            </button>
+            <button type="button" id="btnSubmitDisable" disabled onclick="executeDisableModule()" style="padding: 9px 22px; border: none; border-radius: 7px; background: #dc2626; color: white; font-size: 13px; font-weight: 700; cursor: not-allowed; opacity: 0.5;">
+                Disable Module
+            </button>
+        </div>
     </div>
 </div>
 
@@ -608,31 +914,31 @@ if (empty($stations)) {
         color: white !important;
     }
     
-    /* Add Module Button */
-    .btn-add-module {
-        padding: 8px 16px;
-        border-radius: 6px;
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-        background: white !important;
-        color: #16a34a !important;
-        border: 1px solid #16a34a !important;
-        transition: all .2s;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
+    /* Register Module Button Rules (NEVER DARK BLUE ON CLICK) */
+    .btn-register-module,
+    .btn-register-module:hover,
+    .btn-register-module:focus,
+    .btn-register-module:active,
+    .btn-register-module:visited {
+        background: transparent !important;
+        color: #00264D !important;
+        border: 1.5px solid #00264D !important;
+        box-shadow: none !important;
+        outline: none !important;
+        text-decoration: none !important;
     }
     
-    .btn-add-module:hover {
-        background: #16a34a !important;
-        color: white !important;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(22, 163, 74, 0.3);
+    .btn-register-module:hover,
+    .btn-register-module:focus,
+    .btn-register-module:active {
+        background: rgba(0, 38, 77, 0.08) !important;
+        color: #00264D !important;
+        border-color: #00264D !important;
     }
     
-    .btn-add-module i {
+    .btn-register-module i {
         font-size: 14px;
+        color: #0057b8 !important;
     }
     
     /* Modal Styles */
@@ -689,7 +995,7 @@ if (empty($stations)) {
         margin: 0;
         font-size: 18px;
         font-weight: 600;
-        color: var(--petron-blue, #00264D) !important;
+        color: var(--petron-blue, #00264D);
     }
     
     .modal-header h3 i {
@@ -723,12 +1029,13 @@ if (empty($stations)) {
     }
     
     .modal-footer {
-        padding: 16px 24px;
-        border-top: 1px solid #e5e7eb;
+        padding: 18px 24px;
+        border-top: 2px solid #e5e7eb;
         display: flex;
         justify-content: flex-end;
-        gap: 10px;
-        background: #f9fafb;
+        gap: 12px;
+        align-items: center;
+        background: #ffffff;
     }
     
     .form-group {
@@ -1203,10 +1510,10 @@ if (empty($stations)) {
 </style>
 
 <script>
-// ══════════════════════════════════════════════════════════════
-// STATION DATA — embedded as JSON once at module scope
+// ================================================================
+// STATION DATA - embedded as JSON once at module scope
 // Filtered in JS, max 50 results rendered per query
-// ══════════════════════════════════════════════════════════════
+// ================================================================
 const STATION_DATA = <?php
     echo json_encode(
         array_map(fn($s) => ['id' => (int)$s['id'], 'name' => $s['name']], $stations),
@@ -1214,7 +1521,11 @@ const STATION_DATA = <?php
     );
 ?>;
 
-// ── Virtual Station Combobox ─────────────────────────────────
+const activeConfigs = <?php echo json_encode($moduleConfigMap, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE); ?>;
+const stationConfigs = <?php echo json_encode($stationConfigsMap, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE); ?>;
+
+
+// -- Virtual Station Combobox ----------------------------------
 (function initStationCombo() {
     const combo   = document.getElementById('tb_station_combo');
     const list    = document.getElementById('tb_station_list');
@@ -1238,7 +1549,7 @@ const STATION_DATA = <?php
         const lq = (q || '').toLowerCase().trim();
         list.innerHTML = '';
 
-        // "All Stations" row — always show when no query
+        // "All Stations" row - always show when no query
         if (!lq) {
             const all = document.createElement('div');
             all.className = 'am-combo-option' + (!currentVal ? ' selected' : '');
@@ -1372,13 +1683,13 @@ function updateStationBanner() {
     
     if (stationVal && stationDisplay && stationDisplay !== 'All Stations') {
         // Show selected station banner
-        banner.style.display = 'block';
-        warning.style.display = 'none';
-        stationNameDiv.textContent = stationDisplay;
+        if (banner) banner.style.display = 'block';
+        if (warning) warning.style.display = 'none';
+        if (stationNameDiv) stationNameDiv.textContent = stationDisplay;
     } else {
         // Show warning to select station
-        banner.style.display = 'none';
-        warning.style.display = 'block';
+        if (banner) banner.style.display = 'none';
+        if (warning) warning.style.display = 'none';
     }
 }
 function filterByStation() {
@@ -1415,173 +1726,364 @@ let currentConfigModule = '';
 let currentConfigStation = '';
 let defaultConfigValues = {};
 
+function populateModalInputs(moduleKey, stationId) {
+    const modal = document.getElementById('moduleConfigModal');
+    const sId = (stationId && stationId !== 'all') ? String(stationId) : 'all';
+    
+    // Retrieve configs
+    let configSource = {};
+    if (stationConfigs[moduleKey] && stationConfigs[moduleKey][sId]) {
+        configSource = stationConfigs[moduleKey][sId];
+    } else if (sId === 'all' && activeConfigs[moduleKey]) {
+        configSource = activeConfigs[moduleKey];
+    }
+    
+    console.log('Populating inputs for module:', moduleKey, 'station:', sId, 'values:', configSource);
+    
+    modal.querySelectorAll('input[name], select[name], textarea[name]').forEach(input => {
+        if (input.id === 'modalStationSelect' || input.name === 'modalStationSelect') return;
+        const key = input.name;
+        
+        // Default value from data-default attribute
+        let val = input.dataset.default;
+        
+        // If configSource has the key, use it
+        if (configSource.hasOwnProperty(key)) {
+            val = configSource[key];
+        } else if (sId !== 'all' && activeConfigs[moduleKey] && activeConfigs[moduleKey].hasOwnProperty(key)) {
+            // fallback to global activeConfigs if station override is missing
+            val = activeConfigs[moduleKey][key];
+        }
+        
+        if (input.type === 'checkbox') {
+            const boolVal = (val === true || val === 'true' || val === 1 || val === '1');
+            input.checked = boolVal;
+        } else if (input.tagName === 'SELECT') {
+            input.value = val;
+            const options = input.querySelectorAll('option');
+            options.forEach(opt => {
+                if (opt.value === String(val)) {
+                    opt.selected = true;
+                }
+            });
+        } else {
+            input.value = val;
+        }
+    });
+}
+
 function showModuleSettings(moduleKey) {
     console.log('Opening configuration modal for:', moduleKey);
     
-    // Get currently selected station (optional – can be set inside modal too)
     const stationInput = document.getElementById('tb_station_val');
-    const stationDisplay = document.getElementById('tb_station_display');
     currentConfigStation = stationInput ? stationInput.value : '';
-    const stationName = (stationDisplay && stationDisplay.value && stationDisplay.value !== 'All Stations')
-        ? stationDisplay.value : 'All Stations';
-    
     currentConfigModule = moduleKey;
     
-    // Build station options HTML for in-modal selector
-    const STATIONS = <?php echo json_encode(array_map(fn($s) => ['id' => (int)$s['id'], 'name' => $s['name']], $stations), JSON_HEX_TAG | JSON_UNESCAPED_UNICODE); ?>;
-    let stationOptions = '<option value="">-- All Stations (Global) --</option>';
-    STATIONS.forEach(s => {
-        const sel = (String(s.name) === currentConfigStation) ? ' selected' : '';
-        stationOptions += `<option value="${s.id}" data-name="${s.name}"${sel}>${s.name}</option>`;
-    });
+    // Format module title
+    const moduleNameMap = {
+        'dashboard': 'Dashboard',
+        'transactions': 'Transactions',
+        'fuel_management': 'Fuel Management',
+        'inventory': 'Inventory',
+        'customers': 'Customers',
+        'product_pricing': 'Product & Pricing',
+        'calendar': 'Calendar',
+        'reports': 'Reports',
+        'notifications': 'Notifications',
+        'backup_restore': 'Backup & Restore',
+        'audit_trail': 'Audit Trail',
+        'api_integration': 'API Integration'
+    };
     
-    console.log('Configuring module:', moduleKey, 'for station:', stationName);
+    const moduleName = moduleNameMap[moduleKey] || moduleKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     
-    // Module-specific configuration templates
+    const coreModules = ['dashboard','transactions','fuel_management','inventory','reports','audit_trail','backup_restore'];
+    const isCore = coreModules.includes(moduleKey);
+    
+    let statusBadgeHtml = '<span style="background: #dcfce7; color: #15803d; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 6px;">Enabled</span>';
+    let moduleStatusSection = '';
+    
+    if (isCore) {
+        statusBadgeHtml = '<span style="background: #dcfce7; color: #15803d; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 6px;">Enabled (Core)</span>';
+        moduleStatusSection = `
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                    Module Status
+                </div>
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; color: #15803d; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-shield-alt"></i> Enabled - Core System Module (Cannot be disabled)
+                </div>
+            </div>
+        `;
+    } else {
+        moduleStatusSection = `
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                    Module Status
+                </div>
+                <div style="display: flex; gap: 24px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #16a34a;">
+                        <input type="radio" name="module_status" value="enabled" checked style="width: 16px; height: 16px;">
+                        <span>Enabled</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #dc2626;">
+                        <input type="radio" name="module_status" value="disabled" style="width: 16px; height: 16px;">
+                        <span>Disabled</span>
+                    </label>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Top Module Information Card (Module Name, Version, Status)
+    const topInfoCard = `
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 18px; margin-bottom: 22px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; align-items: center;">
+                <div>
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Module Name</div>
+                    <div style="font-size: 15px; font-weight: 700; color: #00264D; margin-top: 2px;">${moduleName}</div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Version</div>
+                    <div style="font-size: 13px; font-weight: 600; color: #334155; margin-top: 2px; font-family: monospace;">v1.0.0</div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Status</div>
+                    <div style="margin-top: 2px;">${statusBadgeHtml}</div>
+                </div>
+            </div>
+        </div>
+    `;
+
     const moduleConfigs = {
-        'transactions': `
-            <h4><i class="fas fa-shopping-cart"></i> Transactions (Merchandise POS) Settings</h4>
-            <div class="config-section">
-                <label class="config-label">Payment Methods</label>
-                <div class="config-options">
-                    <label><input type="checkbox" name="payment_cash" checked data-default="true"> Cash</label>
-                    <label><input type="checkbox" name="payment_card" checked data-default="true"> Card</label>
-                    <label><input type="checkbox" name="payment_ewallet" data-default="false"> E-Wallet</label>
-                    <label><input type="checkbox" name="payment_fleet" data-default="false"> Fleet Card</label>
+        'dashboard': `
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                    Dashboard Settings
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Default Landing Page</label>
+                    <input type="text" name="default_landing_page" class="config-input" value="dashboard" data-default="dashboard" style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Refresh Interval (seconds)</label>
+                    <input type="number" name="dashboard_refresh_interval" class="config-input" value="45" data-default="45" style="width: 140px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
                 </div>
             </div>
-            <div class="config-section">
-                <label class="config-label">Discount/VAT Formula Setup</label>
-                <input type="text" name="formula" class="config-input" placeholder="Price * (1 - Discount%) * (1 + VAT%)" value="Price * (1 - Discount%) * (1 + VAT%)" data-default="Price * (1 - Discount%) * (1 + VAT%)">
-            </div>
-            <div class="config-section">
-                <label class="config-label">Transaction Validation</label>
-                <select name="validation" class="config-input" data-default="full">
-                    <option value="full" selected>Full Payment Required</option>
-                    <option value="partial">Partial Payment Allowed</option>
-                </select>
-            </div>
-            <div class="config-section">
-                <label class="config-label">Audit Trail Logging</label>
-                <label><input type="checkbox" name="audit_trail" checked data-default="true"> Enable per-transaction audit logging</label>
-            </div>
-        `,
-        'fuel_management': `
-            <h4><i class="fas fa-gas-pump"></i> Fuel Management Settings</h4>
-            <div class="config-section">
-                <label class="config-label">Fuel Type List</label>
-                <div class="config-list">
-                    <div class="list-item">Diesel</div>
-                    <div class="list-item">Gasoline 91</div>
-                    <div class="list-item">Gasoline 95</div>
-                    <div class="list-item">Kerosene</div>
+
+            <div style="margin-bottom: 10px;">
+                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                    Dashboard Components
                 </div>
-            </div>
-            <div class="config-section">
-                <label class="config-label">Price per Liter Setup</label>
-                <table class="price-table">
-                    <tr><td>Diesel</td><td><input type="number" name="price_diesel" step="0.01" value="55.50" class="config-input-sm" data-default="55.50"></td></tr>
-                    <tr><td>Gasoline 91</td><td><input type="number" name="price_gas91" step="0.01" value="62.00" class="config-input-sm" data-default="62.00"></td></tr>
-                    <tr><td>Gasoline 95</td><td><input type="number" name="price_gas95" step="0.01" value="68.50" class="config-input-sm" data-default="68.50"></td></tr>
-                </table>
-            </div>
-            <div class="config-section">
-                <label class="config-label">Calibration Variance Tolerance (%)</label>
-                <input type="number" name="variance_tolerance" step="0.1" value="2.0" class="config-input" data-default="2.0">
-            </div>
-            <div class="config-section">
-                <label class="config-label">Reconciliation Rules</label>
-                <select name="reconciliation" class="config-input" data-default="daily">
-                    <option value="daily" selected>Daily Reconciliation</option>
-                    <option value="shift">Per Shift</option>
-                    <option value="weekly">Weekly</option>
-                </select>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_kpi_cards" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>KPI Cards</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_quick_actions" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Quick Actions</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_calendar_widget" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Calendar Widget</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_notifications_widget" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Notifications</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_search_bar" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Search Bar</span>
+                    </label>
+                </div>
             </div>
         `,
         'inventory': `
-            <h4><i class="fas fa-boxes"></i> Inventory Settings</h4>
-            <div class="config-section">
-                <label class="config-label">Inventory Method</label>
-                <label><input type="checkbox" name="fifo" checked data-default="true"> Enable FIFO (First In, First Out)</label>
-            </div>
-            <div class="config-section">
-                <label class="config-label">Auto-Update Stock</label>
-                <label><input type="checkbox" name="auto_sales" checked data-default="true"> Auto-update after sales</label>
-                <label><input type="checkbox" name="auto_delivery" checked data-default="true"> Auto-update after deliveries</label>
-            </div>
-            <div class="config-section">
-                <label class="config-label">Low Stock Alert Threshold</label>
-                <input type="number" name="threshold" value="10" class="config-input" data-default="10">
-            </div>
-        `,
-        'customers': `
-            <h4><i class="fas fa-users"></i> Customers Settings</h4>
-            <div class="config-section">
-                <label class="config-label">Loyalty Points per Peso</label>
-                <input type="number" name="points_per_peso" step="0.01" value="0.01" class="config-input" data-default="0.01">
-            </div>
-            <div class="config-section">
-                <label class="config-label">Customer Tier Rules</label>
-                <table class="tier-table">
-                    <tr><td>Regular</td><td>₱0 - ₱9,999</td><td>0% discount</td></tr>
-                    <tr><td>VIP</td><td>₱10,000 - ₱49,999</td><td>5% discount</td></tr>
-                    <tr><td>Fleet</td><td>₱50,000+</td><td>10% discount</td></tr>
-                </table>
-            </div>
-        `,
-        'calendar': `
-            <h4><i class="fas fa-calendar-alt"></i> Calendar Settings</h4>
-            <div class="config-section">
-                <label class="config-label">Shift Schedule Templates</label>
-                <button type="button" class="btn-config"><i class="fas fa-clock"></i> Morning (6AM-2PM)</button>
-                <button type="button" class="btn-config"><i class="fas fa-clock"></i> Afternoon (2PM-10PM)</button>
-                <button type="button" class="btn-config"><i class="fas fa-clock"></i> Night (10PM-6AM)</button>
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                    Inventory Settings
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_batch_tracking" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Batch Tracking</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_expiration" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Expiration</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_fifo" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable FIFO</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_low_stock_alerts" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Low Stock Alerts</span>
+                    </label>
+                </div>
             </div>
         `,
         'reports': `
-            <h4><i class="fas fa-chart-line"></i> Reports Settings</h4>
-            <div class="config-section">
-                <label class="config-label">Formula Setup</label>
-                <textarea name="formula" class="config-input" rows="3" data-default="Variance = (Actual - Expected) / Expected * 100">Variance = (Actual - Expected) / Expected * 100</textarea>
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                    Export Formats
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_pdf" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable PDF</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_excel" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Excel</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_csv" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable CSV</span>
+                    </label>
+                </div>
+                <div>
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Paper Size</label>
+                    <select name="paper_size" class="config-input" data-default="A4" style="width: 180px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                        <option value="A4" selected>A4</option>
+                        <option value="Letter">Letter</option>
+                        <option value="Legal">Legal</option>
+                    </select>
+                </div>
             </div>
-            <div class="config-section">
-                <label class="config-label">Export Options</label>
-                <label><input type="checkbox" name="export_excel" checked data-default="true"> Excel (.xlsx)</label>
-                <label><input type="checkbox" name="export_pdf" checked data-default="true"> PDF</label>
-                <label><input type="checkbox" name="export_csv" data-default="false"> CSV</label>
+        `,
+        'backup_restore': `
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                    Backup Settings
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Backup Frequency</label>
+                    <select name="backup_frequency" class="config-input" data-default="Daily" style="width: 180px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                        <option value="Daily" selected>Daily</option>
+                        <option value="Weekly">Weekly</option>
+                        <option value="Monthly">Monthly</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Retention Period</label>
+                    <select name="retention_period" class="config-input" data-default="30 days" style="width: 180px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                        <option value="30 days" selected>30 days</option>
+                        <option value="60 days">60 days</option>
+                        <option value="90 days">90 days</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Storage Location</label>
+                    <select name="storage_location" class="config-input" data-default="Local" style="width: 180px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                        <option value="Local" selected>Local Storage</option>
+                        <option value="Cloud">Cloud Storage</option>
+                    </select>
+                </div>
+            </div>
+        `,
+        'notifications': `
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                    Notification Settings
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_notifications" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Notifications</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="auto_hide_success_banner" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Auto Hide Success Banner</span>
+                    </label>
+                </div>
+                <div>
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Duration (seconds)</label>
+                    <input type="number" name="notification_duration" class="config-input" value="5" data-default="5" style="width: 140px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                </div>
+            </div>
+        `,
+        'transactions': `
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                    Transaction Controls
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="auto_transaction_numbering" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Auto Transaction Numbering</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_void_transaction" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Void Transaction Control</span>
+                    </label>
+                </div>
+            </div>
+        `,
+        'fuel_management': `
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                    Fuel Controls
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_fuel_reconciliation" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Automated Fuel Reconciliation</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_calibration" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Calibration Computations</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_meter_reading_validation" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Meter Reading Validation</span>
+                    </label>
+                </div>
+            </div>
+        `,
+        'customers': `
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                    Customer Controls
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_customer_registration" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Customer Account Registration</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_vehicle_history" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Vehicle Service History Integration</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" name="enable_credit_account" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Customer Credit Account Limits</span>
+                    </label>
+                </div>
             </div>
         `
     };
-    
-    // Get configuration content
+
     const configContent = moduleConfigs[moduleKey] || `
-        <h4>Configuration for ${moduleKey}</h4>
-        <p>Configuration options for this module are being developed.</p>
-    `;
-    
-    // Build station selector row for modal header
-    const stationRow = `
-        <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 16px;margin-bottom:18px;display:flex;align-items:center;gap:12px;">
-            <i class="fas fa-map-marker-alt" style="color:#0284c7;font-size:16px;"></i>
-            <div style="flex:1;">
-                <label style="display:block;font-weight:600;font-size:12px;color:#0369a1;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Apply Configuration To:</label>
-                <select id="modalStationSelect" style="width:100%;padding:8px 12px;border:1px solid #bae6fd;border-radius:6px;font-size:13px;color:#1e3a5f;background:white;">
-                    ${stationOptions}
-                </select>
+        <div style="margin-bottom: 20px;">
+            <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                Module Options
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                    <input type="checkbox" name="enable_${moduleKey}_feature" checked data-default="true" style="width: 16px; height: 16px;">
+                    <span>Enable ${moduleName} Integration</span>
+                </label>
             </div>
         </div>
     `;
     
-    // Load content into modal
-    document.getElementById('moduleConfigContent').innerHTML = stationRow + configContent;
+    document.getElementById('moduleConfigContent').innerHTML = topInfoCard + moduleStatusSection + configContent;
+    document.getElementById('configModuleTitle').textContent = moduleName + ' Configuration';
     
-    // Update modal title
-    document.getElementById('configModuleTitle').textContent = moduleKey.replace(/_/g, ' ').toUpperCase() + ' Configuration';
-    
-    // Store default values
     storeDefaultValues();
     
-    // Show modal
     document.getElementById('moduleConfigModal').style.display = 'flex';
     document.body.style.overflow = 'hidden';
 }
@@ -1590,7 +2092,6 @@ function storeDefaultValues() {
     defaultConfigValues = {};
     const modal = document.getElementById('moduleConfigModal');
     
-    // Store all input default values
     modal.querySelectorAll('input[data-default], select[data-default], textarea[data-default]').forEach(input => {
         if (input.name) {
             if (input.type === 'checkbox') {
@@ -1610,33 +2111,72 @@ function closeModuleConfigModal() {
     defaultConfigValues = {};
 }
 
+
 function resetModuleConfig() {
-    if (!confirm('Are you sure you want to reset all settings to default values?')) {
+    if (!currentConfigModule) {
         return;
     }
-    
+
+    // --- 1. Reset UI fields immediately for instant feedback ---
     const modal = document.getElementById('moduleConfigModal');
-    
-    // Reset all inputs to default values
-    modal.querySelectorAll('input[data-default], select[data-default], textarea[data-default]').forEach(input => {
+    modal.querySelectorAll('input[data-default], select[data-default], textarea[data-default]').forEach(function(input) {
         if (input.type === 'checkbox') {
             input.checked = input.dataset.default === 'true';
+        } else if (input.type === 'radio') {
+            // reset status radio to enabled
+            if (input.value === 'enabled') input.checked = true;
+            if (input.value === 'disabled') input.checked = false;
         } else if (input.tagName === 'SELECT') {
-            const defaultValue = input.dataset.default;
-            input.value = defaultValue;
-            // Also try to select by matching the value attribute
-            const options = input.querySelectorAll('option');
-            options.forEach(opt => {
-                if (opt.value === defaultValue) {
-                    opt.selected = true;
-                }
+            var defaultVal = input.dataset.default;
+            input.value = defaultVal;
+            Array.from(input.options).forEach(function(opt) {
+                opt.selected = (opt.value === defaultVal);
             });
         } else {
             input.value = input.dataset.default;
         }
     });
-    
-    console.log('Configuration reset to default values for:', currentConfigModule);
+
+    // --- 2. Submit reset to server (DELETE from DB) ---
+    var stationInput = document.getElementById('tb_station_val');
+    var selectedStationId = stationInput ? stationInput.value : '';
+
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.innerHTML =
+        '<input type="hidden" name="action" value="reset_module_config">' +
+        '<input type="hidden" name="module_key" value="' + currentConfigModule + '">' +
+        '<input type="hidden" name="station_id" value="' + (selectedStationId || 'all') + '">';
+    document.body.appendChild(form);
+
+    closeModuleConfigModal();
+    form.submit();
+}
+
+let pendingDisableSubmit = null;
+
+function checkConfirmDisableInput(val) {
+    const btn = document.getElementById('btnSubmitDisable');
+    if (val.trim().toUpperCase() === 'CONFIRM') {
+        btn.disabled = false;
+        btn.style.cursor = 'pointer';
+        btn.style.opacity = '1';
+    } else {
+        btn.disabled = true;
+        btn.style.cursor = 'not-allowed';
+        btn.style.opacity = '0.5';
+    }
+}
+
+function closeDisableConfirmModal() {
+    document.getElementById('disableConfirmModal').style.display = 'none';
+}
+
+function executeDisableModule() {
+    closeDisableConfirmModal();
+    if (pendingDisableSubmit) {
+        pendingDisableSubmit();
+    }
 }
 
 function saveModuleConfig(event) {
@@ -1647,22 +2187,99 @@ function saveModuleConfig(event) {
         return;
     }
     
-    // Read station from in-modal selector (may be empty = All Stations)
-    const modalStationSelect = document.getElementById('modalStationSelect');
-    const selectedStationId   = modalStationSelect ? modalStationSelect.value : '';
-    const selectedOption      = modalStationSelect ? modalStationSelect.options[modalStationSelect.selectedIndex] : null;
-    const selectedStationName = selectedOption && selectedOption.value
-        ? (selectedOption.dataset.name || selectedOption.text)
-        : 'All Stations (Global)';
+    const coreModules = ['dashboard','transactions','fuel_management','inventory','reports','audit_trail','backup_restore'];
+    const isCore = coreModules.includes(currentConfigModule);
     
-    currentConfigStation = selectedStationId;
+    const statusRadio = document.querySelector('input[name="module_status"]:checked');
+    const isDisabling = statusRadio && statusRadio.value === 'disabled';
     
-    // Collect all configuration values from the modal (skip the station selector itself)
+    if (isDisabling && isCore) {
+        alert('Core system modules (Dashboard, Transactions, Fuel Management, Inventory, Reports, Audit Trail) cannot be disabled.');
+        return false;
+    }
+    
+    const submitAction = function() {
+        const stationInput = document.getElementById('tb_station_val');
+        const selectedStationId = stationInput ? stationInput.value : '';
+        
+        const configSettings = {};
+        const modal = document.getElementById('moduleConfigModal');
+        
+        modal.querySelectorAll('input[name], select[name], textarea[name]').forEach(input => {
+            if (input.name) {
+                if (input.type === 'checkbox') {
+                    configSettings[input.name] = input.checked;
+                } else if (input.type === 'radio') {
+                    if (input.checked) configSettings[input.name] = input.value;
+                } else {
+                    configSettings[input.name] = input.value;
+                }
+            }
+        });
+        
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.innerHTML = `
+            <input type="hidden" name="action" value="save_module_config">
+            <input type="hidden" name="module_key" value="${currentConfigModule}">
+            <input type="hidden" name="station_id" value="${selectedStationId || 'all'}">
+            <input type="hidden" name="config_data" value='${JSON.stringify(configSettings)}'>
+        `;
+        document.body.appendChild(form);
+        form.submit();
+    };
+
+    if (isDisabling && !isCore) {
+        const moduleNameMap = {
+            'dashboard': 'Dashboard',
+            'transactions': 'Transactions',
+            'fuel_management': 'Fuel Management',
+            'inventory': 'Inventory',
+            'customers': 'Customers',
+            'product_pricing': 'Product & Pricing',
+            'calendar': 'Calendar',
+            'reports': 'Reports',
+            'notifications': 'Notifications',
+            'backup_restore': 'Backup & Restore',
+            'audit_trail': 'Audit Trail',
+            'api_integration': 'API Integration'
+        };
+        const moduleName = moduleNameMap[currentConfigModule] || currentConfigModule.replace(/_/g, ' ');
+        
+        document.getElementById('disableModuleName').textContent = moduleName;
+        document.getElementById('disableModuleNameText').textContent = moduleName;
+        document.getElementById('disableModuleNameMenu').textContent = moduleName;
+        document.getElementById('disableModuleNameAccess').textContent = moduleName;
+        document.getElementById('confirmDisableInput').value = '';
+        
+        const btn = document.getElementById('btnSubmitDisable');
+        btn.disabled = true;
+        btn.style.cursor = 'not-allowed';
+        btn.style.opacity = '0.5';
+        
+        pendingDisableSubmit = submitAction;
+        document.getElementById('disableConfirmModal').style.display = 'flex';
+        return false;
+    }
+
+    submitAction();
+    return false;
+}
+
+function viewCurrentJSONSettings() {
+    const jsonView = document.getElementById('jsonSettingsView');
+    if (!jsonView) return;
+    
+    if (jsonView.style.display === 'block') {
+        jsonView.style.display = 'none';
+        return;
+    }
+    
     const configSettings = {};
     const modal = document.getElementById('moduleConfigModal');
     
     modal.querySelectorAll('input[name], select[name], textarea[name]').forEach(input => {
-        if (input.id === 'modalStationSelect' || input.name === 'modalStationSelect') return; // skip station picker
+        if (input.id === 'modalStationSelect' || input.name === 'modalStationSelect') return;
         if (input.name) {
             if (input.type === 'checkbox') {
                 configSettings[input.name] = input.checked;
@@ -1672,21 +2289,8 @@ function saveModuleConfig(event) {
         }
     });
     
-    console.log('Saving config for module:', currentConfigModule, '| station:', selectedStationName, '| settings:', configSettings);
-    
-    // Create form and submit
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.innerHTML = `
-        <input type="hidden" name="action" value="save_module_config">
-        <input type="hidden" name="module_key" value="${currentConfigModule}">
-        <input type="hidden" name="station_id" value="${selectedStationId || 'all'}">
-        <input type="hidden" name="config_data" value='${JSON.stringify(configSettings)}'>
-    `;
-    document.body.appendChild(form);
-    form.submit();
-    
-    return false;
+    jsonView.textContent = JSON.stringify(configSettings, null, 4);
+    jsonView.style.display = 'block';
 }
 
 function hideModuleSettings() { document.getElementById('moduleSettingsPanel').style.display = 'none'; }
@@ -1720,15 +2324,49 @@ function updateModuleSetting(moduleKey, configKey, newValue) {
 // Open Add Module Modal
 function openAddModuleModal() {
     document.getElementById('addModuleModal').style.display = 'flex';
-    document.body.style.overflow = 'hidden'; // Prevent background scrolling
+    document.body.style.overflow = 'hidden';
 }
 
 // Close Add Module Modal
 function closeAddModuleModal() {
     document.getElementById('addModuleModal').style.display = 'none';
-    document.body.style.overflow = ''; // Restore scrolling
+    document.body.style.overflow = '';
     document.getElementById('addModuleForm').reset();
+    // Reset icon preview
+    const preview = document.getElementById('iconPreview');
+    if (preview) preview.className = 'fas fa-cube';
 }
+
+// Auto-fill form with a suggestion preset
+function fillModuleSuggestion(key, name, icon, desc) {
+    const form = document.getElementById('addModuleForm');
+    if (!form) return;
+    form.querySelector('[name="module_key"]').value = key;
+    form.querySelector('[name="module_name"]').value = name;
+    form.querySelector('[name="module_description"]').value = desc;
+    const iconInput = form.querySelector('[name="module_icon"]');
+    if (iconInput) {
+        iconInput.value = icon;
+        const preview = document.getElementById('iconPreview');
+        if (preview) preview.className = 'fas ' + icon;
+    }
+}
+
+// Delete a custom (non-core) module
+function deleteModule(moduleKey, moduleName) {
+    if (!confirm(`Are you sure you want to permanently delete the module:\n\n"${moduleName}" (${moduleKey})?\n\nThis action cannot be undone.`)) {
+        return;
+    }
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.innerHTML = `
+        <input type="hidden" name="action" value="delete_module">
+        <input type="hidden" name="module_key" value="${moduleKey}">
+    `;
+    document.body.appendChild(form);
+    form.submit();
+}
+
 
 // Close modals when clicking outside
 document.addEventListener('click', function(event) {
@@ -1823,4 +2461,5 @@ if (isset($_GET['action'])) {
 }
 ?>
 
+</div>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -1522,7 +1522,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
               <button type="submit" class="db-btn db-btn-primary db-btn-sm">
                 <i class="fas fa-filter"></i> Filter
               </button>
-              <a href="?tab=security" class="db-btn db-btn-warning db-btn-sm">
+              <a href="?tab=security" class="db-btn db-btn-gray db-btn-sm">
                 <i class="fas fa-times"></i> Clear
               </a>
             </div>

@@ -321,6 +321,24 @@ function hasModuleAccess(int $user_id, string $module_key): bool {
         if (in_array($role, ['superadmin', 'developer'], true)) {
             return true;
         }
+
+        // Check module_settings user_access role restrictions (e.g., limit Staff)
+        try {
+            $mStmt = $pdo->prepare("SELECT user_access, is_enabled FROM module_settings WHERE module_key = ?");
+            $mStmt->execute([$module_key]);
+            $mRow = $mStmt->fetch(PDO::FETCH_ASSOC);
+            if ($mRow) {
+                if (isset($mRow['is_enabled']) && !(int)$mRow['is_enabled']) {
+                    return false;
+                }
+                if (!empty($mRow['user_access'])) {
+                    $allowedRoles = array_map('trim', explode(',', strtolower($mRow['user_access'])));
+                    if (!in_array(strtolower($role), $allowedRoles, true)) {
+                        return false;
+                    }
+                }
+            }
+        } catch (Exception $ex) {}
         
         // Check if user has a station assigned
         $station_id = $user['station_id'] ?? null;

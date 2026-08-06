@@ -135,28 +135,9 @@
     }
 
     function updateFooterSyncStatus(success, formattedTime) {
-        injectPulseStyles();
-        let badge = document.getElementById('liveSyncFooterBadge');
-        if (!badge) {
-            const footerContent = document.querySelector('.footer-content');
-            if (!footerContent) return;
-            badge = document.createElement('div');
-            badge.id = 'liveSyncFooterBadge';
-            badge.style.cssText = [
-                'display:inline-flex', 'align-items:center', 'gap:5px',
-                'font-size:11px', 'font-weight:700', 'padding:2px 8px',
-                'border-radius:12px', 'margin-left:12px', 'white-space:nowrap',
-                'flex-shrink:0', 'pointer-events:none',
-            ].join(';');
-            footerContent.appendChild(badge);
-        }
-        if (success) {
-            badge.style.cssText += ';background:#ecfdf5;border:1px solid #a7f3d0;color:#047857;';
-            badge.innerHTML = `<span style="width:7px;height:7px;border-radius:50%;background:#10b981;animation:livePulse 2s infinite;display:inline-block;flex-shrink:0;"></span> Live &bull; ${escapeHtml(formattedTime || 'Now')}`;
-        } else {
-            badge.style.cssText += ';background:#fffbeb;border:1px solid #fde68a;color:#b45309;';
-            badge.innerHTML = `<span style="width:7px;height:7px;border-radius:50%;background:#f59e0b;display:inline-block;flex-shrink:0;"></span> Reconnecting...`;
-        }
+        const badge = document.getElementById('liveSyncFooterBadge');
+        if (badge) badge.remove();
+        return;
     }
 
     // ────────────────────────────────────────────────────────────────

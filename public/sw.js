@@ -1,13 +1,13 @@
-const CACHE_NAME = 'petron-pos-cache-v1';
+const CACHE_NAME = 'petron-pos-cache-v3';
 const OFFLINE_URL = 'offline.html';
 
 const ASSETS_TO_CACHE = [
   OFFLINE_URL,
-  'assets/css/style.css',
-  'assets/css/manager_table_design.css',
-  'assets/css/manager_customer_management.css',
-  'assets/vendor/fontawesome/css/all.min.css',
-  'assets/img/logo.png',
+  '../assets/css/style.css',
+  '../assets/css/manager_table_design.css',
+  '../assets/css/manager_customer_management.css',
+  '../assets/vendor/fontawesome/css/all.min.css',
+  '../assets/img/petron_logo.png',
   'manifest.json'
 ];
 
