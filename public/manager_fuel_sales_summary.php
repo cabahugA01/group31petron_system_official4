@@ -235,8 +235,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     border: 1px solid #e2e8f0;
     border-radius: 12px;
     box-shadow: 0 1px 6px rgba(0,0,0,.05);
-    overflow: hidden;
-    margin-bottom: 20px;
+    overflow: visible !important;
+    margin-bottom: 15px !important;
 }
 
 .mfss-card-header {

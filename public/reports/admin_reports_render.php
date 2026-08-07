@@ -18,23 +18,21 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
         // =========================================================================
         case 'sales':
             if ($tab === 'fuel_sales') {
-                $ugt_rows    = $report_data['ugt_rows']    ?? [];
-                $fuel_summary= $report_data['fuel_summary'] ?? [];
-                $recon       = $report_data['reconciliation'] ?? [];
-                $variance    = $report_data['variance']    ?? [];
+                $ugt_rows         = $report_data['ugt_rows']         ?? [];
+                $ugt_summary      = $report_data['ugt_summary']      ?? [];
+                $fuel_summary     = $report_data['fuel_summary']     ?? [];
+                $recon            = $report_data['reconciliation']   ?? [];
+                $tank_summary     = $report_data['tank_summary']     ?? [];
+                $closing_summary  = $report_data['closing_summary']  ?? [];
+                $variance         = $report_data['variance']         ?? [];
+                $fuel_adjustments = $report_data['fuel_adjustments']  ?? [];
                 ?>
 
-                <?php if (empty($ugt_rows)): ?>
-                    <div style="text-align:center;padding:48px 0;color:#94a3b8;">
-                        <i class="fas fa-gas-pump" style="font-size:40px;opacity:0.3;display:block;margin-bottom:12px;"></i>
-                        <p style="margin:0;font-size:14px;">No fuel transaction records found for this period.</p>
-                    </div>
-                <?php else: ?>
 
                 <!-- =====================================================
-                     SECTION 1: UGT DAILY SALES TABLE
+                     SECTION 1: FUEL METER READING TABLE (UGT DAILY READINGS)
                      ===================================================== -->
-                <div class="rpt-section-heading"><i class="fas fa-table"></i> UGT Daily Sales Table</div>
+                <div class="rpt-section-heading"><i class="fas fa-tachometer-alt"></i> Fuel Meter Reading Table (UGT Daily Readings)</div>
                 <div class="table-responsive mb-4">
                     <table class="rpt-table align-middle">
                         <thead>
@@ -78,6 +76,9 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                 <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format($t_sales, 2) ?></td>
                             </tr>
                             <?php endforeach; ?>
+                            <?php if (empty($ugt_rows)): ?>
+                            <tr><td colspan="9" class="text-center py-4 text-muted"><i class="fas fa-gas-pump me-2 opacity-50"></i>No fuel transaction records found for this period.</td></tr>
+                            <?php endif; ?>
                         </tbody>
                         <tfoot>
                             <tr>
@@ -94,9 +95,56 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                 </div>
 
                 <!-- =====================================================
-                     SECTION 2: DAILY FUEL SALES SUMMARY (by fuel type)
+                     SECTION 2: UGT SALES SUMMARY (PER PUMP SUMMARY)
                      ===================================================== -->
-                <div class="rpt-section-heading"><i class="fas fa-chart-bar"></i> Daily Fuel Sales Summary</div>
+                <div class="rpt-section-heading"><i class="fas fa-gas-pump"></i> UGT Sales Summary (Per Pump)</div>
+                <div class="table-responsive mb-4">
+                    <table class="rpt-table align-middle">
+                        <thead>
+                            <tr>
+                                <th style="text-align:left;">UGT / Pump No.</th>
+                                <th style="text-align:left;">Fuel Type</th>
+                                <th style="text-align:right;">Total Volume Sold (L)</th>
+                                <th style="text-align:right;">Selling Price/L</th>
+                                <th style="text-align:right;">Total Sales</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            $ugt_sum_vol = 0; $ugt_sum_total = 0;
+                            foreach ($ugt_summary as $us):
+                                $us_vol   = (float)($us['total_volume'] ?? 0);
+                                $us_total = (float)($us['total_sales'] ?? 0);
+                                $ugt_sum_vol   += $us_vol;
+                                $ugt_sum_total += $us_total;
+                            ?>
+                            <tr>
+                                <td style="text-align:left;"><strong><?= htmlspecialchars($us['ugt_no']) ?></strong></td>
+                                <td style="text-align:left;"><?= htmlspecialchars($us['fuel_type']) ?></td>
+                                <td style="text-align:right;" class="fw-bold"><?= number_format($us_vol, 2) ?> L</td>
+                                <td style="text-align:right;">₱<?= number_format((float)($us['avg_price'] ?? 0), 2) ?></td>
+                                <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format($us_total, 2) ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                            <?php if (empty($ugt_summary)): ?>
+                            <tr><td colspan="5" class="text-center py-3 text-muted">No UGT pump summary data for this period.</td></tr>
+                            <?php endif; ?>
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2" style="text-align:left;" class="fw-bold">TOTAL UGT SALES</td>
+                                <td style="text-align:right;" class="fw-bold"><?= number_format($ugt_sum_vol, 2) ?> L</td>
+                                <td></td>
+                                <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format($ugt_sum_total, 2) ?></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- =====================================================
+                     SECTION 3: FUEL SALES SUMMARY (PER FUEL TYPE)
+                     ===================================================== -->
+                <div class="rpt-section-heading"><i class="fas fa-chart-bar"></i> Fuel Sales Summary (Per Fuel Type)</div>
                 <div class="table-responsive mb-4">
                     <table class="rpt-table align-middle">
                         <thead>
@@ -124,6 +172,9 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                 <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format((float)$s['total_sales'], 2) ?></td>
                             </tr>
                             <?php endforeach; ?>
+                            <?php if (empty($fuel_summary)): ?>
+                            <tr><td colspan="5" class="text-center py-3 text-muted">No fuel summary data for this period.</td></tr>
+                            <?php endif; ?>
                         </tbody>
                         <tfoot>
                             <tr>
@@ -138,11 +189,11 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                 </div>
 
                 <!-- =====================================================
-                     SECTION 3: DAILY RECONCILIATION SUMMARY
+                     SECTION 4: VOLUME & AMOUNT SUMMARY
                      ===================================================== -->
-                <div class="rpt-section-heading"><i class="fas fa-balance-scale"></i> Daily Reconciliation Summary</div>
+                <div class="rpt-section-heading"><i class="fas fa-calculator"></i> Volume & Amount Summary</div>
                 <div class="table-responsive mb-4">
-                    <table class="rpt-table align-middle" style="max-width:600px;">
+                    <table class="rpt-table align-middle" style="max-width:650px;">
                         <thead>
                             <tr>
                                 <th style="text-align:left;">Description</th>
@@ -152,12 +203,12 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                         <tbody>
                             <?php
                             $rr = [
-                                'Total UGTs Monitored'   => number_format((int)($recon['total_ugts'] ?? 0)),
-                                'Total Beginning Reading' => number_format((float)($recon['total_beginning'] ?? 0), 2),
-                                'Total Ending Reading'    => number_format((float)($recon['total_ending'] ?? 0), 2),
-                                'Total Calibration'      => number_format((float)($recon['total_calibration'] ?? 0), 2) . ' L',
-                                'Total Net Volume Sold'  => number_format((float)($recon['total_volume_sold'] ?? 0), 2) . ' L',
-                                'Total Fuel Sales'       => '₱' . number_format((float)($recon['total_fuel_sales'] ?? 0), 2),
+                                'Total Volume Sold'       => number_format((float)($recon['total_volume_sold'] ?? 0), 2) . ' L',
+                                'Total Fuel Sales'        => '₱' . number_format((float)($recon['total_fuel_sales'] ?? 0), 2),
+                                'Total UGTs Monitored'    => number_format((int)($recon['total_ugts'] ?? 0)),
+                                'Total Beginning Reading'  => number_format((float)($recon['total_beginning'] ?? 0), 2),
+                                'Total Ending Reading'     => number_format((float)($recon['total_ending'] ?? 0), 2),
+                                'Total Calibration'       => number_format((float)($recon['total_calibration'] ?? 0), 2) . ' L',
                             ];
                             foreach ($rr as $desc => $val):
                             ?>
@@ -171,22 +222,157 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                 </div>
 
                 <!-- =====================================================
-                     SECTION 4: VARIANCE CHECK
+                     SECTION 5: TANK LITER SUMMARY (REMAINING LITERS)
                      ===================================================== -->
-                <div class="rpt-section-heading"><i class="fas fa-search-dollar"></i> Variance Check</div>
-                <div class="table-responsive mb-2">
+                <div class="rpt-section-heading"><i class="fas fa-oil-can"></i> Tank Liter Summary (Remaining Liters)</div>
+                <div class="table-responsive mb-4">
+                    <table class="rpt-table align-middle">
+                        <thead>
+                            <tr>
+                                <th style="text-align:left;">Tank / UGT No.</th>
+                                <th style="text-align:left;">Fuel Type</th>
+                                <th style="text-align:right;">Current Tank Level (L)</th>
+                                <th style="text-align:right;">Tank Capacity (L)</th>
+                                <th style="text-align:center;">Available Level %</th>
+                                <th style="text-align:center;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php
+                            $tot_lvl = 0; $tot_cap = 0;
+                            foreach ($tank_summary as $tk):
+                                $lvl = (float)($tk['current_level'] ?? 0);
+                                $cap = (float)($tk['capacity'] ?? 0);
+                                $pct = ($cap > 0) ? min(100, round(($lvl / $cap) * 100, 1)) : 0;
+                                $tot_lvl += $lvl;
+                                $tot_cap += $cap;
+                                $st_badge = ($pct < 20) ? 'bg-danger' : (($pct < 40) ? 'bg-warning text-dark' : 'bg-success');
+                            ?>
+                            <tr>
+                                <td style="text-align:left;"><strong><?= htmlspecialchars($tk['ugt_no']) ?></strong></td>
+                                <td style="text-align:left;"><?= htmlspecialchars($tk['fuel_type']) ?></td>
+                                <td style="text-align:right;" class="fw-bold"><?= number_format($lvl, 2) ?> L</td>
+                                <td style="text-align:right;"><?= number_format($cap, 2) ?> L</td>
+                                <td style="text-align:center;">
+                                    <div class="progress" style="height:16px; min-width:100px; display:inline-flex; vertical-align:middle;">
+                                        <div class="progress-bar <?= $st_badge ?>" role="progressbar" style="width: <?= $pct ?>%; font-size:10px; font-weight:bold;">
+                                            <?= $pct ?>%
+                                        </div>
+                                    </div>
+                                </td>
+                                <td style="text-align:center;">
+                                    <span class="badge <?= $st_badge ?>"><?= htmlspecialchars(ucfirst($tk['status'] ?? 'Active')) ?></span>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                            <?php if (empty($tank_summary)): ?>
+                            <tr><td colspan="6" class="text-center py-3 text-muted">No tank inventory records available.</td></tr>
+                            <?php endif; ?>
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2" style="text-align:left;" class="fw-bold">TOTAL TANK CAPACITY & STOCK</td>
+                                <td style="text-align:right;" class="fw-bold"><?= number_format($tot_lvl, 2) ?> L</td>
+                                <td style="text-align:right;" class="fw-bold"><?= number_format($tot_cap, 2) ?> L</td>
+                                <td colspan="2"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- =====================================================
+                     SECTION 6: FUEL SALES CLOSING SUMMARY
+                     ===================================================== -->
+                <div class="rpt-section-heading"><i class="fas fa-cash-register"></i> Fuel Sales Closing Summary</div>
+                <div class="table-responsive mb-4">
+                    <table class="rpt-table align-middle" style="max-width:750px;">
+                        <thead>
+                            <tr>
+                                <th style="text-align:left;">Category</th>
+                                <th style="text-align:left;">Breakdown / Item</th>
+                                <th style="text-align:right;">Amount (₱)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php
+                            $c_shop    = (float)($closing_summary['shop_sales'] ?? 0);
+                            $c_cash1   = (float)($closing_summary['cash_shift1'] ?? 0);
+                            $c_cash2   = (float)($closing_summary['cash_shift2'] ?? 0);
+                            $c_totcash = (float)($closing_summary['total_cash'] ?? 0);
+                            $c_ar1     = (float)($closing_summary['ar_shift1'] ?? 0);
+                            $c_ar2     = (float)($closing_summary['ar_shift2'] ?? 0);
+                            $c_totar   = (float)($closing_summary['total_ar'] ?? 0);
+                            $c_gross   = (float)($closing_summary['gross_sales'] ?? 0);
+                            $c_expcash = (float)($closing_summary['expected_cash'] ?? 0);
+                            $c_bank    = (float)($closing_summary['total_cash_bank'] ?? 0);
+                            ?>
+                            <tr>
+                                <td style="font-weight:700; color:#00264D;">Shop Sales</td>
+                                <td>Merchandise / Store Income</td>
+                                <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format($c_shop, 2) ?></td>
+                            </tr>
+                            <tr>
+                                <td rowspan="3" style="font-weight:700; color:#00264D; vertical-align:top;">Cash Summary</td>
+                                <td>Cash Shift 1</td>
+                                <td style="text-align:right;">₱<?= number_format($c_cash1, 2) ?></td>
+                            </tr>
+                            <tr>
+                                <td>Cash Shift 2</td>
+                                <td style="text-align:right;">₱<?= number_format($c_cash2, 2) ?></td>
+                            </tr>
+                            <tr style="background:#f8fafc;">
+                                <td style="font-weight:700;">Total Cash Collected</td>
+                                <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format($c_totcash, 2) ?></td>
+                            </tr>
+                            <tr>
+                                <td rowspan="3" style="font-weight:700; color:#00264D; vertical-align:top;">A/R Summary</td>
+                                <td>Accounts Receivable Shift 1</td>
+                                <td style="text-align:right;">₱<?= number_format($c_ar1, 2) ?></td>
+                            </tr>
+                            <tr>
+                                <td>Accounts Receivable Shift 2</td>
+                                <td style="text-align:right;">₱<?= number_format($c_ar2, 2) ?></td>
+                            </tr>
+                            <tr style="background:#f8fafc;">
+                                <td style="font-weight:700;">Total Accounts Receivable</td>
+                                <td style="text-align:right;" class="fw-bold text-primary">₱<?= number_format($c_totar, 2) ?></td>
+                            </tr>
+                            <tr style="background:#eff6ff;">
+                                <td rowspan="3" style="font-weight:800; color:#00264D; vertical-align:top;">Overall Summary</td>
+                                <td style="font-weight:700;">Gross Sales (Fuel + Shop)</td>
+                                <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format($c_gross, 2) ?></td>
+                            </tr>
+                            <tr style="background:#eff6ff;">
+                                <td style="font-weight:700;">Expected Cash Total</td>
+                                <td style="text-align:right;" class="fw-bold">₱<?= number_format($c_expcash, 2) ?></td>
+                            </tr>
+                            <tr style="background:#eff6ff;">
+                                <td style="font-weight:700;">Total Cash & Bank Deposit</td>
+                                <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format($c_bank, 2) ?></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- =====================================================
+                     SECTION 7: VARIANCE ANALYSIS
+                     ===================================================== -->
+                <div class="rpt-section-heading"><i class="fas fa-search-dollar"></i> Variance Analysis</div>
+                <div class="table-responsive mb-4">
                     <table class="rpt-table align-middle">
                         <thead>
                             <tr>
                                 <th style="text-align:left;">Fuel Type</th>
                                 <th style="text-align:right;">Expected Sales</th>
-                                <th style="text-align:right;">Recorded Sales</th>
+                                <th style="text-align:right;">Actual / Recorded Sales</th>
                                 <th style="text-align:right;">Variance</th>
                                 <th style="text-align:center;">Status</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($variance as $v):
+                            <?php if (empty($variance)): ?>
+                                <tr><td colspan="5" class="text-center py-4 text-muted">No fuel variance records found for this period.</td></tr>
+                            <?php else: foreach ($variance as $v):
                                 $var = (float)$v['variance'];
                                 $abs_var = abs($var);
                                 $is_ok = $abs_var < 1;
@@ -207,14 +393,54 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                     </span>
                                 </td>
                             </tr>
-                            <?php endforeach; ?>
+                            <?php endforeach; endif; ?>
                         </tbody>
                     </table>
                 </div>
 
-
-
-                <?php endif; ?>
+                <!-- =====================================================
+                     SECTION 8: FUEL ADJUSTMENT SUMMARY
+                     ===================================================== -->
+                <div class="rpt-section-heading"><i class="fas fa-sliders-h"></i> Fuel Adjustment Summary</div>
+                <div class="table-responsive mb-2">
+                    <table class="rpt-table align-middle">
+                        <thead>
+                            <tr>
+                                <th style="text-align:left;">Date</th>
+                                <th style="text-align:left;">Pump / UGT</th>
+                                <th style="text-align:left;">Fuel Type</th>
+                                <th style="text-align:left;">Reason</th>
+                                <th style="text-align:left;">Adjusted By</th>
+                                <th style="text-align:right;">Liters Adjusted</th>
+                                <th style="text-align:center;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($fuel_adjustments as $fa):
+                                $adj_date = !empty($fa['adj_date']) ? date('M d, Y', strtotime($fa['adj_date'])) : 'N/A';
+                                $dir = $fa['adjustment_direction'] ?? 'Decrease';
+                                $l_val = (float)($fa['liters'] ?? 0);
+                                $sign = ($dir === 'Decrease' || $l_val < 0) ? '-' : '+';
+                            ?>
+                            <tr>
+                                <td style="text-align:left;"><?= $adj_date ?></td>
+                                <td style="text-align:left;"><strong><?= htmlspecialchars($fa['ugt_no']) ?></strong></td>
+                                <td style="text-align:left;"><?= htmlspecialchars($fa['fuel_type']) ?></td>
+                                <td style="text-align:left;"><?= htmlspecialchars($fa['reason']) ?></td>
+                                <td style="text-align:left;"><?= htmlspecialchars($fa['adjusted_by']) ?></td>
+                                <td style="text-align:right;" class="fw-bold <?= $sign === '-' ? 'text-danger' : 'text-success' ?>">
+                                    <?= $sign ?><?= number_format(abs($l_val), 2) ?> L
+                                </td>
+                                <td style="text-align:center;">
+                                    <span class="badge bg-secondary" style="font-size:11px;"><?= htmlspecialchars(ucfirst($fa['status'] ?? 'Completed')) ?></span>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                            <?php if (empty($fuel_adjustments)): ?>
+                            <tr><td colspan="7" class="text-center py-4 text-muted">No fuel adjustment records for this period.</td></tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
                 <?php
 
             } else { // daily_merch_service

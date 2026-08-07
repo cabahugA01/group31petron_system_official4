@@ -1565,14 +1565,28 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             top: 70px;
             left: 250px;
             right: 0;
-            bottom: 0;
+            bottom: 40px !important;
             overflow-y: auto;
             overflow-x: hidden;
-            padding: 20px 20px 60px 20px;
+            padding: 20px 20px 25px 20px !important;
             background: #f8f9fa;
             transition: left 0.3s ease;
             pointer-events: auto !important;
             z-index: 1 !important;
+        }
+
+        /* Ensure clean bottom clearance for full scrolling across all reports */
+        .main > div:last-child,
+        .main > section:last-child,
+        .main > .container,
+        .main > .main-content,
+        .main > .reports-wrapper,
+        .main > .stock-page,
+        .main > .print-area,
+        .main .table-responsive:last-child,
+        .main .card:last-child {
+            margin-bottom: 15px !important;
+            padding-bottom: 0 !important;
         }
         
         /* Ensure all main content children are clickable */

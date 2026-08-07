@@ -239,8 +239,8 @@ require_once __DIR__ . '/../partials/header.php';
     background: #ffffff !important;
     border-radius: 8px !important;
     box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
-    margin: 0 !important;
-    overflow: hidden !important;
+    margin: 0 0 60px 0 !important;
+    overflow: visible !important;
     border: 1px solid #e2e8f0 !important;
 }
 
@@ -248,7 +248,7 @@ require_once __DIR__ . '/../partials/header.php';
 
 /* Content Area */
 .rpt-content {
-    padding: 22px 28px !important;
+    padding: 22px 28px 60px 28px !important;
 }
 
 /* Filter & Export Bar */

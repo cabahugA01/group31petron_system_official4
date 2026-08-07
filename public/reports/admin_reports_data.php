@@ -208,7 +208,105 @@ if (!function_exists('getAdminReportData')) {
                 $stmt4->execute($base_params);
                 $data['variance'] = $stmt4->fetchAll(PDO::FETCH_ASSOC);
 
-                // 5. Filter dropdowns
+                // 5. UGT SALES SUMMARY (per pump summary)
+                try {
+                    $stmt_ugt_sum = $pdo->prepare(
+                        "SELECT 
+                            ft.pump_id,
+                            ft.fuel_type as raw_fuel_type,
+                            {$sql_norm} as clean_fuel_type,
+                            SUM(COALESCE(ft.liters_sold, 0)) as total_volume,
+                            MAX(ft.price_per_liter) as avg_price,
+                            SUM(COALESCE(ft.total_amount, 0)) as total_sales
+                         FROM fuel_transactions ft
+                         WHERE DATE(ft.transaction_date) BETWEEN :date_from AND :date_to
+                           {$st_clause('ft')} {$extra_where}
+                         GROUP BY ft.pump_id, ft.fuel_type
+                         ORDER BY ft.pump_id ASC"
+                    );
+                    $stmt_ugt_sum->execute($base_params);
+                    $raw_ugt_sum = $stmt_ugt_sum->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($raw_ugt_sum as &$us) {
+                        $rf = $us['raw_fuel_type'] ?? '';
+                        $us['ugt_no'] = get_exact_ugt_no($rf);
+                        $us['fuel_type'] = !empty($rf) ? $rf : ($us['clean_fuel_type'] ?? 'Fuel');
+                    }
+                    $data['ugt_summary'] = $raw_ugt_sum;
+                } catch (Exception $e) {
+                    $data['ugt_summary'] = [];
+                }
+
+                // 6. TANK LITER SUMMARY (Remaining Liters)
+                try {
+                    $stmt_tank = $pdo->prepare(
+                        "SELECT 
+                            fi.id,
+                            COALESCE(fi.ugt_no, CONCAT('UGT #', fi.id)) as ugt_no,
+                            fi.fuel_type,
+                            COALESCE(fi.current_level, fi.current_stock, 0) as current_level,
+                            COALESCE(fi.capacity, 0) as capacity,
+                            fi.status
+                         FROM fuel_inventory fi
+                         WHERE 1=1 {$st_clause('fi')}
+                         ORDER BY fi.id ASC"
+                    );
+                    $stmt_tank->execute($st_params);
+                    $data['tank_summary'] = $stmt_tank->fetchAll(PDO::FETCH_ASSOC);
+                } catch (Exception $e) {
+                    $data['tank_summary'] = [];
+                }
+
+                // 7. FUEL SALES CLOSING SUMMARY
+                try {
+                    $stmt_close = $pdo->prepare(
+                        "SELECT 
+                            SUM(COALESCE(fsc.total_fuel_sales, 0)) as total_fuel_sales,
+                            SUM(COALESCE(fsc.total_liters, 0)) as total_liters,
+                            SUM(COALESCE(fsc.total_store_sales, 0)) as shop_sales,
+                            SUM(COALESCE(fsc.cash_shift1, 0)) as cash_shift1,
+                            SUM(COALESCE(fsc.cash_shift2, 0)) as cash_shift2,
+                            SUM(COALESCE(fsc.total_cash, 0)) as total_cash,
+                            SUM(COALESCE(fsc.ar_shift1, 0)) as ar_shift1,
+                            SUM(COALESCE(fsc.ar_shift2, 0)) as ar_shift2,
+                            SUM(COALESCE(fsc.total_ar, 0)) as total_ar,
+                            SUM(COALESCE(fsc.gross_sales, 0)) as gross_sales,
+                            SUM(COALESCE(fsc.expected_cash, 0)) as expected_cash,
+                            SUM(COALESCE(fsc.total_cash_bank, 0)) as total_cash_bank
+                         FROM fuel_sales_closing fsc
+                         WHERE fsc.report_date BETWEEN :date_from AND :date_to
+                           {$st_clause('fsc')}"
+                    );
+                    $stmt_close->execute(['date_from' => $date_from, 'date_to' => $date_to] + $st_params);
+                    $data['closing_summary'] = $stmt_close->fetch(PDO::FETCH_ASSOC) ?: [];
+                } catch (Exception $e) {
+                    $data['closing_summary'] = [];
+                }
+
+                // 8. FUEL ADJUSTMENT SUMMARY
+                try {
+                    $stmt_adj = $pdo->prepare(
+                        "SELECT 
+                            fa.adjustment_date as adj_date,
+                            COALESCE(fa.ugt_no, 'UGT #1') as ugt_no,
+                            fa.fuel_type,
+                            COALESCE(fa.reason, fa.notes, 'Stock adjustment') as reason,
+                            COALESCE(u.username, u.full_name, 'System') as adjusted_by,
+                            COALESCE(fa.liters, fa.variance, 0) as liters,
+                            fa.adjustment_direction,
+                            fa.status
+                         FROM fuel_adjustments fa
+                         LEFT JOIN users u ON fa.user_id = u.id
+                         WHERE (fa.adjustment_date IS NULL OR fa.adjustment_date BETWEEN :date_from AND :date_to)
+                           {$st_clause('fa')}
+                         ORDER BY fa.adjustment_date DESC"
+                    );
+                    $stmt_adj->execute(['date_from' => $date_from, 'date_to' => $date_to] + $st_params);
+                    $data['fuel_adjustments'] = $stmt_adj->fetchAll(PDO::FETCH_ASSOC);
+                } catch (Exception $e) {
+                    $data['fuel_adjustments'] = [];
+                }
+
+                // 9. Filter dropdowns
                 try {
                     $stmt6 = $pdo->prepare(
                         "SELECT DISTINCT {$sql_norm} as fuel_type

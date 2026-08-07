@@ -133,7 +133,7 @@ include __DIR__ . '/../partials/header.php';
 <style>
 /* ── Notifications Page Styling ── */
 .notif-wrapper {
-    padding: 24px 32px 60px;
+    padding: 0 !important;
     background: #f8fafc;
     min-height: calc(100vh - 70px);
 }
@@ -142,19 +142,27 @@ include __DIR__ . '/../partials/header.php';
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 24px;
+    margin-top: 0 !important;
+    margin-bottom: 25px !important;
+    padding: 0 !important;
+    border: none !important;
+    width: 100%;
     flex-wrap: wrap;
     gap: 16px;
 }
 
 .notif-title-area h1 {
-    font-size: 26px;
-    font-weight: 800;
-    color: #0f172a;
-    margin: 0 0 4px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    margin: 0 !important;
+    color: #002f70 !important;
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    line-height: 1.2 !important;
 }
 
 .notif-title-area p {

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * STAFF CUSTOMER REPORT
  * Customer counts and transaction summaries for staff reports.
@@ -195,135 +195,51 @@ require_once __DIR__ . '/../partials/header.php';
     .footer-table { max-width: 520px; margin: 0 auto; }
 
     @media print {
-        @page { size: legal portrait; margin: 0.5in 0.4in; }
-        
-        body * { visibility: hidden !important; }
-        .print-area, .print-area * { visibility: visible !important; }
-        .print-area {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: white !important;
-            overflow-x: hidden !important;
+        @page { size: legal portrait; margin: 10mm 12mm; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-shadow: none !important; text-shadow: none !important; background-image: none !important; }
+        html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; height: auto !important; font-size: 10px !important; }
+
+        /* Hide all page chrome — keep only sfss-print-only */
+        body > *:not(.sfss-print-only) { display: none !important; }
+        .controls, .action-controls, nav, header, footer, aside,
+        .sidebar, .main-sidebar, .main-header, .navbar, .topbar,
+        #toggleScrollBtn, .toggle-scroll-btn, .toast, .toast-container { display: none !important; }
+
+        /* Print container */
+        .sfss-print-only {
+            display: block !important; position: static !important;
+            width: 100% !important; max-width: 100% !important;
+            margin: 0 !important; padding: 0 !important;
+            background: #fff !important; font-size: 10px !important; color: #333 !important;
         }
-        
-        html, body { 
-            margin: 0 !important; 
-            padding: 0 !important; 
-            background: white !important; 
-            overflow-x: hidden !important;
-            width: 100% !important;
-            max-width: 100% !important;
+        .sfss-print-only *, .sfss-print-only *::before, .sfss-print-only *::after { box-shadow: none !important; text-shadow: none !important; }
+
+        /* Hide icons inside print container */
+        .sfss-print-only i, .sfss-print-only svg,
+        .sfss-print-only .fas, .sfss-print-only .far, .sfss-print-only .fab, .sfss-print-only .fa,
+        .sfss-print-only [class*="fa-"], .sfss-print-only .icon, .sfss-print-only [class*="icon-"] {
+            display: none !important; width: 0 !important; height: 0 !important;
+            font-size: 0 !important; margin: 0 !important; padding: 0 !important;
         }
-        
-        /* Hide sidebar, navigation, hamburger menu, ALL UI controls */
-        .controls, .sidebar, .header-nav, .top-nav, nav, .menu-toggle, .hamburger, 
-        #sidebar, #header, #menu-toggle, .nav, .navbar, .menu-btn,
-        .toggle-btn, .sidebar-toggle, [class*="toggle"], [class*="menu-btn"],
-        .btn, button, .action-controls, .filter-controls {
-            display: none !important;
-            visibility: hidden !important;
-        }
-        
-        /* â”€â”€ Kill ALL icons everywhere â”€â”€ */
-        i, svg, .fas, .far, .fab, .fa, [class*="fa-"], .fa-solid, .fa-regular, .fa-brands,
-        .icon, [class*="icon-"] {
-            display: none !important;
-            width: 0 !important;
-            height: 0 !important;
-            font-size: 0 !important;
-            line-height: 0 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            visibility: hidden !important;
-        }
-        
-        /* Re-show print area but keep icons hidden */
-        .print-area i, .print-area svg, .print-area .fas, .print-area .far,
-        .print-area .fab, .print-area .fa, .print-area [class*="fa-"],
-        .print-area .icon, .print-area [class*="icon-"] {
-            display: none !important;
-            visibility: hidden !important;
-        }
-        
-        .container, .content { 
-            margin: 0 !important; 
-            padding: 0 !important; 
-            overflow-x: hidden !important;
-            width: 100% !important;
-            max-width: 100% !important;
-        }
-        
-        .header { 
-            text-align: center !important; 
-            border-bottom: 2px solid #000 !important; 
-            padding: 6px 0 !important; 
-            margin: 0 0 8px 0 !important; 
-        }
-        .header h1 { 
-            font-size: 16px !important; 
-            font-weight: 800 !important; 
-            color: #000 !important; 
-            margin: 0 0 3px 0 !important; 
-            padding: 0 !important;
-        }
-        .header p { 
-            font-size: 10px !important; 
-            color: #000 !important; 
-            margin: 2px 0 !important; 
-            padding: 0 !important;
-        }
-        .section-title { font-size: 12px !important; font-weight: 800 !important; margin: 8px 0 4px !important; border-bottom: 2px solid #000 !important; page-break-after: avoid !important; }
-        .summary-cards { display: none !important; }
-        .print-summary-table { display: table !important; }
-        .table-container { 
-            overflow: hidden !important; 
-            overflow-x: hidden !important; 
-            width: 100% !important; 
-            max-width: 100% !important; 
-            text-align: center !important; 
-            margin-bottom: 8px !important; 
-        }
-        table { 
-            width: 100% !important; 
-            max-width: 100% !important; 
-            border-collapse: collapse !important; 
-            font-size: 8px !important; 
-            table-layout: fixed !important; 
-            margin: 0 auto 8px !important; 
-        }
-        thead { display: table-header-group !important; }
-        tbody { display: table-row-group !important; }
-        tr { page-break-inside: avoid !important; }
-        th { 
-            font-size: 8px !important; 
-            padding: 4px 3px !important; 
-            border: 1px solid #000 !important; 
-            background: #fff !important; 
-            color: #000 !important; 
-            font-weight: 800 !important; 
-            text-align: center !important; 
-            white-space: nowrap !important; 
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-        }
-        td { 
-            font-size: 7px !important; 
-            padding: 3px 2px !important; 
-            border: 1px solid #000 !important; 
-            white-space: nowrap !important; 
-            vertical-align: top !important; 
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-            word-wrap: break-word !important;
-        }
-        .two-col, .three-col { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 6px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
-        .summary-box { border: 1px solid #000 !important; padding: 5px !important; }
-        .summary-box h3 { font-size: 9px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px !important; }
-        .summary-box .count { font-size: 16px !important; padding: 3px 0 !important; }
+
+        .sfss-print-only .header { text-align: center !important; border-bottom: 2px solid #000 !important; padding: 6px 0 !important; margin: 0 0 8px 0 !important; }
+        .sfss-print-only .header h1 { font-size: 16px !important; font-weight: 800 !important; color: #000 !important; margin: 0 0 3px 0 !important; }
+        .sfss-print-only .header p { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
+        .sfss-print-only .section-title { font-size: 12px !important; font-weight: 800 !important; margin: 8px 0 4px !important; border-bottom: 2px solid #000 !important; page-break-after: avoid !important; }
+        .sfss-print-only .summary-cards { display: none !important; }
+        .sfss-print-only .print-summary-table { display: table !important; }
+        .sfss-print-only .table-container { overflow: visible !important; width: 100% !important; margin-bottom: 8px !important; }
+        .sfss-print-only table { width: 100% !important; border-collapse: collapse !important; font-size: 8px !important; margin: 0 0 8px 0 !important; }
+        .sfss-print-only thead { display: table-header-group !important; }
+        .sfss-print-only tbody { display: table-row-group !important; }
+        .sfss-print-only tr { page-break-inside: avoid !important; }
+        .sfss-print-only th { font-size: 8px !important; padding: 4px 3px !important; border: 1px solid #000 !important; background: #00264D !important; color: #fff !important; font-weight: 800 !important; text-align: center !important; }
+        .sfss-print-only td { font-size: 7px !important; padding: 3px 2px !important; border: 1px solid #ddd !important; vertical-align: top !important; }
+        .sfss-print-only .two-col, .sfss-print-only .three-col { display: grid !important; grid-template-columns: repeat(2, 1fr) !important; gap: 6px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
+        .sfss-print-only .summary-box { border: 1px solid #000 !important; padding: 5px !important; }
+        .sfss-print-only .summary-box h3 { font-size: 9px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px !important; }
+        .sfss-print-only, .sfss-print-only * { min-height: 0 !important; height: auto !important; }
+        .sfss-print-only .container, .sfss-print-only .content { margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
     }
 </style>
 
@@ -380,11 +296,11 @@ require_once __DIR__ . '/../partials/header.php';
             <i class="fas fa-file-csv"></i> CSV
         </button>
         <!-- PDF -->
-        <button type="button" onclick="exportPrintableAreaToPDF('.print-area', 'Staff Customer Report', 'staff_customer_report_<?= date('Ymd', strtotime($filters['date_start'])) ?>_<?= date('Ymd', strtotime($filters['date_end'])) ?>', this)" class="flt-btn flt-btn-pdf" title="Export PDF">
+        <button type="button" onclick="_sfssDoNativePrint(this, 'Export PDF')" class="flt-btn flt-btn-pdf" title="Export PDF">
             <i class="fas fa-file-pdf"></i> Export PDF
         </button>
         <!-- Print -->
-        <button type="button" onclick="printReportArea()" class="flt-btn flt-btn-print" title="Print report">
+        <button type="button" onclick="_sfssDoNativePrint()" class="flt-btn flt-btn-print" title="Print report">
             <i class="fas fa-print"></i> Print
         </button>
     </div>
@@ -540,9 +456,52 @@ require_once __DIR__ . '/../partials/header.php';
 <?php if (($_GET['print'] ?? '') === '1'): ?>
 <script>
 window.addEventListener('load', function () {
-    setTimeout(function () { window.print(); }, 350);
+    setTimeout(function () { _sfssDoNativePrint(); }, 350);
 });
 </script>
 <?php endif; ?>
+
+<script>
+function _sfssDoNativePrint(btn, label) {
+    var old = document.querySelector('.sfss-print-only');
+    if (old) old.remove();
+
+    var area = document.querySelector('.print-area');
+    if (!area) { window.print(); return; }
+
+    var origTitle = document.title;
+    document.title = 'Staff Customer Report';
+
+    if (btn && label) {
+        var origHTML = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Opening PDF dialog...';
+        btn.disabled = true;
+    }
+
+    var printDiv = document.createElement('div');
+    printDiv.className     = 'sfss-print-only';
+    printDiv.innerHTML     = area.innerHTML;
+    printDiv.style.display = 'block';
+    printDiv.style.visibility = 'visible';
+    document.body.appendChild(printDiv);
+
+    var scrollBtn = document.getElementById('toggleScrollBtn');
+    if (scrollBtn) scrollBtn.style.setProperty('display', 'none', 'important');
+
+    setTimeout(function() {
+        window.print();
+        var cleanup = function() {
+            var p = document.querySelector('.sfss-print-only');
+            if (p) p.remove();
+            document.title = origTitle;
+            if (scrollBtn) scrollBtn.style.setProperty('display', 'flex', 'important');
+            if (btn && label) { btn.innerHTML = origHTML; btn.disabled = false; }
+            window.removeEventListener('afterprint', cleanup);
+        };
+        window.addEventListener('afterprint', cleanup);
+        setTimeout(cleanup, 30000);
+    }, 150);
+}
+</script>
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

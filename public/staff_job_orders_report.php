@@ -562,59 +562,54 @@ require_once __DIR__ . '/../partials/header.php';
     
     .shift-box table {
         font-size: 11px;
-    }
-    
     .shift-box td {
         padding: 6px 4px;
         border: none;
         border-bottom: 1px solid #ddd;
     }
-    
+
     @media print {
-        @page {
-            size: A4 portrait;
-            margin: 0.5in 0.4in;
-        }
+        @page { size: A4 portrait; margin: 10mm 12mm; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-shadow: none !important; text-shadow: none !important; background-image: none !important; }
+        html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; height: auto !important; }
 
-        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        /* Hide all page chrome — keep only sfss-print-only */
+        body > *:not(.sfss-print-only) { display: none !important; }
+        nav, header, footer, aside, .sidebar, .main-sidebar, .main-header, .navbar, .topbar,
+        .controls, #toggleScrollBtn, .toggle-scroll-btn, .toast, .toast-container { display: none !important; }
 
-        body * { visibility: hidden !important; }
-        .print-area, .print-area * { visibility: visible !important; }
-        .print-area {
-            position: fixed !important; top: 0 !important; left: 0 !important;
-            width: 100% !important; margin: 0 !important; padding: 0 !important;
-            background: white !important;
-        }
-        html, body { margin: 0 !important; padding: 0 !important; background: white !important; overflow: visible !important; }
-        .container, .content { margin: 0 !important; padding: 0 !important; }
-
-        /* ── Kill ALL icons ── */
-        i, svg, .fas, .far, .fab, .fa, [class*="fa-"] {
-            display: none !important;
-            width: 0 !important; height: 0 !important;
-            font-size: 0 !important; line-height: 0 !important;
+        /* Print container */
+        .sfss-print-only {
+            display: block !important; position: static !important;
+            width: 100% !important; max-width: 100% !important;
             margin: 0 !important; padding: 0 !important;
+            background: #fff !important; font-size: 10px !important; color: #333 !important;
         }
+        .sfss-print-only *, .sfss-print-only *::before, .sfss-print-only *::after { box-shadow: none !important; text-shadow: none !important; }
 
-        .header { text-align: center !important; border-bottom: 2px solid #000 !important; padding: 6px 0 !important; margin: 0 0 8px 0 !important; }
-        .header h1 { font-size: 16px !important; font-weight: 700 !important; color: #000 !important; margin: 0 0 3px 0 !important; }
-        .header p { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
-        .section-title { font-size: 12px !important; font-weight: 700 !important; margin: 8px 0 4px 0 !important; padding-bottom: 3px !important; border-bottom: 2px solid #000 !important; page-break-after: avoid !important; }
-        .table-container { overflow: visible !important; width: 100% !important; text-align: center !important; }
-        table { width: 95% !important; max-width: 100% !important; border-collapse: collapse !important; font-size: 10px !important; table-layout: auto !important; margin: 0 auto 8px auto !important; }
-        thead { display: table-header-group !important; }
-        tbody { display: table-row-group !important; }
-        tr { page-break-inside: avoid !important; }
-        th { font-size: 10px !important; padding: 6px 8px !important; border: 1px solid #000 !important; background: #fff !important; color: #000 !important; font-weight: 700 !important; text-align: center !important; white-space: nowrap !important; }
-        td { font-size: 9px !important; padding: 5px 8px !important; border: 1px solid #000 !important; white-space: nowrap !important; vertical-align: top !important; }
-        .shift-summary { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
-        .shift-box { border: 1px solid #000 !important; padding: 5px !important; }
-        .shift-box h3 { font-size: 10px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; }
-        .shift-box table { width: auto !important; margin: 0 !important; }
-        .shift-box td { border: none !important; border-bottom: 1px solid #ddd !important; font-size: 9px !important; }
-        .remarks-section { border: 1px solid #000 !important; padding: 5px !important; margin-top: 6px !important; }
-        .remarks-section h3 { font-size: 8px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; }
-        .remarks-list li { font-size: 7px !important; padding: 2px !important; }
+        /* Hide icons inside print container */
+        .sfss-print-only i, .sfss-print-only svg,
+        .sfss-print-only .fas, .sfss-print-only .far, .sfss-print-only .fab, .sfss-print-only .fa,
+        .sfss-print-only [class*="fa-"] { display: none !important; width: 0 !important; height: 0 !important; font-size: 0 !important; margin: 0 !important; padding: 0 !important; }
+
+        .sfss-print-only .header { text-align: center !important; border-bottom: 2px solid #000 !important; padding: 6px 0 !important; margin: 0 0 8px 0 !important; }
+        .sfss-print-only .header h1 { font-size: 16px !important; font-weight: 700 !important; color: #000 !important; margin: 0 0 3px 0 !important; }
+        .sfss-print-only .header p { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
+        .sfss-print-only .section-title { font-size: 12px !important; font-weight: 700 !important; margin: 8px 0 4px 0 !important; padding-bottom: 3px !important; border-bottom: 2px solid #000 !important; page-break-after: avoid !important; }
+        .sfss-print-only .table-container { overflow: visible !important; width: 100% !important; }
+        .sfss-print-only table { width: 100% !important; border-collapse: collapse !important; font-size: 9px !important; margin: 0 0 8px 0 !important; }
+        .sfss-print-only thead { display: table-header-group !important; }
+        .sfss-print-only tbody { display: table-row-group !important; }
+        .sfss-print-only tr { page-break-inside: avoid !important; }
+        .sfss-print-only th { font-size: 9px !important; padding: 5px 6px !important; border: 1px solid #000 !important; background: #00264D !important; color: #fff !important; font-weight: 700 !important; text-align: center !important; }
+        .sfss-print-only td { font-size: 9px !important; padding: 4px 6px !important; border: 1px solid #ddd !important; vertical-align: top !important; }
+        .sfss-print-only .shift-summary { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
+        .sfss-print-only .shift-box { border: 1px solid #000 !important; padding: 5px !important; }
+        .sfss-print-only .shift-box h3 { font-size: 10px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; }
+        .sfss-print-only .remarks-section { border: 1px solid #000 !important; padding: 5px !important; margin-top: 6px !important; }
+        .sfss-print-only .status-badge { display: inline-block !important; padding: 1px 3px !important; border: 1px solid #000 !important; border-radius: 3px !important; font-size: 8px !important; }
+        .sfss-print-only, .sfss-print-only * { min-height: 0 !important; height: auto !important; }
+        .sfss-print-only .container, .sfss-print-only .content { margin: 0 !important; padding: 0 !important; }
     }
 </style>
 
@@ -635,10 +630,10 @@ require_once __DIR__ . '/../partials/header.php';
         <a href="?export=excel&date_start=<?= urlencode($date_start) ?>&date_end=<?= urlencode($date_end) ?>" class="btn">
             Export Excel
         </a>
-        <button type="button" class="btn" onclick="exportPrintableAreaToPDF('.print-area', 'Staff Job Orders Report', 'staff_job_orders_report_<?= date('Ymd', strtotime($date_start)) ?>_<?= date('Ymd', strtotime($date_end)) ?>', this)">
+        <button type="button" class="btn" onclick="_sjorDoNativePrint(this, 'PDF')">
             PDF
         </button>
-        <button type="button" class="btn" onclick="printReportArea()">
+        <button type="button" class="btn" onclick="_sjorDoNativePrint()">
             Print
         </button>
     </div>
@@ -780,19 +775,54 @@ require_once __DIR__ . '/../partials/header.php';
         const dateEnd = document.getElementById('date_end').value;
         window.location.href = `?date_start=${dateStart}&date_end=${dateEnd}`;
     }
-    
+
     // Allow Enter key to apply filters
     document.getElementById('date_start').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            applyFilters();
-        }
+        if (e.key === 'Enter') applyFilters();
     });
-    
     document.getElementById('date_end').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            applyFilters();
-        }
+        if (e.key === 'Enter') applyFilters();
     });
+
+    function _sjorDoNativePrint(btn, label) {
+        var old = document.querySelector('.sfss-print-only');
+        if (old) old.remove();
+
+        var area = document.querySelector('.print-area');
+        if (!area) { window.print(); return; }
+
+        var origTitle = document.title;
+        document.title = 'Job Orders Report';
+
+        if (btn && label) {
+            var origHTML = btn.innerHTML;
+            btn.innerHTML = 'Opening PDF dialog...';
+            btn.disabled = true;
+        }
+
+        var printDiv = document.createElement('div');
+        printDiv.className     = 'sfss-print-only';
+        printDiv.innerHTML     = area.innerHTML;
+        printDiv.style.display = 'block';
+        document.body.appendChild(printDiv);
+
+        var scrollBtn = document.getElementById('toggleScrollBtn');
+        if (scrollBtn) scrollBtn.style.setProperty('display', 'none', 'important');
+
+        setTimeout(function() {
+            window.print();
+            var cleanup = function() {
+                var p = document.querySelector('.sfss-print-only');
+                if (p) p.remove();
+                document.title = origTitle;
+                if (scrollBtn) scrollBtn.style.setProperty('display', 'flex', 'important');
+                if (btn && label) { btn.innerHTML = origHTML; btn.disabled = false; }
+                window.removeEventListener('afterprint', cleanup);
+            };
+            window.addEventListener('afterprint', cleanup);
+            setTimeout(cleanup, 30000);
+        }, 150);
+    }
 </script>
 
 <?php

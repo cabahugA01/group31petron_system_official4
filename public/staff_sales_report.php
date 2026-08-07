@@ -764,6 +764,201 @@ require_once __DIR__ . '/../partials/header.php';
         border-bottom: none;
     }
     
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        font-size: 12px;
+    }
+    
+    .date-controls label {
+        font-weight: 700;
+        color: #000;
+    }
+    
+    .date-controls input[type="date"] {
+        padding: 6px 10px;
+        border: 1px solid #000;
+        font-size: 12px;
+    }
+    
+    .btn {
+        padding: 6px 12px;
+        border: 1px solid #000;
+        background: #fff;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 500;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: #000;
+    }
+    
+    .btn:hover {
+        background: #f5f5f5;
+    }
+    
+    .btn-primary {
+        background: #000;
+        color: #fff;
+    }
+    
+    .btn-primary:hover {
+        background: #333;
+    }
+    
+    .print-area {
+        background: #fff;
+    }
+    
+    .content {
+        padding: 15px 20px;
+    }
+    
+    .section-title {
+        font-size: 16px;
+        font-weight: 700;
+        margin: 20px 0 10px 0;
+        color: #000;
+        padding-bottom: 8px;
+        border-bottom: 2px solid #000;
+        text-transform: uppercase;
+    }
+    
+    .table-container {
+        overflow-x: visible;
+        margin-bottom: 20px;
+        width: 100%;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        background: white;
+        border: 1px solid #000;
+        font-size: 10px;
+        table-layout: fixed;
+    }
+    
+    thead {
+        background: #fff;
+        color: #000;
+    }
+    
+    th {
+        padding: 6px 4px;
+        text-align: left;
+        font-weight: 700;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0;
+        border: 1px solid #000;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    td {
+        padding: 5px 4px;
+        border: 1px solid #000;
+        font-size: 10px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    tbody tr {
+        background: #fff;
+    }
+    
+    /* Column width optimization */
+    table th:nth-child(1), table td:nth-child(1) { width: 6%; }  /* Delivery ID */
+    table th:nth-child(2), table td:nth-child(2) { width: 8%; }  /* Supplier */
+    table th:nth-child(3), table td:nth-child(3) { width: 8%; }  /* Fuel/Product */
+    table th:nth-child(4), table td:nth-child(4) { width: 5%; }  /* Qty */
+    table th:nth-child(5), table td:nth-child(5) { width: 6%; }  /* Unit Price */
+    table th:nth-child(6), table td:nth-child(6) { width: 7%; }  /* Total */
+    table th:nth-child(7), table td:nth-child(7) { width: 7%; }  /* Date */
+    table th:nth-child(8), table td:nth-child(8) { width: 6%; }  /* PO Ref */
+    table th:nth-child(9), table td:nth-child(9) { width: 5%; }  /* Expected */
+    table th:nth-child(10), table td:nth-child(10) { width: 5%; } /* Actual */
+    table th:nth-child(11), table td:nth-child(11) { width: 5%; } /* Variance */
+    table th:nth-child(12), table td:nth-child(12) { width: 6%; } /* Status */
+    table th:nth-child(13), table td:nth-child(13) { width: 5%; } /* Shift */
+    table th:nth-child(14), table td:nth-child(14) { width: 7%; } /* Encoder */
+    table th:nth-child(15), table td:nth-child(15) { width: 14%; } /* Remarks */
+    
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    .font-bold { font-weight: 700; }
+    
+    .shift-summary {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin: 20px 0;
+    }
+    
+    .shift-box {
+        background: #fff;
+        padding: 15px;
+        border: 1px solid #000;
+    }
+    
+    .shift-box h3 {
+        font-size: 14px;
+        color: #000;
+        margin: 0 0 10px 0;
+        font-weight: 700;
+        border-bottom: 1px solid #000;
+        padding-bottom: 8px;
+        text-transform: uppercase;
+    }
+    
+    .shift-box table {
+        font-size: 11px;
+    }
+    
+    .shift-box td {
+        padding: 6px 4px;
+        border: none;
+        border-bottom: 1px solid #ddd;
+    }
+    
+    .remarks-section {
+        margin-top: 20px;
+        padding: 15px;
+        border: 1px solid #000;
+        background: #fff;
+    }
+    
+    .remarks-section h3 {
+        font-size: 14px;
+        color: #000;
+        margin: 0 0 10px 0;
+        font-weight: 700;
+        border-bottom: 1px solid #000;
+        padding-bottom: 8px;
+        text-transform: uppercase;
+    }
+    
+    .remarks-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    
+    .remarks-list li {
+        padding: 8px;
+        border-bottom: 1px solid #ddd;
+        font-size: 11px;
+    }
+    
+    .remarks-list li:last-child {
+        border-bottom: none;
+    }
+    
     .status-badge {
         padding: 3px 6px;
         border: 1px solid #000;
@@ -773,70 +968,47 @@ require_once __DIR__ . '/../partials/header.php';
     }
     
     @media print {
-        @page {
-            size: A4 portrait;
-            margin: 0.5in 0.4in;
-        }
+        @page { size: A4 portrait; margin: 10mm 12mm; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-shadow: none !important; text-shadow: none !important; background-image: none !important; }
+        html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; height: auto !important; font-size: 10px !important; }
 
-        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        /* Hide all page chrome — keep only sfss-print-only */
+        body > *:not(.sfss-print-only) { display: none !important; }
+        nav, header, footer, aside, .sidebar, .main-sidebar, .main-header, .navbar, .topbar,
+        .controls, #toggleScrollBtn, .toggle-scroll-btn, .toast, .toast-container { display: none !important; }
 
-        body * { visibility: hidden !important; }
-        .print-area, .print-area * { visibility: visible !important; }
-        .print-area {
-            position: fixed !important; top: 0 !important; left: 0 !important;
-            width: 100% !important; margin: 0 !important; padding: 0 !important;
-            background: white !important;
-        }
-        html, body { margin: 0 !important; padding: 0 !important; background: white !important; overflow: visible !important; }
-        .container, .content { margin: 0 !important; padding: 0 !important; }
-
-        /* ── Kill ALL icons ── */
-        i, svg, .fas, .far, .fab, .fa, [class*="fa-"] {
-            display: none !important;
-            width: 0 !important; height: 0 !important;
-            font-size: 0 !important; line-height: 0 !important;
+        /* Print container */
+        .sfss-print-only {
+            display: block !important; position: static !important;
+            width: 100% !important; max-width: 100% !important;
             margin: 0 !important; padding: 0 !important;
+            background: #fff !important; font-size: 10px !important; color: #333 !important;
         }
+        .sfss-print-only *, .sfss-print-only *::before, .sfss-print-only *::after { box-shadow: none !important; text-shadow: none !important; }
 
-        .header { text-align: center !important; border-bottom: 2px solid #000 !important; padding: 6px 0 !important; margin: 0 0 8px 0 !important; }
-        .header h1 { font-size: 16px !important; font-weight: 700 !important; color: #000 !important; margin: 0 0 3px 0 !important; }
-        .header p { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
-        .section-title { font-size: 12px !important; font-weight: 700 !important; margin: 8px 0 4px 0 !important; padding-bottom: 3px !important; border-bottom: 2px solid #000 !important; page-break-after: avoid !important; }
-        .table-container { overflow: visible !important; width: 100% !important; text-align: center !important; }
-        table { width: 95% !important; max-width: 100% !important; border-collapse: collapse !important; font-size: 10px !important; table-layout: auto !important; margin: 0 auto 8px auto !important; }
-        thead { display: table-header-group !important; }
-        tbody { display: table-row-group !important; }
-        tr { page-break-inside: avoid !important; }
-        th { font-size: 10px !important; padding: 6px 8px !important; border: 1px solid #000 !important; background: #fff !important; color: #000 !important; font-weight: 700 !important; text-align: center !important; white-space: nowrap !important; }
-        td { font-size: 9px !important; padding: 5px 8px !important; border: 1px solid #000 !important; white-space: nowrap !important; vertical-align: top !important; }
-        .shift-summary { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
-        .shift-box { border: 1px solid #000 !important; padding: 5px !important; }
-        .shift-box h3 { font-size: 10px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; }
-        .shift-box table { width: auto !important; margin: 0 !important; }
-        .shift-box td { border: none !important; border-bottom: 1px solid #ddd !important; font-size: 9px !important; }
-        .remarks-section { border: 1px solid #000 !important; padding: 5px !important; margin-top: 6px !important; }
-        .remarks-section h3 { font-size: 8px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; }
-        .remarks-list li { font-size: 7px !important; padding: 2px !important; }
-        .status-badge { font-size: 5px !important; padding: 1px 2px !important; border: 1px solid #000 !important; }
-        
-        /* Hide all watermarks and background elements */
-        body::before, body::after, html::before, html::after {
-            content: none !important;
-            display: none !important;
-        }
-        
-        /* Hide fixed position elements outside print area */
-        body > *:not(.print-area) {
-            display: none !important;
-            visibility: hidden !important;
-            opacity: 0 !important;
-        }
-        
-        /* Remove background images */
-        * {
-            background-image: none !important;
-            box-shadow: none !important;
-        }
+        /* Hide icons inside print container */
+        .sfss-print-only i, .sfss-print-only svg,
+        .sfss-print-only .fas, .sfss-print-only .far, .sfss-print-only .fab, .sfss-print-only .fa,
+        .sfss-print-only [class*="fa-"] { display: none !important; width: 0 !important; height: 0 !important; font-size: 0 !important; margin: 0 !important; padding: 0 !important; }
+
+        .sfss-print-only .header { text-align: center !important; border-bottom: 2px solid #000 !important; padding: 6px 0 !important; margin: 0 0 8px 0 !important; }
+        .sfss-print-only .header h1 { font-size: 16px !important; font-weight: 700 !important; color: #000 !important; margin: 0 0 3px 0 !important; }
+        .sfss-print-only .header p { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
+        .sfss-print-only .section-title { font-size: 12px !important; font-weight: 700 !important; margin: 8px 0 4px 0 !important; padding-bottom: 3px !important; border-bottom: 2px solid #000 !important; page-break-after: avoid !important; }
+        .sfss-print-only .table-container { overflow: visible !important; width: 100% !important; }
+        .sfss-print-only table { width: 100% !important; border-collapse: collapse !important; font-size: 9px !important; margin: 0 0 8px 0 !important; }
+        .sfss-print-only thead { display: table-header-group !important; }
+        .sfss-print-only tbody { display: table-row-group !important; }
+        .sfss-print-only tr { page-break-inside: avoid !important; }
+        .sfss-print-only th { font-size: 9px !important; padding: 5px 7px !important; border: 1px solid #000 !important; background: #00264D !important; color: #fff !important; font-weight: 700 !important; text-align: center !important; }
+        .sfss-print-only td { font-size: 9px !important; padding: 4px 7px !important; border: 1px solid #ddd !important; vertical-align: top !important; }
+        .sfss-print-only .shift-summary { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; margin: 6px 0 !important; page-break-inside: avoid !important; }
+        .sfss-print-only .shift-box { border: 1px solid #000 !important; padding: 5px !important; }
+        .sfss-print-only .shift-box h3 { font-size: 10px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px 0 !important; }
+        .sfss-print-only .remarks-section { border: 1px solid #000 !important; padding: 5px !important; margin-top: 6px !important; }
+        .sfss-print-only .status-badge { display: inline-block !important; padding: 1px 3px !important; border: 1px solid #000 !important; border-radius: 3px !important; font-size: 8px !important; }
+        .sfss-print-only, .sfss-print-only * { min-height: 0 !important; height: auto !important; }
+        .sfss-print-only .container, .sfss-print-only .content { margin: 0 !important; padding: 0 !important; }
     }
 </style>
 
@@ -855,8 +1027,8 @@ require_once __DIR__ . '/../partials/header.php';
         <div>
             <a href="?date_start=<?= urlencode($date_start) ?>&date_end=<?= urlencode($date_end) ?>&export=excel" class="btn">Export Excel</a>
             <a href="?date_start=<?= urlencode($date_start) ?>&date_end=<?= urlencode($date_end) ?>&export=csv" class="btn">CSV</a>
-            <button type="button" class="btn" onclick="exportPrintableAreaToPDF('.print-area', 'Staff Sales Report', 'staff_sales_report_<?= date('Ymd', strtotime($date_start)) ?>_<?= date('Ymd', strtotime($date_end)) ?>', this)">Export PDF</button>
-            <button type="button" class="btn" onclick="printReportArea()">Print</button>
+            <button type="button" class="btn" onclick="_sfssDoNativePrint(this, 'Export PDF')">Export PDF</button>
+            <button type="button" class="btn" onclick="_sfssDoNativePrint()">Print</button>
         </div>
     </div>
     
@@ -1141,6 +1313,47 @@ require_once __DIR__ . '/../partials/header.php';
             const dateStart = document.getElementById('date_start').value;
             const dateEnd = document.getElementById('date_end').value;
             window.location.href = `?date_start=${dateStart}&date_end=${dateEnd}`;
+        }
+
+        function _sfssDoNativePrint(btn, label) {
+            var old = document.querySelector('.sfss-print-only');
+            if (old) old.remove();
+
+            var area = document.querySelector('.print-area');
+            if (!area) { window.print(); return; }
+
+            var origTitle = document.title;
+            document.title = 'Deliveries Report';
+
+            if (btn && label) {
+                var origHTML = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Opening PDF dialog...';
+                btn.disabled = true;
+            }
+
+            var printDiv = document.createElement('div');
+            printDiv.className     = 'sfss-print-only';
+            printDiv.innerHTML     = area.innerHTML;
+            printDiv.style.display = 'block';
+            printDiv.style.visibility = 'visible';
+            document.body.appendChild(printDiv);
+
+            var scrollBtn = document.getElementById('toggleScrollBtn');
+            if (scrollBtn) scrollBtn.style.setProperty('display', 'none', 'important');
+
+            setTimeout(function() {
+                window.print();
+                var cleanup = function() {
+                    var p = document.querySelector('.sfss-print-only');
+                    if (p) p.remove();
+                    document.title = origTitle;
+                    if (scrollBtn) scrollBtn.style.setProperty('display', 'flex', 'important');
+                    if (btn && label) { btn.innerHTML = origHTML; btn.disabled = false; }
+                    window.removeEventListener('afterprint', cleanup);
+                };
+                window.addEventListener('afterprint', cleanup);
+                setTimeout(cleanup, 30000);
+            }, 150);
         }
     </script>
 </div><!-- End stock-page -->

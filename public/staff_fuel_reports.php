@@ -610,14 +610,13 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     margin-bottom: 4px;
 }
 
-/* Card */
 .sfr-card {
     background: #fff;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
     box-shadow: 0 1px 6px rgba(0,0,0,.05);
-    overflow: hidden;
-    margin-bottom: 20px;
+    overflow: visible !important;
+    margin-bottom: 15px !important;
 }
 
 .sfr-card-header {
@@ -629,25 +628,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     flex-wrap: wrap;
 }
 
-.sfr-card-header h3 {
-    font-size: 13px !important;
-    font-weight: 700 !important;
-    color: #1e293b !important;
-    margin: 0 !important;
-    text-transform: uppercase !important;
-    letter-spacing: .5px !important;
-}
-
-.sfr-card-header .row-count {
-    margin-left: auto;
-    font-size: 11px;
-    color: #64748b;
-    font-weight: 500;
-}
-
-/* Table */
 .sfr-table-wrap { overflow-x:auto;-webkit-overflow-scrolling:touch; }
-
 .sfr-table {
     width: 100%;
     border-collapse: collapse;

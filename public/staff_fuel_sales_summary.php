@@ -3119,10 +3119,21 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     
     .print-area {
         background: #fff;
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+    }
+    
+    .stock-page {
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
     }
     
     .content {
-        padding: 15px 20px;
+        padding: 15px 20px 20px 20px !important;
+    }
+    
+    .tab-content {
+        padding-bottom: 0 !important;
     }
     
     .section-title {

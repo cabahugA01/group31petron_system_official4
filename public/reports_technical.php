@@ -265,6 +265,85 @@ elseif ($active_tab === 'security') $current_report_title = "SECURITY REPORT";
 // Date display range
 $display_date_range = date('F j, Y', strtotime($health_date_from)) . " – " . date('F j, Y', strtotime($health_date_to));
 
+// ── PHP Export Handling (Excel & CSV) ──────────────────────────────────
+$export = $_GET['export'] ?? '';
+if (in_array($export, ['excel', 'csv'], true)) {
+    if (ob_get_level()) ob_end_clean();
+    $filename = strtolower($active_tab) . "_report_" . date('Ymd_His');
+    if ($export === 'excel') {
+        header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '.xls"');
+    } else {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
+    }
+
+    $out = fopen('php://output', 'w');
+    fprintf($out, "\xEF\xBB\xBF"); // UTF-8 BOM
+
+    if ($active_tab === 'health') {
+        fputcsv($out, ['Date', 'Server Status', 'Database Status', 'System Uptime (%)', 'CPU Usage (%)', 'Memory Usage (%)', 'Disk Usage (%)', 'Overall Status']);
+        foreach ($health_rows as $r) {
+            fputcsv($out, [
+                date('M d, Y', strtotime($r['recorded_date'])),
+                $r['server_status'],
+                $r['database_status'],
+                number_format($r['system_uptime'], 2) . '%',
+                $r['cpu_usage'] . '%',
+                $r['memory_usage'] . '%',
+                $r['disk_usage'] . '%',
+                $r['overall_status']
+            ]);
+        }
+    } elseif ($active_tab === 'database') {
+        fputcsv($out, ['Database Name', 'Total Tables', 'Total Records', 'Database Size', 'Last Optimization', 'Status']);
+        foreach ($database_rows as $r) {
+            fputcsv($out, [$r['db_name'], $r['tables'], $r['records'], $r['size'], $r['last_opt'], $r['status']]);
+        }
+    } elseif ($active_tab === 'backup') {
+        fputcsv($out, ['Backup Name', 'Backup Type', 'Backup Date', 'File Size', 'Created By', 'Status']);
+        foreach ($backup_rows as $r) {
+            fputcsv($out, [
+                $r['backup_name'],
+                $r['backup_type'] ?: 'Database',
+                date('M d, Y h:i A', strtotime($r['created_at'])),
+                $r['backup_size'] > 0 ? number_format($r['backup_size']/1024, 1).' KB' : '125 MB',
+                $r['created_by'] == 1 ? 'Developer' : 'Super Admin',
+                $r['status'] === 'Completed' || $r['status'] === 'completed' ? 'Successful' : $r['status']
+            ]);
+        }
+    } elseif ($active_tab === 'error') {
+        fputcsv($out, ['Date & Time', 'Module', 'Error Level', 'Description', 'Status']);
+        foreach ($error_rows as $r) {
+            fputcsv($out, [
+                date('M d, Y h:i A', strtotime($r['created_at'])),
+                $r['module_name'],
+                $r['severity'],
+                $r['error_message'],
+                $r['status']
+            ]);
+        }
+    } elseif ($active_tab === 'security') {
+        fputcsv($out, ['Date & Time', 'User', 'Activity', 'IP Address', 'Status']);
+        foreach ($security_rows as $r) {
+            fputcsv($out, [
+                date('M d, Y h:i A', strtotime($r['created_at'])),
+                $r['username'] ?: 'developer',
+                $r['action'],
+                $r['ip_address'] ?: '192.168.1.10',
+                'Success'
+            ]);
+        }
+    }
+    fclose($out);
+    exit;
+}
+
+$export_query_params = $_GET;
+unset($export_query_params['export']);
+$excel_url = '?' . http_build_query(array_merge($export_query_params, ['export' => 'excel']));
+$csv_url   = '?' . http_build_query(array_merge($export_query_params, ['export' => 'csv']));
+
 include __DIR__ . '/../partials/header.php';
 ?>
 
@@ -479,6 +558,44 @@ a.rpt-action-btn:hover,
     font-weight: 700 !important;
     margin: 0 !important;
 }
+
+@media print {
+    @page { size: A4 portrait; margin: 10mm 12mm; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-shadow: none !important; text-shadow: none !important; background-image: none !important; }
+    html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; height: auto !important; font-size: 10px !important; }
+
+    /* Hide site chrome */
+    body > *:not(.sfss-print-only) { display: none !important; }
+    nav, header, footer, aside, .sidebar, .main-sidebar, .main-header, .navbar, .topbar,
+    .controls, .rpt-filter-bar, .rpt-subtab-nav, #toggleScrollBtn, .toggle-scroll-btn, .toast, .toast-container { display: none !important; }
+
+    /* Print container */
+    .sfss-print-only {
+        display: block !important; position: static !important;
+        width: 100% !important; max-width: 100% !important;
+        margin: 0 !important; padding: 0 !important;
+        background: #fff !important; font-size: 10px !important; color: #333 !important;
+    }
+    .sfss-print-only *, .sfss-print-only *::before, .sfss-print-only *::after { box-shadow: none !important; text-shadow: none !important; }
+
+    /* Kill icons in print */
+    .sfss-print-only i, .sfss-print-only svg,
+    .sfss-print-only .fas, .sfss-print-only .far, .sfss-print-only .fab, .sfss-print-only .fa,
+    .sfss-print-only [class*="fa-"] { display: none !important; width: 0 !important; height: 0 !important; font-size: 0 !important; margin: 0 !important; padding: 0 !important; }
+
+    .sfss-print-only .rpt-centered-header { text-align: center !important; border-bottom: 2px solid #000 !important; padding: 6px 0 !important; margin: 0 0 12px 0 !important; }
+    .sfss-print-only .rpt-centered-header h2 { font-size: 16px !important; font-weight: 800 !important; color: #000 !important; margin: 0 0 3px 0 !important; }
+    .sfss-print-only .rpt-centered-header .rpt-address { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
+    .sfss-print-only .rpt-centered-header .rpt-date-range { font-size: 10px !important; color: #000 !important; margin: 2px 0 !important; }
+    .sfss-print-only table { width: 100% !important; border-collapse: collapse !important; font-size: 9px !important; margin: 0 0 12px 0 !important; }
+    .sfss-print-only thead { display: table-header-group !important; }
+    .sfss-print-only tbody { display: table-row-group !important; }
+    .sfss-print-only tr { page-break-inside: avoid !important; }
+    .sfss-print-only th { font-size: 9px !important; padding: 6px 8px !important; border: 1px solid #000 !important; background: #00264D !important; color: #fff !important; font-weight: 700 !important; text-align: left !important; }
+    .sfss-print-only td { font-size: 9px !important; padding: 5px 8px !important; border: 1px solid #ddd !important; vertical-align: top !important; color: #000 !important; }
+    .sfss-print-only span { background: transparent !important; color: #000 !important; padding: 0 !important; font-weight: bold !important; }
+    .sfss-print-only, .sfss-print-only * { min-height: 0 !important; height: auto !important; }
+}
 </style>
 
 <!-- Page Container Wrapper -->
@@ -663,20 +780,20 @@ a.rpt-action-btn:hover,
                 <button type="submit" class="rpt-btn-apply"><i class="fas fa-sync-alt"></i> Apply</button>
             </div>
 
-            <!-- Export Buttons (Exact Copy of Audit Trail Design) -->
+            <!-- Export Buttons (Dynamic PHP links + Native Print/PDF) -->
             <div class="rpt-export-group">
-                <button type="button" class="rpt-export-btn rpt-btn-print" onclick="window.print()">
+                <button type="button" class="rpt-export-btn rpt-btn-print" onclick="_sfssDoNativePrint()">
                     <i class="fas fa-print"></i> Print
                 </button>
-                <button type="button" class="rpt-export-btn rpt-btn-pdf" onclick="exportReportPDF()">
+                <button type="button" class="rpt-export-btn rpt-btn-pdf" onclick="_sfssDoNativePrint(this, 'PDF')">
                     <i class="fas fa-file-pdf"></i> PDF
                 </button>
-                <button type="button" class="rpt-export-btn rpt-btn-excel" onclick="exportReportExcel()">
+                <a href="<?php echo htmlspecialchars($excel_url); ?>" class="rpt-export-btn rpt-btn-excel">
                     <i class="fas fa-file-excel"></i> Excel
-                </button>
-                <button type="button" class="rpt-export-btn rpt-btn-csv" onclick="exportReportExcel()">
+                </a>
+                <a href="<?php echo htmlspecialchars($csv_url); ?>" class="rpt-export-btn rpt-btn-csv">
                     <i class="fas fa-file-csv"></i> CSV
-                </button>
+                </a>
             </div>
         </form>
 
@@ -699,12 +816,14 @@ a.rpt-action-btn:hover,
             </a>
         </div>
 
-        <!-- Centered Header Banner -->
-        <div class="rpt-centered-header">
-            <h2><?php echo htmlspecialchars($current_report_title); ?></h2>
-            <div class="rpt-address">Vamenta Blvd., Carmen, City Of Cagayan De Oro , Misamis Oriental</div>
-            <div class="rpt-date-range">Date: <?php echo htmlspecialchars($display_date_range); ?></div>
-        </div>
+        <!-- Printable Report Area -->
+        <div class="print-area">
+            <!-- Centered Header Banner -->
+            <div class="rpt-centered-header">
+                <h2><?php echo htmlspecialchars($current_report_title); ?></h2>
+                <div class="rpt-address">Vamenta Blvd., Carmen, City Of Cagayan De Oro , Misamis Oriental</div>
+                <div class="rpt-date-range">Date: <?php echo htmlspecialchars($display_date_range); ?></div>
+            </div>
 
         <!-- ============================================================== -->
         <!-- TAB 1: SYSTEM HEALTH REPORT TABLE                              -->
@@ -905,17 +1024,57 @@ a.rpt-action-btn:hover,
             </table>
         </div>
         <?php endif; ?>
-
-    </div>
+        </div><!-- End print-area -->
 </div>
 
 <script>
 function exportReportExcel() {
-    exportTableToCSV('reportTable', 'System_Report_Export.csv');
+    window.location.href = <?php echo json_encode($excel_url); ?>;
 }
 
-function exportReportPDF() {
-    window.print();
+function exportReportCSV() {
+    window.location.href = <?php echo json_encode($csv_url); ?>;
+}
+
+function _sfssDoNativePrint(btn, label) {
+    var old = document.querySelector('.sfss-print-only');
+    if (old) old.remove();
+
+    var area = document.querySelector('.print-area');
+    if (!area) { window.print(); return; }
+
+    var origTitle = document.title;
+    document.title = <?php echo json_encode($current_report_title); ?>;
+
+    if (btn && label) {
+        var origHTML = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Opening PDF dialog...';
+        btn.disabled = true;
+    }
+
+    var printDiv = document.createElement('div');
+    printDiv.className     = 'sfss-print-only';
+    printDiv.innerHTML     = area.innerHTML;
+    printDiv.style.display = 'block';
+    printDiv.style.visibility = 'visible';
+    document.body.appendChild(printDiv);
+
+    var scrollBtn = document.getElementById('toggleScrollBtn');
+    if (scrollBtn) scrollBtn.style.setProperty('display', 'none', 'important');
+
+    setTimeout(function() {
+        window.print();
+        var cleanup = function() {
+            var p = document.querySelector('.sfss-print-only');
+            if (p) p.remove();
+            document.title = origTitle;
+            if (scrollBtn) scrollBtn.style.setProperty('display', 'flex', 'important');
+            if (btn && label) { btn.innerHTML = origHTML; btn.disabled = false; }
+            window.removeEventListener('afterprint', cleanup);
+        };
+        window.addEventListener('afterprint', cleanup);
+        setTimeout(cleanup, 30000);
+    }, 150);
 }
 </script>
 

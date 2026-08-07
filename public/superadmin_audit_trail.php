@@ -766,9 +766,57 @@ include __DIR__ . '/../partials/header.php';
 
 /* Print CSS */
 @media print {
-    body * { visibility: hidden !important; }
-    .sfss-print-only, .sfss-print-only * { visibility: visible !important; }
-    .sfss-print-only { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; }
+    @page { size: A4 portrait; margin: 10mm 12mm; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-shadow: none !important; text-shadow: none !important; }
+    html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; height: auto !important; font-size: 10px !important; }
+
+    /* Hide all page chrome — keep only sfss-print-only */
+    body > *:not(.sfss-print-only) { display: none !important; }
+    .stock-page .controls-bar-sales, .rpt-subtab-nav, nav, header, footer, aside,
+    .sidebar, .main-sidebar, .main-header, .navbar, .topbar,
+    #toggleScrollBtn, .toggle-scroll-btn, .toast, .toast-container { display: none !important; }
+
+    /* Print container */
+    .sfss-print-only {
+        display: block !important;
+        position: static !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+        font-size: 10px !important;
+        color: #333 !important;
+    }
+    .sfss-print-only *, .sfss-print-only *::before, .sfss-print-only *::after {
+        box-shadow: none !important; text-shadow: none !important;
+    }
+    /* Hide icons inside print container */
+    .sfss-print-only i, .sfss-print-only svg,
+    .sfss-print-only .fas, .sfss-print-only .far, .sfss-print-only .fab, .sfss-print-only .fa,
+    .sfss-print-only [class*="fa-"] { display: none !important; width: 0 !important; height: 0 !important; font-size: 0 !important; margin: 0 !important; padding: 0 !important; }
+
+    /* Tables */
+    .sfss-print-only table { width: 100% !important; border-collapse: collapse !important; font-size: 9px !important; }
+    .sfss-print-only thead { display: table-header-group !important; }
+    .sfss-print-only tbody { display: table-row-group !important; }
+    .sfss-print-only tr { page-break-inside: avoid !important; }
+    .sfss-print-only th { font-size: 9px !important; padding: 5px 7px !important; border: 1px solid #000 !important; background: #00264D !important; color: #fff !important; font-weight: 700 !important; }
+    .sfss-print-only td { font-size: 9px !important; padding: 4px 7px !important; border: 1px solid #ddd !important; vertical-align: top !important; }
+
+    /* Reset heights */
+    .sfss-print-only, .sfss-print-only * { min-height: 0 !important; height: auto !important; }
+    .sfss-print-only .card { border: 1px solid #ddd !important; border-radius: 0 !important; margin-bottom: 8px !important; page-break-inside: avoid !important; }
+    .sfss-print-only .card-body { padding: 8px !important; }
+    .sfss-print-only .badge { display: inline-block !important; padding: 2px 5px !important; border: 1px solid #000 !important; border-radius: 3px !important; font-size: 8px !important; }
+    .sfss-print-only code { font-family: monospace !important; font-size: 8px !important; }
+    .sfss-print-only .text-end { text-align: right !important; }
+    .sfss-print-only .text-center { text-align: center !important; }
+    .sfss-print-only .fw-bold { font-weight: 700 !important; }
+    .sfss-print-only .text-success { color: #15803d !important; }
+    .sfss-print-only .text-danger  { color: #b91c1c !important; }
+    .sfss-print-only .text-warning { color: #a16207 !important; }
+    .sfss-print-only .text-muted   { color: #6b7280 !important; }
     .no-print { display: none !important; }
 }
 </style>
