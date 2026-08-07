@@ -1158,8 +1158,8 @@ try {
 
 <!-- Table -->
 <div class="card" style="padding:0;width:100%;">
-    <div style="width:100%;overflow-x:hidden;">
-    <table class="vt-table" style="table-layout:fixed;width:100%;">
+    <div class="vt-table-wrapper">
+    <table class="vt-table" style="table-layout:fixed;width:100%;min-width:900px;">
         <colgroup>
             <col style="width:6%;"><!-- OR NO. -->
             <col style="width:5.5%;"><!-- TXN ID -->
@@ -1728,23 +1728,41 @@ html, body {
 
 /* Add padding to prevent right side cut-off */
 .content-wrapper {
-    padding-right: 0 !important;
-    margin-right: 0 !important;
     overflow-x: hidden !important;
     max-width: 100% !important;
 }
 .main-content {
-    padding-right: 0 !important;
-    margin-right: 0 !important;
     overflow-x: hidden !important;
     max-width: 100% !important;
 }
 .stock-page {
-    padding-right: 0 !important;
-    padding-left: 0 !important;
-    margin-right: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
     max-width: 100% !important;
     width: 100% !important;
+    box-sizing: border-box !important;
+}
+.stock-head {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    flex-wrap: wrap !important;
+    gap: 15px !important;
+    margin-top: 0 !important;
+    margin-bottom: 25px !important;
+}
+.stock-title {
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    color: #002f70 !important;
+    margin: 0 !important;
+    line-height: 1.2 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+    letter-spacing: 0.5px !important;
+    text-transform: uppercase !important;
 }
 
 /* == PAGE HEADER - matches SuperAdmin page-head standard == */
@@ -1883,12 +1901,13 @@ body { overflow-x:hidden !important; max-width:100vw !important; }
 .content-wrapper { max-width:100% !important; overflow-x:hidden !important; }
 .card { max-width:100% !important; overflow:visible !important; }
 
-/* Table wrapper - allow horizontal scroll ONLY on table */
-.card > div { 
-    width:100% !important; 
-    max-width:100% !important; 
+/* Table wrapper - allow horizontal scroll ONLY on the table container itself */
+.vt-table-wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
     overflow-x: auto !important;
     overflow-y: visible !important;
+    box-sizing: border-box !important;
 }
 
 /* Make filter responsive */

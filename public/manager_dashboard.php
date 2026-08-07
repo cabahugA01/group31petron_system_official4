@@ -1127,7 +1127,7 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
     body[data-page="manager_dashboard"] .main {
-        padding: 0 0 60px 0 !important;
+        padding: 20px 20px 60px 20px !important;
         background: #f6f8fb;
         box-sizing: border-box;
     }
@@ -1136,7 +1136,7 @@ include __DIR__ . '/../partials/header.php';
         width: 100%;
         max-width: none;
         margin: 0;
-        padding: 12px 24px 72px;
+        padding: 0 !important;
         min-height: calc(100vh - 110px);
         background: #f6f8fb;
         color: #0f172a;

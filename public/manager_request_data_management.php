@@ -104,24 +104,30 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>
 .stock-page {
-    padding: 16px 0;
+    padding: 0 !important;
+    margin: 0 !important;
     width: 100%;
     box-sizing: border-box;
 }
 .stock-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 16px;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    margin-top: 0 !important;
+    margin-bottom: 25px !important;
 }
 .stock-title {
-    font-size: 22px;
-    font-weight: 700;
-    color: #00264D;
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    color: #002f70 !important;
+    margin: 0 !important;
+    line-height: 1.2 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
 }
 
 /* == Petron Clean KPI Summary Cards == */

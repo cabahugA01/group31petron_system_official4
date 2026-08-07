@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = match($_GET['tab'] ?? '') {
     'deliveries'    => 'fuel_deliveries_validation',
     'transactions'  => 'fuel_transactions_oversight',
@@ -1776,7 +1776,7 @@ html, body {
 
 /* == PAGE HEADER - matches Transaction Module int-head standard == */
 .int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 16px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; }
-.int-head h1 { font-size:26px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head h1 { font-size:26px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:none !important; display:flex; align-items:center; gap:8px; }
 .int-head .sub { font-size:16px; color:#666; margin-top:4px; text-transform:none !important; }
 
 /* Export Button Styles */

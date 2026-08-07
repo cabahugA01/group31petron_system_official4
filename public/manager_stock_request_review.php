@@ -835,8 +835,9 @@ body .main,
 
 /* Modern premium styling */
 .pr-container {
-    padding: 20px 20px 60px 20px;
-    font-family: 'Outfit', 'Inter', sans-serif;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     color: #1e293b;
     background: #f8fafc;
     min-height: calc(100vh - 70px);
@@ -844,18 +845,23 @@ body .main,
     overflow-y: auto;
 }
 .pr-title {
-    font-size: 26px;
-    font-weight: 800;
-    color: #002F6C;
-    margin: 0 0 4px 0;
-    display: flex;
-    align-items: flex-end;
-    gap: 12px;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    color: #002f70 !important;
+    margin: 0 0 25px 0 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    line-height: 1.2 !important;
 }
 .pr-subtitle {
     font-size: 14px;
     color: #64748b;
-    margin-bottom: 24px;
+    margin-bottom: 0;
+    display: none;
 }
 .summary-grid {
     display: grid;
@@ -904,35 +910,18 @@ body .main,
 .bg-waiting { background: #faf5ff; color: #9333ea; }
 .bg-completed { background: #f0fdf4; color: #16a34a; }
 
-.tab-nav {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 28px;
-    border-bottom: 2px solid #e2e8f0;
-    padding-bottom: 1px;
-}
-.tab-btn {
-    padding: 12px 24px;
-    font-size: 14px;
-    font-weight: 700;
-    color: #64748b;
-    border: none;
-    background: none;
-    border-bottom: 3px solid transparent;
-    cursor: pointer;
-    transition: all 0.2s;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: flex-end;
-    gap: 8px;
-}
-.tab-btn:hover {
-    color: #002F6C;
-}
-.tab-btn.active {
-    color: #002F6C;
-    border-bottom-color: #002F6C;
-}
+.tab-nav { display: flex !important; flex-wrap: wrap !important; margin-bottom: 28px !important; border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; border-bottom: 3px solid #00264D !important; gap: 0 !important; }
+.tab-btn { flex: 1 !important; min-width: 160px !important; padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-bottom: none !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; text-align: center !important; cursor: pointer !important; margin-bottom: 0 !important; }
+.tab-btn:last-child { border-right: none !important; }
+.tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
+.tab-btn.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; border-bottom: none !important; }
+
+/* Sub-tab nav (Merchandise / Fuel) - matches Reports style */
+.sub-tab-nav { display: flex !important; flex-wrap: wrap !important; margin-bottom: 20px !important; border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; border-bottom: 3px solid #00264D !important; gap: 0 !important; }
+.sub-tab-nav-btn { flex: 1 !important; min-width: 120px !important; padding: 11px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-bottom: none !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; cursor: pointer !important; margin-bottom: 0 !important; }
+.sub-tab-nav-btn:last-child { border-right: none !important; }
+.sub-tab-nav-btn:hover { background: #f1f5f9 !important; color: #00264D !important; }
+.sub-tab-nav-btn.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; }
 
 .table-wrap-pr {
     background: #fff;
@@ -1281,11 +1270,11 @@ body .main,
         </div>
     <?php endif; ?>
         <!-- Main Page Tabs -->
-    <div class="main-page-tabs" style="display: flex; gap: 10px; margin-bottom: 24px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px;">
-        <button type="button" id="mainTabPrBtn" onclick="switchPendingSubTab('pr')" style="padding: 10px 24px; font-size: 14px; font-weight: 700; color: #ffffff !important; background-color: #002F6C !important; border: 1.5px solid #002F6C !important; cursor: pointer; border-radius: 8px; display: inline-flex; align-items: flex-end; gap: 8px; transition: all 0.2s;">
+    <div class="tab-nav">
+        <button type="button" id="mainTabPrBtn" onclick="switchPendingSubTab('pr')" class="tab-btn active">
             <i class="fas fa-clipboard-check"></i> Purchase Request
         </button>
-        <button type="button" id="mainTabHistoryBtn" onclick="switchPendingSubTab('history')" style="padding: 10px 24px; font-size: 14px; font-weight: 700; color: #475569 !important; background-color: #f8fafc !important; border: 1.5px solid #cbd5e1 !important; cursor: pointer; border-radius: 8px; display: inline-flex; align-items: flex-end; gap: 8px; transition: all 0.2s;">
+        <button type="button" id="mainTabHistoryBtn" onclick="switchPendingSubTab('history')" class="tab-btn">
             <i class="fas fa-history"></i> Purchase History
         </button>
     </div>
@@ -1361,14 +1350,13 @@ body .main,
     </div>
 
     <!-- Sub-tabs Navigation -->
-    <div id="pendingCategoryNav" class="sub-tab-nav" style="display: flex; gap: 8px; margin-bottom: 20px;">
-        <button type="button" id="subtabMerchBtn" onclick="switchPendingSubTab('merch')" style="padding: 9px 20px; font-size: 13px; font-weight: 600; color: #002F6C !important; border: 1.5px solid #002F6C !important; background: #eff6ff !important; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: flex-end; gap: 7px; border-radius: 8px;">
+    <div id="pendingCategoryNav" class="sub-tab-nav">
+        <button type="button" id="subtabMerchBtn" onclick="switchPendingSubTab('merch')" class="sub-tab-nav-btn active">
             <i class="fas fa-boxes"></i> Merchandise
         </button>
-        <button type="button" id="subtabFuelBtn" onclick="switchPendingSubTab('fuel')" style="padding: 9px 20px; font-size: 13px; font-weight: 600; color: #64748b !important; border: 1.5px solid #e2e8f0 !important; background: #fff !important; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: flex-end; gap: 7px; border-radius: 8px;">
+        <button type="button" id="subtabFuelBtn" onclick="switchPendingSubTab('fuel')" class="sub-tab-nav-btn">
             <i class="fas fa-gas-pump"></i> Fuel
         </button>
-
     </div>
 
     <!-- Merchandise Section -->
@@ -1890,8 +1878,8 @@ body .main,
                     <button type="button" onclick="filterPurchaseHistory()" style="height: 34px; padding: 0 14px; background: #002F6C; color: #fff; border: none; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
                         <i class="fas fa-filter"></i> Filter
                     </button>
-                    <button type="button" onclick="resetHistoryFilter()" style="height: 34px; padding: 0 14px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
-                        <i class="fas fa-undo"></i> Reset
+                    <button type="button" onclick="resetHistoryFilter()" style="height: 34px; padding: 0 14px; background: #f1f5f9 !important; color: #334155 !important; border: 1px solid #94a3b8 !important; border-radius: 6px; font-weight: 600; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap; text-shadow: none !important;">
+                        <i class="fas fa-undo" style="color: #334155 !important;"></i> <span style="color: #334155 !important;">Reset</span>
                     </button>
                 </div>
             </div>
@@ -2060,29 +2048,25 @@ var currentPoItemForModal = null;
 function switchPendingSubTab(type) {
     var mainPrBtn   = document.getElementById('mainTabPrBtn');
     var mainHistBtn = document.getElementById('mainTabHistoryBtn');
-
     var merchBtn = document.getElementById('subtabMerchBtn');
     var fuelBtn  = document.getElementById('subtabFuelBtn');
     var catNav   = document.getElementById('pendingCategoryNav');
-    
     var merchSec  = document.getElementById('pendingMerchSection');
     var fuelSec   = document.getElementById('pendingFuelSection');
     var histSec   = document.getElementById('purchaseHistorySection');
-
     var prCards   = document.getElementById('prSummaryCardsGrid');
     var histCards = document.getElementById('historySummaryCardsGrid');
 
+    // Reset main tab active classes
+    if (mainPrBtn)   { mainPrBtn.classList.remove('active');   mainPrBtn.removeAttribute('style'); }
+    if (mainHistBtn) { mainHistBtn.classList.remove('active'); mainHistBtn.removeAttribute('style'); }
+
+    // Reset sub-tab active classes
+    if (merchBtn) { merchBtn.classList.remove('active'); merchBtn.removeAttribute('style'); }
+    if (fuelBtn)  { fuelBtn.classList.remove('active');  fuelBtn.removeAttribute('style'); }
+
     if (type === 'history') {
-        if (mainHistBtn) {
-            mainHistBtn.style.setProperty('color', '#ffffff', 'important');
-            mainHistBtn.style.setProperty('background-color', '#002F6C', 'important');
-            mainHistBtn.style.setProperty('border', '1.5px solid #002F6C', 'important');
-        }
-        if (mainPrBtn) {
-            mainPrBtn.style.setProperty('color', '#475569', 'important');
-            mainPrBtn.style.setProperty('background-color', '#f8fafc', 'important');
-            mainPrBtn.style.setProperty('border', '1.5px solid #cbd5e1', 'important');
-        }
+        if (mainHistBtn) mainHistBtn.classList.add('active');
         if (histSec)   histSec.style.setProperty('display', 'block', 'important');
         if (merchSec)  merchSec.style.setProperty('display', 'none', 'important');
         if (fuelSec)   fuelSec.style.setProperty('display', 'none', 'important');
@@ -2091,46 +2075,18 @@ function switchPendingSubTab(type) {
         if (histCards) histCards.style.setProperty('display', 'none', 'important');
         filterPurchaseHistory();
     } else {
-        if (mainPrBtn) {
-            mainPrBtn.style.setProperty('color', '#ffffff', 'important');
-            mainPrBtn.style.setProperty('background-color', '#002F6C', 'important');
-            mainPrBtn.style.setProperty('border', '1.5px solid #002F6C', 'important');
-        }
-        if (mainHistBtn) {
-            mainHistBtn.style.setProperty('color', '#475569', 'important');
-            mainHistBtn.style.setProperty('background-color', '#f8fafc', 'important');
-            mainHistBtn.style.setProperty('border', '1.5px solid #cbd5e1', 'important');
-        }
+        if (mainPrBtn) mainPrBtn.classList.add('active');
         if (prCards)  prCards.style.setProperty('display', 'grid', 'important');
         if (histCards) histCards.style.setProperty('display', 'none', 'important');
         if (histSec)  histSec.style.setProperty('display', 'none', 'important');
         if (catNav)   catNav.style.setProperty('display', 'flex', 'important');
 
         if (type === 'fuel') {
-            if (fuelBtn) {
-                fuelBtn.style.setProperty('color', '#002F6C', 'important');
-                fuelBtn.style.setProperty('background-color', '#eff6ff', 'important');
-                fuelBtn.style.setProperty('border', '1.5px solid #002F6C', 'important');
-            }
-            if (merchBtn) {
-                merchBtn.style.setProperty('color', '#64748b', 'important');
-                merchBtn.style.setProperty('background-color', '#fff', 'important');
-                merchBtn.style.setProperty('border', '1.5px solid #e2e8f0', 'important');
-            }
+            if (fuelBtn)  fuelBtn.classList.add('active');
             if (fuelSec)  fuelSec.style.setProperty('display', 'block', 'important');
             if (merchSec) merchSec.style.setProperty('display', 'none', 'important');
         } else {
-            // default 'pr' or 'merch'
-            if (merchBtn) {
-                merchBtn.style.setProperty('color', '#002F6C', 'important');
-                merchBtn.style.setProperty('background-color', '#eff6ff', 'important');
-                merchBtn.style.setProperty('border', '1.5px solid #002F6C', 'important');
-            }
-            if (fuelBtn) {
-                fuelBtn.style.setProperty('color', '#64748b', 'important');
-                fuelBtn.style.setProperty('background-color', '#fff', 'important');
-                fuelBtn.style.setProperty('border', '1.5px solid #e2e8f0', 'important');
-            }
+            if (merchBtn) merchBtn.classList.add('active');
             if (merchSec) merchSec.style.setProperty('display', 'block', 'important');
             if (fuelSec)  fuelSec.style.setProperty('display', 'none', 'important');
         }

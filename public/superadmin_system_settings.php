@@ -124,23 +124,33 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .ss-content {
-    width: 100%;
-    max-width: 1300px;
-    margin: 0 auto;
-    padding: 20px 24px 160px;  /* extra bottom padding: footer(40) + action-bar(60) + buffer */
+    padding: 0 !important;
 }
 
 .ss-panel-header {
-    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+    margin-top: 0 !important;
+    margin-bottom: 25px !important;
+    padding: 0 !important;
+    border: none !important;
+    width: 100%;
 }
 
 .ss-panel-header h1 {
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--primary-color);
-    margin: 0 0 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    margin: 0 !important;
+    color: #002f70 !important;
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    line-height: 1.2 !important;
 }
 
 .ss-panel-header p {

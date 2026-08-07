@@ -918,11 +918,11 @@ function adjustColor($hex,$pct) {
 ?>
 <style>
 /* -- MANAGER FUEL MANAGEMENT ENHANCED STYLES -- */
-.mfm-wrap { width:100%; padding:10px 20px 120px 20px; box-sizing:border-box; }
+.mfm-wrap { width:100%; max-width:100%; box-sizing:border-box; overflow-x:hidden !important; padding:16px 24px 60px 24px !important; }
 
 /* Page Header - matches transaction module standard */
 .page-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
-.page-head h1, .page-head .h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.page-head h1, .page-head .h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:none !important; display:flex; align-items:center; gap:8px; }
 .page-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
 
 /* Notification Banner */

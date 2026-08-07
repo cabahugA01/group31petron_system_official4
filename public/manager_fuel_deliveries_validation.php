@@ -341,14 +341,14 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 /* Reset and core alignment */
 * { box-sizing: border-box; }
 html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !important; position: relative; }
-.mftv-wrap { max-width: 100%; width: 100%; box-sizing: border-box; overflow-x: hidden !important; padding: 0 8px; }
-.main-content { max-width: 100% !important; overflow-x: hidden !important; padding: 0 !important; }
+.mftv-wrap { max-width: 100%; width: 100%; box-sizing: border-box; overflow-x: hidden !important; padding: 16px 24px 60px 24px !important; }
+.main-content { max-width: 100% !important; overflow-x: hidden !important; }
 
 /* Petron clean headers */
-.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 16px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; width: 100%; }
+.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 0 !important; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; width: 100%; }
 .int-head > div:first-child { flex: 1; min-width: 280px; max-width: 65%; }
 .int-head > div:last-child { flex-shrink: 0; display: flex; gap: 8px; flex-wrap: wrap; }
-.int-head h1 { font-size: 22px !important; font-weight: 700 !important; color: #00264D !important; margin: 0 !important; text-transform: uppercase !important; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
+.int-head h1 { font-size: 22px !important; font-weight: 700 !important; color: #00264D !important; margin: 0 !important; text-transform: none !important; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
 .int-head .sub { font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.4; }
 
 /* Outline buttons */

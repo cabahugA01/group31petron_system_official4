@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Admin Fuel Transactions Oversight
 // Fetch Source: fuel_transactions (staff-encoded â†’ manager-verified)
@@ -457,9 +457,17 @@ if (in_array($export, ['csv','excel','pdf'])) {
 require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>
-/* == PAGE HEADER - matches SuperAdmin int-head standard == */
-.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:0 !important; padding-top:16px; padding-bottom:16px; border-bottom:2px solid #e9ecef; }
-.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+/* Page Layout Container - matches User Management spacing */
+.main-content {
+    margin-left: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box;
+    width: 100%;
+}
+
+/* == PAGE HEADER - Uniform standard across all modules == */
+.int-head { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-top:0 !important; margin-bottom:25px !important; padding:0 !important; border:none !important; width:100%; }
+.int-head h1 { margin:0 !important; color:#002f70 !important; font-size:24px !important; font-weight:700 !important; text-transform:uppercase !important; letter-spacing:0.5px !important; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important; display:flex !important; align-items:center !important; gap:10px !important; line-height:1.2 !important; }
 .int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
 
 /* Export/action buttons */
@@ -651,7 +659,7 @@ require_once __DIR__ . '/../partials/header.php';
 
 <?php require __DIR__ . '/../partials/flash_toast.php'; ?>
 
-
+<div class="main-content">
 <div class="int-head">
     <div>
         <h1><i class="fas fa-gas-pump"></i> Fuel Transaction Oversight</h1>
@@ -1106,5 +1114,6 @@ function aftoExport(format) {
     window.location.href = '?' + params.toString();
 }
 </script>
+</div> <!-- /.main-content -->
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

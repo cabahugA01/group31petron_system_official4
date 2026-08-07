@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Manager Fuel Reconciliation – manager_fuel_reconciliation.php
 // Purpose: Compare pump sales with tank levels and resolve variances
@@ -284,8 +284,8 @@ html, body {
 }
 
 /* == PAGE HEADER - matches transaction module standard == */
-.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 16px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; }
-.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 0 !important; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; }
+.int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:none !important; display:flex; align-items:center; gap:8px; }
 .int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
 
 /* == Outline Buttons - SuperAdmin standard == */

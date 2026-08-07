@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Manager Calibration Review – manager_fuel_pump_master.php
 // Purpose: Granular, shift-based calibration and meter reading validation.
@@ -619,12 +619,12 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 
 <style>
 * { box-sizing: border-box; }
-.mcr-wrap { max-width: 100%; width: 100%; box-sizing: border-box; overflow-x: hidden !important; padding: 0 12px; }
-.main-content { max-width: 100% !important; overflow-x: hidden !important; padding: 0 !important; }
+.mcr-wrap { max-width: 100%; width: 100%; box-sizing: border-box; overflow-x: hidden !important; padding: 0 !important; margin: 0 !important; }
+.main-content { max-width: 100% !important; overflow-x: hidden !important; }
 
 /* Petron style headers */
-.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 16px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; width: 100%; }
-.int-head h1 { font-size: 22px !important; font-weight: 700 !important; color: #00264D !important; margin: 0 !important; text-transform: uppercase !important; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
+.int-head { display: flex !important; align-items: center !important; justify-content: space-between !important; flex-wrap: wrap !important; gap: 15px !important; margin-top: 0 !important; margin-bottom: 25px !important; padding: 0 !important; border: none !important; width: 100% !important; }
+.int-head h1 { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important; font-size: 24px !important; font-weight: 700 !important; color: #002f70 !important; margin: 0 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; display: flex !important; align-items: center !important; gap: 10px !important; line-height: 1.2 !important; }
 .int-head .sub { font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.4; }
 
 /* Summary Cards */

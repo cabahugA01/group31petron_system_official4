@@ -83,9 +83,9 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 /* â”€â”€ Admin Management Page Styles - Updated v2.1 - June 15, 2026 â”€â”€ */
-.am-page { padding: 12px 24px 28px; }
-.am-page-head { margin-bottom: 24px; padding-top: 10px; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 0 !important; }
-.am-page-head h1 { font-size: 22px !important; font-weight: 700 !important; color: var(--petron-blue) !important; margin: 0 !important; text-transform: uppercase !important; }
+.am-page { padding: 0 !important; }
+.am-page-head { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-top: 0 !important; margin-bottom: 25px !important; padding: 0 !important; border: none !important; width: 100%; }
+.am-page-head h1 { margin: 0 !important; color: #002f70 !important; font-size: 24px !important; font-weight: 700 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important; display: flex !important; align-items: center !important; gap: 10px !important; line-height: 1.2 !important; }
 .am-page-head .sub { font-size: 13px; color: #666; margin-top: 4px; text-transform: none !important; }
 
 /* Stats row */

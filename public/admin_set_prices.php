@@ -798,6 +798,35 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 /* ── Page-level styles ─────────────────────────────────────────────────────── */
+.main-content {
+    padding: 0 !important;
+    box-sizing: border-box;
+    width: 100%;
+}
+.page-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 25px !important;
+    margin-top: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    width: 100%;
+}
+.page-head h1, .page-head .h1 {
+    margin: 0 !important;
+    color: #002f70 !important;
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    line-height: 1.2 !important;
+}
 
 
 /* Summary cards */
@@ -856,13 +885,35 @@ include __DIR__ . '/../partials/header.php';
     table-layout: fixed !important;
 }
 
-/* == Tab bar styling (Matches Manager Clean Design) == */
-.ato-tab-bar { display:flex;gap:0;border-bottom:2px solid #dee2e6;margin-bottom:18px; }
-.ato-tab { display:inline-flex;align-items:center;gap:7px;padding:10px 22px;font-size:13px;font-weight:600;color:#6c757d;text-decoration:none;border-bottom:3px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap; cursor:pointer; }
-.ato-tab:hover { color:#002F6C; }
-.ato-tab.active { color:#002F6C;border-bottom-color:#002F6C;background:#f8fbff;border-radius:6px 6px 0 0; }
-.tab-panel { display: none; }
-.tab-panel.active { display: block; }
+/* ── Section Tabs - Reports-style boxed design ── */
+.ato-tab-bar {
+    display: flex !important; flex-wrap: wrap !important;
+    margin-bottom: 22px !important;
+    border: 1px solid #d1d9e6 !important; border-radius: 0 !important;
+    overflow: hidden !important; border-bottom: 3px solid #00264D !important;
+    gap: 0 !important; background: transparent !important;
+    padding: 0 !important; width: 100% !important;
+}
+.ato-tab {
+    flex: 1 !important; min-width: 140px !important;
+    padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important;
+    color: #334155 !important; background: #ffffff !important;
+    border: none !important; border-right: 1px solid #d1d9e6 !important;
+    border-radius: 0 !important; text-decoration: none !important;
+    transition: all 0.15s ease !important;
+    display: inline-flex !important; align-items: center !important;
+    justify-content: center !important; gap: 7px !important;
+    text-transform: uppercase !important; letter-spacing: 0.3px !important;
+    text-align: center !important; cursor: pointer !important;
+    margin-bottom: 0 !important; box-shadow: none !important;
+}
+.ato-tab:last-child { border-right: none !important; }
+.ato-tab:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
+.ato-tab.active {
+    background: #00264D !important; color: #ffffff !important;
+    font-weight: 800 !important; box-shadow: none !important;
+    border-radius: 0 !important; border-bottom-color: transparent !important;
+}
 
 /* == Action buttons — ultra crisp & visible outline style == */
 .act-btn {
@@ -986,8 +1037,9 @@ include __DIR__ . '/../partials/header.php';
 }
 </style>
 
+<div class="main-content">
 <!-- ── Page header ──────────────────────────────────────────────────────────── -->
-<div class="page-head" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+<div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-tags"></i> Product &amp; Pricing Overview</h1>
     </div>
@@ -3447,5 +3499,6 @@ function switchTab(tabName) {
     to   { opacity:1; transform:scale(1) translateY(0); }
 }
 </style>
+</div> <!-- /.main-content -->
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

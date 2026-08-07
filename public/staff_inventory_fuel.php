@@ -421,63 +421,22 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 ?>
 <div class="stock-page">
 <style>
-.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; margin-top: 0 !important; padding-top: 0; padding-bottom: 10px; border-bottom: 2px solid #e9ecef; }
+.stock-page{overflow-x:hidden;max-width:100%;padding:0 !important;margin:0 !important;}
+.int-head { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-top:0 !important; margin-bottom:25px !important; padding:0 !important; border:none !important; width:100%; }
+.int-head h1 { margin:0; color:#002f70 !important; font-size:24px !important; font-weight:700 !important; text-transform:uppercase !important; letter-spacing:0.5px !important; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important; display:flex !important; align-items:center !important; gap:10px !important; line-height:1.2 !important; }
 .main, .main-content { padding-top: 0 !important; }
-.int-head h1 { font-size: 22px !important; font-weight: 700 !important; color: #00264D !important; margin: 0 !important; text-transform: uppercase !important; display: flex; align-items: center; gap: 8px; }
-.int-head .sub { font-size: 13px; color: #64748b; margin-top: 4px; text-transform: none !important; }
 
 .inv-card { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; margin-bottom:20px; }
 .inv-card-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e9ecef; flex-wrap:wrap; gap:8px; }
 .inv-card-title { font-size:1rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
 .inv-card-body  { padding:20px; }
 
-/* Sub Tabs Styling - 100% VISIBLE High Contrast Text for Active & Inactive Tabs Across All Interaction States */
-.fuel-sub-tab-btn,
-.fuel-sub-tab-btn:not(.active),
-.fuel-sub-tab-btn:not(.active):focus,
-.fuel-sub-tab-btn:not(.active):active {
-    padding: 9px 22px !important;
-    font-size: 13px !important;
-    font-weight: 700 !important;
-    border-radius: 6px !important;
-    cursor: pointer !important;
-    transition: all 0.15s ease-in-out !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-    background-color: #ffffff !important;
-    background: #ffffff !important;
-    color: #002F70 !important;
-    -webkit-text-fill-color: #002F70 !important;
-    border: 2px solid #cbd5e1 !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-    text-decoration: none !important;
-    line-height: 1.2 !important;
-    outline: none !important;
-}
-.fuel-sub-tab-btn:not(.active):hover {
-    background-color: #f1f5f9 !important;
-    background: #f1f5f9 !important;
-    color: #002F70 !important;
-    -webkit-text-fill-color: #002F70 !important;
-    border-color: #002F70 !important;
-    opacity: 1 !important;
-}
-.fuel-sub-tab-btn.active,
-.fuel-sub-tab-btn.active:focus,
-.fuel-sub-tab-btn.active:hover,
-.fuel-sub-tab-btn.active:active {
-    background-color: #002F70 !important;
-    background: #002F70 !important;
-    color: #ffffff !important;
-    -webkit-text-fill-color: #ffffff !important;
-    border-color: #002F70 !important;
-    box-shadow: 0 2px 6px rgba(0,47,112,0.3) !important;
-    opacity: 1 !important;
-    outline: none !important;
-}
+/* ── Sub Tabs Styling - Matches Reports sub-tab design ── */
+.fuel-sub-tabs { display: flex !important; flex-wrap: wrap !important; margin-bottom: 22px !important; border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; border-bottom: 3px solid #00264D !important; gap: 0 !important; background: transparent !important; padding: 0 !important; width: 100% !important; }
+.fuel-sub-tab-btn { flex: 1 !important; min-width: 140px !important; padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-radius: 0 !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; text-align: center !important; cursor: pointer !important; margin-bottom: 0 !important; box-shadow: none !important; }
+.fuel-sub-tab-btn:last-child { border-right: none !important; }
+.fuel-sub-tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
+.fuel-sub-tab-btn.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; box-shadow: none !important; }
 
 /* â”€â”€ Filter Bar â”€â”€ */
 .inv-filter-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px; position:relative; z-index:25; isolation:isolate; pointer-events:auto; }
@@ -947,16 +906,16 @@ body.sidebar-collapsed .modal-overlay,
 </form>
 
 <!-- ══ Sub Tabs ══ -->
-<div style="display:flex; gap:10px; margin-bottom:18px; padding:0; width:fit-content;">
-    <button id="tabOverview" class="fuel-sub-tab-btn active" onclick="switchFuelTab('overview')" style="background:#002F70 !important; color:#ffffff !important; -webkit-text-fill-color:#ffffff !important; border:2px solid #002F70 !important; font-weight:700 !important; opacity:1 !important;">
+<div class="fuel-sub-tabs">
+    <button id="tabOverview" class="fuel-sub-tab-btn active" onclick="switchFuelTab('overview')">
         <i class="fas fa-gas-pump"></i> Fuel Inventory Overview
     </button>
-    <button id="tabDeliveries" class="fuel-sub-tab-btn" onclick="switchFuelTab('deliveries')" style="background:#ffffff !important; color:#002F70 !important; -webkit-text-fill-color:#002F70 !important; border:2px solid #cbd5e1 !important; font-weight:700 !important; opacity:1 !important;">
+    <button id="tabDeliveries" class="fuel-sub-tab-btn" onclick="switchFuelTab('deliveries')">
         <i class="fas fa-exclamation-triangle"></i> Stock Alerts
         <?php
         $alert_count = count(array_filter($rows, fn($r) => in_array($r['status'] ?? '', ['Critical','Low','Out of Stock'])));
         if ($alert_count > 0): ?>
-            <span style="background:#dc3545;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700;margin-left:4px;"><?= $alert_count ?></span>
+            <span style="background:#dc2626 !important;color:#ffffff !important;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700;margin-left:4px;line-height:1;"><?= $alert_count ?></span>
         <?php endif; ?>
     </button>
 </div>
@@ -1596,39 +1555,17 @@ function switchFuelTab(tab) {
     [btnOv, btnAlt].forEach(function(b) {
         if (!b) return;
         b.classList.remove('active');
-        b.style.setProperty('background', '#ffffff', 'important');
-        b.style.setProperty('background-color', '#ffffff', 'important');
-        b.style.setProperty('color', '#002F70', 'important');
-        b.style.setProperty('-webkit-text-fill-color', '#002F70', 'important');
-        b.style.setProperty('border', '2px solid #cbd5e1', 'important');
-        b.style.setProperty('opacity', '1', 'important');
     });
     [overview, alerts].forEach(function(s) {
         if (!s) return;
         s.style.display = 'none';
     });
 
-    var activeBtn = null;
-    var activeSec = null;
-
-    if (tab === 'overview') {
-        activeBtn = btnOv;
-        activeSec = overview;
-    } else {
-        activeBtn = btnAlt;
-        activeSec = alerts;
-    }
+    var activeBtn = (tab === 'overview') ? btnOv : btnAlt;
+    var activeSec = (tab === 'overview') ? overview : alerts;
 
     if (activeSec) activeSec.style.display = '';
-    if (activeBtn) {
-        activeBtn.classList.add('active');
-        activeBtn.style.setProperty('background', '#002F70', 'important');
-        activeBtn.style.setProperty('background-color', '#002F70', 'important');
-        activeBtn.style.setProperty('color', '#ffffff', 'important');
-        activeBtn.style.setProperty('-webkit-text-fill-color', '#ffffff', 'important');
-        activeBtn.style.setProperty('border', '2px solid #002F70', 'important');
-        activeBtn.style.setProperty('opacity', '1', 'important');
-    }
+    if (activeBtn) activeBtn.classList.add('active');
 }
 
 

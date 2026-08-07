@@ -34,9 +34,9 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-.cust-page { color:#0f172a; padding-bottom:40px; }
-.cust-head { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-top:20px; margin-bottom:18px; border-bottom:2px solid #e2e8f0; padding-bottom:14px; }
-.cust-head h1 { margin:0; color:#002f70; font-size:26px; font-weight:800; text-transform:uppercase; display:flex; align-items:center; gap:10px; }
+.cust-page { color:#0f172a; padding: 0 !important; margin: 0 !important; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden !important; }
+.cust-head { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-top:0 !important; margin-bottom:25px !important; padding:0 !important; border:none !important; width:100%; }
+.cust-head h1 { margin:0; color:#002f70; font-size:24px !important; font-weight:700 !important; text-transform:uppercase !important; letter-spacing:0.5px !important; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important; display:flex; align-items:center; gap:10px; }
 
 /* Dashboard Cards - 6 Cards Grid */
 .cust-cards { display:grid; grid-template-columns:repeat(6, minmax(130px, 1fr)); gap:12px; margin-bottom:18px; }
@@ -55,14 +55,15 @@ include __DIR__ . '/../partials/header.php';
 .cust-field textarea { height:70px; resize:vertical; }
 .cust-field input:focus, .cust-field select:focus, .cust-field textarea:focus { outline:none; border-color:#002f70; box-shadow:0 0 0 3px rgba(0,47,112,.12); }
 
-/* Navigation Tabs */
-.cust-tabs { display:flex; gap:6px; background:#f1f5f9; border-radius:8px; padding:4px; width:fit-content; }
-.cust-tab, button.cust-tab { display:flex; align-items:center; gap:8px; padding:8px 16px; background:#ffffff !important; background-color:#ffffff !important; border:1px solid #cbd5e1 !important; border-radius:6px; font-size:13px; font-weight:700; color:#334155 !important; cursor:pointer; transition:all .18s; white-space:nowrap; }
-.cust-tab:hover, button.cust-tab:hover { color:#0f172a !important; background:#f8fafc !important; border-color:#94a3b8 !important; }
-.cust-tab.active, button.cust-tab.active { background:#002f70 !important; background-color:#002f70 !important; color:#ffffff !important; border:1px solid #002f70 !important; box-shadow:0 2px 6px rgba(0,47,112,.2); }
-.cust-tab-badge { font-size:11px; font-weight:800; padding:2px 7px; border-radius:20px; min-width:18px; text-align:center; background:rgba(255,255,255,.3); color:#fff; }
-.cust-tab:not(.active) .cust-tab-badge { background:#cbd5e1 !important; color:#334155 !important; }
-.cust-tab.active .cust-tab-badge { background:rgba(255,255,255,.25) !important; color:#ffffff !important; }
+/* Navigation Tabs - Matches Reports sub-tab design */
+.cust-tabs { display: flex !important; flex-wrap: wrap !important; margin-bottom: 0 !important; border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; border-bottom: 3px solid #00264D !important; gap: 0 !important; background: transparent !important; padding: 0 !important; width: 100% !important; flex: 1 !important; }
+.cust-tab, button.cust-tab { flex: 1 !important; min-width: 140px !important; padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-radius: 0 !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; text-align: center !important; cursor: pointer !important; margin-bottom: 0 !important; box-shadow: none !important; }
+.cust-tab:last-child, button.cust-tab:last-child { border-right: none !important; }
+.cust-tab:hover, button.cust-tab:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
+.cust-tab.active, button.cust-tab.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; box-shadow: none !important; }
+.cust-tab-badge { font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 20px; min-width: 18px; text-align: center; background: rgba(255,255,255,.3); color: #fff; }
+.cust-tab:not(.active) .cust-tab-badge { background: #cbd5e1 !important; color: #334155 !important; }
+.cust-tab.active .cust-tab-badge { background: rgba(255,255,255,.25) !important; color: #ffffff !important; }
 
 
 /* Buttons - Plain Outline Uniform Style */
@@ -211,8 +212,8 @@ body.modal-open { overflow:hidden; }
         </div>
     </div>
 
-    <!-- Tabs Navigation & Add New Customer Button -->
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+    <!-- Tabs Navigation -->
+    <div style="margin-bottom:12px;">
         <div class="cust-tabs">
             <button class="cust-tab active" id="tab-list" onclick="switchCustTab('list')">
                 <i class="fas fa-list"></i> Customer List
@@ -227,6 +228,10 @@ body.modal-open { overflow:hidden; }
                 <span class="cust-tab-badge" id="tabBadgeArchived">0</span>
             </button>
         </div>
+    </div>
+
+    <!-- Action Button Row -->
+    <div style="display:flex; justify-content:flex-end; margin-bottom:16px;">
         <button type="button" class="btn-plain primary" onclick="openCustomerForm('add')">
             <i class="fas fa-user-plus"></i> Add New Customer
         </button>

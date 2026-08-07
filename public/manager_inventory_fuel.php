@@ -246,6 +246,7 @@ foreach ($TANK_CONFIG_17 as $tc) {
         }
         return $k === $ft_key;
     }));
+    $tank_key  = strtolower($ugt_str);
     $purchases = $del_lookup[$tank_key] ?? 0;
 
     $sales_total = $sales_lookup[$ft_key] ?? 0;
@@ -634,26 +635,29 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 <style>
 /* == PAGE HEADER - matches standard Petron dashboard layout == */
 .int-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 20px;
-    margin-top: 0px !important;
-    padding-top: 16px;
-    padding-bottom: 16px;
-    border-bottom: 2px solid #e9ecef;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    flex-wrap: wrap !important;
+    gap: 15px !important;
+    margin-top: 0 !important;
+    margin-bottom: 25px !important;
+    padding: 0 !important;
+    border: none !important;
+    width: 100% !important;
 }
 .int-head h1 {
-    font-size: 22px !important;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+    font-size: 24px !important;
     font-weight: 700 !important;
-    color: #00264D !important;
+    color: #002f70 !important;
     margin: 0 !important;
+    line-height: 1.2 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
     text-transform: uppercase !important;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    letter-spacing: 0.5px !important;
 }
 .int-head .sub {
     font-size: 13px;
@@ -662,10 +666,13 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     text-transform: none !important;
 }
 
-/* Tabs Layout */
-.tab-nav { display:flex; gap:0; border-bottom:2px solid #e2e8f0; margin-bottom:22px; }
-.tab-btn { padding:10px 24px; background:none; border:none; border-bottom:3px solid transparent; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
-.tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
+/* Tabs Layout - Matches Reports sub-tab design */
+.tab-nav { display: flex !important; flex-wrap: wrap !important; margin-bottom: 22px !important; border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; border-bottom: 3px solid #00264D !important; gap: 0 !important; }
+.tab-btn { flex: 1 !important; min-width: 140px !important; padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-bottom: none !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; text-align: center !important; cursor: pointer !important; margin-bottom: 0 !important; }
+.tab-btn:last-child { border-right: none !important; }
+.tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
+.tab-btn.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; border-bottom: none !important; }
+
 
 /* Modal inner tab buttons */
 .modal-tab-btn {
@@ -937,9 +944,11 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     border-bottom: 2px solid #c7d4ea !important;
     background: #f1f5f9 !important;
 }
+.mif-wrap { width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden !important; padding: 0 !important; margin: 0 !important; }
 </style>
 
-<!-- â•â• Page Header â•â• -->
+<div class="mif-wrap">
+<!-- â• â•  Page Header â• â•  -->
 <div class="int-head">
     <div>
         <h1><i class="fas fa-gas-pump"></i> Fuel Inventory Monitoring</h1>
@@ -2477,5 +2486,5 @@ function exportMovTableCSV() {
         </div>
     </div>
 </div>
-
+</div> <!-- /.mif-wrap -->
 <?php include __DIR__ . '/../partials/footer.php'; ?>

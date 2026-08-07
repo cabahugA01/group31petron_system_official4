@@ -916,23 +916,20 @@ include __DIR__ . '/../partials/header.php';
 ?>
 <div class="stock-page">
 <style>
+.stock-page{overflow-x:hidden;max-width:100%;padding:0 !important;margin:0 !important;}
+.main, .main-content { padding-top: 0 !important; }
 /* Page Header */
 .page-header { 
-    display: flex; 
-    justify-content: flex-start; 
-    align-items: flex-start; 
-    margin-bottom: 24px; 
-    flex-wrap: wrap; 
-    gap: 16px;
+    display:flex; justify-content:space-between; gap:16px; align-items:center;
+    margin-top:0 !important; margin-bottom:25px !important;
+    padding:0 !important; border:none !important; width:100%;
 }
 .page-header h1 { 
-    font-size: 26px; 
-    font-weight: 800; 
-    color: #002F70; 
-    margin: 0; 
-    display: flex; 
-    align-items: center; 
-    gap: 10px;
+    margin:0; color:#002f70 !important; font-size:24px !important;
+    font-weight:700 !important; text-transform:uppercase !important;
+    letter-spacing:0.5px !important;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important;
+    display:flex !important; align-items:center !important; gap:10px !important; line-height:1.2 !important;
 }
 .page-header .subtitle { 
     font-size: 14px; 
@@ -1020,48 +1017,34 @@ include __DIR__ . '/../partials/header.php';
     }
 }
 
-/* Tabs */
-.tabs-container {
-    margin-bottom: 20px;
-}
+/* Tabs - Reports-style boxed design */
+.tabs-container { margin-bottom: 22px; }
 .tabs-header {
-    display: flex;
-    gap: 12px;
-    border-bottom: 2px solid #e2e8f0;
-    padding-bottom: 8px;
+    display: flex !important; flex-wrap: wrap !important;
+    border: 1px solid #d1d9e6 !important; border-radius: 0 !important;
+    overflow: hidden !important; border-bottom: 3px solid #00264D !important;
+    gap: 0 !important; background: transparent !important; padding: 0 !important; width: 100% !important;
 }
 .tab-btn {
-    padding: 10px 24px;
-    background: #ffffff !important;
-    background-color: #ffffff !important;
-    border: 1px solid #cbd5e1 !important;
-    font-size: 14px;
-    font-weight: 700;
-    color: #334155 !important;
-    cursor: pointer;
-    transition: all 0.2s;
-    border-radius: 6px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    white-space: nowrap;
+    flex: 1 !important; min-width: 140px !important;
+    padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important;
+    color: #334155 !important; background: #ffffff !important;
+    border: none !important; border-right: 1px solid #d1d9e6 !important;
+    border-radius: 0 !important; text-decoration: none !important;
+    transition: all 0.15s ease !important;
+    display: inline-flex !important; align-items: center !important;
+    justify-content: center !important; gap: 7px !important;
+    text-transform: uppercase !important; letter-spacing: 0.3px !important;
+    text-align: center !important; cursor: pointer !important;
+    margin-bottom: 0 !important; box-shadow: none !important; white-space: nowrap;
 }
-.tab-btn:hover {
-    background: #f8fafc !important;
-    background-color: #f8fafc !important;
-    border-color: #94a3b8 !important;
-    color: #0f172a !important;
-}
+.tab-btn:last-child { border-right: none !important; }
+.tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; }
 .tab-btn.active {
-    background: #002F70 !important;
-    background-color: #002F70 !important;
-    color: #ffffff !important;
-    border-color: #002F70 !important;
+    background: #00264D !important; color: #ffffff !important;
+    font-weight: 800 !important; box-shadow: none !important;
 }
-.tab-btn.active *, .tab-btn.active span, .tab-btn.active i {
-    color: #ffffff !important;
-}
+.tab-btn.active *, .tab-btn.active span, .tab-btn.active i { color: #ffffff !important; }
 
 
 /* Tab Content */
@@ -1540,13 +1523,11 @@ body[data-page="staff_record_delivery"] .main {
     <div class="tabs-header">
         <button class="tab-btn <?php echo $active_tab === 'merchandise' ? 'active' : ''; ?>" 
                 onclick="switchTab('merchandise')">
-            <i class="fas fa-boxes"></i>
-            <span>Merchandise</span>
+            <i class="fas fa-boxes"></i> Merchandise
         </button>
         <button class="tab-btn <?php echo $active_tab === 'fuel' ? 'active' : ''; ?>" 
                 onclick="switchTab('fuel')">
-            <i class="fas fa-gas-pump"></i>
-            <span>Fuel</span>
+            <i class="fas fa-gas-pump"></i> Fuel
         </button>
     </div>
 </div>

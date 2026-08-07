@@ -302,7 +302,7 @@ if (empty($stations)) {
 }
 ?>
 
-<div style="padding: 24px 32px 60px 32px;">
+<div style="padding: 0 !important;">
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-cogs"></i> Station-Dependent Module Control</h1>
@@ -733,19 +733,29 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
     }
     
     .page-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
         margin-top: 0 !important;
-        padding-top: 10px !important;
+        margin-bottom: 25px !important;
+        padding: 0 !important;
+        border: none !important;
+        width: 100%;
     }
     
     .page-head h1, .page-head .h1 {
-        font-size: 22px !important;
-        font-weight: 700 !important;
-        color: var(--petron-blue, #00264D) !important;
         margin: 0 !important;
+        color: #002f70 !important;
+        font-size: 24px !important;
+        font-weight: 700 !important;
         text-transform: uppercase !important;
-        display: flex;
-        align-items: center;
-        gap: 8px;
+        letter-spacing: 0.5px !important;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+        line-height: 1.2 !important;
     }
     
     .page-head .sub {

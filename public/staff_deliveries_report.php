@@ -15,6 +15,10 @@ $role = role_key($me['role'] ?? 'staff');
 $user_id = (int)($me['id'] ?? 0);
 $station_id = user_station_id();
 
+// Cashier / Prepared-by name
+$cashier_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
+if ($cashier_name === '') $cashier_name = $me['name'] ?? $me['username'] ?? 'N/A';
+
 // Access control
 if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
     header('Location: dashboard.php'); exit;
@@ -390,7 +394,14 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     .sfss-print-only table tr { display: table-row !important; }
     .sfss-print-only table td { display: table-cell !important; }
     .status-badge-submitted, .status-badge-pending { border-radius: 0 !important; padding: 1px 4px !important; font-size: 8px !important; }
+    .sfss-print-only .print-only-sig { display: table !important; width: 100% !important; border-collapse: collapse !important; }
+    .sfss-print-only .print-only-sig td { display: table-cell !important; border: none !important; }
 }
+</style>
+
+<style>
+    /* Hide signature on screen */
+    .print-only-sig { display: none !important; }
 </style>
 
 <div class="stock-page" style="padding: 20px;">
@@ -538,6 +549,20 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                     </tbody>
                 </table>
             </div>
+
+            <!-- PREPARED BY SIGNATURE (Print Only) -->
+            <table class="print-only-sig" style="width:100%; margin-top:30px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+                <tr>
+                    <td style="border:none;"></td>
+                    <td style="border:none; width:220px; text-align:center;">
+                        <div style="font-size:10px; font-weight:700; color:#333; margin-bottom:25px;">PREPARED BY:</div>
+                        <div style="border-top:1px solid #000; padding-top:4px; font-weight:700; font-size:11px; color:#000;">
+                            <?= htmlspecialchars($cashier_name) ?>
+                        </div>
+                        <div style="font-size:9.5px; color:#555; margin-top:2px;">Staff</div>
+                    </td>
+                </tr>
+            </table>
 
         </div>
     </div>

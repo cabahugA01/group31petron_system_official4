@@ -433,10 +433,12 @@ include __DIR__ . '/../partials/header.php';
 <style>
 body, html { overflow-x: hidden; max-width: 100%; }
 /* ── Page-level styles ─────────────────────────────────────────────────────── */
-.ato-tab-bar { display:flex;gap:0;border-bottom:2px solid #dee2e6;margin-bottom:18px; }
-.ato-tab { display:inline-flex;align-items:center;gap:7px;padding:10px 22px;font-size:13px;font-weight:600;color:#6c757d;text-decoration:none;border-bottom:3px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap; cursor:pointer; }
-.ato-tab:hover { color:#002F6C; }
-.ato-tab.active { color:#002F6C;border-bottom-color:#002F6C;background:#f8fbff;border-radius:6px 6px 0 0; }
+/* Navigation Tabs - Matches Reports sub-tab design */
+.ato-tab-bar { display: flex !important; flex-wrap: wrap !important; margin-bottom: 22px !important; border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; border-bottom: 3px solid #00264D !important; gap: 0 !important; background: transparent !important; padding: 0 !important; width: 100% !important; }
+.ato-tab { flex: 1 !important; min-width: 140px !important; padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-radius: 0 !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; text-align: center !important; cursor: pointer !important; margin-bottom: 0 !important; box-shadow: none !important; }
+.ato-tab:last-child { border-right: none !important; }
+.ato-tab:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
+.ato-tab.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; box-shadow: none !important; }
 .pricing-tabs { display: none; } /* replaced by dropdown */
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
@@ -657,6 +659,10 @@ body, html { overflow-x: hidden; max-width: 100%; }
 .act-btn i { color: inherit !important; -webkit-text-fill-color: inherit !important; }
 .act-btn-wrap { display: flex; flex-direction: column; gap: 3px; width: 100%; align-items: center; }
 
+.ppm-wrap { width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden !important; padding: 0 !important; margin: 0 !important; }
+.page-head { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-top:0 !important; margin-bottom:25px !important; padding:0 !important; border:none !important; width:100%; }
+.page-head h1, .page-head .h1 { margin:0; color:#002f70 !important; font-size:24px !important; font-weight:700 !important; text-transform:uppercase !important; letter-spacing:0.5px !important; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important; display:flex !important; align-items:center !important; gap:10px !important; line-height:1.2 !important; }
+
 @media (max-width: 768px) {
     .summary-grid { grid-template-columns: repeat(2, 1fr); }
     .toolbar { flex-direction: column; align-items: stretch; }
@@ -665,6 +671,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
 </style>
 
 <!-- ── Page header ──────────────────────────────────────────────────────────── -->
+<div class="ppm-wrap">
 <div class="page-head" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
     <div>
         <h1 class="h1"><i class="fas fa-tags"></i> Product &amp; Pricing Management</h1>
@@ -685,12 +692,23 @@ body, html { overflow-x: hidden; max-width: 100%; }
      TAB 1 — FUEL PRODUCTS
      ══════════════════════════════════════════════════════════════════════════ -->
 <div id="tab-fuel" class="tab-panel <?php echo $active_tab === 'fuel' ? 'active' : ''; ?>">
+    <div style="display:flex;align-items:center;justify-content:flex-start;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+        <input type="text" id="fuelSearchInput" oninput="filterFuelTable()" placeholder="&#x1F50D; Search UGT or Fuel Type..." style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#334155;background:#fff;min-width:220px;">
+        <select id="fuelStatusFilter" onchange="filterFuelTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#334155;background:#fff;">
+            <option value="">All Statuses</option>
+            <option value="Normal">Normal</option>
+            <option value="Low">Low</option>
+            <option value="Critical">Critical</option>
+        </select>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
+        <button onclick="openAddProductModal()" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:all 0.2s;">
+            <i class="fas fa-plus-circle"></i> Add Product
+        </button>
+    </div>
+
     <div class="card" style="padding:0;overflow:hidden;">
-        <div style="padding:14px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:flex-end;">
-            <button onclick="openAddProductModal()" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:all 0.2s;">
-                <i class="fas fa-plus-circle"></i> Add Product
-            </button>
-        </div>
         <div class="table-wrap" style="overflow-x:auto;">
             <table class="pricing-table">
                 <thead>
@@ -739,7 +757,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         $canonical_type = get_canonical_fuel_name($f['raw_fuel_type']);
                         $full_fuel_name = $canonical_type;
                     ?>
-                    <tr>
+                    <tr class="fuel-row" data-ugt="<?php echo htmlspecialchars(strtolower($ugt_str)); ?>" data-name="<?php echo htmlspecialchars(strtolower($full_fuel_name)); ?>" data-status="<?php echo htmlspecialchars($status_label); ?>">
                         <td>
                             <strong style="font-family:monospace;color:#002F6C;font-size:14px;"><?php echo htmlspecialchars($ugt_str); ?></strong>
                         </td>
@@ -852,11 +870,11 @@ body, html { overflow-x: hidden; max-width: 100%; }
             <option value="noprice">No Price Set</option>
             <option value="belowcost">Price Below Cost</option>
         </select>
-        <div style="margin-left:auto;">
-            <button onclick="openAddMerchandiseModal()" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:all 0.2s;">
-                <i class="fas fa-plus-circle"></i> Add Merchandise
-            </button>
-        </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
+        <button onclick="openAddMerchandiseModal()" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:all 0.2s;">
+            <i class="fas fa-plus-circle"></i> Add Merchandise
+        </button>
     </div>
 
     <?php if (empty($merch_by_cat)): ?>
@@ -1040,10 +1058,12 @@ body, html { overflow-x: hidden; max-width: 100%; }
                     <option value="1">Active</option>
                     <option value="0">Inactive</option>
                 </select>
-                <button onclick="openAddServiceModal()" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:all 0.2s;">
-                    <i class="fas fa-plus-circle"></i> Add Service
-                </button>
             </div>
+        </div>
+        <div style="padding:10px 20px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;justify-content:flex-end;">
+            <button onclick="openAddServiceModal()" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:all 0.2s;">
+                <i class="fas fa-plus-circle"></i> Add Service
+            </button>
         </div>
         
         <?php if (empty($service_types)): ?>
@@ -3653,6 +3673,32 @@ var _svcOriginalFee   = 0;
 var _svcOriginalLabor = 0;
 var _viewSvcData      = null; // keeps current view data so "Edit from View" works
 
+// ── Fuel Products Filter (search + status) ────────────────────────────────
+function filterFuelTable() {
+    var q      = (document.getElementById('fuelSearchInput') || {}).value || '';
+    var status = (document.getElementById('fuelStatusFilter') || {}).value || '';
+    q = q.toLowerCase().trim();
+
+    var rows    = document.querySelectorAll('.fuel-row');
+    var visible = 0;
+
+    rows.forEach(function(row) {
+        var ugt    = row.getAttribute('data-ugt') || '';
+        var name   = row.getAttribute('data-name') || '';
+        var rSt    = row.getAttribute('data-status') || '';
+
+        var matchQ  = !q || ugt.indexOf(q) !== -1 || name.indexOf(q) !== -1;
+        var matchSt = !status || rSt.toLowerCase() === status.toLowerCase();
+
+        if (matchQ && matchSt) {
+            row.style.display = '';
+            visible++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
 // ── Filter (search + category + status) ──────────────────────────────────
 function filterServiceTable() {
     var q       = (document.getElementById('svcSearchInput') || {}).value || '';
@@ -4097,4 +4143,5 @@ function activateService(id, serviceName) {
 }
 </style>
 
+</div> <!-- /.ppm-wrap -->
 <?php include __DIR__ . '/../partials/footer.php'; ?>

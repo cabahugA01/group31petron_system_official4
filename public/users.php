@@ -648,48 +648,42 @@ include __DIR__ . '/../partials/header.php';
     color: #ffffff !important;
 }
 
-/* Tabs & Table Buttons */
+/* Tabs - Reports-style boxed design */
 .um-tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 20px;
-    border-bottom: 2px solid #e2e8f0;
-    padding-bottom: 2px;
+    display: flex !important; flex-wrap: wrap !important;
+    margin-bottom: 22px !important;
+    border: 1px solid #d1d9e6 !important; border-radius: 0 !important;
+    overflow: hidden !important; border-bottom: 3px solid #00264D !important;
+    gap: 0 !important; background: transparent !important;
+    padding: 0 !important; width: 100% !important;
 }
 .um-tab-btn {
-    padding: 10px 20px;
-    font-size: 13px;
-    font-weight: 700;
-    color: #64748b;
-    background: #f8fafc;
-    border: 1px solid #cbd5e1;
-    border-bottom: none;
-    border-radius: 6px 6px 0 0;
-    cursor: pointer;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    transition: all .2s;
+    flex: 1 !important; min-width: 140px !important;
+    padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important;
+    color: #334155 !important; background: #ffffff !important;
+    border: none !important; border-right: 1px solid #d1d9e6 !important;
+    border-radius: 0 !important; text-decoration: none !important;
+    transition: all 0.15s ease !important;
+    display: inline-flex !important; align-items: center !important;
+    justify-content: center !important; gap: 7px !important;
+    text-transform: uppercase !important; letter-spacing: 0.3px !important;
+    text-align: center !important; cursor: pointer !important;
+    margin-bottom: 0 !important; box-shadow: none !important;
 }
-.um-tab-btn:hover {
-    color: #00264D;
-    background: #f1f5f9;
-}
+.um-tab-btn:last-child { border-right: none !important; }
+.um-tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
 .um-tab-btn.active {
-    color: #ffffff;
-    background: #00264D;
-    border-color: #00264D;
+    background: #00264D !important; color: #ffffff !important;
+    font-weight: 800 !important; box-shadow: none !important;
 }
 .um-badge-cnt {
-    background: rgba(255,255,255,0.25);
+    background: #dc2626 !important;
+    color: #ffffff !important;
     padding: 2px 7px;
     border-radius: 12px;
     font-size: 11px;
-}
-.um-tab-btn:not(.active) .um-badge-cnt {
-    background: #e2e8f0;
-    color: #475569;
+    font-weight: 700;
+    line-height: 1;
 }
 /* Table Action Buttons: ALL PLAIN OUTLINE (No filled background color) */
 .action-btn,
@@ -766,14 +760,29 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .page-head {
-    margin-top: 25px !important;
-    margin-bottom: 20px !important;
+    display:flex; justify-content:space-between; gap:16px; align-items:center;
+    margin-top:0 !important; margin-bottom:25px !important;
+    padding:0 !important; border:none !important; width:100%;
+}
+.page-head h1, .page-head .h1 {
+    margin:0; color:#002f70 !important; font-size:24px !important;
+    font-weight:700 !important; text-transform:uppercase !important;
+    letter-spacing:0.5px !important;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important;
+    display:flex !important; align-items:center !important; gap:10px !important; line-height:1.2 !important;
+}
+.um-wrap {
+    padding: 0 !important;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 </style>
 
+<div class="um-wrap">
 <div class="page-head">
     <div>
-        <h1 class="h1" style="font-weight: 800; color: #00264D;">USER MANAGEMENT</h1>
+        <h1 class="h1">USER MANAGEMENT</h1>
     </div>
     <?php if ($my_role === 'admin' || $my_role === 'superadmin'): ?>
     <div class="actions">
@@ -906,6 +915,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 
 <?php endif; ?>
+</div><!-- /.um-wrap -->
 
 <!-- MODAL: Add User -->
 <div class="modal" id="addModal">

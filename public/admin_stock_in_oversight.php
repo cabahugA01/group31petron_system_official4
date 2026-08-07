@@ -87,12 +87,13 @@ include __DIR__ . '/../partials/header.php';
 <style>
 :root{--blue:#002F70;--red:#dc3545;--orange:#fd7e14;--green:#28a745;--gray:#6c757d;}
 /* == PAGE HEADER - matches SuperAdmin int-head standard == */
-.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 16px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; }
+.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 0 !important; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; }
 .int-head h1{font-size:22px!important;font-weight:700!important;color:var(--petron-blue,#002F70)!important;margin:0!important;text-transform:uppercase!important;display:flex;align-items:center;gap:8px}
 .int-head .sub{font-size:13px;color:#666;margin-top:4px;text-transform:none!important}
 /* == Outline Buttons - SuperAdmin standard == */
 .ato-btn{display:inline-flex;align-items:center;gap:6px;padding:0 16px;height:36px;border:1px solid transparent;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap;background:white!important;transition:all .15s}
 .ato-btn-refresh{color:#002F70!important;border-color:#002F70!important}.ato-btn-refresh:hover{background:#002F70!important;color:#fff!important}
+.main-content{padding:20px 0!important;box-sizing:border-box;width:100%;}
 /* == KPI Cards == */
 .kpi-grid{display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap;}
 .kpi-card{flex:1;background:#fff;border-radius:10px;padding:16px 18px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,.06);}
@@ -136,6 +137,7 @@ table.stockin tbody tr:hover td{background:#eff6ff;}
 .cap-warn{color:var(--red);font-weight:700;}
 </style>
 
+<div class="main-content">
 <div class="int-head">
   <div>
     <h1><i class="fas fa-dolly-flatbed"></i> Stock-In Oversight &amp; History</h1>
@@ -359,4 +361,5 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<?php include __DIR__ . '/../partials/footer.php'; ?>
+</div>
+<?php require_once __DIR__ . '/../partials/footer.php'; ?>

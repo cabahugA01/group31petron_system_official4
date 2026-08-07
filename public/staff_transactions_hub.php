@@ -3463,8 +3463,8 @@ input[list] {
             </script>
             <!-- ═══ end STANDALONE FUEL CALC SCRIPT ═══ -->
 
-            <!-- Submit/Reset Buttons - Bottom Right -->
-            <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:16px;padding:0 8px;">
+            <!-- Submit/Reset Buttons -->
+            <div style="display:flex; justify-content:flex-end; align-items:center; gap:12px; margin-top:20px; margin-bottom:0; padding:10px 0; background:transparent; border:none; box-shadow:none;">
                 <button type="button"
                         onclick="resetAllFuelRows()"
                         class="fet-reset-btn">
@@ -3482,11 +3482,10 @@ input[list] {
                         class="fet-submit-btn">
                     <i class="fas fa-paper-plane"></i> Submit All Readings
                 </button>
-            </div>
+            </div><!-- /button container -->
             
-            <!-- Hidden field to store global remarks -->
-            <input type="hidden" id="globalFuelRemarks" value="">
-
+            <!-- Scroll space for encode card -->
+            <div style="height: 40px; clear: both;" aria-hidden="true"></div>
         </div><!-- /txn-card encodeCard -->
 
         <!-- Global Remarks Modal -->
@@ -3516,7 +3515,7 @@ input[list] {
         <?php endif; ?>
 
         <!-- ── TODAY'S ENTRIES — Meter Reading History ──────────── -->
-        <div class="txn-card" id="todayEntriesCard" style="margin-top:8px; margin-bottom:80px; background:#fff; border:1.5px solid #e2e8f0; border-radius:12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);">
+        <div class="txn-card" id="todayEntriesCard" style="margin-top:0; margin-bottom:40px; background:#fff; border:1.5px solid #e2e8f0; border-radius:12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);">
             <div class="txn-card-header" style="background:#fff; border-bottom:1.5px solid #e2e8f0; border-top-left-radius:12px; border-top-right-radius:12px; padding: 16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                 <div style="display:flex; align-items:center; gap:12px;">
                     <i class="fas fa-history" style="color:var(--petron-blue); font-size:18px;"></i>
@@ -4086,10 +4085,11 @@ input[list] {
                 const remarksBtnLbl = document.getElementById('remarksButtonLabel');
                 if (remarksBtnLbl) remarksBtnLbl.textContent = 'Add Remarks';
 
-                showToast('Meter readings submitted successfully.', 'success');
+                showToast('Meter readings submitted! Redirecting to Fuel Sales Closing...', 'success');
                 setTimeout(() => {
-                    window.location.reload();
-                }, 2500);
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    window.location.href = 'staff_fuel_sales_closing.php?date=' + encodeURIComponent(todayStr) + '&from_readings=1';
+                }, 1500);
             } else {
                 const firstErr = errors[0] ? errors[0].replace(/^[^:]+:\s*/, '') : 'Submission failed.';
                 showToast(firstErr, 'error');

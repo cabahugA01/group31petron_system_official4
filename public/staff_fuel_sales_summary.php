@@ -1641,6 +1641,26 @@ foreach ($enhanced_meter_readings as $emr) {
 $total_fuel_liters_sold = array_sum(array_column($enhanced_meter_readings, 'net_volume'));
 $total_fuel_sales_amount = array_sum(array_column($enhanced_meter_readings, 'fuel_sales'));
 
+// Fetch Fuel Sales Closing Record
+$closing_record = [];
+try {
+    $stmt_cl_rec = $pdo->prepare("
+        SELECT * FROM fuel_sales_closing
+        WHERE station_id = ? AND (report_date BETWEEN ? AND ?)
+        ORDER BY id DESC LIMIT 1
+    ");
+    $stmt_cl_rec->execute([$station_id, $date_from, $date_to]);
+    $closing_record = $stmt_cl_rec->fetch(PDO::FETCH_ASSOC) ?: [];
+} catch (Exception $e) {}
+
+// Fetch Tank Inventory Levels
+$tank_inventory_summary = [];
+try {
+    $stmt_inv_rec = $pdo->prepare("SELECT fuel_type, current_level, capacity FROM fuel_inventory WHERE station_id = ? ORDER BY id ASC");
+    $stmt_inv_rec->execute([$station_id]);
+    $tank_inventory_summary = $stmt_inv_rec->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (Exception $e) {}
+
 // Filter Merchandise Transactions
 $filtered_merchandise_rows = [];
 foreach ($merchandise_report_transactions as $mt) {
@@ -3620,6 +3640,144 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                         </tbody>
                     </table>
                 </div>
+
+                <!-- 3. Volume & Amount Summary -->
+                <div class="section-title" style="margin-top:24px;">VOLUME & AMOUNT SUMMARY</div>
+                <div class="table-container mb-4">
+                    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                        <thead>
+                            <tr style="background:#002F6C; color:#fff;">
+                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Summary</th>
+                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="padding:8px 10px; border:1px solid #ddd; font-weight:700;">Total Liters Sold</td>
+                                <td style="padding:8px 10px; border:1px solid #ddd; text-align:right; font-weight:700; color:#15803d; font-size:13px;"><?= number_format($total_fuel_liters_sold, 2) ?> L</td>
+                            </tr>
+                            <tr style="background:#f8fafc;">
+                                <td style="padding:8px 10px; border:1px solid #ddd; font-weight:700;">Total Fuel Sales</td>
+                                <td style="padding:8px 10px; border:1px solid #ddd; text-align:right; font-weight:800; color:#002F6C; font-size:14px;">₱<?= number_format($total_fuel_sales_amount, 2) ?></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 4. Tank Summary -->
+                <div class="section-title" style="margin-top:24px;">TANK LITERS SUMMARY</div>
+                <div class="table-container mb-4">
+                    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                        <thead>
+                            <tr style="background:#002F6C; color:#fff;">
+                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Tank</th>
+                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Remaining Liters</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            $tot_tank_liters = 0;
+                            if (!empty($tank_inventory_summary)): 
+                                foreach ($tank_inventory_summary as $t_inv):
+                                    $rem_l = (float)$t_inv['current_level'];
+                                    $tot_tank_liters += $rem_l;
+                            ?>
+                                <tr>
+                                    <td style="padding:7px 10px; border:1px solid #ddd; font-weight:700;"><?= htmlspecialchars($t_inv['fuel_type']) ?></td>
+                                    <td style="padding:7px 10px; border:1px solid #ddd; text-align:right; font-weight:700; color:#002F6C;"><?= number_format($rem_l, 2) ?> L</td>
+                                </tr>
+                            <?php endforeach; else: ?>
+                                <tr>
+                                    <td colspan="2" style="text-align:center; padding:15px; color:#6b7280; font-style:italic;">No tank inventory records available.</td>
+                                </tr>
+                            <?php endif; ?>
+                            <tr style="font-weight:800; background:#e8f0fe; border-top:2px solid #002F6C;">
+                                <td style="padding:8px 10px; border:1px solid #002F6C; text-transform:uppercase;">TOTAL TANK LITERS</td>
+                                <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C; font-size:13px;"><?= number_format($tot_tank_liters, 2) ?> L</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 5. Fuel Sales Closing Summary -->
+                <div class="section-title" style="margin-top:24px;">FUEL SALES CLOSING SUMMARY</div>
+                <div class="table-container mb-4" style="background:#ffffff; padding:14px; border:1px solid #cbd5e1; border-radius:8px;">
+                    <!-- Shop / Store Sales -->
+                    <h4 style="font-size:13px; font-weight:700; color:#002F6C; margin:0 0 8px 0; text-transform:uppercase;"><i class="fas fa-store me-1"></i> Shop / Store Sales Income</h4>
+                    <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:16px;">
+                        <thead>
+                            <tr style="background:#f1f5f9; color:#334155;">
+                                <th style="padding:6px 10px; border:1px solid #cbd5e1; text-align:left;">Field</th>
+                                <th style="padding:6px 10px; border:1px solid #cbd5e1; text-align:right;">Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">OLG Sales</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['olg_sales'] ?? 0), 2) ?></td></tr>
+                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">TBA Sales</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['tba_sales'] ?? 0), 2) ?></td></tr>
+                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">Service Income</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['service_income'] ?? 0), 2) ?></td></tr>
+                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">Other Sales</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['other_sales'] ?? 0), 2) ?></td></tr>
+                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">A/R Collected</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['ar_collected'] ?? 0), 2) ?></td></tr>
+                            <tr style="font-weight:700; background:#f8fafc;"><td style="padding:6px 10px; border:1px solid #cbd5e1;">Total Store Sales Income</td><td style="padding:6px 10px; border:1px solid #cbd5e1; text-align:right; color:#002F6C;">₱<?= number_format((float)($closing_record['total_store_sales'] ?? 0), 2) ?></td></tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Cash Summary & A/R Summary (Side-by-Side) -->
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+                        <div>
+                            <h4 style="font-size:13px; font-weight:700; color:#002F6C; margin:0 0 6px 0; text-transform:uppercase;"><i class="fas fa-money-bill-wave me-1"></i> Cash Summary</h4>
+                            <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                                <thead>
+                                    <tr style="background:#f1f5f9; color:#334155;">
+                                        <th style="padding:6px 10px; border:1px solid #cbd5e1; text-align:left;">Shift</th>
+                                        <th style="padding:6px 10px; border:1px solid #cbd5e1; text-align:right;">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td style="padding:6px 10px; border:1px solid #ddd;">Shift 1</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['cash_shift1'] ?? 0), 2) ?></td></tr>
+                                    <tr><td style="padding:6px 10px; border:1px solid #ddd;">Shift 2</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['cash_shift2'] ?? 0), 2) ?></td></tr>
+                                    <tr style="font-weight:700; background:#f8fafc;"><td style="padding:6px 10px; border:1px solid #cbd5e1;">Total Cash</td><td style="padding:6px 10px; border:1px solid #cbd5e1; text-align:right; color:#002F6C;">₱<?= number_format((float)($closing_record['total_cash'] ?? 0), 2) ?></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div>
+                            <h4 style="font-size:13px; font-weight:700; color:#002F6C; margin:0 0 6px 0; text-transform:uppercase;"><i class="fas fa-file-invoice-dollar me-1"></i> Accounts Receivable Summary</h4>
+                            <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                                <thead>
+                                    <tr style="background:#f1f5f9; color:#334155;">
+                                        <th style="padding:6px 10px; border:1px solid #cbd5e1; text-align:left;">Shift</th>
+                                        <th style="padding:6px 10px; border:1px solid #cbd5e1; text-align:right;">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td style="padding:6px 10px; border:1px solid #ddd;">Shift 1</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['ar_shift1'] ?? 0), 2) ?></td></tr>
+                                    <tr><td style="padding:6px 10px; border:1px solid #ddd;">Shift 2</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['ar_shift2'] ?? 0), 2) ?></td></tr>
+                                    <tr style="font-weight:700; background:#f8fafc;"><td style="padding:6px 10px; border:1px solid #cbd5e1;">Total A/R</td><td style="padding:6px 10px; border:1px solid #cbd5e1; text-align:right; color:#002F6C;">₱<?= number_format((float)($closing_record['total_ar'] ?? 0), 2) ?></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Overall Summary -->
+                    <h4 style="font-size:13px; font-weight:700; color:#002F6C; margin:10px 0 6px 0; text-transform:uppercase;"><i class="fas fa-calculator me-1"></i> Overall Financial Summary</h4>
+                    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                        <thead>
+                            <tr style="background:#f1f5f9; color:#334155;">
+                                <th style="padding:6px 10px; border:1px solid #cbd5e1; text-align:left;">Field</th>
+                                <th style="padding:6px 10px; border:1px solid #cbd5e1; text-align:right;">Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">Fuel Sales</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['total_fuel_sales'] ?? $total_fuel_sales_amount), 2) ?></td></tr>
+                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">Store Sales</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['total_store_sales'] ?? 0), 2) ?></td></tr>
+                            <tr style="font-weight:700;"><td style="padding:6px 10px; border:1px solid #ddd;">Gross Sales</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right; color:#002F6C;">₱<?= number_format((float)($closing_record['gross_sales'] ?? $total_fuel_sales_amount), 2) ?></td></tr>
+                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">Less A/R</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right; color:#dc2626;">- ₱<?= number_format((float)($closing_record['total_ar'] ?? 0), 2) ?></td></tr>
+                            <tr style="font-weight:700; background:#f0fdf4;"><td style="padding:6px 10px; border:1px solid #bbf7d0;">Expected Cash</td><td style="padding:6px 10px; border:1px solid #bbf7d0; text-align:right; color:#15803d;">₱<?= number_format((float)($closing_record['expected_cash'] ?? $total_fuel_sales_amount), 2) ?></td></tr>
+                            <tr style="font-weight:800; background:#e0f2fe;"><td style="padding:8px 10px; border:1px solid #7dd3fc; font-size:13px; color:#0369a1;">Total Cash in Bank</td><td style="padding:8px 10px; border:1px solid #7dd3fc; text-align:right; font-size:14px; color:#0369a1;">₱<?= number_format((float)($closing_record['total_cash_bank'] ?? $closing_record['expected_cash'] ?? $total_fuel_sales_amount), 2) ?></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
 
                 <!-- PREPARED BY SIGNATURE -->
                 <table class="print-only-signature" style="width:100%; margin-top:25px; page-break-inside:avoid; border:none; border-collapse:collapse;">

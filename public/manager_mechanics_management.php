@@ -316,8 +316,9 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>
 /* Page Header */
-.stock-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #e2e8f0; }
-.stock-title { font-size:22px!important; font-weight:800!important; color:#002F70!important; margin:0!important; display:flex; align-items:center; gap:10px; }
+.stock-page { padding: 0 !important; margin: 0 !important; width: 100%; box-sizing: border-box; }
+.stock-head { display:flex!important; align-items:center!important; justify-content:space-between!important; margin-top:0!important; margin-bottom:25px!important; padding-bottom:0!important; border-bottom:none!important; }
+.stock-title { font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif!important; font-size:24px!important; font-weight:700!important; color:#002f70!important; margin:0!important; line-height:1.2!important; display:flex!important; align-items:center!important; gap:10px!important; text-transform:uppercase!important; letter-spacing:0.5px!important; }
 
 /* KPI Grid - 6 columns */
 .txn-kpi-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:20px; }

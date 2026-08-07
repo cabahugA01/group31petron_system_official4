@@ -156,10 +156,14 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 /* ── Dashboard Layout ────────────────────────────────────────────── */
+.main, .main-content {
+    padding: 20px 20px 60px 20px !important;
+}
 .dev-dashboard {
-    padding: 0 32px 60px 32px;
+    padding: 0 !important;
     background: #f8fafc;
     min-height: calc(100vh - 110px);
+    width: 100%;
 }
 
 /* ── Welcome Header with Date Filter ────────────────────────────── */
@@ -167,20 +171,24 @@ include __DIR__ . '/../partials/header.php';
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 20px 0 22px 0;
+    padding: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 25px !important;
     flex-wrap: wrap;
     gap: 12px;
-    border-bottom: 2px solid #e2e8f0;
-    margin-bottom: 24px;
+    border: none !important;
+    width: 100%;
 }
 
 .dev-welcome-left h1 {
-    font-size: 22px;
-    font-weight: 900;
-    color: #00264D;
-    margin: 0 0 3px 0;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    color: #002f70 !important;
+    margin: 0 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+    line-height: 1.2 !important;
 }
 
 .dev-welcome-left .dev-subtitle {

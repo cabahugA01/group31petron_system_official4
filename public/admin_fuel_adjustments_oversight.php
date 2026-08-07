@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Admin Fuel Adjustments Oversight
 // Fetch Source: fuel_adjustments (manager-requested â†’ admin-reviewed/overridden)
@@ -470,6 +470,11 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
+.main-content {
+    padding: 20px 0 !important;
+    box-sizing: border-box;
+    width: 100%;
+}
 /* == PAGE HEADER - Petron unified standard == */
 .int-head {
     display: flex;
@@ -479,7 +484,7 @@ require_once __DIR__ . '/../partials/header.php';
     gap: 12px;
     margin-bottom: 20px;
     margin-top: 0 !important;
-    padding-top: 16px;
+    padding-top: 0 !important;
     padding-bottom: 16px;
     border-bottom: 2px solid #e9ecef;
 }
@@ -813,6 +818,7 @@ require_once __DIR__ . '/../partials/header.php';
 .ato-empty i { font-size:44px; display:block; margin-bottom:14px; opacity:.4; }
 </style>
 
+<div class="main-content">
 <div class="int-head">
     <div>
         <h1><i class="fas fa-sliders-h"></i> Fuel Adjustments Oversight</h1>
@@ -1200,5 +1206,6 @@ function rejectOverride(id) {
     <input type="hidden" name="action" id="overrideFormAction">
     <input type="hidden" name="id" id="overrideFormId">
 </form>
+</div> <!-- /.main-content -->
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

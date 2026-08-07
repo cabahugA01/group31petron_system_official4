@@ -390,10 +390,10 @@ include __DIR__ . '/../partials/header.php';
 }
 
 /* Page wrapper */
-.db-page { padding: 24px 30px 60px; width:100%; max-width:100%; box-sizing:border-box; }
-.db-page-title { display:flex; align-items:center; gap:12px; margin-bottom:4px; }
-.db-page-title h1 { font-size:22px; font-weight:800; color:var(--db-blue); margin:0; letter-spacing:.3px; }
-.db-page-title i  { font-size:22px; color:var(--db-blue); }
+.db-page { padding: 0 !important; width:100%; max-width:100%; box-sizing:border-box; }
+.db-page-title { display:flex; align-items:center; gap:10px; margin-bottom:25px !important; margin-top:0 !important; padding:0 !important; border:none !important; width:100%; }
+.db-page-title h1 { margin:0 !important; color:#002f70 !important; font-size:24px !important; font-weight:700 !important; text-transform:uppercase !important; letter-spacing:0.5px !important; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important; display:flex !important; align-items:center !important; gap:10px !important; line-height:1.2 !important; }
+.db-page-title i  { font-size:24px !important; color:#002f70 !important; }
 .db-subtitle      { color:#64748b; font-size:13px; margin:0 0 24px; }
 
 /* Stat cards */
@@ -415,44 +415,34 @@ include __DIR__ . '/../partials/header.php';
 .db-stat-val   { font-size:22px; font-weight:800; color:#0f172a; line-height:1.2; }
 .db-stat-sub   { font-size:11px; color:#94a3b8; margin-top:1px; }
 
-/* Tabs */
+/* Tabs - Reports-style boxed design */
 .db-tab-bar {
-  display:flex; gap:8px;
-  border-bottom:none;
-  margin-bottom:24px; overflow-x:auto;
-  background:transparent !important;
-  border-radius:0; padding:0;
-  box-shadow:none !important;
-  flex-wrap:nowrap;
+    display: flex !important; flex-wrap: wrap !important;
+    margin-bottom: 22px !important;
+    border: 1px solid #d1d9e6 !important; border-radius: 0 !important;
+    overflow: hidden !important; border-bottom: 3px solid #00264D !important;
+    gap: 0 !important; background: transparent !important;
+    padding: 0 !important; width: 100% !important;
 }
 .db-tab-btn {
-  padding:10px 20px !important;
-  border:1.5px solid #d1d5db !important;
-  background:#f8fafc !important;
-  cursor:pointer;
-  font-size:13px !important;
-  font-weight:700 !important;
-  color:#374151 !important;
-  border-radius:8px !important;
-  display:flex; align-items:center; gap:8px;
-  white-space:nowrap; letter-spacing:.15px;
-  transition:all .15s ease;
-  opacity:1; margin-bottom:0;
-  box-shadow:0 1px 3px rgba(0,0,0,.06);
+    flex: 1 !important; min-width: 140px !important;
+    padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important;
+    color: #334155 !important; background: #ffffff !important;
+    border: none !important; border-right: 1px solid #d1d9e6 !important;
+    border-radius: 0 !important; text-decoration: none !important;
+    transition: all 0.15s ease !important;
+    display: inline-flex !important; align-items: center !important;
+    justify-content: center !important; gap: 7px !important;
+    text-transform: uppercase !important; letter-spacing: 0.3px !important;
+    text-align: center !important; cursor: pointer !important;
+    margin-bottom: 0 !important; box-shadow: none !important; white-space: nowrap;
 }
+.db-tab-btn:last-child { border-right: none !important; }
 .db-tab-btn i { font-size:13px; color:inherit; }
-.db-tab-btn:hover {
-  color:var(--db-blue) !important;
-  background:#eff6ff !important;
-  border-color:var(--db-blue) !important;
-  box-shadow:0 2px 6px rgba(0,47,108,.12);
-}
+.db-tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
 .db-tab-btn.active {
-  color:#ffffff !important;
-  background:var(--db-blue) !important;
-  border-color:var(--db-blue) !important;
-  font-weight:800 !important;
-  box-shadow:0 3px 8px rgba(0,47,108,.25);
+    background: #00264D !important; color: #ffffff !important;
+    font-weight: 800 !important; box-shadow: none !important;
 }
 .db-tab-pane       { display:none; }
 .db-tab-pane.active { display:block; }
@@ -886,8 +876,8 @@ if ($msg) {
 
 <div class="db-page">
   <!-- Header Row -->
-  <div class="db-header-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:16px;">
-    <div class="db-page-title" style="margin-bottom:0;">
+  <div class="db-header-row">
+    <div class="db-page-title">
       <i class="fas fa-database"></i>
       <h1>DATABASE MANAGEMENT</h1>
     </div>

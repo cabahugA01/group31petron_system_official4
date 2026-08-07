@@ -1353,7 +1353,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             height: 70px;
             z-index: 12002;
             background-color: var(--header-bg);
-            padding: 0; /* Reset padding to handle split bg */
+            padding: 0 32px; /* Balanced padding matching main layout (32px) */
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -1568,7 +1568,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             bottom: 0;
             overflow-y: auto;
             overflow-x: hidden;
-            padding: 0 24px 60px 24px;
+            padding: 20px 20px 60px 20px;
             background: #f8f9fa;
             transition: left 0.3s ease;
             pointer-events: auto !important;
@@ -2169,7 +2169,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     .header-right {
         display: flex;
         align-items: center;
-        gap: 5px;  /* Ultra compact gap */
+        gap: 16px;  /* Increased gap for comfortable spacing */
         flex-shrink: 0;
         padding-right: 0;  /* No extra padding - balanced with left */
         overflow: visible;  /* Ensure content not clipped */
@@ -3963,11 +3963,6 @@ require_once __DIR__ . '/rbac_menu.php';
             </div>
             <?php endif; ?>
 
-            <!-- Theme Toggle Button -->
-            <div class="theme-toggle-btn" id="themeToggle" title="Switch to Dark Mode" aria-label="Toggle theme" onclick="petronToggleTheme(event)">
-                <i class="fas fa-moon" id="themeIcon"></i>
-            </div>
-
             <!-- Profile Dropdown -->
             <?php
             // Build display name from first_name and last_name
@@ -4017,7 +4012,7 @@ require_once __DIR__ . '/rbac_menu.php';
         </div>
 </header>
 
-  <main class="main">
+  <main class="main" style="padding: 20px 20px 70px 20px !important;">
 
     <!-- ══ GLOBAL FLASH MESSAGE STYLES â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
     <style>

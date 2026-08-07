@@ -927,6 +927,9 @@ body, html {
     overflow-x: hidden !important;
     overflow-y: visible !important;
     max-width: 100% !important;
+    padding: 0 !important;
+    box-sizing: border-box;
+    width: 100%;
 }
 .table-wrap {
     overflow-x: auto !important;
@@ -935,28 +938,30 @@ body, html {
     -webkit-overflow-scrolling: touch;
 }
 
-/* == PAGE HEADER - Petron standard == */
+/* == PAGE HEADER - Uniform standard across all modules == */
 .int-head {
     display: flex;
-    align-items: flex-start;
     justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 20px;
+    gap: 16px;
+    align-items: center;
     margin-top: 0 !important;
-    padding-top: 16px;
-    padding-bottom: 16px;
-    border-bottom: 2px solid #e9ecef;
+    margin-bottom: 25px !important;
+    padding: 0 !important;
+    border: none !important;
+    width: 100%;
 }
 .int-head h1 {
-    font-size: 22px !important;
-    font-weight: 700 !important;
-    color: var(--petron-blue, #00264D) !important;
     margin: 0 !important;
+    color: #002f70 !important;
+    font-size: 24px !important;
+    font-weight: 700 !important;
     text-transform: uppercase !important;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    letter-spacing: 0.5px !important;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    line-height: 1.2 !important;
 }
 .int-head .sub {
     font-size: 13px;
@@ -1191,6 +1196,35 @@ body, html {
     text-align: left;
     table-layout: auto;
 }
+/* ── Tab Navigation - Reports-style boxed design ── */
+.tab-nav {
+    display: flex !important; flex-wrap: wrap !important;
+    margin-bottom: 22px !important;
+    border: 1px solid #d1d9e6 !important; border-radius: 0 !important;
+    overflow: hidden !important; border-bottom: 3px solid #00264D !important;
+    gap: 0 !important; background: transparent !important;
+    padding: 0 !important; width: 100% !important;
+}
+.tab-btn {
+    flex: 1 !important; min-width: 140px !important;
+    padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important;
+    color: #334155 !important; background: #ffffff !important;
+    border: none !important; border-right: 1px solid #d1d9e6 !important;
+    border-radius: 0 !important; text-decoration: none !important;
+    transition: all 0.15s ease !important;
+    display: inline-flex !important; align-items: center !important;
+    justify-content: center !important; gap: 7px !important;
+    text-transform: uppercase !important; letter-spacing: 0.3px !important;
+    text-align: center !important; cursor: pointer !important;
+    margin-bottom: 0 !important; box-shadow: none !important; white-space: nowrap;
+}
+.tab-btn:last-child { border-right: none !important; }
+.tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
+.tab-btn.active {
+    background: #00264D !important; color: #ffffff !important;
+    font-weight: 800 !important; box-shadow: none !important;
+    border-bottom-color: transparent !important;
+}
 .afto-tbl thead tr {
     background: #002F70;
 }
@@ -1362,6 +1396,7 @@ body, html {
 }
 </style>
 
+<div class="main-content">
 <!-- Page Header -->
 <div class="int-head">
     <div>
@@ -1438,7 +1473,7 @@ body, html {
 </div>
 
 <!-- Tab Navigation -->
-<div class="tab-nav" style="overflow-x:auto; flex-wrap:nowrap; white-space:nowrap; padding-bottom:2px;">
+<div class="tab-nav">
     <a href="admin_inventory_merchandise.php?<?= http_build_query(array_merge($_GET, ['tab' => 'overview'])) ?>"
        class="tab-btn <?= $active_tab === 'overview' ? 'active' : '' ?>">
         <i class="fas fa-boxes"></i> Inventory Overview
@@ -1451,7 +1486,7 @@ body, html {
        class="tab-btn <?= $active_tab === 'alerts' ? 'active' : '' ?>">
         <i class="fas fa-exclamation-triangle"></i> Stock Alerts
         <?php if (($kpi_low_stock + $kpi_critical_stock + $kpi_out_of_stock) > 0): ?>
-            <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?= ($kpi_low_stock + $kpi_critical_stock + $kpi_out_of_stock) ?></span>
+            <span style="background:#dc2626 !important;color:#fff !important;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;line-height:1;"><?= ($kpi_low_stock + $kpi_critical_stock + $kpi_out_of_stock) ?></span>
         <?php endif; ?>
     </a>
 </div>
@@ -2506,5 +2541,6 @@ document.addEventListener('DOMContentLoaded', function() {
     <?php endif; ?>
 });
 </script>
+</div> <!-- /.main-content -->
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

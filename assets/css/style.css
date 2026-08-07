@@ -45,9 +45,9 @@ a {
    Modals (.modal-card, .modal-box, .modal-dialog) are excluded.
    ═══════════════════════════════════════════════════ */
 
-/* Main content area — no side gaps */
+/* Main content area — balanced 24px side spacing */
 .main, .main-content {
-    padding: 0 0 60px 0 !important;
+    padding: 0 24px 60px 24px !important;
 }
 
 /* All common outer page wrapper patterns — remove max-width centering */
@@ -176,7 +176,7 @@ table {
 .user-role{color:var(--muted);font-size:12px}
 .logout{display:flex;justify-content:center;padding:10px;border-radius:12px;border:1px solid var(--line);color:#344054;background:#fff}
 
-.main, .main-content{flex:1;min-width:0;width:auto;height:100%;overflow-y:auto;overflow-x:hidden;padding:12px 0 60px 0;position:relative}
+.main, .main-content{flex:1;min-width:0;width:auto;height:100%;overflow-y:auto;overflow-x:hidden;padding:12px 24px 60px 24px;position:relative}
 
 .notif-btn {
   position: absolute;
@@ -1884,42 +1884,96 @@ table thead th {
     color: #003d7a !important;
 }
 
-/* Standardized Stock/Inventory Page Wrapper */
+/* Standardized Stock/Inventory Page Wrapper for all Manager/Staff Modules */
 .stock-page {
-    padding: 16px 24px 56px !important;
-    margin-top: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
     color: #1e293b;
-    background: #f8fafc;
-    min-height: calc(100vh - 70px);
+    background: transparent;
     width: 100% !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
 }
 .stock-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 14px;
-    flex-wrap: wrap;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 15px !important;
+    flex-wrap: wrap !important;
     margin-top: 0 !important;
-    margin-bottom: 18px;
+    margin-bottom: 25px !important;
+    padding: 0 !important;
+    border: none !important;
 }
-.stock-title {
-    font-size: 26px;
-    font-weight: 800;
-    color: #002F70;
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    text-transform: uppercase;
+.stock-title,
+h1.stock-title,
+.stock-head h1,
+.mgr-title-block h1,
+.page-head h1 {
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    color: #002F70 !important;
+    margin: 0 !important;
+    line-height: 1.2 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
 }
 .stock-sub {
-    font-size: 13px;
-    color: #64748b;
-    margin-top: 4px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: .3px;
+    font-size: 13px !important;
+    color: #64748b !important;
+    margin-top: 4px !important;
+    font-weight: 600 !important;
+    text-transform: none !important;
+    letter-spacing: .3px !important;
 }
+
+/* Standardized Manager Sub-tab Navigation Strip */
+.rpt-subtab-nav,
+.txn-subtab-nav {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    margin-bottom: 22px !important;
+    border: 1px solid #d1d9e6 !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+    border-bottom: 3px solid #00264D !important;
+    background: #ffffff !important;
+}
+.rpt-subtab-btn,
+.txn-subtab-strip-btn {
+    padding: 10px 20px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    color: #475569 !important;
+    background: #f8fafc !important;
+    border: none !important;
+    border-right: 1px solid #e2e8f0 !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.4px !important;
+    transition: all 0.15s ease-in-out !important;
+    text-decoration: none !important;
+}
+.rpt-subtab-btn:hover,
+.txn-subtab-strip-btn:hover {
+    background: #e2e8f0 !important;
+    color: #00264D !important;
+}
+.rpt-subtab-btn.active,
+.txn-subtab-strip-btn.active {
+    background: #00264D !important;
+    color: #ffffff !important;
+}
+.rpt-subtab-btn.active i,
+.txn-subtab-strip-btn.active i {
+    color: #ffffff !important;
+}
+
 

@@ -392,8 +392,13 @@ if (in_array($export, ['csv','excel','pdf'])) {
 require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 <style>
+.main-content {
+    padding: 20px 0 !important;
+    box-sizing: border-box;
+    width: 100%;
+}
 /* == PAGE HEADER - matches SuperAdmin int-head standard == */
-.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 16px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; }
+.int-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; margin-top: 0 !important; padding-top: 0 !important; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; }
 .int-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
 .int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
 
@@ -488,6 +493,7 @@ html, body { max-width:100vw; overflow-x:hidden; }
 .audit-meta { display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px; font-size:10px; color:#64748b; margin-top:6px; border-top:1px dashed #e2e8f0; padding-top:4px; }
 </style>
 
+<div class="main-content">
 <div class="int-head">
     <div>
         <h1><i class="fas fa-truck"></i> Fuel Deliveries Oversight</h1>
@@ -960,5 +966,6 @@ function reopenDel(id, dr) {
     <input type="hidden" name="action" value="reopen">
     <input type="hidden" id="reopenDelId" name="delivery_id">
 </form>
+</div> <!-- /.main-content -->
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

@@ -481,13 +481,13 @@ a.rpt-action-btn:hover,
 }
 </style>
 
-<!-- Page Container Wrapper with 32px side padding -->
-<div style="padding: 24px 32px 60px 32px; background: #f8fafc; min-height: calc(100vh - 110px);">
+<!-- Page Container Wrapper -->
+<div style="padding: 0 !important; background: #f8fafc; min-height: calc(100vh - 110px);">
 
     <!-- Header Banner -->
-    <div style="margin-bottom: 20px;">
-        <h1 style="font-size: 24px; font-weight: 800; color: #00264D; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px;">
-            <i class="fas fa-chart-bar" style="color: #0057b8;"></i> System Reports
+    <div style="margin-top: 0 !important; margin-bottom: 25px !important; padding: 0 !important; border: none !important;">
+        <h1 style="font-size: 24px !important; font-weight: 700 !important; color: #002f70 !important; margin: 0 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif !important; display: flex !important; align-items: center !important; gap: 10px !important; line-height: 1.2 !important;">
+            <i class="fas fa-chart-bar"></i> System Reports
         </h1>
     </div>
 

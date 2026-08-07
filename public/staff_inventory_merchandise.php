@@ -350,8 +350,9 @@ unset($_SESSION['inv_notice']);
 <?php endif; ?>
 <style>
 body,html{overflow-x:hidden;max-width:100%;}
-.stock-page{overflow-x:hidden;max-width:100%;}
-.page-head{max-width:100%;overflow:hidden;}
+.stock-page{overflow-x:hidden;max-width:100%;padding:0 !important;margin:0 !important;}
+.page-head { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-top:0 !important; margin-bottom:25px !important; padding:0 !important; border:none !important; width:100%; }
+.page-head h1, .page-head .h1 { margin:0; color:#002f70 !important; font-size:24px !important; font-weight:700 !important; text-transform:uppercase !important; letter-spacing:0.5px !important; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important; display:flex !important; align-items:center !important; gap:10px !important; line-height:1.2 !important; }
 .main, .main-content { padding-top: 0 !important; }
 
 /* ── Summary Cards ── */
@@ -366,8 +367,12 @@ body,html{overflow-x:hidden;max-width:100%;}
 .inv-stat-val{font-size:20px;font-weight:700;color:#1e293b;}
 .inv-stat-icon{font-size:24px;opacity:0.8;}
 @media(max-width:768px){.inv-stats-row{grid-template-columns:repeat(2,1fr);}}
-
-/* ── Filter Bar ── */
+/* ── Navigation Tabs - Matches Reports sub-tab design ── */
+.inv-tab-nav { display: flex !important; flex-wrap: wrap !important; margin-bottom: 22px !important; border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; border-bottom: 3px solid #00264D !important; gap: 0 !important; background: transparent !important; padding: 0 !important; width: 100% !important; }
+.inv-tab-btn { flex: 1 !important; min-width: 140px !important; padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-radius: 0 !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; text-align: center !important; cursor: pointer !important; margin-bottom: 0 !important; box-shadow: none !important; }
+.inv-tab-btn:last-child { border-right: none !important; }
+.inv-tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
+.inv-tab-btn.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; box-shadow: none !important; }
 .inv-filter-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;}
 .inv-filter-bar input[type=text]{padding:8px 10px;border:1px solid #ced4da;border-radius:6px;font-size:13px;color:#374151;background:#fff;height:36px;outline:none;}
 .inv-filter-bar input[type=text]:focus{border-color:#002F70;box-shadow:0 0 0 2px rgba(0,47,112,.1);}
@@ -624,7 +629,7 @@ body.modal-open .main {
 }
 </style>
 
-<div class="page-head" style="display:flex;justify-content:space-between;align-items:flex-start;padding-top:0;padding-bottom:10px;border-bottom:2px solid #e9ecef;margin-bottom:12px;">
+<div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-boxes"></i> Merchandise Inventory</h1>
     </div>
@@ -681,19 +686,17 @@ body.modal-open .main {
 </div>
 
 <!-- ══ TABS NAVIGATION ══ -->
-<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
-    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button type="button" class="inv-tab-btn active" id="tab-overview" onclick="switchInvTab('overview')" style="padding:9px 18px; border-radius:8px; font-weight:700; font-size:13px; cursor:pointer; border:1px solid #002F70; background:#002F70; color:#fff; transition:all .15s;">
-            <i class="fas fa-list"></i> Inventory Overview
-        </button>
-        <button type="button" class="inv-tab-btn" id="tab-stockin" onclick="switchInvTab('stockin')" style="padding:9px 18px; border-radius:8px; font-weight:700; font-size:13px; cursor:pointer; border:1px solid #cbd5e1; background:#fff; color:#475569; transition:all .15s;">
-            <i class="fas fa-arrow-down"></i> Stock In (Read Only)
-        </button>
-        <button type="button" class="inv-tab-btn" id="tab-alerts" onclick="switchInvTab('alerts')" style="padding:9px 18px; border-radius:8px; font-weight:700; font-size:13px; cursor:pointer; border:1px solid #cbd5e1; background:#fff; color:#475569; transition:all .15s;">
-            <i class="fas fa-bell"></i> Stock Alerts
-            <span style="background:#dc2626; color:#fff; font-size:11px; padding:2px 7px; border-radius:12px; margin-left:6px;"><?php echo ($stats['low'] + $stats['out']); ?></span>
-        </button>
-    </div>
+<div class="inv-tab-nav">
+    <button type="button" class="inv-tab-btn active" id="tab-overview" onclick="switchInvTab('overview')">
+        <i class="fas fa-list"></i> Inventory Overview
+    </button>
+    <button type="button" class="inv-tab-btn" id="tab-stockin" onclick="switchInvTab('stockin')">
+        <i class="fas fa-arrow-down"></i> Stock In (Read Only)
+    </button>
+    <button type="button" class="inv-tab-btn" id="tab-alerts" onclick="switchInvTab('alerts')">
+        <i class="fas fa-bell"></i> Stock Alerts
+        <span style="background:#dc2626 !important; color:#ffffff !important; font-size:11px; padding:2px 7px; border-radius:12px; margin-left:6px; font-weight:700; line-height:1;"><?php echo ($stats['low'] + $stats['out']); ?></span>
+    </button>
 </div>
 
 <!-- ══ TAB 1: INVENTORY OVERVIEW ══ -->
@@ -1304,10 +1307,6 @@ function switchInvTab(tab) {
     [btnOv, btnStk, btnAlt].forEach(function(b) {
         if (!b) return;
         b.classList.remove('active');
-        b.style.setProperty('background', '#ffffff', 'important');
-        b.style.setProperty('background-color', '#ffffff', 'important');
-        b.style.setProperty('color', '#334155', 'important');
-        b.style.setProperty('border', '1px solid #cbd5e1', 'important');
     });
     [secOv, secStk, secAlt].forEach(function(s) {
         if (!s) return;
@@ -1315,31 +1314,13 @@ function switchInvTab(tab) {
     });
 
     if (tab === 'overview') {
-        if (btnOv) {
-            btnOv.classList.add('active');
-            btnOv.style.setProperty('background', '#002F70', 'important');
-            btnOv.style.setProperty('background-color', '#002F70', 'important');
-            btnOv.style.setProperty('color', '#ffffff', 'important');
-            btnOv.style.setProperty('border', '1px solid #002F70', 'important');
-        }
+        if (btnOv) btnOv.classList.add('active');
         if (secOv) secOv.style.display = 'block';
     } else if (tab === 'stockin') {
-        if (btnStk) {
-            btnStk.classList.add('active');
-            btnStk.style.setProperty('background', '#002F70', 'important');
-            btnStk.style.setProperty('background-color', '#002F70', 'important');
-            btnStk.style.setProperty('color', '#ffffff', 'important');
-            btnStk.style.setProperty('border', '1px solid #002F70', 'important');
-        }
+        if (btnStk) btnStk.classList.add('active');
         if (secStk) secStk.style.display = 'block';
     } else {
-        if (btnAlt) {
-            btnAlt.classList.add('active');
-            btnAlt.style.setProperty('background', '#002F70', 'important');
-            btnAlt.style.setProperty('background-color', '#002F70', 'important');
-            btnAlt.style.setProperty('color', '#ffffff', 'important');
-            btnAlt.style.setProperty('border', '1px solid #002F70', 'important');
-        }
+        if (btnAlt) btnAlt.classList.add('active');
         if (secAlt) secAlt.style.display = 'block';
     }
 }

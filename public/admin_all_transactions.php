@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'admin_all_transactions';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -317,7 +317,10 @@ html, body {
 .badge-orange{background:#fff7ed;color:#9a3412;} .badge-gray{background:#f1f5f9;color:#475569;}
 .badge-red{background:#fee2e2;color:#991b1b;} .badge-purple{background:#f3e8ff;color:#6b21a8;}
 .modal-section-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:6px 12px;margin:0;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;}
-.stock-page{padding-top:0;}
+.stock-page{padding:0 !important;margin:0 !important;overflow-x:hidden;max-width:100%;}
+.main, .main-content { padding-top: 0 !important; }
+.stock-head { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-top:0 !important; margin-bottom:25px !important; padding:0 !important; border:none !important; width:100%; }
+.stock-title { margin:0 !important; color:#002f70 !important; font-size:24px !important; font-weight:700 !important; text-transform:uppercase !important; letter-spacing:0.5px !important; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important; display:flex !important; align-items:center !important; gap:10px !important; line-height:1.2 !important; }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    PRINT STYLES — matches admin_reports.php clean-room output
@@ -406,7 +409,7 @@ html, body {
 <div class="stock-page">
 
     <!-- â”€â”€ Screen-only toolbar â”€â”€ -->
-    <div class="stock-head" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+    <div class="stock-head">
         <div>
             <h1 class="stock-title"><i class="fas fa-list-alt"></i> All Transactions Oversight</h1>
         </div>

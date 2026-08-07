@@ -1247,23 +1247,25 @@ include __DIR__ . '/../partials/header.php';
 <style>
 /* Header standardization */
 body { overflow-x: hidden; }
+.mim-wrap { width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden !important; padding: 0 !important; margin: 0 !important; }
 /* Prevent horizontal scrollbar on main merchandise table */
 .table-wrap { overflow-x: hidden !important; width: 100% !important; }
 #mgrMerchTable { width: 100% !important; table-layout: auto !important; border-collapse: collapse; }
 #mgrMerchTable thead th { padding: 8px 5px !important; font-size: 11px !important; font-weight: 700 !important; text-transform: uppercase !important; letter-spacing: .2px !important; white-space: nowrap !important; }
 #mgrMerchTable tbody td { padding: 6px 5px !important; font-size: 11.5px !important; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
-.int-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; padding-top:16px; padding-bottom:16px; border-bottom:2px solid #e9ecef; }
-.int-head h1 { font-size:22px !important; font-weight:700 !important; color:#00264D !important; margin:0 !important; text-transform:uppercase !important; display:flex; align-items:center; gap:8px; }
+.int-head { display: flex !important; align-items: center !important; justify-content: space-between !important; flex-wrap: wrap !important; gap: 15px !important; margin-top: 0 !important; margin-bottom: 25px !important; padding: 0 !important; border: none !important; width: 100% !important; }
+.int-head h1 { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important; font-size: 24px !important; font-weight: 700 !important; color: #002f70 !important; margin: 0 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; display: flex !important; align-items: center !important; gap: 10px !important; line-height: 1.2 !important; }
 .int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
 .ato-btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 16px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent; text-decoration:none; transition:all .15s; height:36px; white-space:nowrap; background:white !important; }
 .ato-btn-back { color:#4b5563 !important; border-color:#6b7280 !important; }
 .ato-btn-back:hover { background:#6b7280 !important; color:#fff !important; }
 
-/* Tabs Layout */
-.tab-nav { display:flex; gap:0; border-bottom:2px solid #e2e8f0; margin-bottom:22px; }
-.tab-btn { padding:10px 24px; background:none; border:none; border-bottom:3px solid transparent; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
-.tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
-.tab-btn:hover { color:#002F70; }
+/* Tabs Layout - Matches Reports sub-tab design */
+.tab-nav { display: flex !important; flex-wrap: wrap !important; margin-bottom: 22px !important; border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; border-bottom: 3px solid #00264D !important; gap: 0 !important; }
+.tab-btn { flex: 1 !important; min-width: 140px !important; padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-bottom: none !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; text-align: center !important; cursor: pointer !important; margin-bottom: 0 !important; }
+.tab-btn:last-child { border-right: none !important; }
+.tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
+.tab-btn.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; border-bottom: none !important; }
 
 .cat-header td { font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:.8em; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px; text-align:center; }
 .merch-row:hover { background:#f8f9fa; }
@@ -1463,6 +1465,7 @@ body { overflow-x: hidden; }
 .flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 </style>
 
+<div class="mim-wrap">
 <div class="int-head">
     <div>
         <h1><i class="fas fa-boxes"></i> Merchandise Inventory</h1>
@@ -1879,8 +1882,8 @@ body { overflow-x: hidden; }
 
 <!-- ══ PENDING INVENTORY ADJUSTMENTS (STAFF ADJUSTMENTS FOR MANAGER APPROVAL) ══ -->
 <div class="tbl-card" style="margin-bottom:24px; background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; overflow:hidden;">
-    <div class="tbl-hd" style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; background:linear-gradient(135deg,#002F70,#001838); color:#fff;">
-        <div class="tbl-title" style="font-size:15px; font-weight:700; color:#fff; display:flex; align-items:center; gap:8px;">
+    <div class="tbl-hd" style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px; background:#fff; border-bottom:1px solid #e9ecef;">
+        <div class="tbl-title" style="font-size:14px; font-weight:700; color:#00264D; display:flex; align-items:center; gap:8px;">
             <i class="fas fa-sliders" style="color:#fd7e14;"></i> Staff Inventory Adjustments (Pending Approval)
         </div>
 
@@ -3865,5 +3868,6 @@ function closeEditProductModal() {
 }
 </script>
 
+</div> <!-- /.mim-wrap -->
 <?php include __DIR__ . '/../partials/footer.php'; ?>
 
