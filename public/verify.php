@@ -1,4 +1,5 @@
 <?php
+date_default_timezone_set('Asia/Manila');
 /**
  * verify.php — QR Code Scan Target / Transaction Verification Page
  * Accessible without login for QR scan purposes (read-only, no sensitive mutations).
@@ -136,15 +137,28 @@ if ($txn) {
     $pay_method   = $txn['payment_method'] ?? 'Cash';
     $total        = (float)($txn['total_amount'] ?? 0);
     $amount_paid  = (float)($txn['amount_paid']  ?? $txn['amount_tendered'] ?? 0);
+    $tendered     = (float)($txn['amount_tendered'] ?? $txn['amount_received'] ?? $amount_paid);
+    $change       = (float)($txn['change_amount']   ?? $txn['change'] ?? 0);
     $balance_due  = (float)($txn['balance_due']  ?? 0);
-    
+
+    // Fix change if tendered > total but change stored as 0
+    if ($tendered > $total && $change <= 0) {
+        $change = round($tendered - $total, 2);
+    }
+    if ($tendered <= 0 && strtolower($txn['payment_method'] ?? '') === 'cash') {
+        $tendered = $total;
+        $change   = 0.00;
+    }
+    $amount_paid = $amount_paid > 0 ? $amount_paid : $tendered;
+
     // Station info
-    $station = $txn['station_name'] ?? 'Petron Station';
-    $vat_tin = $txn['station_vat_tin'] ?? '236-002-207-0000';
-    $addr = $txn['station_address'] ?? $txn['station_location'] ?? 'Vamenta Blvd., Carmen, Cagayan de Oro City';
+    $station = 'PETRON STATION MANAGEMENT SYSTEM';
+    $vat_tin = '248-719-305-00000';
+    $atp_no  = 'BIR-ATP-2026-00984712';
+    $addr    = 'Vamenta Blvd., Carmen, Cagayan de Oro City, Misamis Oriental';
 
     // Determine normalised payment status
-    $stored_ps    = strtolower(trim($txn['payment_status'] ?? ''));
+    $stored_ps = strtolower(trim($txn['payment_status'] ?? ''));
     if (in_array($stored_ps, ['partial payment','partial','partially paid'])) {
         $pay_norm = 'partial';
         if ($balance_due <= 0) $balance_due = max(0, $total - $amount_paid);
@@ -157,20 +171,29 @@ if ($txn) {
     }
 
     $pay_labels = [
-        'paid'    => ['label'=>'PAID',              'bg'=>'#166534','border'=>'#86efac','txt'=>'#fff'],
-        'partial' => ['label'=>'PARTIALLY PAID',    'bg'=>'#92400e','border'=>'#fde68a','txt'=>'#fef9c3'],
-        'pending' => ['label'=>'PENDING',           'bg'=>'#9a3412','border'=>'#fed7aa','txt'=>'#ffedd5'],
-        'credit'  => ['label'=>'CREDIT ACCOUNT',    'bg'=>'#6b21a8','border'=>'#d8b4fe','txt'=>'#f3e8ff'],
+        'paid'    => ['label'=>'PAID',           'bg'=>'#166534','border'=>'#86efac','txt'=>'#fff'],
+        'partial' => ['label'=>'PARTIALLY PAID', 'bg'=>'#92400e','border'=>'#fde68a','txt'=>'#fef9c3'],
+        'pending' => ['label'=>'PENDING',        'bg'=>'#9a3412','border'=>'#fed7aa','txt'=>'#ffedd5'],
+        'credit'  => ['label'=>'CREDIT ACCOUNT', 'bg'=>'#6b21a8','border'=>'#d8b4fe','txt'=>'#f3e8ff'],
     ];
     $ps_cfg = $pay_labels[$pay_norm] ?? $pay_labels['paid'];
 
     $validation = $txn['validation_status'] ?? 'Pending';
     $printed_at = date('M j, Y h:i A');
 
-    // Subtotal / VAT
-    $items_sum = array_sum(array_map(fn($i) => (float)($i['subtotal'] ?? 0), $items));
-    $subtotal  = (float)($txn['subtotal_amount'] ?? ($items_sum ?: $total / 1.12));
-    $vat_amt   = (float)($txn['vat_amount']      ?? round($subtotal * 0.12, 2));
+    // ── VAT Computation (100% BIR-Accurate, matches receipt.php) ─────────────
+    // ALWAYS derive from stored total_amount — never from items_sum
+    if (!empty($txn['subtotal_amount']) && (float)$txn['subtotal_amount'] > 0) {
+        $subtotal = (float)$txn['subtotal_amount'];
+        $vat_amt  = !empty($txn['vat_amount']) ? (float)$txn['vat_amount'] : round($subtotal * 0.12, 2);
+    } else {
+        $subtotal = $total > 0 ? round($total / 1.12, 2) : 0;
+        $vat_amt  = $total > 0 ? round($total - $subtotal, 2) : 0;
+    }
+    // Ensure Vatable + VAT = Grand Total exactly
+    if (round($subtotal + $vat_amt, 2) !== round($total, 2)) {
+        $vat_amt = round($total - $subtotal, 2);
+    }
 }
 
 // Set default $addr if $txn doesn't exist (for error page footer)
@@ -499,8 +522,7 @@ body {
       <div class="vrow"><span class="vrow-key">Method</span><span class="vrow-val"><?php echo htmlspecialchars($pay_method); ?></span></div>
 
       <?php if ($pay_norm === 'paid'): ?>
-        <div class="vrow"><span class="vrow-key">Amount Tendered</span><span class="vrow-val">&#8369;<?php echo number_format($amount_paid > 0 ? $amount_paid : $total, 2); ?></span></div>
-        <?php $change = (float)($txn['change_amount'] ?? 0); ?>
+        <div class="vrow"><span class="vrow-key">Amount Tendered</span><span class="vrow-val">&#8369;<?php echo number_format($tendered > 0 ? $tendered : $total, 2); ?></span></div>
         <?php if ($change > 0): ?>
         <div class="vrow"><span class="vrow-key">Change</span><span class="vrow-val">&#8369;<?php echo number_format($change, 2); ?></span></div>
         <?php endif; ?>

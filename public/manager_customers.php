@@ -120,9 +120,48 @@ body.modal-open { overflow:hidden; }
 .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .form-title { grid-column:1 / -1; color:#002f70; font-weight:800; font-size:12px; text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:4px; margin-top:10px; margin-bottom:2px; }
 
-/* Dynamic Vehicle Box */
+/* Dynamic Vehicle Box & Remove Button */
 .vehicle-card { background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:12px; margin-bottom:10px; position:relative; }
-.vehicle-card .remove-v-btn { position:absolute; top:8px; right:10px; border:0; background:none; color:#dc2626; font-size:16px; cursor:pointer; }
+.vehicle-card .remove-v-btn,
+button.remove-v-btn,
+.remove-v-btn {
+    position: absolute !important;
+    top: 8px !important;
+    right: 10px !important;
+    border: 1px solid #fca5a5 !important;
+    background: #fee2e2 !important;
+    color: #dc2626 !important;
+    -webkit-text-fill-color: #dc2626 !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 6px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    transition: all 0.18s ease !important;
+    box-shadow: 0 1px 3px rgba(220, 38, 38, 0.12) !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+    z-index: 10 !important;
+}
+.vehicle-card .remove-v-btn:hover,
+button.remove-v-btn:hover,
+.remove-v-btn:hover {
+    background: #dc2626 !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    border-color: #dc2626 !important;
+    box-shadow: 0 2px 6px rgba(220, 38, 38, 0.25) !important;
+}
+.vehicle-card .remove-v-btn i,
+button.remove-v-btn i {
+    color: inherit !important;
+    -webkit-text-fill-color: inherit !important;
+    font-size: 13px !important;
+}
 
 /* View Grid */
 .view-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
@@ -943,7 +982,7 @@ function addVehicleRow(v = {}) {
     div.className = 'vehicle-card';
     div.id = 'vehicleRow_' + vehicleIndex;
     div.innerHTML = `
-        <button type="button" class="remove-v-btn" onclick="document.getElementById('vehicleRow_${vehicleIndex}').remove()">&times;</button>
+        <button type="button" class="remove-v-btn" title="Remove Vehicle" onclick="document.getElementById('vehicleRow_${vehicleIndex}').remove()"><i class="fas fa-times"></i></button>
         <div class="form-grid" style="gap:8px;">
             <div class="cust-field">
                 <label>Plate Number</label>
@@ -1169,7 +1208,7 @@ function viewCustomer(id) {
                         <td><strong>${h(j.jo_no || '-')}</strong></td>
                         <td>${h(j.vehicle || '-')}</td>
                         <td>${h(j.service || '-')}</td>
-                        <td>Mechanic #${h(j.mechanic || 'N/A')}</td>
+                        <td>${h(j.mechanic ? (String(j.mechanic).match(/^\d+$/) ? 'Mechanic #' + j.mechanic : j.mechanic) : 'Unassigned')}</td>
                         <td><span class="pill active">${h(j.status || 'Completed')}</span></td>
                     </tr>
                 `).join('');

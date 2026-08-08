@@ -5152,12 +5152,12 @@ input[list] {
                                         <div class="prod-group-header"
                                              data-group="<?= htmlspecialchars($p['category']) ?>"
                                              style="padding:5px 12px 3px;font-size:10px;font-weight:700;
-                                                    color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;
+                                                    color:#64748b;text-transform:uppercase;letter-spacing:.6px;
                                                     background:#f8fafc;border-top:1px solid #f1f5f9;">
                                             <?= htmlspecialchars($p['category']) ?>
                                         </div>
                                         <?php $last_cat = $p['category']; endif; ?>
-                                        <div class="prod-option"
+                                        <label class="prod-option"
                                              data-id="<?= (int)$p['product_id'] ?>"
                                              data-name="<?= htmlspecialchars($p['product_name']) ?>"
                                              data-sku="<?= htmlspecialchars($p['sku']) ?>"
@@ -5167,13 +5167,27 @@ input[list] {
                                              data-stock="<?= (int)$p['stock_level'] ?>"
                                              data-unit="<?= htmlspecialchars($p['unit'] ?? 'pc') ?>"
                                              data-search="<?= strtolower(htmlspecialchars($p['product_name'].' '.$p['sku'].' '.$p['category'].' '.$p['size'])) ?>"
-                                             onclick="selectProduct(this)"
                                              style="padding:8px 14px;cursor:pointer;
                                                     display:flex;align-items:center;
-                                                    border-bottom:1px solid #f8fafc;gap:8px;
+                                                    border-bottom:1px solid #f8fafc;gap:10px;
                                                     justify-content:space-between;
-                                                    <?= $out_of_stock ? 'opacity:.6;' : '' ?>">
-                                            <!-- Product name + SKU only -->
+                                                    transition:background .15s;
+                                                    <?= $out_of_stock ? 'opacity:.55;' : '' ?>"
+                                             onmouseover="this.style.background='#f0f7ff'" onmouseout="this.style.background=''">
+                                            <input type="checkbox"
+                                                   class="merch-prod-checkbox"
+                                                   data-id="<?= (int)$p['product_id'] ?>"
+                                                   data-name="<?= htmlspecialchars($p['product_name']) ?>"
+                                                   data-sku="<?= htmlspecialchars($p['sku']) ?>"
+                                                   data-cat="<?= htmlspecialchars($p['category']) ?>"
+                                                   data-size="<?= htmlspecialchars($p['size']) ?>"
+                                                   data-price="<?= (float)$p['unit_price'] ?>"
+                                                   data-stock="<?= (int)$p['stock_level'] ?>"
+                                                   data-unit="<?= htmlspecialchars($p['unit'] ?? 'pc') ?>"
+                                                   <?= $out_of_stock ? 'disabled' : '' ?>
+                                                   onchange="onProductCheckboxChange(this)"
+                                                   style="width:16px;height:16px;accent-color:#002F70;cursor:pointer;flex-shrink:0;">
+                                            <!-- Product name + SKU -->
                                             <span style="min-width:0;flex:1;">
                                                 <span style="font-size:13px;font-weight:600;color:<?= $out_of_stock ? '#94a3b8' : '#1e293b' ?>;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                                                     <?= htmlspecialchars($p['product_name']) ?>
@@ -5188,7 +5202,10 @@ input[list] {
                                                     <?php endif; ?>
                                                 </span>
                                             </span>
-                                        </div>
+                                            <span style="font-size:11px;font-weight:700;color:#002F70;white-space:nowrap;">
+                                                ₱<?= number_format((float)$p['unit_price'], 2) ?>
+                                            </span>
+                                        </label>
                                         <?php endforeach; ?>
                                         <?php endif; ?>
                                     </div>
@@ -6478,13 +6495,6 @@ input[list] {
             const q = (document.getElementById('productSearch')?.value || '').toLowerCase();
             const list = document.getElementById('productDropdownList');
             if (!list) return;
-            // Only clear selectedProduct if user is actively changing text away from selection
-            if (selectedProduct) {
-                const currentLabel = selectedProduct.name + (selectedProduct.size ? ' · ' + selectedProduct.size : '');
-                if (q !== currentLabel.toLowerCase()) {
-                    selectedProduct = null; // user is searching for a different product
-                }
-            }
             list.style.display = 'block';
             list.querySelectorAll('.prod-option').forEach(opt => {
                 const search = (opt.dataset.search || '').toLowerCase();
@@ -6498,7 +6508,83 @@ input[list] {
             });
         }
 
+        // ── Called when a product checkbox is toggled — auto-adds/removes cart item ──
+        function onProductCheckboxChange(cb) {
+            const pid   = String(cb.dataset.id);
+            const name  = cb.dataset.name;
+            const price = parseFloat(cb.dataset.price) || 0;
+            const stock = parseInt(cb.dataset.stock) || 0;
+            const unit  = cb.dataset.unit || 'Piece (pc)';
+            const cat   = cb.dataset.cat || '';
+            const size  = cb.dataset.size || '';
+
+            if (cb.checked) {
+                // Guard stock
+                if (stock <= 0) {
+                    showTxnAlert('This product is out of stock.', 'warning');
+                    cb.checked = false;
+                    return;
+                }
+                const existing = cart.find(i => i.item_type === 'merchandise' && String(i.product_id) === pid);
+                if (!existing) {
+                    cart.push({
+                        item_type:    'merchandise',
+                        product_id:   pid,
+                        product_name: name,
+                        category:     cat,
+                        size_variant: size,
+                        quantity:     1,
+                        unit_price:   price,
+                        unit:         unit,
+                    });
+                }
+            } else {
+                // Remove from cart
+                cart = cart.filter(i => !(i.item_type === 'merchandise' && String(i.product_id) === pid));
+            }
+
+            // Also fill in the form fields for reference
+            selectedProduct = cb.checked ? {
+                id: pid, name, sku: cb.dataset.sku, cat, size, price, stock, unit
+            } : null;
+            if (cb.checked) {
+                const search = document.getElementById('productSearch');
+                if (search) search.value = name + (size ? ' · ' + size : '');
+                const skuEl   = document.getElementById('itemSku');
+                const catEl   = document.getElementById('itemCategory');
+                const priceEl = document.getElementById('itemUnitPrice');
+                const stockEl = document.getElementById('itemStock');
+                if (skuEl)   skuEl.value   = cb.dataset.sku || '—';
+                if (catEl)   catEl.value   = cat || '—';
+                if (priceEl) priceEl.value = price.toFixed(2);
+                if (stockEl) {
+                    stockEl.value = stock > 0 ? stock + ' available' : 'Out of stock';
+                    stockEl.style.color = stock > 0 ? '#065f46' : '#dc2626';
+                }
+            }
+
+            renderCart();
+            updateCheckoutBtn();
+        }
+
+        // ── Sync checkbox states to match cart (called after cart changes) ───
+        function syncProductCheckboxes() {
+            document.querySelectorAll('.merch-prod-checkbox').forEach(cb => {
+                const pid = String(cb.dataset.id);
+                const inCart = cart.some(i => i.item_type === 'merchandise' && String(i.product_id) === pid);
+                cb.checked = inCart;
+            });
+        }
+
         function selectProduct(el) {
+            // When clicking the label area (not the checkbox itself), toggle the checkbox
+            const cb = el.querySelector ? el.querySelector('.merch-prod-checkbox') : null;
+            if (cb && !cb.disabled) {
+                cb.checked = !cb.checked;
+                onProductCheckboxChange(cb);
+                return;
+            }
+            // Fallback: old behavior for direct element calls
             selectedProduct = {
                 id:    el.dataset.id,
                 name:  el.dataset.name,
@@ -6515,12 +6601,9 @@ input[list] {
             const cat   = document.getElementById('itemCategory');
             const price = document.getElementById('itemUnitPrice');
             const stock = document.getElementById('itemStock');
-            
             if (sku)   sku.value   = selectedProduct.sku || '—';
             if (cat)   cat.value   = selectedProduct.cat || '—';
             if (price) price.value = selectedProduct.price.toFixed(2);
-            
-            // Format stock display according to Unit of Measure (UOM)
             let rawUnit = (selectedProduct.unit || 'pc').toLowerCase();
             let uomLabel = 'pcs';
             if (rawUnit.includes('bottle')) uomLabel = 'Bottles';
@@ -6532,7 +6615,6 @@ input[list] {
             else if (rawUnit.includes('pair')) uomLabel = 'Pairs';
             else if (rawUnit.includes('pc') || rawUnit.includes('piece')) uomLabel = 'pcs';
             else uomLabel = selectedProduct.unit || 'pcs';
-
             if (stock) {
                 if (selectedProduct.stock > 0) {
                     stock.value = selectedProduct.stock + ' ' + uomLabel + ' available';
@@ -6767,6 +6849,100 @@ input[list] {
         }
 
         // ── Filter service types dropdown ─────────────────────────────────────
+        function getSelectedServiceNames() {
+            const checked = document.querySelectorAll('.jo-svc-checkbox:checked');
+            return Array.from(checked).map(cb => cb.value);
+        }
+
+        function onServiceCheckboxChange(cb) {
+            updateServiceSelectionState();
+        }
+
+        function updateServiceSelectionState() {
+            const selectedNames = getSelectedServiceNames();
+            const hidden = document.getElementById('joServiceTypeValue');
+            if (hidden) hidden.value = selectedNames.join(', ');
+
+            // Update tags display if present
+            const tagsDiv = document.getElementById('joSelectedServicesTags');
+            if (tagsDiv) {
+                if (selectedNames.length > 0) {
+                    tagsDiv.style.display = 'flex';
+                    tagsDiv.innerHTML = selectedNames.map(name => {
+                        return `<span style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;font-size:11px;color:#1e40af;font-weight:600;display:inline-flex;align-items:center;gap:5px;">
+                                    ${escapeHtml(name)}
+                                    <span onclick="removeServiceByName('${escapeHtml(name.replace(/'/g,"\\'"))}')" style="cursor:pointer;color:#64748b;font-size:13px;line-height:1;">&times;</span>
+                                </span>`;
+                    }).join('');
+                } else {
+                    tagsDiv.style.display = 'none';
+                    tagsDiv.innerHTML = '';
+                }
+            }
+
+            const types = window.JO_SERVICE_TYPES || [];
+            let totalPrice = 0;
+
+            // Remove any service items in cart that are no longer selected (except Labor Charge)
+            cart = cart.filter(i => {
+                if (i.item_type === 'service' && i.category !== 'Labor' && i.product_name !== 'Labor Charge') {
+                    return selectedNames.includes(i.product_name);
+                }
+                return true;
+            });
+
+            // Add or update selected services in cart
+            selectedNames.forEach(name => {
+                const svc = types.find(s => s.name === name);
+                const price = svc && svc.price > 0 ? parseFloat(svc.price) : 0;
+                totalPrice += price;
+
+                const existing = cart.find(i => i.item_type === 'service' && i.product_name === name);
+                if (existing) {
+                    if (existing.unit_price <= 0 && price > 0) existing.unit_price = price;
+                } else {
+                    cart.push({
+                        item_type:    'service',
+                        product_name: name,
+                        category:     svc ? getServiceCategory(svc) : 'Service Fee',
+                        size_variant: '',
+                        product_id:   null,
+                        quantity:     1,
+                        unit_price:   price,
+                    });
+                }
+
+                if (svc && svc.key && selectedNames.length === 1) {
+                    fetchServiceParts(svc.key);
+                }
+            });
+
+            const priceInput = document.getElementById('joServicePrice');
+            if (priceInput) priceInput.value = totalPrice > 0 ? totalPrice.toFixed(2) : '';
+
+            // Sync category
+            if (selectedNames.length > 0) {
+                const firstSvc = types.find(s => s.name === selectedNames[0]);
+                if (firstSvc) {
+                    const cat = getServiceCategory(firstSvc);
+                    syncServiceCategory(cat);
+                    const autoCategory = document.getElementById('joServiceAutoCategory');
+                    if (autoCategory) autoCategory.textContent = cat;
+                }
+            } else {
+                syncServiceCategory('');
+            }
+
+            renderCart();
+            updateCheckoutBtn();
+        }
+
+        function removeServiceByName(name) {
+            const cb = document.querySelector(`.jo-svc-checkbox[value="${CSS.escape(name)}"]`);
+            if (cb) { cb.checked = false; }
+            updateServiceSelectionState();
+        }
+
         function filterServiceTypes() {
             const input = document.getElementById('joServiceType');
             const list = document.getElementById('joServiceTypeList');
@@ -6776,56 +6952,51 @@ input[list] {
             
             const filter = input.value.toLowerCase().trim();
             const types = window.JO_SERVICE_TYPES || [];
-
-            const hidden = document.getElementById('joServiceTypeValue');
-            const exactMatch = types.find(t => t.name.toLowerCase() === filter);
-            if (exactMatch) {
-                if (hidden && hidden.value !== exactMatch.name) {
-                    hidden.value = exactMatch.name;
-                    onJoServiceTypeChange();
-                }
-            } else {
-                onJoServiceTypeChange();
-            }
-            
-            const filtered = types.filter(t => t.name.toLowerCase().includes(filter));
+            const filtered = filter ? types.filter(t => t.name.toLowerCase().includes(filter)) : types;
             
             if (filtered.length === 0) {
                 list.innerHTML = '<div style="padding:10px;color:#94a3b8;font-size:13px;text-align:center;">No services found</div>';
             } else {
-                list.innerHTML = filtered.map(t => {
-                    const cat = getServiceCategory(t);
-                    return `
-                        <div class="service-type-option svc-option" 
-                             data-value="${escapeHtml(t.name)}"
-                             data-name="${escapeHtml(t.name)}"
-                             data-category="${escapeHtml(cat)}"
-                             onclick="selectServiceType('${escapeHtml(t.name)}')"
-                             style="padding:10px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f1f5f9;
-                                    transition:background 0.15s;"
-                             >
-                            ${escapeHtml(t.name)}
-                            <span style="float:right;font-size:11px;color:#94a3b8;">${escapeHtml(cat)}</span>
-                        </div>
-                    `;
-                }).join('');
+                const selectedNames = getSelectedServiceNames();
+                const groups = {};
+                filtered.forEach(t => {
+                    const cat = getServiceCategory(t) || 'Others';
+                    if (!groups[cat]) groups[cat] = [];
+                    groups[cat].push(t);
+                });
+
+                let html = '';
+                Object.keys(groups).sort().forEach(cat => {
+                    html += `<div style="padding:6px 12px 3px;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;background:#f8fafc;border-bottom:1px solid #f1f5f9;">${escapeHtml(cat)}</div>`;
+                    groups[cat].forEach(t => {
+                        const isChecked = selectedNames.includes(t.name) ? 'checked' : '';
+                        html += `
+                            <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:13px;color:#1e293b;transition:background 0.15s;"
+                                   onmouseover="this.style.background='#f0f7ff'" onmouseout="this.style.background=''">
+                                <input type="checkbox"
+                                       class="jo-svc-checkbox"
+                                       value="${escapeHtml(t.name)}"
+                                       data-price="${parseFloat(t.price)||0}"
+                                       data-category="${escapeHtml(cat)}"
+                                       ${isChecked}
+                                       onchange="onServiceCheckboxChange(this)"
+                                       style="width:16px;height:16px;accent-color:#002F70;cursor:pointer;flex-shrink:0;">
+                                <span style="flex:1;">${escapeHtml(t.name)}</span>
+                            </label>`;
+                    });
+                });
+                list.innerHTML = html;
             }
             
-            dropdown.style.display = 'block';
+            if (dropdown) dropdown.style.display = 'block';
         }
         
         // ── Show service dropdown ─────────────────────────────────────────────
         function showServiceDropdown() {
             const dropdown = document.getElementById('joServiceTypeDropdown');
             const input = document.getElementById('joServiceType');
-            
             if (!dropdown || !input) return;
-            
-            // If input is empty, show all options
-            if (!input.value.trim()) {
-                filterServiceTypes();
-            }
-            
+            filterServiceTypes();
             dropdown.style.display = 'block';
         }
         
@@ -6834,18 +7005,20 @@ input[list] {
             const dropdown = document.getElementById('joServiceTypeDropdown');
             if (dropdown) dropdown.style.display = 'none';
         }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const wrap = document.getElementById('serviceDropdownWrap');
+            if (wrap && !wrap.contains(e.target)) {
+                hideServiceDropdown();
+            }
+        });
         
         // ── Select service type ───────────────────────────────────────────────
         function selectServiceType(serviceName) {
-            const input = document.getElementById('joServiceType');
-            const hidden = document.getElementById('joServiceTypeValue');
-            const dropdown = document.getElementById('joServiceTypeDropdown');
-            
-            if (input) input.value = serviceName;
-            if (hidden) hidden.value = serviceName;
-            if (dropdown) dropdown.style.display = 'none';
-            
-            onJoServiceTypeChange();
+            const cb = document.querySelector(`.jo-svc-checkbox[value="${CSS.escape(serviceName)}"]`);
+            if (cb) { cb.checked = !cb.checked; }
+            updateServiceSelectionState();
         }
         
         // ── HTML escape helper ────────────────────────────────────────────────
@@ -8946,6 +9119,8 @@ input[list] {
             const vat      = subtotal * 0.12;
             const grand    = subtotal + vat;
             updateTotals(subtotal, vat, grand);
+            // Keep product checkboxes in sync with cart
+            if (typeof syncProductCheckboxes === 'function') syncProductCheckboxes();
         }
 
         function cartQty(idx, delta) {
@@ -8970,6 +9145,7 @@ input[list] {
             cart.splice(idx, 1);
             renderCart();
             updateCheckoutBtn();
+            syncProductCheckboxes();
         }
 
         function updateTotals(subtotal, vat, grand) {

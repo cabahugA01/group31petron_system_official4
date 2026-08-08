@@ -1,4 +1,5 @@
 <?php
+date_default_timezone_set('Asia/Manila');
 /**
  * PDF receipt renderer.
  *
@@ -271,10 +272,10 @@ function rp_qr_png(string $text): string
 }
 }
 
-$txn_type_label = $txn_type_label ?? 'MERCHANDISE/SERVICE TRANSACTION';
+$txn_type_label = $txn_type_label ?? 'MERCHANDISE & SERVICE TRANSACTION';
 $txn_type_sublabel = $txn_type_sublabel ?? 'Official Merchandise & Service Invoice';
 $station_addr = $station_addr ?? 'Vamenta Blvd., Carmen, Cagayan de Oro City, Misamis Oriental';
-$vat_tin = $vat_tin ?? '236-002-207-0000';
+$vat_tin = $vat_tin ?? '236-003-207-0000';
 $txn_id = $txn_id ?? ($_GET['id'] ?? 'N/A');
 $disp_date = $disp_date ?? date('F j, Y');
 $disp_time = $disp_time ?? date('h:i A');
@@ -373,6 +374,11 @@ if ($pay_status_norm === 'partial') {
     $footer_note = 'Credit transaction. Amount forwarded to Receivables module.';
 }
 
+$vat_reg_no = $vat_reg_no ?? 'Registered';
+$atp_no = $atp_no ?? 'BIR-ATP-2026-00984712';
+$vat_tin = $vat_tin ?? '248-719-305-00000';
+$or_number = $or_number ?? ('OR-' . date('Ymd') . '-' . str_pad((string)($sale['id'] ?? '1'), 6, '0', STR_PAD_LEFT));
+
 $filename = 'receipt_' . preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string) $txn_id) . '.pdf';
 
 $html = '<!doctype html>
@@ -396,8 +402,8 @@ body { margin: 0; font-family: "Courier New", monospace; color: #111; background
 .label.warn-label { color: #b45309; }
 table { width: 100%; border-collapse: collapse; }
 .kv td { padding: .2mm 0; vertical-align: top; }
-.key { color: #666; width: 35%; }
-.val { text-align: right; width: 65%; word-break: break-word; }
+.key { color: #666; width: 38%; }
+.val { text-align: right; width: 62%; word-break: break-word; }
 .bold { font-weight: bold; }
 .warn .key, .warn .val { color: #9a3412; }
 .credit .key, .credit .val { color: #6b21a8; }
@@ -424,56 +430,58 @@ table { width: 100%; border-collapse: collapse; }
     . ($logo_path ? '<img class="logo" src="var:receipt_logo" alt="Petron">' : '')
     . '<div class="brand">PETRON STATION MANAGEMENT SYSTEM</div>
     <div class="branch">' . rp_e($station_addr) . '</div>
-    <div class="tin">VAT REG TIN: ' . rp_e($vat_tin) . '</div>
+    <div class="tin">VAT Reg TIN: ' . rp_e($vat_tin) . '</div>
+    <div class="tin">ATP No.: ' . rp_e($atp_no) . '</div>
   </div>
 
   <div class="double"></div>
   <div class="title">' . rp_e($txn_type_label) . '</div>
-  <div class="sub">' . rp_e($txn_type_sublabel) . '</div>
+  ' . ($txn_type_sublabel ? '<div class="sub">' . rp_e($txn_type_sublabel) . '</div>' : '') . '
   <div class="dash"></div>
 
   <div class="label">Transaction Details</div>
   <table>'
+    . rp_row('OR / Invoice No', rp_e($or_number), true)
     . rp_row('Transaction ID', rp_e($txn_id), true)
-    . rp_row('Date', rp_e($disp_date))
-    . rp_row('Time', rp_e($disp_time))
-    . rp_row('Customer', rp_e($customer), true)
-    . rp_row('Staff', rp_e($staff_name))
-    . ($shift_name ? rp_row('Shift', rp_e($shift_name)) : '')
+    . rp_row('Date & Time', rp_e($disp_date . ' ' . $disp_time))
+    . rp_row('Customer Name', rp_e($customer), true)
+    . rp_row('Staff / Shift', rp_e($staff_name . ($shift_name ? ' (' . $shift_name . ')' : '')))
   . '</table>
 
   <div class="dash"></div>
   <div class="label">Items Purchased</div>
   <table class="items">
-    <thead><tr><th>Item</th><th class="num">Qty</th><th class="money">Unit</th><th class="money">Subtotal</th></tr></thead>
+    <thead><tr><th>Item</th><th class="num">Qty</th><th class="money">Unit Price</th><th class="money">Subtotal</th></tr></thead>
     <tbody>' . $item_rows . '</tbody>
   </table>'
 
   . ($job_order_rows ? '<div class="dash"></div><div class="label warn-label">Job Order Details</div><table>' . $job_order_rows . '</table>' : '')
 
   . '<div class="dash"></div>
+  <div class="label">Tax Breakdown</div>
   <table>'
     . rp_row('Vatable Sales', rp_money($vatable))
     . rp_row('VAT (12%)', rp_money($vat_amt))
-    . rp_row('Zero-Rated', rp_money(0))
-    . rp_row('VAT-Exempt', rp_money(0))
+    . rp_row('Zero-Rated Sales', rp_money(0))
+    . rp_row('VAT-Exempt Sales', rp_money(0))
   . '</table>
 
   <div class="double"></div>
   <table><tr class="grand"><td>GRAND TOTAL</td><td class="val">' . rp_money($total) . '</td></tr></table>
   <div class="dash"></div>
 
-  <div class="label">Payment</div>
+  <div class="label">Totals & Payment</div>
   <table>' . $payment_rows . '</table>
   <div class="dash"></div>'
 
-  . ($qr_png ? '<div class="qr"><div class="qr-label">Scan QR to verify this transaction</div><img src="var:receipt_qr" alt="QR"><div class="qr-label">' . rp_e($txn_id) . ' - ' . rp_e(strtoupper($pay_status_norm)) . '</div></div><div class="dash"></div>' : '')
+  . ($qr_png ? '<div class="qr"><div class="qr-label">QR Code Verification (Authenticity)</div><img src="var:receipt_qr" alt="QR"><div class="qr-label">' . rp_e($txn_id) . ' - ' . rp_e(strtoupper($pay_status_norm)) . '</div></div><div class="dash"></div>' : '')
 
   . '<div class="footer">
-    <div class="foot-title">Official Merchandise/Service Transaction Receipt</div>
-    <div class="foot-line">' . $footer_note . '</div>
-    <div class="foot-line">VAT-Registered | TIN: ' . rp_e($vat_tin) . '</div>
-    <div class="foot-line">Thank you for choosing Petron!</div>
+    <div class="foot-title" style="font-weight: bold; font-size: 8.5px; margin-bottom: .4mm;">Official Sales Invoice / Receipt</div>
+    <div class="foot-line">TIN: ' . rp_e($vat_tin) . ' | VAT Reg: ' . rp_e($vat_reg_no) . '</div>
+    <div class="foot-line">ATP No.: ' . rp_e($atp_no) . '</div>
+    <div class="foot-line" style="font-weight: bold; color: #003d7a; margin: 1mm 0;">Thank you for your purchase!</div>
+    <div style="font-size: 7.5px; color: #1e293b; font-weight: bold; margin: 1.5mm 0 1mm 0;">Authorized Signature: __________________</div>
     <div class="foot-meta">Printed: ' . date('M j, Y h:i A') . ' | ' . rp_e($txn_id) . '</div>
   </div>
 </div>

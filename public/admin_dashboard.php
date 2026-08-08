@@ -2645,7 +2645,7 @@ document.addEventListener('DOMContentLoaded', function () {
 <script>
 (function () {
     'use strict';
-    const LIVE_URL = '<?= htmlspecialchars($public_base_url ?? '') ?>/admin_dashboard.php?live_sync=1';
+    const LIVE_URL = window.location.pathname + '?live_sync=1';
     let _inFlight = false;
     let _lastMetrics = {};
 

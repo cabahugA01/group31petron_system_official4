@@ -445,7 +445,23 @@ function manager_view_customer(): void {
     $transactions = [];
     if (manager_has_table($pdo, 'merchandise_transactions')) {
         try {
-            $tStmt = $pdo->prepare("SELECT transaction_id, created_at AS date, 'Merchandise' AS type, total_amount AS amount, validation_status AS status FROM merchandise_transactions WHERE customer_id = ? OR credit_customer_id = ? ORDER BY created_at DESC LIMIT 10");
+            $tStmt = $pdo->prepare("
+                SELECT 
+                    transaction_id, 
+                    created_at AS date, 
+                    CASE 
+                        WHEN transaction_type = 'job_order' THEN 'Job Order'
+                        WHEN transaction_type = 'combined' THEN 'Combined'
+                        WHEN (job_order_service IS NOT NULL AND TRIM(job_order_service) <> '') THEN 'Job Order'
+                        ELSE 'Merchandise'
+                    END AS type, 
+                    total_amount AS amount, 
+                    COALESCE(validation_status, 'Completed') AS status 
+                FROM merchandise_transactions 
+                WHERE customer_id = ? OR credit_customer_id = ? 
+                ORDER BY created_at DESC 
+                LIMIT 10
+            ");
             $tStmt->execute([$id, $id]);
             $transactions = $tStmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {}
@@ -457,6 +473,33 @@ function manager_view_customer(): void {
             $jStmt = $pdo->prepare("SELECT job_order_number AS jo_no, vehicle_plate AS vehicle, service_type AS service, assigned_mechanic_id AS mechanic, status FROM job_orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT 10");
             $jStmt->execute([$id]);
             $jobOrders = $jStmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {}
+    }
+
+    if (manager_has_table($pdo, 'merchandise_transactions')) {
+        try {
+            $mJoStmt = $pdo->prepare("
+                SELECT 
+                    COALESCE(NULLIF(job_order_id, ''), transaction_id) AS jo_no, 
+                    COALESCE(NULLIF(job_order_vehicle_plate, ''), 'N/A') AS vehicle, 
+                    COALESCE(NULLIF(job_order_service, ''), 'Service') AS service, 
+                    COALESCE(NULLIF(job_order_mechanic_name, ''), NULLIF(job_order_mechanic_id, ''), 'Unassigned') AS mechanic, 
+                    COALESCE(NULLIF(workflow_status, ''), NULLIF(validation_status, ''), 'Pending') AS status 
+                FROM merchandise_transactions 
+                WHERE (customer_id = ? OR credit_customer_id = ?)
+                  AND (transaction_type IN ('job_order', 'combined') OR (job_order_service IS NOT NULL AND TRIM(job_order_service) <> ''))
+                ORDER BY created_at DESC 
+                LIMIT 10
+            ");
+            $mJoStmt->execute([$id, $id]);
+            $mJobOrders = $mJoStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $existingNos = array_column($jobOrders, 'jo_no');
+            foreach ($mJobOrders as $mjo) {
+                if (!in_array($mjo['jo_no'], $existingNos)) {
+                    $jobOrders[] = $mjo;
+                }
+            }
         } catch (Throwable $e) {}
     }
 

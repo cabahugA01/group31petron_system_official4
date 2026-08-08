@@ -1520,7 +1520,7 @@ try {
 <div class="vt-modal-overlay" id="voidModal">
   <div class="vt-modal" style="max-width:750px; width:95%;">
     <!-- Normal Modal Content -->
-    <div id="voidModalMainContent" style="display:flex; flex-direction:column; max-height:95vh; width:100%; overflow:hidden;">
+    <div id="voidModalMainContent" style="display:flex; flex-direction:column; max-height:calc(100vh - 130px); width:100%; overflow:hidden;">
       <div class="vt-modal-header" style="background:#fff3f3; border-bottom:1px solid #fee2e2;">
         <div style="display:flex;align-items:center;gap:10px;">
           <div>
@@ -1962,15 +1962,15 @@ body { overflow-x:hidden !important; max-width:100vw !important; }
 .vt-btn-view:hover { background:#002F70 !important; color:#fff !important; }
 
 /* View Modal */
-.vt-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:9999; align-items:center; justify-content:center; }
+.vt-modal-overlay { display:none; position:fixed; top:72px; bottom:44px; left:0; right:0; background:rgba(15,23,42,.6); z-index:9999; align-items:center; justify-content:center; padding:12px; box-sizing:border-box; }
 .vt-modal-overlay.active { display:flex; }
-.vt-modal { background:#fff; border-radius:12px; width:100%; max-width:700px; box-shadow:0 8px 40px rgba(0,0,0,.2); max-height:95vh; display:flex; flex-direction:column; overflow:hidden; }
-.vt-modal-header { display:flex; align-items:center; justify-content:space-between; padding:20px 24px; border-bottom:1px solid #e2e8f0; }
+.vt-modal { background:#fff; border-radius:12px; width:100%; max-width:760px; box-shadow:0 12px 48px rgba(0,0,0,.3); max-height:calc(100vh - 130px) !important; display:flex; flex-direction:column; overflow:hidden; margin:0 auto; }
+.vt-modal-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e2e8f0; flex-shrink:0; }
 .vt-modal-header h3 { margin:0; font-size:18px; font-weight:700; color:#1e293b; display:flex; align-items:center; }
 .vt-modal-close { background:none; border:none; font-size:28px; color:#64748b; cursor:pointer; padding:0; width:32px; height:32px; border-radius:6px; }
 .vt-modal-close:hover { background:#f1f5f9; color:#1e293b; }
-.vt-modal-body { padding:24px; overflow-y:auto; flex:1; }
-.vt-modal-footer { padding:16px 24px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:8px; }
+.vt-modal-body { padding:20px; overflow-y:auto; flex:1; min-height:0; }
+.vt-modal-footer { padding:14px 20px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:8px; flex-shrink:0; background:#fff; }
 .vt-detail-grid { display:grid; grid-template-columns:140px 1fr; gap:12px 20px; font-size:14px; }
 .vt-detail-label { font-weight:600; color:#64748b; }
 .vt-detail-value { color:#1e293b; }
@@ -2113,7 +2113,7 @@ function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, 
                       <td style="padding:8px 10px;font-weight:600">${item.product_name}</td>
                       <td style="padding:8px 10px;">
                         <span style="background:${isSvc?'#fffbeb':'#f0fdf4'};color:${isSvc?'#b45309':'#15803d'};padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">
-                          ${isSvc ? 'ðŸ”§ Service' : 'ðŸ“¦ Merchandise'}
+                          ${isSvc ? 'Service' : 'Merchandise'}
                         </span>
                       </td>
                       <td style="padding:8px 10px;text-align:center;">

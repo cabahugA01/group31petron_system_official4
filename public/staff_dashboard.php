@@ -2767,7 +2767,7 @@ include __DIR__ . '/../partials/header.php';
     'use strict';
 
     // Base URL for live_sync AJAX endpoint on this page
-    const LIVE_SYNC_PAGE_URL = '<?= htmlspecialchars($app_base_url ?? '') ?>/public/staff_dashboard.php?live_sync=1';
+    const LIVE_SYNC_PAGE_URL = window.location.pathname + '?live_sync=1';
 
     let _lastVersion = <?= json_encode($dashboard_version ?? '') ?>;
     let _inFlight    = false;

@@ -1,4 +1,5 @@
 <?php
+date_default_timezone_set('Asia/Manila');
 require_once __DIR__ . '/../backend/lib.php';
 require_login();
 
@@ -317,11 +318,12 @@ if ($type === 'job_order') {
         // Query with correct JOIN - users table uses 'id' as primary key
         $stmt = $pdo->prepare("
             SELECT mt.*,
-                   COALESCE(u.username, 'Staff') AS staff_name,
+                   TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS staff_full_name,
+                   COALESCE(u.username, 'Staff') AS staff_username,
                    COALESCE(s.name, 'Petron Station') AS station_name,
                    COALESCE(s.location, '') AS station_location,
                    COALESCE(s.address, 'Vamenta Blvd., Carmen, CDO') AS station_address,
-                   COALESCE(s.vat_tin, '236-002-207-0000') AS station_vat_tin
+                   COALESCE(s.vat_tin, '248-719-305-00000') AS station_vat_tin
             FROM merchandise_transactions mt
             LEFT JOIN users u ON mt.staff_id = u.id
             LEFT JOIN stations s ON mt.station_id = s.id
@@ -374,7 +376,8 @@ if ($type === 'job_order') {
                 'transaction_id'      => $txn['transaction_id'],
                 'id'                  => $txn['transaction_id'],
                 'created_at'          => $txn['created_at'] ?? date('Y-m-d H:i:s'),
-                'staff_name'          => $txn['staff_name'],
+                'staff_name'          => trim($txn['staff_full_name'] ?? '') ?: ($txn['staff_username'] ?? 'Staff'),
+                'shift_name'          => $txn['shift_name'] ?? $txn['shift_period'] ?? '',
                 'customer_name'       => $txn['customer_name'] ?? 'Walk-in Customer',
                 'customer_first_name' => $txn['customer_first_name'] ?? '',
                 'customer_last_name'  => $txn['customer_last_name'] ?? '',
@@ -433,11 +436,12 @@ if (!$sale && !empty($id)) {
     try {
         $stmt_mt = $pdo->prepare("
             SELECT mt.*,
-                   COALESCE(u.username, 'Staff') AS staff_name,
+                   TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS staff_full_name,
+                   COALESCE(u.username, 'Staff') AS staff_username,
                    COALESCE(s.name, 'Petron Station') AS station_name,
                    COALESCE(s.location, '') AS station_location,
                    COALESCE(s.address, 'Vamenta Blvd., Carmen, CDO') AS station_address,
-                   COALESCE(s.vat_tin, '236-002-207-0000') AS station_vat_tin
+                   COALESCE(s.vat_tin, '248-719-305-00000') AS station_vat_tin
             FROM merchandise_transactions mt
             LEFT JOIN users u ON mt.staff_id = u.id
             LEFT JOIN stations s ON mt.station_id = s.id
@@ -480,7 +484,8 @@ if (!$sale && !empty($id)) {
                 'transaction_id'      => $txn_uf['transaction_id'],
                 'id'                  => $txn_uf['transaction_id'],
                 'created_at'          => $txn_uf['created_at'] ?? date('Y-m-d H:i:s'),
-                'staff_name'          => $txn_uf['staff_name'],
+                'staff_name'          => trim($txn_uf['staff_full_name'] ?? '') ?: ($txn_uf['staff_username'] ?? 'Staff'),
+                'shift_name'          => $txn_uf['shift_name'] ?? $txn_uf['shift_period'] ?? '',
                 'customer_name'       => $txn_uf['customer_name'] ?? 'Walk-in Customer',
                 'customer_first_name' => $txn_uf['customer_first_name'] ?? '',
                 'customer_last_name'  => $txn_uf['customer_last_name'] ?? '',
@@ -731,14 +736,48 @@ $txn_id       = $sale['transaction_id'] ?? $sale['id'] ?? 'N/A';
 $customer     = trim(($sale['customer_first_name'] ?? '') . ' ' . ($sale['customer_last_name'] ?? ''))
                 ?: ($sale['customer_name'] ?? $sale['customer'] ?? 'Walk-in Customer');
 $staff_name   = $sale['staff_name']     ?? 'N/A';
-$shift_name   = $sale['shift_name']     ?? $sale['shift_period'] ?? '';
+$shift_name   = $sale['shift_name'] ?? '';
+if (!$shift_name && !empty($sale['shift_period'])) {
+    $shift_map  = [
+        'first'   => 'First Shift (6:00 AM – 2:00 PM)',
+        'second'  => 'Second Shift (2:00 PM – 10:00 PM)',
+        'third'   => 'Third Shift (10:00 PM – 6:00 AM)',
+        'morning' => 'Morning Shift',
+        'evening' => 'Evening Shift',
+        'night'   => 'Night Shift',
+        'general' => 'General Shift',
+    ];
+    $shift_name = $shift_map[strtolower($sale['shift_period'])] ?? ucfirst($sale['shift_period']) . ' Shift';
+}
 $pay_method   = $sale['payment_method'] ?? 'Cash';
 $total        = (float)($sale['total_amount'] ?? $sale['total'] ?? 0);
 $tendered     = (float)($sale['amount_tendered'] ?? $sale['amount_received'] ?? 0);
 $change       = (float)($sale['change_amount']   ?? $sale['change'] ?? 0);
 
+// Fix change calculation if amount tendered is greater than total but change was stored as 0
+if ($tendered > $total && $change <= 0) {
+    $change = round($tendered - $total, 2);
+}
+if ($tendered <= 0 && strtolower($pay_method) === 'cash') {
+    $tendered = $total;
+    $change = 0.00;
+}
+
+// BIR & Station Details
+$or_num_clean = preg_replace('/[^0-9]/', '', (string)($sale['numeric_id'] ?? $sale['id'] ?? '1'));
+if (strlen($or_num_clean) > 6) {
+    $or_num_clean = substr($or_num_clean, -6);
+}
+$or_number    = !empty($sale['or_number']) 
+                ? $sale['or_number'] 
+                : 'OR-' . date('Ymd', strtotime($ts)) . '-' . str_pad($or_num_clean ?: '000001', 6, '0', STR_PAD_LEFT);
+$vat_tin      = '248-719-305-00000';
+$vat_reg_no   = 'Registered';
+$atp_no       = 'BIR-ATP-2026-00984712';
+$station_name = 'PETRON STATION MANAGEMENT SYSTEM';
+$station_addr = 'Vamenta Blvd., Carmen, Cagayan de Oro City, Misamis Oriental';
+
 // ── Payment status derivation ────────────────────────────────────────────────
-// Use stored payment_status if present, otherwise derive from amount_paid vs total
 $stored_pay_status = strtolower(trim($sale['payment_status'] ?? ''));
 $amount_paid_db    = (float)($sale['amount_paid'] ?? $tendered ?? 0);
 $balance_due_db    = (float)($sale['balance_due'] ?? 0);
@@ -750,50 +789,29 @@ if (in_array($stored_pay_status, ['partially paid', 'partial payment', 'partial'
 } elseif (in_array($stored_pay_status, ['credit account', 'credit transaction', 'credit'])) {
     $pay_status_norm = 'credit';
 } else {
-    $pay_status_norm = 'paid'; // Paid or fully settled
+    $pay_status_norm = 'paid';
 }
 
-// For display: if balance_due not stored, compute it
 if ($balance_due_db <= 0 && $pay_status_norm === 'partial') {
     $balance_due_db = max(0, $total - $amount_paid_db);
 }
 
-// ── Transaction type label — always fixed ─────────────────────────────────────
-$txn_type_label    = 'MERCHANDISE/SERVICE TRANSACTION';
+// ── Transaction type label ─────────────────────────────────────────────────────
+$txn_type_label    = 'MERCHANDISE & SERVICE TRANSACTION';
 $txn_type_sublabel = 'Official Merchandise & Service Invoice';
 
-// ── Compute subtotal and VAT correctly ────────────────────────────────────
-// ALWAYS use the stored total_amount - never recalculate to avoid discrepancies
-$items_sum = 0;
-foreach (($sale['items'] ?? []) as $it) {
-    $items_sum += (float)($it['subtotal'] ?? ((float)($it['unit_price'] ?? 0) * (float)($it['quantity'] ?? 1)));
-}
-
-// CRITICAL FIX: Use stored total_amount directly - do NOT recalculate
-// This ensures printed receipt matches the transaction total in the database
+// ── Compute subtotal and VAT correctly (100% exact math) ─────────────────────
 $total = (float)($sale['total_amount'] ?? $sale['total'] ?? 0);
 
-if (!empty($sale['subtotal_amount']) && (float)$sale['subtotal_amount'] > 0) {
-    // Stored values exist — use them for breakdown
-    $subtotal_display = (float)$sale['subtotal_amount'];
-    $vat_display      = !empty($sale['vat_amount']) ? (float)$sale['vat_amount'] : round($subtotal_display * 0.12, 2);
-} else {
-    // Derive breakdown from the stored total (not from items_sum to avoid rounding errors)
-    $subtotal_display = $total > 0 ? round($total / 1.12, 2) : 0;
-    $vat_display      = $total > 0 ? round($total - $subtotal_display, 2) : 0;
-}
-$vatable = $subtotal_display;
-$vat_amt = $vat_display;
-$station_name = $sale['station_name']   ?? 'Petron Station';
-// Always guarantee header values — use DB if set, otherwise use the known correct defaults
-$vat_tin      = (!empty($sale['station_vat_tin']))  ? $sale['station_vat_tin']  : '236-002-207-0000';
-$station_addr = (!empty($sale['station_address']))  ? $sale['station_address']
-              : ((!empty($sale['station_location'])) ? $sale['station_location']
-              : 'Vamenta Blvd., Carmen, Cagayan de Oro City, Misamis Oriental');
-$items        = $sale['items'] ?? [];
-$pm_lc        = strtolower($pay_method);
-$job_order    = $sale['job_order'] ?? null;
-$has_jo       = !empty($job_order);
+// Uniform Computation: Gross Total = $total, Net Sales = $total / 1.12, VAT = $total - Net Sales
+$subtotal_display = $total > 0 ? round($total / 1.12, 2) : 0;
+$vat_display      = $total > 0 ? round($total - $subtotal_display, 2) : 0;
+$vatable   = $subtotal_display;
+$vat_amt   = $vat_display;
+$items     = $sale['items'] ?? [];
+$pm_lc     = strtolower($pay_method);
+$job_order = $sale['job_order'] ?? null;
+$has_jo    = !empty($job_order);
 
 // Logo path - use absolute URL from web root
 // Logo path - try database first
@@ -1217,25 +1235,25 @@ if (!empty($local_qr_png)) {
          onerror="this.style.display='none'">
     <div class="jo-r-brand">PETRON STATION MANAGEMENT SYSTEM</div>
     <div class="jo-r-branch"><?php echo htmlspecialchars($station_addr); ?></div>
-    <div class="jo-r-tin">VAT REG TIN: <?php echo htmlspecialchars($vat_tin); ?></div>
+    <div class="jo-r-tin">VAT Reg TIN: <?php echo htmlspecialchars($vat_tin); ?></div>
+    <div class="jo-r-tin">ATP No.: <?php echo htmlspecialchars($atp_no); ?></div>
   </div>
 
   <div class="jo-r-div2"></div>
   <div class="jo-r-title"><?php echo htmlspecialchars($txn_type_label); ?></div>
+  <?php if ($txn_type_sublabel): ?>
   <div class="jo-r-sub"><?php echo htmlspecialchars($txn_type_sublabel); ?></div>
+  <?php endif; ?>
   <div class="jo-r-div"></div>
 
   <!-- ══ TRANSACTION DETAILS ═════════════════════════════════════════════════ -->
   <div class="jo-r-lbl">Transaction Details</div>
 
+  <div class="jo-r-row"><span class="jo-r-key">OR / Invoice No</span><span class="jo-r-val jo-r-bold"><?php echo htmlspecialchars($or_number); ?></span></div>
   <div class="jo-r-row"><span class="jo-r-key">Transaction ID</span><span class="jo-r-val jo-r-bold"><?php echo htmlspecialchars($txn_id); ?></span></div>
-  <div class="jo-r-row"><span class="jo-r-key">Date</span><span class="jo-r-val"><?php echo $disp_date; ?></span></div>
-  <div class="jo-r-row"><span class="jo-r-key">Time</span><span class="jo-r-val"><?php echo $disp_time; ?></span></div>
-  <div class="jo-r-row"><span class="jo-r-key">Customer</span><span class="jo-r-val jo-r-bold"><?php echo htmlspecialchars($customer); ?></span></div>
-  <div class="jo-r-row"><span class="jo-r-key">Staff</span><span class="jo-r-val"><?php echo htmlspecialchars($staff_name); ?></span></div>
-  <?php if ($shift_name): ?>
-  <div class="jo-r-row"><span class="jo-r-key">Shift</span><span class="jo-r-val"><?php echo htmlspecialchars($shift_name); ?></span></div>
-  <?php endif; ?>
+  <div class="jo-r-row"><span class="jo-r-key">Date & Time</span><span class="jo-r-val"><?php echo $disp_date . ' ' . $disp_time; ?></span></div>
+  <div class="jo-r-row"><span class="jo-r-key">Customer Name</span><span class="jo-r-val jo-r-bold"><?php echo htmlspecialchars($customer); ?></span></div>
+  <div class="jo-r-row"><span class="jo-r-key">Staff / Shift</span><span class="jo-r-val"><?php echo htmlspecialchars($staff_name) . ($shift_name ? ' (' . htmlspecialchars($shift_name) . ')' : ''); ?></span></div>
 
   <div class="jo-r-div"></div>
 
@@ -1245,7 +1263,7 @@ if (!empty($local_qr_png)) {
   <div class="jo-r-th">
     <span class="jo-r-td-name">Item</span>
     <span class="jo-r-td-qty">Qty</span>
-    <span class="jo-r-td-price">Unit</span>
+    <span class="jo-r-td-price">Unit Price</span>
     <span class="jo-r-td-sub">Subtotal</span>
   </div>
 
@@ -1325,11 +1343,12 @@ if (!empty($local_qr_png)) {
   <div class="jo-r-div"></div>
   <?php endif; ?>
 
-  <!-- ══ TOTALS ════════════════════════════════════════════════════════════════ -->
+  <!-- ══ TAX BREAKDOWN ═══════════════════════════════════════════════════════ -->
+  <div class="jo-r-lbl">Tax Breakdown</div>
   <div class="jo-r-row"><span class="jo-r-key">Vatable Sales</span><span class="jo-r-val">&#8369;<?php echo number_format($vatable, 2); ?></span></div>
   <div class="jo-r-row"><span class="jo-r-key">VAT (12%)</span><span class="jo-r-val">&#8369;<?php echo number_format($vat_amt, 2); ?></span></div>
-  <div class="jo-r-row"><span class="jo-r-key">Zero-Rated</span><span class="jo-r-val">&#8369;0.00</span></div>
-  <div class="jo-r-row"><span class="jo-r-key">VAT-Exempt</span><span class="jo-r-val">&#8369;0.00</span></div>
+  <div class="jo-r-row"><span class="jo-r-key">Zero-Rated Sales</span><span class="jo-r-val">&#8369;0.00</span></div>
+  <div class="jo-r-row"><span class="jo-r-key">VAT-Exempt Sales</span><span class="jo-r-val">&#8369;0.00</span></div>
 
   <div class="jo-r-div2"></div>
   <div class="jo-r-row jo-r-grand">
@@ -1338,11 +1357,11 @@ if (!empty($local_qr_png)) {
   </div>
   <div class="jo-r-div"></div>
 
-  <!-- ══ PAYMENT ═══════════════════════════════════════════════════════════════ -->
-  <div class="jo-r-lbl">Payment</div>
+  <!-- ══ TOTALS & PAYMENT ═════════════════════════════════════════════════════ -->
+  <div class="jo-r-lbl">Totals & Payment</div>
 
   <div class="jo-r-row">
-    <span class="jo-r-key">Method</span>
+    <span class="jo-r-key">Payment Method</span>
     <span class="jo-r-val jo-r-bold"><?php echo htmlspecialchars(strtoupper($pay_method)); ?></span>
   </div>
 
@@ -1362,7 +1381,7 @@ if (!empty($local_qr_png)) {
     <?php if (!empty($sale['card_reference'])): ?>  <div class="jo-r-row"><span class="jo-r-key">Ref No.</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['card_reference'] ?: $sale['ewallet_reference'] ?: $sale['efuel_card_number']); ?></span></div><?php endif; ?>
 
   <?php elseif ($pay_status_norm === 'pending'): ?>
-    <!-- ── PENDING PAYMENT (no amount collected yet) ── -->
+    <!-- ── PENDING PAYMENT ── -->
     <div class="jo-r-row">
       <span class="jo-r-key">Amount Paid</span>
       <span class="jo-r-val">&#8369;0.00</span>
@@ -1449,8 +1468,6 @@ if (!empty($local_qr_png)) {
     <?php endif; ?>
 
   <?php endif; ?>
-
-  <!-- Payment Status Badge removed for clean layout -->
   
   <?php if (!empty($sale['remarks'])): ?>
   <div class="jo-r-div"></div>
@@ -1483,19 +1500,16 @@ if (!empty($local_qr_png)) {
   <div class="jo-r-div"></div>
   <?php endif; ?>
 
-  <!-- ══ QR CODE ═══════════════════════════════════════════════════════════════ -->
-  <div class="jo-r-qr" style="text-align:center;margin:12px 0 8px 0;">
-    <div class="jo-r-qr-lbl" style="font-weight:700;color:#0f172a;font-size:9.5px;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">
-      Scan QR Code to Verify
-    </div>
+  <!-- ══ QR CODE VERIFICATION ═════════════════════════════════════════════════ -->
+  <div class="jo-r-qr" style="text-align:center;margin:10px 0 6px 0;">
     <div style="display:inline-block;background:#ffffff;padding:4px;">
       <img id="main_qr_img"
            src="<?php echo htmlspecialchars($qr_url); ?>"
-           alt="QR Code"
-           width="165" height="165"
+           alt="QR Code Verification"
+           width="140" height="140"
            style="margin:0 auto;display:block;image-rendering:pixelated;">
     </div>
-    <div class="jo-r-qr-lbl" style="margin-top:6px;font-size:8.5px;font-weight:600;color:#475569;">
+    <div class="jo-r-qr-lbl" style="margin-top:4px;font-size:8px;font-weight:600;color:#475569;">
       <?php echo htmlspecialchars($txn_id); ?> &nbsp;·&nbsp; <?php echo strtoupper($pay_status_norm ?? 'PAID'); ?>
     </div>
   </div>
@@ -1503,27 +1517,37 @@ if (!empty($local_qr_png)) {
   <div class="jo-r-div"></div>
 
   <!-- ══ FOOTER ════════════════════════════════════════════════════════════════ -->
-  <div class="jo-r-foot">
-    <div class="jo-r-foot-title">Official Merchandise/Service Transaction Receipt</div>
+  <div class="jo-r-foot" style="text-align:center;margin-top:8px;">
+    <div class="jo-r-foot-title" style="font-weight:700;font-size:10.5px;margin-bottom:4px;color:#0f172a;">
+      Official Sales Invoice / Receipt
+    </div>
+    <div class="jo-r-foot-line" style="font-size:9px;color:#334155;margin-bottom:2px;">
+      TIN: <?php echo htmlspecialchars($vat_tin); ?> &nbsp;|&nbsp; VAT Reg: <?php echo htmlspecialchars($vat_reg_no); ?>
+    </div>
+    <div class="jo-r-foot-line" style="font-size:9px;color:#334155;margin-bottom:4px;">
+      ATP No.: <?php echo htmlspecialchars($atp_no); ?>
+    </div>
+    <div class="jo-r-foot-line" style="font-size:10px;font-weight:700;color:#003d7a;margin:6px 0 4px 0;">
+      Thank you for your purchase!
+    </div>
+    <div class="jo-r-sig" style="margin:8px 0 10px 0;text-align:center;">
+      <div style="font-size:9.5px;color:#1e293b;font-weight:600;">Authorized Signature: __________________</div>
+    </div>
     <?php if ($pay_status_norm === 'partial'): ?>
-    <div class="jo-r-foot-line" style="color:#92400e;font-weight:700;border:1px solid #fde68a;background:#fef9c3;padding:4px 6px;border-radius:4px;margin:4px 0;">
+    <div class="jo-r-foot-line" style="color:#92400e;font-weight:700;border:1px solid #fde68a;background:#fef9c3;padding:4px 6px;border-radius:4px;margin:4px 0;font-size:9px;">
       &#9888; This receipt reflects a partial payment.<br>
       Balance due of &#8369;<?php echo number_format($balance_due_db, 2); ?> must be settled upon completion of service.
     </div>
     <?php elseif ($pay_status_norm === 'pending'): ?>
-    <div class="jo-r-foot-line" style="color:#9a3412;font-weight:700;border:1px solid #fed7aa;background:#ffedd5;padding:4px 6px;border-radius:4px;margin:4px 0;">
+    <div class="jo-r-foot-line" style="color:#9a3412;font-weight:700;border:1px solid #fed7aa;background:#ffedd5;padding:4px 6px;border-radius:4px;margin:4px 0;font-size:9px;">
       &#9888; No payment collected yet. Full balance of &#8369;<?php echo number_format($total, 2); ?> remains outstanding.
     </div>
     <?php elseif ($pay_status_norm === 'credit'): ?>
-    <div class="jo-r-foot-line" style="color:#6b21a8;font-weight:700;border:1px solid #d8b4fe;background:#f3e8ff;padding:4px 6px;border-radius:4px;margin:4px 0;">
+    <div class="jo-r-foot-line" style="color:#6b21a8;font-weight:700;border:1px solid #d8b4fe;background:#f3e8ff;padding:4px 6px;border-radius:4px;margin:4px 0;font-size:9px;">
       &#9888; Credit transaction (Utang). Amount forwarded to the Receivables module.
     </div>
-    <?php else: ?>
-    <div class="jo-r-foot-line">This document is valid as an official service record.</div>
     <?php endif; ?>
-    <div class="jo-r-foot-line">VAT-Registered &nbsp;|&nbsp; TIN: <?php echo $vat_tin; ?></div>
-    <div class="jo-r-foot-line">Thank you for choosing Petron!</div>
-    <div class="jo-r-foot-meta">
+    <div class="jo-r-foot-meta" style="font-size:8px;color:#94a3b8;margin-top:6px;">
       Printed: <?php echo date('M j, Y h:i A'); ?> &nbsp;|&nbsp; <?php echo htmlspecialchars($txn_id); ?>
     </div>
   </div>
