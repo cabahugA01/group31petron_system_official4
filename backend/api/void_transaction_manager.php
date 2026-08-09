@@ -337,6 +337,10 @@ try {
         $source,
     ]);
 
+    // Auto-approve pending transaction_requests for this transaction
+    $upd_req = $pdo->prepare("UPDATE transaction_requests SET status = 'Approved', reviewed_by = ?, reviewed_at = NOW(), review_remarks = ? WHERE (transaction_id = ? OR transaction_id = ?) AND status = 'Pending'");
+    $upd_req->execute([$me['id'], $manager_remarks, (string)$row_id, $txn['transaction_id'] ?? '']);
+
     $pdo->commit();
 
     echo json_encode([

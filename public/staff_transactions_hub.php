@@ -4589,9 +4589,14 @@ input[list] {
                         <input type="hidden" name="joCustomerType" value="registered" id="joCustomerTypeRegistered">
 
                         <!-- Customer Input Fields -->
-                        <div id="joCustomerLockedBanner" style="display:none;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:12px;color:#065f46;display:none;align-items:center;gap:8px;">
-                            <i class="fas fa-lock"></i>
-                            <span>Customer info locked. <button type="button" onclick="clearSelectedCustomerFull('jo')" style="background:none;border:none;color:#002F70;font-weight:700;cursor:pointer;font-size:12px;text-decoration:underline;">Change</button></span>
+                        <div id="joCustomerLockedBanner" style="display:none;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:12px;color:#065f46;align-items:center;justify-content:space-between;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <i class="fas fa-lock" style="color:#059669;"></i>
+                                <span>Customer info locked.</span>
+                            </div>
+                            <button type="button" onclick="clearSelectedCustomerFull('jo')" title="Unlock / Clear Customer" style="background:transparent !important;border:none !important;color:#dc2626 !important;cursor:pointer;font-size:16px;padding:2px 6px;line-height:1;display:inline-flex;align-items:center;justify-content:center;">
+                                <i class="fas fa-times"></i>
+                            </button>
                         </div>
                         <div class="txn-form-grid" style="margin-bottom:14px;">
                             <div class="txn-field" style="position:relative;">
@@ -4842,17 +4847,17 @@ input[list] {
                                            autocomplete="off"
                                            style="width:100%;padding-right:30px;"
                                            oninput="filterServiceTypes()"
-                                           onfocus="showServiceDropdown()"
-                                           onblur="setTimeout(() => hideServiceDropdown(), 200)">
+                                           onfocus="showServiceDropdown()">
                                     <input type="hidden" id="joServiceTypeValue" value="">
                                     <i class="fas fa-chevron-down" 
                                        style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
                                               color:#94a3b8;font-size:12px;pointer-events:none;"></i>
                                     <div id="joServiceTypeDropdown" 
+                                         onmousedown="event.preventDefault()"
                                          style="display:none;position:absolute;top:100%;left:0;right:0;
                                                 background:white;border:1px solid #e2e8f0;border-radius:6px;
                                                 box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);
-                                                max-height:240px;overflow-y:auto;z-index:1000;margin-top:2px;">
+                                                max-height:300px;overflow-y:auto;z-index:1000;margin-top:2px;">
                                         <div id="joServiceTypeList"></div>
                                     </div>
                                 </div>
@@ -5062,6 +5067,15 @@ input[list] {
                         <input type="hidden" name="merchCustomerType" value="registered" id="merchCustomerTypeRegistered">
 
                         <!-- Customer Input Fields (Merchandise) -->
+                        <div id="merchCustomerLockedBanner" style="display:none;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:12px;color:#065f46;align-items:center;justify-content:space-between;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <i class="fas fa-lock" style="color:#059669;"></i>
+                                <span>Customer info locked.</span>
+                            </div>
+                            <button type="button" onclick="clearSelectedCustomerFull('merch')" title="Unlock / Clear Customer" style="background:transparent !important;border:none !important;color:#dc2626 !important;cursor:pointer;font-size:16px;padding:2px 6px;line-height:1;display:inline-flex;align-items:center;justify-content:center;">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
                         <div class="txn-form-grid" style="margin-bottom:14px;">
                             <div class="txn-field" style="position:relative;">
                                 <label>First Name <span style="color:#dc2626;">*</span></label>
@@ -5070,7 +5084,7 @@ input[list] {
                                        class="txn-input"
                                        placeholder="Type to search customer..."
                                        autocomplete="off"
-                                       oninput="clearSelectedCustomer('merch'); searchCustomerByName('merch')"
+                                       oninput="unlockCustomerIfNeeded('merch'); searchCustomerByName('merch')"
                                        onfocus="searchCustomerByName('merch')">
                                 <!-- First Name Dropdown -->
                                 <div id="merchFirstNameResults" 
@@ -5134,10 +5148,11 @@ input[list] {
                                     </div>
                                     <!-- Dropdown list -->
                                     <div id="productDropdownList"
+                                         onmousedown="event.preventDefault()"
                                          style="display:none;position:absolute;top:100%;left:0;right:0;
                                                 background:#fff;border:1.5px solid #e2e8f0;border-top:none;
                                                 border-radius:0 0 8px 8px;box-shadow:0 6px 20px rgba(0,0,0,.1);
-                                                z-index:999;max-height:260px;overflow-y:auto;">
+                                                z-index:999;max-height:300px;overflow-y:auto;">
                                         <?php if (empty($merch_products)): ?>
                                         <div style="padding:14px;text-align:center;color:#94a3b8;font-size:13px;">
                                             No products found for this station.
@@ -5500,19 +5515,39 @@ input[list] {
                                         <?= $date_released ?>
                                     </td>
                                     <td style="padding:6px;text-align:center;">
-                                        <div style="display:flex;flex-direction:column;gap:4px;align-items:stretch;">
-                                            <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank"
-                                               onclick="event.stopPropagation();"
-                                               style="display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 8px;border:1px solid #002F70;border-radius:5px;color:#002F70;background:#fff;font-size:10px;font-weight:600;text-decoration:none;white-space:nowrap;">
-                                                <i class="fas fa-receipt"></i> Reprint
-                                            </a>
-                                            <button type="button"
-                                                    onclick="event.stopPropagation();viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? '') ?>');"
-                                                    style="display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 8px;border:1px solid #16a34a;border-radius:5px;color:#16a34a;background:#fff;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;">
-                                                <i class="fas fa-eye"></i> View
-                                            </button>
-                                        </div>
-                                    </td>
+                                         <div style="display:flex;flex-direction:column;gap:3px;align-items:stretch;">
+                                             <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank"
+                                                onclick="event.stopPropagation();"
+                                                style="display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:3px 6px;border:1.5px solid #002F70 !important;border-radius:5px;color:#002F70 !important;background:#ffffff !important;font-size:10px;font-weight:700;text-decoration:none;white-space:nowrap;">
+                                                 <i class="fas fa-receipt"></i> Reprint
+                                             </a>
+                                             <button type="button"
+                                                     onclick="event.stopPropagation();viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? '') ?>');"
+                                                     style="display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:3px 6px;border:1.5px solid #16a34a !important;border-radius:5px;color:#16a34a !important;background:#ffffff !important;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;">
+                                                 <i class="fas fa-eye"></i> View
+                                             </button>
+                                             <?php
+                                             $val_stat = strtolower($txn['validation_status'] ?? '');
+                                             if (!in_array($val_stat, ['voided', 'cancelled'])):
+                                                 $mt_id_val = (int)($txn['mt_id'] ?? ($txn['id'] ?? 0));
+                                             ?>
+                                             <div style="display:flex;gap:3px;margin-top:1px;">
+                                                 <button type="button"
+                                                         onclick="event.stopPropagation(); openTxnRequestModal(<?= $mt_id_val ?>,'merchandise_transactions','Void','<?= addslashes($txn['customer_name'] ?? '') ?>')"
+                                                         style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:2px;padding:3px 4px;border:1.5px solid #dc2626 !important;border-radius:5px;color:#dc2626 !important;background:#ffffff !important;font-size:9.5px;font-weight:700;cursor:pointer;white-space:nowrap;"
+                                                         title="Request manager to void this transaction">
+                                                     <i class="fas fa-ban"></i> Req. Void
+                                                 </button>
+                                                 <button type="button"
+                                                         onclick="event.stopPropagation(); openTxnRequestModal(<?= $mt_id_val ?>,'merchandise_transactions','Adjustment','<?= addslashes($txn['customer_name'] ?? '') ?>')"
+                                                         style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:2px;padding:3px 4px;border:1.5px solid #475569 !important;border-radius:5px;color:#475569 !important;background:#ffffff !important;font-size:9.5px;font-weight:700;cursor:pointer;white-space:nowrap;"
+                                                         title="Request manager to adjust this transaction">
+                                                     <i class="fas fa-sliders-h"></i> Req. Adjust
+                                                 </button>
+                                             </div>
+                                             <?php endif; ?>
+                                         </div>
+                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
                                 </tbody>
@@ -7006,10 +7041,13 @@ input[list] {
             if (dropdown) dropdown.style.display = 'none';
         }
 
-        // Close dropdown when clicking outside
+        // Close service dropdown when clicking outside the input or panel
         document.addEventListener('click', function(e) {
-            const wrap = document.getElementById('serviceDropdownWrap');
-            if (wrap && !wrap.contains(e.target)) {
+            const input    = document.getElementById('joServiceType');
+            const dropdown = document.getElementById('joServiceTypeDropdown');
+            if (input && dropdown &&
+                !input.contains(e.target) &&
+                !dropdown.contains(e.target)) {
                 hideServiceDropdown();
             }
         });
@@ -7652,34 +7690,30 @@ input[list] {
             if (Object.prototype.hasOwnProperty.call(selectedCustomerIds, prefix)) {
                 selectedCustomerIds[prefix] = null;
             }
-            // Unlock customer fields for 'jo' prefix (but do NOT clear values — user may be typing)
-            if (prefix === 'jo') {
-                const fields = ['joFirstName','joLastName','joContactNumber'];
-                fields.forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) {
-                        el.removeAttribute('readonly');
-                        el.style.background = '';
-                        el.style.cursor = '';
-                        el.style.color = '';
-                    }
-                });
-                const banner = document.getElementById('joCustomerLockedBanner');
-                if (banner) banner.style.display = 'none';
-            }
+            // Unlock customer fields for prefix (do NOT clear values — user may be typing)
+            const fields = [prefix + 'FirstName', prefix + 'LastName', prefix + 'ContactNumber'];
+            fields.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.removeAttribute('readonly');
+                    el.style.background = '';
+                    el.style.cursor = '';
+                    el.style.color = '';
+                }
+            });
+            const banner = document.getElementById(prefix + 'CustomerLockedBanner');
+            if (banner) banner.style.display = 'none';
         }
 
         // Full reset — clears all fields (used by reset button only)
         function clearSelectedCustomerFull(prefix) {
             clearSelectedCustomer(prefix);
-            if (prefix === 'jo') {
-                const fn = document.getElementById('joFirstName');
-                if (fn) fn.value = '';
-                const ln = document.getElementById('joLastName');
-                if (ln) ln.value = '';
-                const cn = document.getElementById('joContactNumber');
-                if (cn) cn.value = '';
-            }
+            const fn = document.getElementById(prefix + 'FirstName');
+            if (fn) fn.value = '';
+            const ln = document.getElementById(prefix + 'LastName');
+            if (ln) ln.value = '';
+            const cn = document.getElementById(prefix + 'ContactNumber');
+            if (cn) cn.value = '';
         }
 
         // Called on oninput \u2014 only unlocks the field if it was locked (readonly), never clears values
@@ -7908,19 +7942,17 @@ input[list] {
             if (vehicleModel) vehicleModel.value = customer.vehicle_model || '';
             if (vehiclePlate) vehiclePlate.value = customer.plate_number || '';
 
-            // Lock customer fields (jo prefix only)
-            if (prefix === 'jo') {
-                const lockFields = [firstNameInput, lastNameInput, contactInput];
-                lockFields.forEach(el => {
-                    if (!el) return;
-                    el.setAttribute('readonly', true);
-                    el.style.background = '#f0fdf4';
-                    el.style.cursor = 'not-allowed';
-                    el.style.color = '#15803d';
-                });
-                const banner = document.getElementById('joCustomerLockedBanner');
-                if (banner) banner.style.display = 'flex';
-            }
+            // Lock customer fields (jo and merch prefixes)
+            const lockFields = [firstNameInput, lastNameInput, contactInput];
+            lockFields.forEach(el => {
+                if (!el) return;
+                el.setAttribute('readonly', true);
+                el.style.background = '#f0fdf4';
+                el.style.cursor = 'not-allowed';
+                el.style.color = '#15803d';
+            });
+            const banner = document.getElementById(prefix + 'CustomerLockedBanner');
+            if (banner) banner.style.display = 'flex';
             
             // Automatically fill loyalty fields if customer matches
             const loyaltyCardNoInput = document.getElementById('loyaltyCardNo');
@@ -8482,14 +8514,7 @@ input[list] {
         // ── Full reset: product fields + customer fields (called by Reset Form button) ──
         function fullResetMerchandiseForm() {
             resetMerchandiseForm(); // clears product fields
-            selectedCustomerIds.merch = null;
-            // Also clear customer details
-            const merchFirstName = document.getElementById('merchFirstName');
-            const merchLastName = document.getElementById('merchLastName');
-            const merchContactNumber = document.getElementById('merchContactNumber');
-            if (merchFirstName) { merchFirstName.value = ''; }
-            if (merchLastName)  { merchLastName.value = ''; }
-            if (merchContactNumber) { merchContactNumber.value = ''; }
+            clearSelectedCustomerFull('merch');
             // Hide customer results dropdown if open
             const firstNameResults = document.getElementById('merchFirstNameResults');
             if (firstNameResults) firstNameResults.style.display = 'none';
@@ -10065,7 +10090,27 @@ input[list] {
                                 </div>
                                 <?php endif; ?>
 
-                                
+                                <?php
+                                // Request Void / Adjustment — allow for all active Job Orders (even if Released + Paid) unless Voided/Cancelled/Rejected
+                                $can_req_action = !in_array(strtolower($wf_status), ['voided', 'cancelled', 'rejected']);
+                                ?>
+                                <?php if ($can_req_action): ?>
+                                <div style="display:flex;gap:3px;flex-wrap:nowrap;width:100%;margin-top:2px;">
+                                    <button type="button"
+                                            onclick="openTxnRequestModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>','Void','<?= addslashes($job['customer_name'] ?? '') ?>')"
+                                            style="flex:1;padding:3px 4px;font-size:9.5px;background:#ffffff !important;color:#dc2626 !important;border:1.5px solid #dc2626 !important;border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:2px;font-weight:700;white-space:nowrap;"
+                                            title="Request manager to void this transaction">
+                                        <i class="fas fa-ban"></i> Req. Void
+                                    </button>
+                                    <button type="button"
+                                            onclick="openTxnRequestModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>','Adjustment','<?= addslashes($job['customer_name'] ?? '') ?>')"
+                                            style="flex:1;padding:3px 4px;font-size:9.5px;background:#ffffff !important;color:#475569 !important;border:1.5px solid #475569 !important;border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:2px;font-weight:700;white-space:nowrap;"
+                                            title="Request manager to adjust this transaction">
+                                        <i class="fas fa-sliders-h"></i> Req. Adjust
+                                    </button>
+                                </div>
+                                <?php endif; ?>
+
                                 <!-- Row 2: Workflow Actions -->
                                 <?php if ($wf_status === 'Released'): ?>
                                     <!-- Released status: Print Receipt & Badge -->
@@ -10795,28 +10840,219 @@ input[list] {
 
         <!-- View Merchandise Transaction Modal -->
         <div id="viewMerchandiseModal" style="display:none;position:fixed;inset:0;z-index:9999;
-             background:rgba(0,0,0,.5);align-items:center;justify-content:center;">
+             background:rgba(0,0,0,.5);align-items:flex-start;justify-content:center;overflow-y:auto;padding:80px 16px 70px 16px;">
           <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
-                      width:100%;max-width:700px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
-            <div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:15px 20px;
+                      width:100%;max-width:700px;margin:0 auto;overflow:hidden;animation:pmSlideIn .18s ease;">
+            <div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:22px 24px;
                         display:flex;align-items:center;justify-content:space-between;">
-              <div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:8px;
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="width:38px;height:38px;background:rgba(255,255,255,.18);border-radius:10px;
                             display:flex;align-items:center;justify-content:center;">
-                  <i class="fas fa-shopping-cart" style="color:#fff;font-size:15px;"></i>
+                  <i class="fas fa-shopping-cart" style="color:#fff;font-size:16px;"></i>
                 </div>
                 <div>
                   <div style="color:#fff;font-weight:700;font-size:14px;">Merchandise Transaction Details</div>
                   <div id="viewMTxnRef" style="color:#bbf7d0;font-size:11px;margin-top:1px;"></div>
                 </div>
               </div>
-              <button onclick="closeViewMerchandiseModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;
-                      width:28px;height:28px;border-radius:6px;font-size:17px;cursor:pointer;
-                      display:flex;align-items:center;justify-content:center;"
-                      onmouseover="this.style.background='rgba(255,255,255,.28)'"
-                      onmouseout="this.style.background='rgba(255,255,255,.15)'">&times;</button>
+              
+            </div>
+            <div style="padding:24px 24px 28px 24px;max-height:calc(100vh - 340px);overflow-y:auto;">
+              <div style="display:grid;gap:14px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Customer:</span>
+                  <span id="viewMTCustomer" style="font-size:13px;color:#1e293b;font-weight:600;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Shift:</span>
+                  <span id="viewMTShift" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Transaction Date:</span>
+                  <span id="viewMTDate" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                
+                <!-- Items Table -->
+                <div style="border-top:1px solid #e2e8f0;padding-top:14px;">
+                  <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Items Purchased:</div>
+                  <div id="viewMTItems" style="max-height:200px;overflow-y:auto;">
+                    <table style="width:100%;font-size:12px;border-collapse:collapse;">
+                      <thead style="background:#f8fafc;position:sticky;top:0;">
+                        <tr>
+                          <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;">Item</th>
+                          <th style="text-align:center;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;width:60px;">Qty</th>
+                          <th style="text-align:right;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;width:90px;">Unit Price</th>
+                          <th style="text-align:right;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;width:100px;">Subtotal</th>
+                        </tr>
+                      </thead>
+                      <tbody id="viewMTItemsBody">
+                        <tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">Loading items...</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Method:</span>
+                  <span id="viewMTPayMethod" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Status:</span>
+                  <span id="viewMTPayStatus" style="font-size:11px;font-weight:700;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Validation Status:</span>
+                  <span id="viewMTValStatus" style="font-size:11px;font-weight:700;">—</span>
+                </div>
+                
+                <div style="border-top:1px solid #e2e8f0;padding-top:14px;display:grid;gap:8px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#64748b;font-weight:600;">Subtotal:</span>
+                    <span id="viewMTSubtotal" style="font-size:14px;font-weight:700;color:#475569;">₱0.00</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#64748b;font-weight:600;">VAT (12%):</span>
+                    <span id="viewMTVAT" style="font-size:14px;font-weight:700;color:#475569;">₱0.00</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:2px solid #e2e8f0;">
+                    <span style="font-size:13px;color:#1e293b;font-weight:700;">Total Amount:</span>
+                    <span id="viewMTTotal" style="font-size:18px;font-weight:800;color:#003d7a;">₱0.00</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#64748b;font-weight:600;">Amount Paid:</span>
+                    <span id="viewMTPaid" style="font-size:14px;font-weight:700;color:#166534;">₱0.00</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#64748b;font-weight:600;">Balance Due:</span>
+                    <span id="viewMTBalance" style="font-size:14px;font-weight:700;color:#dc2626;">₱0.00</span>
+                  </div>
+                </div>
+                
+                </div>
+                <div>
+                  <div style="color:#000;font-weight:700;font-size:14px;">Job Order Details</div>
+                  <div id="viewJORef" style="color:#64748b;font-size:11px;margin-top:1px;"></div>
+                </div>
+              </div>
             </div>
             <div style="padding:20px;max-height:70vh;overflow-y:auto;">
+              <!-- Transaction Information -->
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:6px 12px;margin:0 -20px 14px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-info-circle" style="margin-right:5px;"></i>Transaction Information
+              </div>
+              <div style="display:grid;gap:10px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">JO Number:</span>
+                  <span id="viewJORef2" style="font-size:13px;color:#002F70;font-weight:700;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Transaction ID:</span>
+                  <span id="viewJOTxnId" style="font-size:12px;color:#475569;font-family:monospace;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Customer:</span>
+                  <span id="viewJOCustomer" style="font-size:13px;color:#1e293b;font-weight:600;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Vehicle:</span>
+                  <span id="viewJOVehicle" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Mechanic:</span>
+                  <span id="viewJOMechanic" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Date Created:</span>
+                  <span id="viewJOCreated" style="font-size:12px;color:#64748b;">—</span>
+                </div>
+              </div>
+              <!-- Services -->
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:6px 12px;margin:16px -20px 14px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-wrench" style="margin-right:5px;"></i>Services
+              </div>
+              <div style="display:grid;gap:10px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Service Type:</span>
+                  <span id="viewJOService" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Est. Duration:</span>
+                  <span id="viewJODuration" style="font-size:13px;color:#475569;">—</span>
+                </div>
+              </div>
+              <!-- Merchandise -->
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:6px 12px;margin:16px -20px 14px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-box" style="margin-right:5px;"></i>Merchandise
+              </div>
+              <div style="display:grid;gap:10px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Parts / Items:</span>
+                  <span id="viewJOParts" style="font-size:13px;color:#475569;">—</span>
+                </div>
+              </div>
+              <!-- Payment -->
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:6px 12px;margin:16px -20px 14px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-credit-card" style="margin-right:5px;"></i>Payment
+              </div>
+              <div style="display:grid;gap:10px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Status:</span>
+                  <span id="viewJOWorkflow" style="font-size:11px;font-weight:700;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Status:</span>
+                  <span id="viewJOPayment" style="font-size:11px;font-weight:700;">—</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:4px;">
+                  <span style="font-size:12px;color:#64748b;font-weight:600;">Total Cost:</span>
+                  <span id="viewJOTotal" style="font-size:16px;font-weight:800;color:#003d7a;">₱0.00</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:12px;color:#64748b;font-weight:600;">Amount Paid:</span>
+                  <span id="viewJOPaid" style="font-size:14px;font-weight:700;color:#166534;">₱0.00</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:12px;color:#64748b;font-weight:600;">Balance Due:</span>
+                  <span id="viewJOBalance" style="font-size:14px;font-weight:700;color:#dc2626;">₱0.00</span>
+                </div>
+              </div>
+            </div>
+            <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+              <button id="viewJOPrintBtn" onclick="printJobOrderReceiptFromModal()"
+                      style="padding:0 16px;height:36px;background:#002F70;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                <i class="fas fa-print"></i> Print Receipt
+              </button>
+              <button onclick="closeViewJobOrderModal()" style="padding:0 16px !important;height:36px !important;background:#ffffff !important;color:#64748b !important;
+                      border:1px solid #64748b !important;border-radius:7px !important;font-size:13px !important;font-weight:600 !important;cursor:pointer !important;
+                      display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all 0.15s !important;min-width:90px !important;"
+                      onmouseover="this.style.background='#64748b';this.style.color='#ffffff'"
+                      onmouseout="this.style.background='#ffffff';this.style.color='#64748b'">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- View Merchandise Transaction Modal -->
+        <div id="viewMerchandiseModal" style="display:none;position:fixed;inset:0;z-index:9999;
+             background:rgba(0,0,0,.5);align-items:flex-start;justify-content:center;overflow-y:auto;padding:80px 16px 70px 16px;">
+          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
+                      width:100%;max-width:700px;margin:0 auto;overflow:hidden;animation:pmSlideIn .18s ease;">
+            <div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:22px 24px;
+                        display:flex;align-items:center;justify-content:space-between;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="width:38px;height:38px;background:rgba(255,255,255,.18);border-radius:10px;
+                            display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-shopping-cart" style="color:#fff;font-size:16px;"></i>
+                </div>
+                <div>
+                  <div style="color:#fff;font-weight:700;font-size:14px;">Merchandise Transaction Details</div>
+                  <div id="viewMTxnRef" style="color:#bbf7d0;font-size:11px;margin-top:1px;"></div>
+                </div>
+              </div>
+              
+            </div>
+            <div style="padding:24px 24px 28px 24px;max-height:calc(100vh - 340px);overflow-y:auto;">
               <div style="display:grid;gap:14px;">
                 <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
                   <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Customer:</span>
@@ -10897,14 +11133,9 @@ input[list] {
                 </div>
               </div>
             </div>
-            <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:10px;">
-              <button onclick="closeViewMerchandiseModal()" style="padding:9px 18px;background:#f1f5f9;color:#475569;
-                      border:1px solid #e2e8f0;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+            <div style="padding:16px 24px 20px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;gap:10px;">
+              <button onclick="closeViewMerchandiseModal()" style="padding:0 22px !important;height:38px !important;background:#ffffff !important;color:#475569 !important;border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;min-width:100px !important;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#ffffff'">
                 Close
-              </button>
-            </div>
-          </div>
-        </div>
 
         <!-- Update Status Modal -->
         <div id="updateStatusModal" style="display:none;position:fixed;inset:0;z-index:9999;
@@ -11073,6 +11304,44 @@ input[list] {
                 </button>
                 <button type="submit" class="txn-btn primary">
                   <i class="fas fa-save"></i> Save Changes
+                </button>
+              </div>
+             </form>
+          </div>
+        </div>
+
+        <!-- Request Void / Request Adjustment Modal -->
+        <div id="txnRequestModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;">
+          <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);overflow:hidden;">
+             <div id="txnRequestHeader" style="background:#002F70;color:#ffffff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;">
+               <h3 id="txnRequestTitle" style="margin:0;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
+                  <i id="txnRequestIcon" class="fas fa-paper-plane" style="color:#ffffff !important;"></i> <span id="txnRequestTitleText" style="color:#ffffff !important;">Request Transaction Action</span>
+               </h3>
+             </div>
+             <form id="txnRequestForm" onsubmit="submitTxnRequest(event)">
+               <input type="hidden" id="txnRequestTxnId" name="transaction_id">
+               <input type="hidden" id="txnRequestRecordSource" name="record_source">
+               <input type="hidden" id="txnRequestType" name="request_type">
+               <div style="padding:20px;">
+                 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#334155;">
+                   <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Target Transaction</div>
+                   <div style="font-weight:700;color:#0f172a;" id="txnRequestTargetInfo">Transaction #—</div>
+                 </div>
+
+                <div id="txnRequestNewAmountGroup" style="display:none;margin-bottom:16px;">
+                  <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Proposed New Amount (Optional)</label>
+                  <input type="number" id="txnRequestNewAmount" name="new_amount" step="0.01" min="0" placeholder="0.00" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                </div>
+
+                <div style="margin-bottom:10px;">
+                  <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Reason for Request <span style="color:#ef4444;">*</span></label>
+                  <textarea id="txnRequestReason" name="request_reason" required rows="3" placeholder="Explain clearly why this void or adjustment is needed for the manager to approve..." style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
+                </div>
+              </div>
+              <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;background:#f8fafc;">
+                <button type="button" onclick="closeTxnRequestModal()" class="txn-btn secondary">Cancel</button>
+                <button type="submit" id="txnRequestSubmitBtn" class="txn-btn primary">
+                  <i class="fas fa-paper-plane"></i> Submit Request
                 </button>
               </div>
             </form>
@@ -11255,13 +11524,91 @@ input[list] {
             document.getElementById('viewMerchandiseModal').style.display = 'none';
         }
         
-        // Close modals on outside click
-        ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal'].forEach(function(modalId) {
-            document.getElementById(modalId).addEventListener('click', function(e) {
-                if (e.target === this) {
-                    this.style.display = 'none';
+        // Request Void / Request Adjustment Modal Functions
+        function openTxnRequestModal(txnId, recordSource, requestType, customerName) {
+            document.getElementById('txnRequestTxnId').value = txnId;
+            document.getElementById('txnRequestRecordSource').value = recordSource || 'job_orders';
+            document.getElementById('txnRequestType').value = requestType;
+            document.getElementById('txnRequestReason').value = '';
+            document.getElementById('txnRequestNewAmount').value = '';
+
+            var titleText = requestType === 'Void' ? 'Request Void Transaction' : 'Request Transaction Adjustment';
+            var iconClass = requestType === 'Void' ? 'fas fa-ban' : 'fas fa-sliders-h';
+            var headerBg  = requestType === 'Void' ? '#dc2626' : '#475569';
+
+            document.getElementById('txnRequestTitleText').textContent = titleText;
+            document.getElementById('txnRequestIcon').className = iconClass;
+            document.getElementById('txnRequestHeader').style.background = headerBg;
+            document.getElementById('txnRequestHeader').style.color = '#ffffff';
+            document.getElementById('txnRequestTitle').style.color = '#ffffff';
+            document.getElementById('txnRequestTitleText').style.color = '#ffffff';
+            document.getElementById('txnRequestIcon').style.color = '#ffffff';
+
+            document.getElementById('txnRequestTargetInfo').textContent = (recordSource === 'job_orders' ? 'Job Order #' : 'Transaction #') + txnId + (customerName ? ' (' + customerName + ')' : '');
+
+            var amountGroup = document.getElementById('txnRequestNewAmountGroup');
+            if (requestType === 'Adjustment') {
+                amountGroup.style.display = 'block';
+            } else {
+                amountGroup.style.display = 'none';
+            }
+
+            document.getElementById('txnRequestModal').style.display = 'flex';
+        }
+
+        function closeTxnRequestModal() {
+            document.getElementById('txnRequestModal').style.display = 'none';
+        }
+
+        function submitTxnRequest(e) {
+            e.preventDefault();
+            var btn = document.getElementById('txnRequestSubmitBtn');
+            var origText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+
+            var payload = {
+                transaction_id: parseInt(document.getElementById('txnRequestTxnId').value),
+                record_source: document.getElementById('txnRequestRecordSource').value,
+                request_type: document.getElementById('txnRequestType').value,
+                request_reason: document.getElementById('txnRequestReason').value.trim(),
+                new_amount: document.getElementById('txnRequestNewAmount').value
+            };
+
+            fetch('../backend/api/request_transaction_action.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+                if (data.success) {
+                    closeTxnRequestModal();
+                    showTxnAlert('✔ ' + (data.message || 'Request submitted successfully! Status: Pending Manager Review.'), 'success');
+                    setTimeout(function() { location.reload(); }, 1500);
+                } else {
+                    showTxnAlert('❌ ' + (data.error || 'Failed to submit request'), 'error');
                 }
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+                showTxnAlert('❌ Network error: ' + err.message, 'error');
             });
+        }
+        
+        // Close modals on outside click
+        ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal'].forEach(function(modalId) {
+            var el = document.getElementById(modalId);
+            if (el) {
+                el.addEventListener('click', function(e) {
+                    if (e.target === this) {
+                        this.style.display = 'none';
+                    }
+                });
+            }
         });
         </script>
 

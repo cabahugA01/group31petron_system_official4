@@ -369,6 +369,18 @@ try {
     $jo_rows = []; 
 }
 
+// Pre-fetch pending transaction requests for dynamic action buttons
+$pending_txn_requests = [];
+try {
+    $pr_stmt = $pdo->query("SELECT * FROM transaction_requests WHERE status = 'Pending'");
+    while ($pr_row = $pr_stmt->fetch(PDO::FETCH_ASSOC)) {
+        $key1 = $pr_row['record_source'] . '_' . $pr_row['transaction_id'];
+        $pending_txn_requests[$key1] = $pr_row;
+    }
+} catch (Exception $e) {
+    $pending_txn_requests = [];
+}
+
 // Pre-fetch items for all merchandise transactions before filtering so we can dynamically classify and filter them accurately
 $mgr_items_map = [];
 try {
@@ -1415,39 +1427,37 @@ try {
                         $receipt_url = ($r['_source'] === 'job_orders')
                             ? 'receipt.php?id=' . urlencode((string)$r['row_id']) . '&type=job_order'
                             : 'receipt.php?id=' . urlencode((string)$r['txn_id']) . '&type=merchandise';
+                        
+                        $src_key = $r['_source'] . '_' . $r['row_id'];
+                        $txn_key = $r['_source'] . '_' . $r['txn_id'];
+                        $pending_req = $pending_txn_requests[$src_key] ?? ($pending_txn_requests[$txn_key] ?? null);
                         ?>
-                        <div style="display:flex;flex-direction:column;gap:2px;align-items:stretch;">
-                        <a class="vt-btn-act-sm" href="<?= htmlspecialchars($receipt_url) ?>" target="_blank" rel="noopener" title="Reprint Receipt" style="color:#002F70;border:1px solid #002F70;background:transparent !important;">
+                        <div style="display:flex;flex-direction:column;gap:3px;align-items:stretch;">
+                        
+                        <!-- 1. Reprint Receipt -->
+                        <a class="vt-btn-act-sm" href="<?= htmlspecialchars($receipt_url) ?>" target="_blank" rel="noopener" title="Reprint Receipt" style="color:#002F70;border:1px solid #002F70;background:#ffffff !important;font-weight:600;text-decoration:none;">
                             <i class="fas fa-receipt" style="font-size:8.5px;"></i> Reprint
                         </a>
-                        <?php if ($vst !== 'voided'): ?>
-                            <?php if ($r['_source'] === 'merchandise_transactions'): ?>
-                            <button type="button" class="vt-btn-act-sm" style="color:#16a34a;border:1px solid #16a34a;background:transparent !important;cursor:pointer;" onclick="openAdjustModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['entry_type'])) ?>', '<?= htmlspecialchars(addslashes($r['txn_date'])) ?>', '<?= htmlspecialchars(addslashes($r['staff_name'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_method'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_status'] ?? 'Paid')) ?>')" title="Adjust">
-                                <i class="fas fa-pen" style="font-size:8.5px;"></i> Adjust
+
+                        <!-- 2. View Details -->
+                        <button type="button" class="vt-btn-act-sm" style="color:#16a34a;border:1px solid #16a34a;background:#ffffff !important;cursor:pointer;font-weight:600;" onclick="viewTransactionDetails('<?= htmlspecialchars($r['_source']) ?>', <?= (int)$r['row_id'] ?>)" title="View Details">
+                            <i class="fas fa-eye" style="font-size:8.5px;"></i> View Details
+                        </button>
+
+                        <?php if ($pending_req): ?>
+                            <?php if ($pending_req['request_type'] === 'Adjustment'): ?>
+                            <!-- 3. Review Adjustment Button (Staff Requested Adjustment) -->
+                            <button type="button" class="vt-btn-act-sm" style="color:#475569;border:1.5px solid #475569;background:#f8fafc !important;cursor:pointer;font-weight:700;" onclick="openReviewRequestModal(<?= (int)$pending_req['id'] ?>, 'Adjustment', <?= (int)$r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['entry_type'])) ?>', '<?= htmlspecialchars(addslashes($r['txn_date'])) ?>', '<?= htmlspecialchars(addslashes($r['staff_name'])) ?>', '<?= htmlspecialchars(addslashes($pending_req['request_reason'])) ?>', <?= (float)($pending_req['new_amount'] ?? 0) ?>, '<?= htmlspecialchars(addslashes($r['_source'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_method'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_status'] ?? 'Paid')) ?>')" title="Review Adjustment Request">
+                                <i class="fas fa-edit" style="font-size:8.5px;"></i> Review Adjustment
+                            </button>
+                            <?php elseif ($pending_req['request_type'] === 'Void'): ?>
+                            <!-- 3. Review Void Button (Staff Requested Void) -->
+                            <button type="button" class="vt-btn-act-sm" style="color:#dc2626;border:1.5px solid #dc2626;background:#fee2e2 !important;cursor:pointer;font-weight:700;" onclick="openReviewRequestModal(<?= (int)$pending_req['id'] ?>, 'Void', <?= (int)$r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['entry_type'])) ?>', '<?= htmlspecialchars(addslashes($r['txn_date'])) ?>', '<?= htmlspecialchars(addslashes($r['staff_name'])) ?>', '<?= htmlspecialchars(addslashes($pending_req['request_reason'])) ?>', 0, '<?= htmlspecialchars(addslashes($r['_source'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_method'])) ?>', '<?= htmlspecialchars(addslashes($r['payment_status'] ?? 'Paid')) ?>')" title="Review Void Request">
+                                <i class="fas fa-ban" style="font-size:8.5px;"></i> Review Void
                             </button>
                             <?php endif; ?>
-
-                            <?php 
-                            $is_job_order = ($r['entry_type'] === 'Job Order' || $r['entry_type'] === 'Combined' || $r['_source'] === 'job_orders');
-                            $wf_status = strtolower(trim($r['workflow_status'] ?? 'pending'));
-                            
-                            if ($is_job_order): 
-                                if ($wf_status === 'pending'): 
-                            ?>
-                                <button type="button" class="vt-btn-act-sm" style="color:#dc2626;border:1px solid #dc2626;background:transparent !important;cursor:pointer;" onclick="openVoidModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['_source'])) ?>')" title="Void">
-                                    <i class="fas fa-ban" style="font-size:8.5px;"></i> Void
-                                </button>
-                                <?php else: ?>
-                                <button type="button" class="vt-btn-act-sm" style="color:#94a3b8;border:1px solid #cbd5e1;background:transparent !important;cursor:not-allowed;" disabled title="Cannot void In Progress or Completed Job Orders">
-                                    <i class="fas fa-ban" style="font-size:8.5px;"></i> Void
-                                </button>
-                                <?php endif; ?>
-                            <?php else: ?>
-                                <button type="button" class="vt-btn-act-sm" style="color:#dc2626;border:1px solid #dc2626;background:transparent !important;cursor:pointer;" onclick="openVoidModal(<?= $r['row_id'] ?>, '<?= htmlspecialchars(addslashes($r['txn_id'])) ?>', '<?= htmlspecialchars(addslashes($r['customer'])) ?>', '<?= htmlspecialchars(addslashes($r['_source'])) ?>')" title="Void">
-                                    <i class="fas fa-ban" style="font-size:8.5px;"></i> Void
-                                </button>
-                            <?php endif; ?>
                         <?php endif; ?>
+
                         </div>
                         <?php endif; ?>
                     </td>
@@ -1493,6 +1503,54 @@ try {
 </div>
 
 <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• ADJUST MODAL -->
+
+<!-- ========================================================================= REVIEW REQUEST MODAL -->
+<div class="vt-modal-overlay" id="reviewRequestModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:14px;max-width:540px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);overflow:hidden;animation:pmSlideIn .18s ease;">
+    <div id="reviewReqHeader" style="padding:16px 20px;display:flex;justify-content:space-between;align-items:center;background:#475569;color:#ffffff;">
+      <h3 style="margin:0;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
+        <i id="reviewReqIcon" class="fas fa-edit" style="color:#ffffff !important;"></i> <span id="reviewReqTitleText" style="color:#ffffff !important;">Review Staff Request</span>
+      </h3>
+    </div>
+    <div style="padding:20px;max-height:75vh;overflow-y:auto;">
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:14px;font-size:13px;display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;">
+        <div><span style="color:#64748b;font-size:11px;font-weight:700;display:block;">Transaction ID</span><strong id="reviewReqTxnId" style="font-family:monospace;color:#0f172a;">—</strong></div>
+        <div><span style="color:#64748b;font-size:11px;font-weight:700;display:block;">Customer</span><span id="reviewReqCustomer" style="color:#1e293b;font-weight:600;">—</span></div>
+        <div><span style="color:#64748b;font-size:11px;font-weight:700;display:block;">Transaction Type</span><span id="reviewReqType" style="color:#475569;">—</span></div>
+        <div><span style="color:#64748b;font-size:11px;font-weight:700;display:block;">Transaction Date</span><span id="reviewReqDate" style="color:#475569;">—</span></div>
+        <div><span style="color:#64748b;font-size:11px;font-weight:700;display:block;">Staff Encoder</span><span id="reviewReqStaff" style="color:#475569;">—</span></div>
+      </div>
+
+      <div style="background:#fff3f3;border:1.5px solid #fca5a5;border-radius:8px;padding:14px;margin-bottom:14px;" id="reviewReqReasonBox">
+        <div style="font-size:11px;font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;" id="reviewReqReasonHeader">
+          <i class="fas fa-comment-alt"></i> Staff Request Reason:
+        </div>
+        <div id="reviewReqReasonText" style="font-size:13px;color:#1e293b;font-weight:600;white-space:pre-wrap;">—</div>
+        <div id="reviewReqNewAmountRow" style="margin-top:8px;display:none;font-size:12.5px;color:#854d0e;font-weight:700;">
+          Proposed New Amount: <span id="reviewReqNewAmountVal">₱0.00</span>
+        </div>
+      </div>
+
+      <div>
+        <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Manager Remarks (Required if rejecting, optional if approving)</label>
+        <textarea id="reviewReqManagerRemarks" rows="2" placeholder="Enter remarks or reason for decision..." style="width:100%;padding:9px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
+      </div>
+    </div>
+    <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:space-between;align-items:center;background:#f8fafc;">
+      <button type="button" onclick="closeReviewRequestModal()" class="vt-btn vt-btn-reset" style="padding:8px 16px;border:1px solid #cbd5e1;background:#ffffff;color:#64748b;border-radius:7px;font-weight:600;cursor:pointer;">
+        Close
+      </button>
+      <div style="display:flex;gap:8px;">
+        <button type="button" onclick="submitRejectRequest()" style="padding:8px 16px;background:#ffffff !important;color:#dc2626 !important;border:1.5px solid #dc2626 !important;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+          <i class="fas fa-times-circle"></i> Reject Request
+        </button>
+        <button type="button" id="reviewReqApproveBtn" onclick="submitApproveRequest()" style="padding:8px 18px;background:#16a34a !important;color:#ffffff !important;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+          <i class="fas fa-check-circle"></i> Approve & Proceed
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="vt-modal-overlay" id="adjustModal">
   <div class="vt-modal" style="max-width:720px;">
     <div class="vt-modal-header">
