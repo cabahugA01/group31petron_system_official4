@@ -130,3 +130,18 @@ try {
     error_log("vehicle_inspection_items self-healing error: " . $e->getMessage());
 }
 
+// ── Self-healing Database schema for customer_credit_transactions ────────────
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS customer_credit_transactions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        station_id INT NOT NULL DEFAULT 1,
+        customer_id INT NOT NULL,
+        amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        payment_method VARCHAR(50) DEFAULT 'Credit Payment',
+        remarks TEXT DEFAULT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_customer (customer_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (Exception $e) {
+    error_log("customer_credit_transactions self-healing error: " . $e->getMessage());
+}

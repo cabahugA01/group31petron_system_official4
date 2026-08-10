@@ -1608,26 +1608,46 @@ function getAdminCustomerDetails(PDO $pdo, int $customer_id): array {
     $details['merch_history'] = $stmt_m->fetchAll(PDO::FETCH_ASSOC);
 
     // 5. Payment History (OR No. included)
-    $stmt_p = $pdo->prepare(
-        "SELECT DATE(transaction_date) as date,
-                COALESCE(NULLIF(transaction_id,''), CONCAT('OR-', LPAD(id, 5, '0'))) as or_no,
-                payment_method,
-                total_amount as amount,
-                COALESCE(NULLIF(payment_status,''), NULLIF(validation_status,''), 'Completed') as status
-         FROM merchandise_transactions
-         WHERE customer_id = ?
-         UNION ALL
-         SELECT DATE(created_at) as date,
-                CONCAT('CR-', LPAD(id, 5, '0')) as or_no,
-                'Credit Payment' as payment_method,
-                amount,
-                'Completed' as status
-         FROM customer_credit_transactions
-         WHERE customer_id = ?
-         ORDER BY date DESC"
-    );
-    $stmt_p->execute([$customer_id, $customer_id]);
-    $details['payment_history'] = $stmt_p->fetchAll(PDO::FETCH_ASSOC);
+    try {
+        $stmt_p = $pdo->prepare(
+            "SELECT DATE(transaction_date) as date,
+                    COALESCE(NULLIF(transaction_id,''), CONCAT('OR-', LPAD(id, 5, '0'))) as or_no,
+                    payment_method,
+                    total_amount as amount,
+                    COALESCE(NULLIF(payment_status,''), NULLIF(validation_status,''), 'Completed') as status
+             FROM merchandise_transactions
+             WHERE customer_id = ?
+             UNION ALL
+             SELECT DATE(created_at) as date,
+                    CONCAT('CR-', LPAD(id, 5, '0')) as or_no,
+                    'Credit Payment' as payment_method,
+                    amount,
+                    'Completed' as status
+             FROM customer_credit_transactions
+             WHERE customer_id = ?
+             ORDER BY date DESC"
+        );
+        $stmt_p->execute([$customer_id, $customer_id]);
+        $details['payment_history'] = $stmt_p->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e_ph) {
+        // Fallback: Query merchandise_transactions only if customer_credit_transactions is unavailable
+        try {
+            $stmt_p_fb = $pdo->prepare(
+                "SELECT DATE(transaction_date) as date,
+                        COALESCE(NULLIF(transaction_id,''), CONCAT('OR-', LPAD(id, 5, '0'))) as or_no,
+                        payment_method,
+                        total_amount as amount,
+                        COALESCE(NULLIF(payment_status,''), NULLIF(validation_status,''), 'Completed') as status
+                 FROM merchandise_transactions
+                 WHERE customer_id = ?
+                 ORDER BY transaction_date DESC"
+            );
+            $stmt_p_fb->execute([$customer_id]);
+            $details['payment_history'] = $stmt_p_fb->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e_ph2) {
+            $details['payment_history'] = [];
+        }
+    }
 
     // 6. Accounts Receivable History (Credit/Fleet only)
     $ctype = strtolower(trim($details['info']['customer_type'] ?? $details['info']['type'] ?? ''));
