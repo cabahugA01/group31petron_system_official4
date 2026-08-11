@@ -76,27 +76,77 @@ try {
             echo json_encode(['success' => false, 'error' => 'Transaction not found']);
             exit;
         }
+
+        // Fetch detailed items and real SKUs from products table
+        $items_stmt = $pdo->prepare("
+            SELECT mti.product_id, mti.product_name, mti.category, mti.size_variant,
+                   mti.quantity, mti.unit_price, mti.subtotal,
+                   COALESCE(p.sku, '') AS real_sku
+            FROM merchandise_transaction_items mti
+            LEFT JOIN products p ON p.id = mti.product_id
+            WHERE mti.transaction_id = ?
+        ");
+        $items_stmt->execute([$row['id']]);
+        $items_rows = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $sku_list = [];
+        $items_breakdown = [];
+        if (!empty($items_rows)) {
+            foreach ($items_rows as $it) {
+                $item_sku_code = !empty($it['real_sku']) ? $it['real_sku'] : ('SKU-' . $it['product_id']);
+                $sku_list[] = $item_sku_code;
+                $items_breakdown[] = [
+                    'sku'          => $item_sku_code,
+                    'product_name' => $it['product_name'],
+                    'category'     => $it['category'] ?: 'Merchandise',
+                    'quantity'     => (float)$it['quantity'],
+                    'unit_price'   => number_format((float)$it['unit_price'], 2),
+                    'subtotal'     => number_format((float)$it['subtotal'], 2),
+                ];
+            }
+        }
+        $formatted_item_sku = !empty($sku_list) ? implode(', ', array_unique($sku_list)) : ($row['item_sku'] ?: 'N/A');
+
+        // Intelligent fallbacks for Change, Validated By, and Validated At
+        $tendered = (float)($row['amount_tendered'] ?? 0);
+        $total    = (float)($row['total_amount'] ?? 0);
         
+        $change_calc = '0.00';
+        if (isset($row['change_amount']) && $row['change_amount'] !== null && $row['change_amount'] !== '') {
+            $change_calc = number_format((float)$row['change_amount'], 2);
+        } elseif ($tendered > 0 && $tendered >= $total) {
+            $change_calc = number_format(max(0, $tendered - $total), 2);
+        }
+
+        $validated_by = (!empty($row['validated_by_name']) && $row['validated_by_name'] !== 'N/A') 
+            ? $row['validated_by_name'] 
+            : (!empty($row['staff_name']) ? $row['staff_name'] : 'System Staff');
+
+        $validated_at = (!empty($row['validated_at']) && $row['validated_at'] > '2000-01-01')
+            ? date('M d, Y h:i A', strtotime($row['validated_at'])) 
+            : date('M d, Y h:i A', strtotime($row['transaction_date'] > '2000-01-01' ? $row['transaction_date'] : $row['created_at']));
+
         // Format response for merchandise transaction
         echo json_encode([
             'success' => true,
             'type' => 'merchandise',
             'transaction_id' => $row['transaction_id'],
             'customer_name' => $row['customer_name'] ?: 'Walk-in',
-            'item_sku' => $row['item_sku'],
+            'item_sku' => $formatted_item_sku,
+            'items_breakdown' => $items_breakdown,
             'quantity' => $row['quantity'],
             'unit_price' => number_format((float)$row['unit_price'], 2),
             'total_amount' => number_format((float)$row['total_amount'], 2),
             'payment_method' => $row['payment_method'],
             'transaction_date' => date('M d, Y h:i A', strtotime($row['transaction_date'] > '2000-01-01' ? $row['transaction_date'] : $row['created_at'])),
             'validation_status' => $row['validation_status'],
-            'validated_at' => $row['validated_at'] ? date('M d, Y h:i A', strtotime($row['validated_at'])) : 'N/A',
+            'validated_at' => $validated_at,
             'rejection_reason' => $row['rejection_reason'] ?: 'N/A',
             'adjustment_reason' => $row['adjustment_reason'] ?: 'N/A',
             'remarks' => $row['remarks'] ?: 'N/A',
             'shift' => $row['shift_name'] ?: $row['shift_period'] ?: 'N/A',
-            'amount_tendered' => $row['amount_tendered'] ? number_format((float)$row['amount_tendered'], 2) : 'N/A',
-            'change_amount' => $row['change_amount'] ? number_format((float)$row['change_amount'], 2) : 'N/A',
+            'amount_tendered' => $tendered > 0 ? number_format($tendered, 2) : 'N/A',
+            'change_amount' => $change_calc,
             'card_reference' => $row['card_reference'] ?: 'N/A',
             'card_type' => $row['card_type'] ?: 'N/A',
             'ewallet_reference' => $row['ewallet_reference'] ?: 'N/A',
@@ -104,7 +154,7 @@ try {
             'subtotal_amount' => $row['subtotal_amount'] ? number_format((float)$row['subtotal_amount'], 2) : 'N/A',
             'vat_amount' => $row['vat_amount'] ? number_format((float)$row['vat_amount'], 2) : 'N/A',
             'staff_name' => $row['staff_name'] ?: 'Unknown',
-            'validated_by' => $row['validated_by_name'] ?: 'N/A'
+            'validated_by' => $validated_by
         ]);
         
     } elseif ($type === 'job_orders') {
@@ -165,6 +215,21 @@ try {
             }
         }
         
+        $jo_paid  = (float)($row['amount_paid'] ?? 0);
+        $jo_total = (float)($row['total_cost'] ?: $row['estimated_cost'] ?: 0);
+        $jo_sukli = (float)($row['sukli'] ?? 0);
+        if ($jo_sukli <= 0 && $jo_paid > $jo_total) {
+            $jo_sukli = $jo_paid - $jo_total;
+        }
+
+        $jo_validated_by = (!empty($row['validated_by_name']) && $row['validated_by_name'] !== 'N/A')
+            ? $row['validated_by_name']
+            : (!empty($row['staff_name']) ? $row['staff_name'] : 'System Staff');
+
+        $jo_validated_at = (!empty($row['validated_at']) && $row['validated_at'] > '2000-01-01')
+            ? date('M d, Y h:i A', strtotime($row['validated_at']))
+            : date('M d, Y h:i A', strtotime($row['created_at']));
+
         // Format response for job order
         echo json_encode([
             'success' => true,
@@ -178,18 +243,18 @@ try {
             'required_parts' => $required_parts,
             'additional_notes' => $row['additional_notes'] ?: $row['notes'] ?: 'N/A',
             'estimated_cost' => number_format((float)($row['estimated_cost'] ?: 0), 2),
-            'total_amount' => number_format((float)($row['total_cost'] ?: $row['estimated_cost'] ?: 0), 2),
-            'amount_paid' => number_format((float)($row['amount_paid'] ?: 0), 2),
-            'change_amount' => number_format((float)($row['sukli'] ?: 0), 2),
+            'total_amount' => number_format($jo_total, 2),
+            'amount_paid' => number_format($jo_paid, 2),
+            'change_amount' => number_format($jo_sukli, 2),
             'payment_method' => $row['payment_method'],
             'payment_status' => $row['payment_status'],
             'validation_status' => $row['validation_status'],
             'job_status' => $row['status'] ?: 'Pending',
             'transaction_date' => date('M d, Y h:i A', strtotime($row['created_at'])),
-            'validated_at' => $row['validated_at'] ? date('M d, Y h:i A', strtotime($row['validated_at'])) : 'N/A',
+            'validated_at' => $jo_validated_at,
             'adjustment_reason' => $row['adjustment_reason'] ?: 'N/A',
             'staff_name' => $row['staff_name'] ?: 'Unknown',
-            'validated_by' => $row['validated_by_name'] ?: 'N/A',
+            'validated_by' => $jo_validated_by,
             'mechanic_name' => $row['mechanic_name'] ?: 'Not assigned'
         ]);
         

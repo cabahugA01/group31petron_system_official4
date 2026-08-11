@@ -1110,16 +1110,19 @@
         showConnectionStatus(false);
     }
 
-    // --- REGISTER SERVICE WORKER FOR OFFLINE SUPPORT ---
+    // --- UNREGISTER ALL SERVICE WORKERS TO PREVENT STALE CACHING ---
     if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-            navigator.serviceWorker.register('sw.js')
-                .then(function(reg) {
-                    console.log('Petron ServiceWorker registered successfully. Scope:', reg.scope);
-                })
-                .catch(function(err) {
-                    console.error('Petron ServiceWorker registration failed:', err);
-                });
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for (let registration of registrations) {
+                registration.unregister();
+            }
+        });
+    }
+    if ('caches' in window) {
+        caches.keys().then(function(names) {
+            for (let name of names) {
+                caches.delete(name);
+            }
         });
     }
   </script>

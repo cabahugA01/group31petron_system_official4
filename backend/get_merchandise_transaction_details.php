@@ -16,8 +16,9 @@ require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/lib.php';
 
 // Verify login
-session_start();
-if (!isset($_SESSION['user_id'])) {
+if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+$me = current_user();
+if (!$me) {
     echo json_encode(['success' => false, 'error' => 'Unauthorized']);
     exit;
 }
@@ -53,10 +54,10 @@ try {
             COALESCE(NULLIF(CONCAT(u.first_name, ' ', u.last_name), ' '), u.username, 'N/A') AS staff_name
         FROM merchandise_transactions mt
         LEFT JOIN users u ON u.id = mt.staff_id
-        WHERE mt.transaction_id = ?
+        WHERE mt.transaction_id = ? OR mt.id = ?
         LIMIT 1
     ");
-    $stmt->execute([$txn_id]);
+    $stmt->execute([$txn_id, is_numeric($txn_id) ? (int)$txn_id : 0]);
     $txn = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$txn) {
@@ -129,6 +130,7 @@ try {
     // Format response
     $response = [
         'success' => true,
+        'items' => $items,
         'transaction' => [
             'id' => $txn['id'],
             'transaction_id' => $txn['transaction_id'],

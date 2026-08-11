@@ -2015,6 +2015,201 @@ body { overflow-x:hidden !important; max-width:100vw !important; }
     padding:0 6px;
     white-space:nowrap;
     box-sizing:border-box;
+text-transform: uppercase !important;
+}
+
+/* == PAGE HEADER - matches SuperAdmin page-head standard == */
+.page-head.txn-page-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; margin-top:16px !important; }
+.page-head.txn-page-head h1 { font-size:22px !important; font-weight:700 !important; color:var(--petron-blue,#00264D) !important; margin:0 !important; text-transform:none !important; display:flex; align-items:center; gap:8px; }
+.page-head.txn-page-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; font-weight:400 !important; }
+
+/* == Shared export/action buttons (flt-btn style) == */
+.flt-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 16px;
+    height: 36px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: all .15s;
+    background: white !important;
+    border: 1px solid transparent;
+}
+.flt-btn-search { color: #00264D !important; border-color: #00264D !important; }
+.flt-btn-search:hover { background: #00264D !important; color: #fff !important; }
+.flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
+.flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
+.flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+.flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+
+/* == Petron Clean KPI Summary Cards == */
+.txn-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+}
+.txn-kpi-card {
+    background: transparent;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px 16px;
+    box-shadow: none;
+    transition: transform .15s, box-shadow .15s;
+}
+.txn-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, .08);
+}
+.txn-kpi-lbl {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: #64748b;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.txn-kpi-val {
+    font-size: 24px;
+    font-weight: 800;
+    color: #002F70;
+    line-height: 1.1;
+}
+.txn-kpi-card.blue .txn-kpi-val { color: #0369a1; }
+.txn-kpi-card.purple .txn-kpi-val { color: #7c3aed; }
+.txn-kpi-card.green .txn-kpi-val { color: #16a34a; }
+.txn-kpi-card.orange .txn-kpi-val { color: #ea580c; }
+.txn-kpi-card.danger .txn-kpi-val { color: #dc2626; }
+
+/* Special Gradient Card for Total Amount */
+.txn-kpi-card.total-amount-card {
+    background: transparent;
+    border-left: 1px solid #e2e8f0;
+}
+.txn-kpi-card.total-amount-card .txn-kpi-lbl {
+    color: #64748b;
+}
+.txn-kpi-card.total-amount-card .txn-kpi-val {
+    color: #002F70;
+}
+
+/* Filter Card */
+.vt-filter-card { 
+    background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.05);
+}
+.vt-flt-grp { display:flex;flex-direction:column;gap:4px; }
+.vt-lbl { font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px; }
+.vt-inp { 
+    height:36px;padding:0 12px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box; 
+}
+.vt-inp:focus { border-color:#002F70;box-shadow:0 0 0 3px rgba(0,47,112,.1); }
+.vt-btn { 
+    display:inline-flex;align-items:center;gap:6px;padding:0 18px;height:36px;
+    border:1px solid transparent;border-radius:7px;font-size:13px;font-weight:600;
+    cursor:pointer;text-decoration:none;white-space:nowrap;transition:all .15s;
+    background:white !important;
+}
+.vt-btn-search { color:#002F70 !important; border-color:#002F70 !important; }
+.vt-btn-search:hover { background:#002F70 !important; color:#fff !important; }
+.vt-btn-reset  { color:#4b5563 !important; border-color:#6b7280 !important; }
+.vt-btn-reset:hover { background:#6b7280 !important; color:#fff !important; }
+
+.vt-table { 
+    width:100%;
+    border-collapse:collapse;
+    font-size:11px;
+    table-layout:auto;
+    min-width: 1200px;
+}
+.vt-table thead th { 
+    background:#002F70;color:#fff;font-size:10px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.2px;padding:8px 8px;border-bottom:2px solid #001a3d;
+    text-align:left;vertical-align:middle;white-space:normal;word-wrap:break-word;
+}
+.vt-table tbody td { 
+    padding:7px 8px;
+    border-bottom:1px solid #f1f5f9;
+    vertical-align:top;
+    background:#fff;
+    font-size:11px;
+    white-space:normal;
+    word-wrap:break-word;
+    overflow:hidden;
+    line-height:1.4;
+}
+.vt-table tbody tr:hover td { background:#eff6ff; }
+
+/* Prevent horizontal scrolling on entire page */
+body { overflow-x:hidden !important; max-width:100vw !important; }
+.content-wrapper { max-width:100% !important; overflow-x:hidden !important; }
+.card { max-width:100% !important; overflow:visible !important; }
+
+/* Table wrapper - allow horizontal scroll ONLY on the table container itself */
+.vt-table-wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    box-sizing: border-box !important;
+}
+
+/* Make filter responsive */
+.vt-filter-card form { max-width:100% !important; overflow-x:hidden !important; }
+
+/* Badges */
+.vt-badge { 
+    display:inline-block;padding:3px 10px;border-radius:3px;font-size:11px;font-weight:600;white-space:nowrap;background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;
+}
+.vt-badge-merch { background:#f0fdf4;color:#15803d;border-color:#bbf7d0; }
+.vt-badge-jo { background:#fffbeb;color:#b45309;border-color:#fde68a; }
+.vt-badge-combined { background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe; }
+.vt-badge-paid { background:#f0fdf4;color:#166534;border-color:#bbf7d0; }
+.vt-badge-partial { background:#fef3c7;color:#92400e;border-color:#fde047; }
+.vt-badge-unpaid { background:#fef2f2;color:#991b1b;border-color:#fecaca; }
+
+/* Item chips & expand rows */
+.rc-item-chip{display:inline-flex;align-items:center;gap:3px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:3px;padding:2px 6px;font-size:11px;font-weight:600;color:#374151;margin:1px 2px 1px 0;white-space:normal;word-break:break-word;max-width:100%;cursor:pointer}
+.rc-item-chip.svc{background:#fffbeb;border-color:#fde68a;color:#92400e}
+.rc-item-chip .rc-chip-qty{background:#002F70;color:#fff;border-radius:2px;padding:0 3px;font-size:8px;margin-left:2px}
+.rc-expand-row td{background:#f8fafc;padding:0}
+.rc-expand-inner{padding:10px 16px;border-top:2px solid #e2e8f0}
+.rc-expand-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.rc-expand-tbl th{padding:5px 10px;text-align:left;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #e2e8f0}
+.rc-expand-tbl td{padding:5px 10px;border-bottom:1px solid #f1f5f9}
+.rc-expand-tbl tr:last-child td{border-bottom:none}
+.rc-row-main{cursor:pointer}
+.rc-row-main:hover td{background:#eff6ff !important}
+
+/* Action Buttons - ensure they're always visible */
+.vt-btn-action { 
+    background: transparent !important;
+    width:100%;
+    min-width:65px;
+    max-width:100%;
+    height:22px;
+    border-radius:4px;
+    border:1px solid transparent;
+    cursor:pointer;
+    font-size:9px;
+    font-weight:600;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:4px;
+    transition:all .15s;
+    padding:0 6px;
+    white-space:nowrap;
+    box-sizing:border-box;
 }
 .vt-btn-view   { color:#002F70 !important; border-color:#002F70 !important; }
 .vt-btn-view:hover { background:#002F70 !important; color:#fff !important; }
@@ -2036,6 +2231,10 @@ body { overflow-x:hidden !important; max-width:100vw !important; }
 </style>
 
 <script>
+function viewTransactionDetails(source, id) {
+    return viewValidatedTransaction(source, id);
+}
+
 function viewValidatedTransaction(source, id) {
     // Open modal
     document.getElementById('viewTransactionModal').classList.add('active');
@@ -2052,12 +2251,11 @@ function viewValidatedTransaction(source, id) {
                     // Merchandise transaction details
                     html += '<div class="vt-detail-label">Transaction ID:</div><div class="vt-detail-value" style="font-family:monospace;font-weight:600;">' + data.transaction_id + '</div>';
                     html += '<div class="vt-detail-label">Customer:</div><div class="vt-detail-value">' + data.customer_name + '</div>';
-                    html += '<div class="vt-detail-label">Item SKU:</div><div class="vt-detail-value">' + data.item_sku + '</div>';
-                    html += '<div class="vt-detail-label">Quantity:</div><div class="vt-detail-value">' + data.quantity + '</div>';
-                    html += '<div class="vt-detail-label">Unit Price:</div><div class="vt-detail-value">₱' + data.unit_price + '</div>';
+                    html += '<div class="vt-detail-label">Item SKU:</div><div class="vt-detail-value" style="font-family:monospace;font-weight:700;color:#002F70;">' + data.item_sku + '</div>';
+                    html += '<div class="vt-detail-label">Total Quantity:</div><div class="vt-detail-value">' + data.quantity + '</div>';
                     html += '<div class="vt-detail-label">Total Amount:</div><div class="vt-detail-amount">₱' + data.total_amount + '</div>';
                     html += '<div class="vt-detail-label">Payment Method:</div><div class="vt-detail-value">' + data.payment_method + '</div>';
-                    if (data.amount_tendered !== 'N/A') {
+                    if (data.amount_tendered && data.amount_tendered !== 'N/A') {
                         html += '<div class="vt-detail-label">Amount Tendered:</div><div class="vt-detail-value">₱' + data.amount_tendered + '</div>';
                         html += '<div class="vt-detail-label">Change:</div><div class="vt-detail-value">₱' + data.change_amount + '</div>';
                     }
@@ -2066,11 +2264,21 @@ function viewValidatedTransaction(source, id) {
                     html += '<div class="vt-detail-label">Status:</div><div class="vt-detail-value"><span style="background:#f0fdf4;color:#166534;padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;">' + data.validation_status + '</span></div>';
                     html += '<div class="vt-detail-label">Validated By:</div><div class="vt-detail-value">' + data.validated_by + '</div>';
                     html += '<div class="vt-detail-label">Validated At:</div><div class="vt-detail-value">' + data.validated_at + '</div>';
-                    if (data.shift !== 'N/A') {
+                    if (data.shift && data.shift !== 'N/A') {
                         html += '<div class="vt-detail-label">Shift:</div><div class="vt-detail-value">' + data.shift + '</div>';
                     }
-                    if (data.remarks !== 'N/A') {
+                    if (data.remarks && data.remarks !== 'N/A') {
                         html += '<div class="vt-detail-label">Remarks:</div><div class="vt-detail-value">' + data.remarks + '</div>';
+                    }
+                    if (data.items_breakdown && data.items_breakdown.length > 0) {
+                        html += '<div style="grid-column: 1 / -1; margin-top:16px; border-top:1px solid #e2e8f0; padding-top:12px;">';
+                        html += '<div style="font-size:11.5px; font-weight:700; color:#475569; text-transform:uppercase; margin-bottom:8px;"><i class="fas fa-boxes" style="margin-right:5px;color:#002F70;"></i>Purchased Items Breakdown</div>';
+                        html += '<table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">';
+                        html += '<thead><tr style="background:#f8fafc; border-bottom:1px solid #cbd5e1;"><th style="padding:6px;">SKU</th><th style="padding:6px;">Product Name</th><th style="padding:6px;text-align:center;">Qty</th><th style="padding:6px;text-align:right;">Unit Price</th><th style="padding:6px;text-align:right;">Subtotal</th></tr></thead><tbody>';
+                        data.items_breakdown.forEach(function(item) {
+                            html += '<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px;font-family:monospace;font-weight:700;color:#002F70;">' + item.sku + '</td><td style="padding:6px;font-weight:600;">' + item.product_name + '</td><td style="padding:6px;text-align:center;">' + item.quantity + '</td><td style="padding:6px;text-align:right;">₱' + item.unit_price + '</td><td style="padding:6px;text-align:right;font-weight:700;">₱' + item.subtotal + '</td></tr>';
+                        });
+                        html += '</tbody></table></div>';
                     }
                 } else if (data.type === 'job_order') {
                     // Job order details
@@ -2094,7 +2302,7 @@ function viewValidatedTransaction(source, id) {
                     html += '<div class="vt-detail-label">Validation Status:</div><div class="vt-detail-value"><span style="background:#f0fdf4;color:#166534;padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;">' + data.validation_status + '</span></div>';
                     html += '<div class="vt-detail-label">Validated By:</div><div class="vt-detail-value">' + data.validated_by + '</div>';
                     html += '<div class="vt-detail-label">Validated At:</div><div class="vt-detail-value">' + data.validated_at + '</div>';
-                    if (data.additional_notes !== 'N/A') {
+                    if (data.additional_notes && data.additional_notes !== 'N/A') {
                         html += '<div class="vt-detail-label">Notes:</div><div class="vt-detail-value">' + data.additional_notes + '</div>';
                     }
                 }
@@ -2110,7 +2318,6 @@ function viewValidatedTransaction(source, id) {
             document.getElementById('viewTransactionContent').innerHTML = '<div style="text-align:center;padding:40px;color:#f59e0b;"><i class="fas fa-exclamation-triangle" style="font-size:32px;display:block;margin-bottom:12px;"></i>Connection error. Please try again.</div>';
         });
 }
-
 function closeViewModal() {
     document.getElementById('viewTransactionModal').classList.remove('active');
 }

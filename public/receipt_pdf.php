@@ -297,7 +297,10 @@ $tendered = (float) ($tendered ?? 0);
 $change = (float) ($change ?? 0);
 $sale = $sale ?? [];
 
-$logo_path = rp_local_img_path($logo ?? '/group31petron_system_official4/assets/img/Petron Logo.png');
+$logo_path = realpath(__DIR__ . '/../assets/img/Petron Logo.png');
+if (!$logo_path || !file_exists($logo_path)) {
+    $logo_path = realpath(__DIR__ . '/../assets/img/petron_logo.png');
+}
 $verify_code = (string) ($verify_url ?? $qr_data ?? $txn_id);
 $qr_png = $verify_code !== '' ? rp_qr_png($verify_code) : '';
 
@@ -474,14 +477,11 @@ table { width: 100%; border-collapse: collapse; }
   <table>' . $payment_rows . '</table>
   <div class="dash"></div>'
 
-  . ($qr_png ? '<div class="qr"><div class="qr-label">QR Code Verification (Authenticity)</div><img src="var:receipt_qr" alt="QR"><div class="qr-label">' . rp_e($txn_id) . ' - ' . rp_e(strtoupper($pay_status_norm)) . '</div></div><div class="dash"></div>' : '')
-
   . '<div class="footer">
     <div class="foot-title" style="font-weight: bold; font-size: 8.5px; margin-bottom: .4mm;">Official Sales Invoice / Receipt</div>
     <div class="foot-line">TIN: ' . rp_e($vat_tin) . ' | VAT Reg: ' . rp_e($vat_reg_no) . '</div>
     <div class="foot-line">ATP No.: ' . rp_e($atp_no) . '</div>
     <div class="foot-line" style="font-weight: bold; color: #003d7a; margin: 1mm 0;">Thank you for your purchase!</div>
-    <div style="font-size: 7.5px; color: #1e293b; font-weight: bold; margin: 1.5mm 0 1mm 0;">Authorized Signature: __________________</div>
     <div class="foot-meta">Printed: ' . date('M j, Y h:i A') . ' | ' . rp_e($txn_id) . '</div>
   </div>
 </div>

@@ -56,6 +56,11 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
+  // Bypass dynamic PHP files, backend API endpoints, and query strings completely
+  if (url.pathname.endsWith('.php') || url.pathname.includes('/backend/') || url.search.length > 0) {
+    return;
+  }
+
   // If requesting a static pre-cached resource, use cache-first strategy
   if (ASSETS_TO_CACHE.some(asset => url.pathname.includes(asset))) {
     event.respondWith(
@@ -69,9 +74,7 @@ self.addEventListener('fetch', (event) => {
             });
           }
           return networkResponse;
-        }).catch(() => {
-          // Silent catch
-        });
+        }).catch(() => fetch(event.request));
       })
     );
     return;
@@ -81,7 +84,6 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
-        // Dynamically cache successful page loads so we have offline access to recently viewed pages
         if (networkResponse && networkResponse.status === 200 && event.request.mode === 'navigate') {
           const responseCopy = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -98,7 +100,7 @@ self.addEventListener('fetch', (event) => {
           if (event.request.mode === 'navigate') {
             return caches.match(OFFLINE_URL);
           }
-          return null;
+          return new Response('Network error', { status: 503, statusText: 'Service Unavailable' });
         });
       })
   );

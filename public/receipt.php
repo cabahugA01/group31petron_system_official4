@@ -1132,7 +1132,7 @@ if (!empty($local_qr_png)) {
   .jo-r-row{margin-bottom:1px!important;font-size:9.5px!important}
   .jo-r-lbl{margin:3px 0 2px!important;font-size:8px!important}
   .jo-r-head{margin-bottom:4px!important}
-  .jo-r-logo-img{width:60px!important}
+  .jo-r-logo-img{width:80px!important}
   .jo-r-brand{font-size:10px!important}
   .jo-r-branch,.jo-r-tin{font-size:8.5px!important}
   .jo-r-title{font-size:11px!important;margin:2px 0!important}
@@ -1156,7 +1156,7 @@ if (!empty($local_qr_png)) {
 
 /* Header */
 .jo-r-head{text-align:center;margin-bottom:8px}
-.jo-r-logo-img{width:90px;height:auto;display:block;margin:0 auto 6px}
+.jo-r-logo-img{width:105px;height:auto;display:block;margin:0 auto 6px;object-fit:contain;}
 .jo-r-brand{font-size:13px;font-weight:700;color:#003d7a;margin-top:6px;letter-spacing:.5px;text-transform:uppercase}
 .jo-r-branch{font-size:11px;font-weight:600;color:#222;margin-top:3px}
 .jo-r-address{font-size:10px;color:#555;margin-top:2px}
@@ -1229,10 +1229,10 @@ if (!empty($local_qr_png)) {
 
   <!-- ══ HEADER ══════════════════════════════════════════════════════════════ -->
   <div class="jo-r-head">
-    <img src="<?php echo htmlspecialchars($logo); ?>"
-         alt="Petron"
+    <img src="<?php echo $logo; ?>"
+         alt="PETRON LOGO"
          class="jo-r-logo-img"
-         onerror="this.style.display='none'">
+         style="width:105px;height:auto;display:block;margin:0 auto 6px;object-fit:contain;">
     <div class="jo-r-brand">PETRON STATION MANAGEMENT SYSTEM</div>
     <div class="jo-r-branch"><?php echo htmlspecialchars($station_addr); ?></div>
     <div class="jo-r-tin">VAT Reg TIN: <?php echo htmlspecialchars($vat_tin); ?></div>
@@ -1500,22 +1500,6 @@ if (!empty($local_qr_png)) {
   <div class="jo-r-div"></div>
   <?php endif; ?>
 
-  <!-- ══ QR CODE VERIFICATION ═════════════════════════════════════════════════ -->
-  <div class="jo-r-qr" style="text-align:center;margin:10px 0 6px 0;">
-    <div style="display:inline-block;background:#ffffff;padding:4px;">
-      <img id="main_qr_img"
-           src="<?php echo htmlspecialchars($qr_url); ?>"
-           alt="QR Code Verification"
-           width="140" height="140"
-           style="margin:0 auto;display:block;image-rendering:pixelated;">
-    </div>
-    <div class="jo-r-qr-lbl" style="margin-top:4px;font-size:8px;font-weight:600;color:#475569;">
-      <?php echo htmlspecialchars($txn_id); ?> &nbsp;·&nbsp; <?php echo strtoupper($pay_status_norm ?? 'PAID'); ?>
-    </div>
-  </div>
-
-  <div class="jo-r-div"></div>
-
   <!-- ══ FOOTER ════════════════════════════════════════════════════════════════ -->
   <div class="jo-r-foot" style="text-align:center;margin-top:8px;">
     <div class="jo-r-foot-title" style="font-weight:700;font-size:10.5px;margin-bottom:4px;color:#0f172a;">
@@ -1529,9 +1513,6 @@ if (!empty($local_qr_png)) {
     </div>
     <div class="jo-r-foot-line" style="font-size:10px;font-weight:700;color:#003d7a;margin:6px 0 4px 0;">
       Thank you for your purchase!
-    </div>
-    <div class="jo-r-sig" style="margin:8px 0 10px 0;text-align:center;">
-      <div style="font-size:9.5px;color:#1e293b;font-weight:600;">Authorized Signature: __________________</div>
     </div>
     <?php if ($pay_status_norm === 'partial'): ?>
     <div class="jo-r-foot-line" style="color:#92400e;font-weight:700;border:1px solid #fde68a;background:#fef9c3;padding:4px 6px;border-radius:4px;margin:4px 0;font-size:9px;">
