@@ -511,6 +511,19 @@ $mh_kpi_txn_count        = 0;
 $mh_kpi_items_released   = 0;
 $mh_kpi_total_encoded    = 0.00;
 
+// Pre-fetch pending transaction_requests for Merchandise History rows
+$mh_pending_requests = [];
+try {
+    $mhpr_stmt = $pdo->prepare(
+        "SELECT * FROM transaction_requests WHERE station_id = ? AND record_source = 'merchandise_transactions' AND status = 'Pending'"
+    );
+    $mhpr_stmt->execute([$station_id]);
+    foreach ($mhpr_stmt->fetchAll(PDO::FETCH_ASSOC) as $mhpr_row) {
+        // Key by transaction_id (mt.id as string)
+        $mh_pending_requests[(string)$mhpr_row['transaction_id']] = $mhpr_row;
+    }
+} catch (Exception $mhpr_err) {}
+
 
 // DEBUG
 
@@ -1668,6 +1681,17 @@ if ($section === 'merchandise') {
         $job_orders = array_merge($jo_rows, $mt_rows);
         usort($job_orders, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['created_at']));
 
+        // ── Pre-fetch pending transaction_requests for Job Order Tracker ────────
+        $pending_requests = [];
+        try {
+            $pr_stmt = $pdo->prepare("SELECT * FROM transaction_requests WHERE station_id = ? AND status = 'Pending'");
+            $pr_stmt->execute([$station_id]);
+            foreach ($pr_stmt->fetchAll(PDO::FETCH_ASSOC) as $pr) {
+                $pr_key = ($pr['record_source'] ?? 'job_orders') . ':' . $pr['transaction_id'];
+                $pending_requests[$pr_key] = $pr;
+            }
+        } catch (Exception $pr_err) {}
+
         // ── Build inventory impact lookup (per JO, per part) ─────────────────────
         // Keyed by "{_source}:{id}" → array of ['part','qty','stock','status']
         $inv_impact = [];
@@ -1943,6 +1967,158 @@ window.openMerchRequest = function(btn, type) {
     }
     return false;
 };
+
+window.openRequestAdjustModal = function(arg1, arg2) {
+    var e = null;
+    var joData = {};
+
+    if (arg1 && typeof arg1.stopPropagation === 'function') {
+        e = arg1;
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+    }
+
+    if (arg2 && typeof arg2.getAttribute === 'function') {
+        var btn = arg2;
+        joData = {
+            id: btn.getAttribute('data-jo-id') || '',
+            source: btn.getAttribute('data-jo-source') || 'job_orders',
+            jo_ref: btn.getAttribute('data-jo-ref') || '',
+            customer: btn.getAttribute('data-jo-customer') || '—',
+            workflow_status: btn.getAttribute('data-jo-status') || '—',
+            payment_status: btn.getAttribute('data-jo-paystatus') || '—',
+            payment_method: btn.getAttribute('data-jo-paymethod') || 'Cash',
+            total: btn.getAttribute('data-jo-total') || '0',
+            labor_fee: btn.getAttribute('data-jo-labor') || '0',
+            paid: btn.getAttribute('data-jo-paid') || '0',
+            service_type: btn.getAttribute('data-jo-service') || '',
+            vehicle_plate: btn.getAttribute('data-jo-plate') || '',
+            vehicle_type: btn.getAttribute('data-jo-vtype') || '',
+            mechanic: btn.getAttribute('data-jo-mech') || 'Unassigned'
+        };
+    } else if (arg1 && typeof arg1.getAttribute === 'function') {
+        var btn = arg1;
+        joData = {
+            id: btn.getAttribute('data-jo-id') || '',
+            source: btn.getAttribute('data-jo-source') || 'job_orders',
+            jo_ref: btn.getAttribute('data-jo-ref') || '',
+            customer: btn.getAttribute('data-jo-customer') || '—',
+            workflow_status: btn.getAttribute('data-jo-status') || '—',
+            payment_status: btn.getAttribute('data-jo-paystatus') || '—',
+            payment_method: btn.getAttribute('data-jo-paymethod') || 'Cash',
+            total: btn.getAttribute('data-jo-total') || '0',
+            labor_fee: btn.getAttribute('data-jo-labor') || '0',
+            paid: btn.getAttribute('data-jo-paid') || '0',
+            service_type: btn.getAttribute('data-jo-service') || '',
+            vehicle_plate: btn.getAttribute('data-jo-plate') || '',
+            vehicle_type: btn.getAttribute('data-jo-vtype') || '',
+            mechanic: btn.getAttribute('data-jo-mech') || 'Unassigned'
+        };
+    } else if (arg1 && typeof arg1 === 'object' && !arg1.stopPropagation) {
+        joData = arg1;
+    }
+
+    ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal', 'requestVoidModal'].forEach(function(id) {
+        var m = document.getElementById(id);
+        if (m) m.style.display = 'none';
+    });
+
+    var modal = document.getElementById('requestAdjustModal');
+    if (!modal) {
+        console.error('requestAdjustModal element not found');
+        return false;
+    }
+
+    window._activeJoDataForReq = joData;
+    
+    var setVal = function(id, val) { var el = document.getElementById(id); if (el) el.value = val || ''; };
+    var setTxt = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val || '—'; };
+
+    setVal('reqAdjTxnId', joData.id);
+    setVal('reqAdjRecordSource', joData.source);
+    setTxt('reqAdjJoNo', joData.jo_ref || ('#' + (joData.id || '')));
+    setTxt('reqAdjCustomer', joData.customer);
+    setTxt('reqAdjStatus', joData.workflow_status);
+    setTxt('reqAdjPayStatus', joData.payment_status);
+    setTxt('reqAdjPayMethod', joData.payment_method);
+
+    setVal('reqAdjCorrectionField', 'Labor Fee');
+    if (typeof window.onReqAdjFieldChange === 'function') {
+        window.onReqAdjFieldChange();
+    } else {
+        setVal('reqAdjCurrentValue', joData.labor_fee ? ('₱' + parseFloat(joData.labor_fee).toFixed(2)) : '₱100.00');
+    }
+    setVal('reqAdjRequestedValue', '');
+    setVal('reqAdjReason', '');
+    setVal('reqAdjRemarks', '');
+
+    modal.style.display = 'flex';
+    modal.style.zIndex = '9999999';
+    return false;
+};
+
+window.openRequestVoidModal = function(arg1, arg2) {
+    var e = null;
+    var joData = {};
+
+    if (arg1 && typeof arg1.stopPropagation === 'function') {
+        e = arg1;
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+    }
+
+    if (arg2 && typeof arg2.getAttribute === 'function') {
+        var btn = arg2;
+        joData = {
+            id: btn.getAttribute('data-jo-id') || '',
+            source: btn.getAttribute('data-jo-source') || 'job_orders',
+            jo_ref: btn.getAttribute('data-jo-ref') || '',
+            customer: btn.getAttribute('data-jo-customer') || '—',
+            workflow_status: btn.getAttribute('data-jo-status') || '—',
+            payment_status: btn.getAttribute('data-jo-paystatus') || '—'
+        };
+    } else if (arg1 && typeof arg1.getAttribute === 'function') {
+        var btn = arg1;
+        joData = {
+            id: btn.getAttribute('data-jo-id') || '',
+            source: btn.getAttribute('data-jo-source') || 'job_orders',
+            jo_ref: btn.getAttribute('data-jo-ref') || '',
+            customer: btn.getAttribute('data-jo-customer') || '—',
+            workflow_status: btn.getAttribute('data-jo-status') || '—',
+            payment_status: btn.getAttribute('data-jo-paystatus') || '—'
+        };
+    } else if (arg1 && typeof arg1 === 'object' && !arg1.stopPropagation) {
+        joData = arg1;
+    }
+
+    ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal', 'requestAdjustModal'].forEach(function(id) {
+        var m = document.getElementById(id);
+        if (m) m.style.display = 'none';
+    });
+
+    var modal = document.getElementById('requestVoidModal');
+    if (!modal) {
+        console.error('requestVoidModal element not found');
+        return false;
+    }
+
+    var setVal = function(id, val) { var el = document.getElementById(id); if (el) el.value = val || ''; };
+    var setTxt = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val || '—'; };
+
+    setVal('reqVoidTxnId', joData.id);
+    setVal('reqVoidRecordSource', joData.source);
+    setTxt('reqVoidJoNo', joData.jo_ref || ('#' + (joData.id || '')));
+    setTxt('reqVoidCustomer', joData.customer);
+    setTxt('reqVoidStatus', joData.workflow_status);
+    setTxt('reqVoidPayStatus', joData.payment_status);
+
+    setVal('reqVoidReasonSelect', 'Duplicate Transaction');
+    setVal('reqVoidRemarks', '');
+
+    modal.style.display = 'flex';
+    modal.style.zIndex = '9999999';
+    return false;
+};
 window.viewMerchandiseDetails = function(txnId) {
     if (!txnId) {
         if (typeof showTxnAlert === 'function') showTxnAlert('Invalid transaction ID', 'error');
@@ -2091,7 +2267,6 @@ window.closeTxnRequestModal = function() {
     if (modal) modal.style.display = 'none';
 };
 </script>
-?>
 
 <style>
 /* ── Cart Wrapper — Flexbox Row Layout ──────────────────────────────── */
@@ -2733,6 +2908,27 @@ input[list] {
     border-color: #dc2626 !important;
 }
 .txn-btn.danger:hover {
+
+.txn-btn.info {
+    background: #ffffff !important;
+    color: #0284c7 !important;
+    border-color: #0284c7 !important;
+}
+.txn-btn.info:hover {
+    background: #f0f9ff !important;
+    color: #0369a1 !important;
+    border-color: #0369a1 !important;
+}
+.txn-btn.warning {
+    background: #ffffff !important;
+    color: #d97706 !important;
+    border-color: #d97706 !important;
+}
+.txn-btn.warning:hover {
+    background: #fffbeb !important;
+    color: #b45309 !important;
+    border-color: #b45309 !important;
+}
     background: #fef2f2 !important;
     color: #b91c1c !important;
     border-color: #b91c1c !important;
@@ -4300,18 +4496,37 @@ input[list] {
                 return;
             }
             const colors = {
-                success: { bg:'#d4edda', color:'#155724', border:'#c3e6cb', icon:'fa-check-circle', iconColor:'#28a745' },
-                error:   { bg:'#f8d7da', color:'#721c24', border:'#f5c6cb', icon:'fa-times-circle',  iconColor:'#dc3545' },
-                warning: { bg:'#fff3cd', color:'#856404', border:'#ffeeba', icon:'fa-exclamation-triangle', iconColor:'#ffc107' },
-                info:    { bg:'#d1ecf1', color:'#0c5460', border:'#bee5eb', icon:'fa-info-circle',   iconColor:'#17a2b8' },
+                success: { bg:'#f0fdf4', color:'#166534', border:'#86efac', icon:'fa-check-circle', iconColor:'#16a34a' },
+                error:   { bg:'#fef2f2', color:'#991b1b', border:'#fecaca', icon:'fa-times-circle',  iconColor:'#dc2626' },
+                warning: { bg:'#fffbeb', color:'#92400e', border:'#fde68a', icon:'fa-exclamation-triangle', iconColor:'#d97706' },
+                info:    { bg:'#eff6ff', color:'#1e40af', border:'#bfdbfe', icon:'fa-info-circle',   iconColor:'#2563eb' },
             };
             const c = colors[type] || colors.success;
+            const old = document.getElementById('petronToastRightBanner');
+            if (old) old.remove();
+
             const toast = document.createElement('div');
-            toast.style.cssText = `position:fixed;top:80px;left:50%;transform:translateX(-50%) scale(0.95);` +
+            toast.id = 'petronToastRightBanner';
+            toast.style.cssText = `position:fixed;top:84px;right:22px;left:auto;z-index:999999;` +
                 `background:${c.bg};color:${c.color};border:1.5px solid ${c.border};` +
-                `padding:14px 28px;border-radius:12px;font-weight:600;z-index:99999;` +
-                `box-shadow:0 6px 24px rgba(0,0,0,.15);transition:opacity .35s ease, transform .25s ease;` +
-                `font-size:14px;text-align:center;max-width:480px;line-height:1.5;opacity:0;`;
+                `padding:12px 18px;border-radius:10px;font-weight:700;` +
+                `box-shadow:0 12px 30px rgba(0,0,0,.15);transition:opacity .35s ease, transform .25s ease;` +
+                `font-size:13.5px;display:flex;align-items:center;gap:10px;max-width:440px;width:auto;opacity:0;transform:translateY(-10px);`;
+            toast.innerHTML = `<i class="fas ${c.icon}" style="color:${c.iconColor};font-size:16px;flex-shrink:0;"></i><span style="flex:1;">${msg}</span>` +
+                `<button onclick="this.parentElement.remove()" style="margin-left:8px;background:none;border:none;cursor:pointer;color:${c.color};font-size:18px;line-height:1;padding:0 2px;opacity:0.8;">×</button>`;
+            document.body.appendChild(toast);
+            requestAnimationFrame(() => {
+                toast.style.opacity = '1';
+                toast.style.transform = 'translateY(0)';
+            });
+            setTimeout(() => {
+                if (toast.parentElement) {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateY(-10px)';
+                    setTimeout(() => toast.remove(), 350);
+                }
+            }, 4500);
+        }
             toast.innerHTML = `<i class="fas ${c.icon}" style="color:${c.iconColor};margin-right:8px;"></i>${msg}`;
             document.body.appendChild(toast);
             // Animate in
@@ -5640,46 +5855,65 @@ input[list] {
 
                             <table class="txn-table" id="mhHistoryTable" style="width:100%; table-layout:fixed;">
                                 <colgroup>
-                                    <col style="width:8%;"><!-- OR No. -->
-                                    <col style="width:10%;"><!-- Transaction ID -->
-                                    <col style="width:10%;"><!-- Customer -->
-                                    <col style="width:12%;"><!-- Product -->
-                                    <col style="width:4%;"><!-- Qty -->
-                                    <col style="width:4%;"><!-- UOM -->
-                                    <col style="width:8%;"><!-- Unit Price -->
-                                    <col style="width:8%;"><!-- Total -->
-                                    <col style="width:11%;"><!-- Date Released -->
-                                    <col style="width:25%;"><!-- Actions -->
+                                    <col style="width:7%;"><!-- OR No. -->
+                                    <col style="width:9%;"><!-- Transaction ID -->
+                                    <col style="width:9%;"><!-- Customer -->
+                                    <col style="width:10%;"><!-- Product -->
+                                    <col style="width:3%;"><!-- Qty -->
+                                    <col style="width:3%;"><!-- UOM -->
+                                    <col style="width:7%;"><!-- Unit Price -->
+                                    <col style="width:7%;"><!-- Total -->
+                                    <col style="width:8%;"><!-- Pay Status -->
+                                    <col style="width:8%;"><!-- Pay Method -->
+                                    <col style="width:9%;"><!-- Date Released -->
+                                    <col style="width:19%;"><!-- Actions -->
                                 </colgroup>
                                 <thead>
                                     <tr>
-                                        <th style="font-size:12px;text-align:left;padding:10px;">OR No.</th>
-                                        <th style="font-size:12px;text-align:left;padding:10px;">Transaction ID</th>
-                                        <th style="font-size:12px;text-align:left;padding:10px;">Customer</th>
-                                        <th style="font-size:12px;text-align:left;padding:10px;">Product</th>
-                                        <th style="font-size:12px;text-align:center;padding:10px;">Qty</th>
-                                        <th style="font-size:12px;text-align:center;padding:10px;">UOM</th>
-                                        <th style="font-size:12px;text-align:right;padding:10px;">Unit Price</th>
-                                        <th style="font-size:12px;text-align:right;padding:10px;">Total</th>
-                                        <th style="font-size:12px;text-align:left;padding:10px;">Date Released</th>
-                                        <th style="font-size:12px;text-align:center;padding:10px;">Actions</th>
+                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">OR No.</th>
+                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">Txn ID</th>
+                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">Customer</th>
+                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">Product</th>
+                                        <th style="font-size:11px;text-align:center;padding:9px 4px;">Qty</th>
+                                        <th style="font-size:11px;text-align:center;padding:9px 4px;">UOM</th>
+                                        <th style="font-size:11px;text-align:right;padding:9px 8px;">Unit Price</th>
+                                        <th style="font-size:11px;text-align:right;padding:9px 8px;">Total</th>
+                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">Pay Status</th>
+                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">Pay Method</th>
+                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">Date Released</th>
+                                        <th style="font-size:11px;text-align:center;padding:9px 8px;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mhTableBody">
                                 <?php foreach ($mh_recent as $txn):
-                                    $qty = (float)$txn['quantity'];
-                                    $qty_display = ($qty == (int)$qty) ? (int)$qty : $qty;
-                                    $unit_price = (float)$txn['unit_price'];
-                                    $item_total = (float)$txn['item_total'];
-                                    $date_released = '—';
-                                    if (!empty($txn['transaction_date'])) {
-                                        try {
-                                            $date_released = (new DateTime($txn['transaction_date']))->format('M j, Y g:i A');
-                                        } catch (Exception $e) {}
-                                    }
-                                    // Get unit label directly from inventory (as-is, no normalization)
-                                    $unit_label = $txn['unit'] ?? 'pc';
-                                ?>
+                                     $qty = (float)$txn['quantity'];
+                                     $qty_display = ($qty == (int)$qty) ? (int)$qty : $qty;
+                                     $unit_price = (float)$txn['unit_price'];
+                                     $item_total = (float)$txn['item_total'];
+                                     $date_released = '—';
+                                     if (!empty($txn['transaction_date'])) {
+                                         try {
+                                             $date_released = (new DateTime($txn['transaction_date']))->format('M j, Y g:i A');
+                                         } catch (Exception $e) {}
+                                     }
+                                     // Get unit label directly from inventory (as-is, no normalization)
+                                     $unit_label = $txn['unit'] ?? 'pc';
+
+                                     // ── Determine action state ─────────────────────────────────────────
+                                     $mh_val_status  = strtolower(trim($txn['validation_status'] ?? ''));
+                                     $mh_pay_status  = strtolower(trim($txn['payment_status']   ?? ''));
+                                     $mh_mt_id_str   = (string)$txn['mt_id'];
+
+                                     // Check if there is a pending request for this transaction
+                                     $mh_pending_req  = $mh_pending_requests[$mh_mt_id_str] ?? null;
+                                     $mh_pending_type = $mh_pending_req ? $mh_pending_req['request_type'] : null;
+
+                                     // Status flags
+                                     $mh_is_voided   = in_array($mh_val_status, ['voided','cancelled','canceled']);
+                                     $mh_is_adjusted = ($mh_val_status === 'adjusted');
+                                     $mh_adj_req     = ($mh_pending_type === 'Adjustment');
+                                     $mh_void_req    = ($mh_pending_type === 'Void');
+                                 ?>
                                  <tr class="mh-row">
                                     <td style="font-size:11px;font-weight:700;color:#475569;padding:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0;">
                                         <?= htmlspecialchars($txn['or_number'] ?? '—') ?>
@@ -5708,42 +5942,109 @@ input[list] {
                                     <td style="font-size:12px;text-align:right;font-weight:700;color:var(--petron-blue);padding:10px;white-space:nowrap;">
                                         ₱<?= number_format($item_total, 2) ?>
                                     </td>
+                                    <td style="font-size:11px;padding:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0;">
+                                        <?php
+                                            $mh_pstat_raw = $txn['payment_status'] ?? 'Pending';
+                                            $mh_pstat_lc  = strtolower(trim($mh_pstat_raw));
+                                            $mh_pstat_bg  = '#f1f5f9'; $mh_pstat_col = '#475569';
+                                            if ($mh_pstat_lc === 'paid')                    { $mh_pstat_bg = '#dcfce7'; $mh_pstat_col = '#166534'; }
+                                            elseif ($mh_pstat_lc === 'partial')             { $mh_pstat_bg = '#fef9c3'; $mh_pstat_col = '#854d0e'; }
+                                            elseif (in_array($mh_pstat_lc, ['account receivable','credit','ar'])) { $mh_pstat_bg = '#ede9fe'; $mh_pstat_col = '#5b21b6'; }
+                                            elseif (in_array($mh_pstat_lc, ['unpaid','pending','pending payment','unpaid'])) { $mh_pstat_bg = '#fee2e2'; $mh_pstat_col = '#b91c1c'; }
+                                        ?>
+                                        <span style="display:inline-block;padding:2px 6px;border-radius:4px;background:<?= $mh_pstat_bg ?>;color:<?= $mh_pstat_col ?>;font-size:10px;font-weight:700;white-space:nowrap;">
+                                            <?= htmlspecialchars($mh_pstat_raw) ?>
+                                        </span>
+                                    </td>
+                                    <td style="font-size:11px;color:#475569;padding:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0;" title="<?= htmlspecialchars($txn['payment_method'] ?? '') ?>">
+                                        <?= htmlspecialchars($txn['payment_method'] ?? '—') ?>
+                                    </td>
                                     <td style="font-size:11px;color:#64748b;padding:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                                         <?= $date_released ?>
                                     </td>
-                                    <td style="padding:6px;text-align:center;">
-                                         <div style="display:flex;flex-direction:row;flex-wrap:wrap;gap:3px;align-items:center;justify-content:center;">
-                                             <!-- View Button -->
-                                             <button type="button"
-                                                onclick="event.stopPropagation(); viewMerchandiseDetails('<?= addslashes($txn['mt_id']) ?>')"
-                                                title="View transaction details"
-                                                style="display:inline-flex;align-items:center;justify-content:center;gap:3px;padding:3px 7px;border:1.5px solid #0ea5e9 !important;border-radius:5px;color:#0ea5e9 !important;background:#f0f9ff !important;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1.4;">
+                                     <td style="padding:6px;text-align:left;">
+                                         <div style="display:flex;flex-direction:column;gap:3px;align-items:stretch;">
+
+                                             <?php if ($mh_is_voided): ?>
+                                             <!-- VOIDED Status: View only + Badge -->
+                                             <button type="button" onclick="event.stopPropagation(); viewMerchandiseDetails('<?= addslashes($txn['mt_id']) ?>')"
+                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
                                                  <i class="fas fa-eye"></i> View
                                              </button>
-                                             <!-- Reprint Button -->
-                                             <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank"
-                                                onclick="event.stopPropagation();"
-                                                style="display:inline-flex;align-items:center;justify-content:center;gap:3px;padding:3px 7px;border:1.5px solid #002F70 !important;border-radius:5px;color:#002F70 !important;background:#ffffff !important;font-size:10px;font-weight:700;text-decoration:none;white-space:nowrap;line-height:1.4;">
+                                             <span style="font-size:10.5px;color:#991b1b;font-weight:700;text-align:center;padding:2px 0;">
+                                                 <i class="fas fa-ban"></i> Voided
+                                             </span>
+
+                                             <?php elseif ($mh_is_adjusted): ?>
+                                             <!-- ADJUSTED Status: View, Reprint + Badge -->
+                                             <button type="button" onclick="event.stopPropagation(); viewMerchandiseDetails('<?= addslashes($txn['mt_id']) ?>')"
+                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                                 <i class="fas fa-eye"></i> View
+                                             </button>
+                                             <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank" onclick="event.stopPropagation();"
+                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;">
                                                  <i class="fas fa-receipt"></i> Reprint
                                              </a>
-                                             <!-- Request Adjustment Button -->
-                                             <button type="button"
+                                             <span style="font-size:10.5px;color:#4338ca;font-weight:700;text-align:center;padding:2px 0;">
+                                                 <i class="fas fa-check-circle"></i> Adjusted
+                                             </span>
+
+                                             <?php elseif ($mh_adj_req): ?>
+                                             <!-- ADJUSTMENT REQUESTED Status: View, Reprint + Badge -->
+                                             <button type="button" onclick="event.stopPropagation(); viewMerchandiseDetails('<?= addslashes($txn['mt_id']) ?>')"
+                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                                 <i class="fas fa-eye"></i> View
+                                             </button>
+                                             <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank" onclick="event.stopPropagation();"
+                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;">
+                                                 <i class="fas fa-receipt"></i> Reprint
+                                             </a>
+                                             <span style="font-size:10.5px;color:#d97706;font-weight:700;text-align:center;padding:2px 0;" title="Pending manager review">
+                                                 <i class="fas fa-clock"></i> Adjustment Requested
+                                             </span>
+
+                                             <?php elseif ($mh_void_req): ?>
+                                             <!-- VOID REQUESTED Status: View, Reprint + Badge -->
+                                             <button type="button" onclick="event.stopPropagation(); viewMerchandiseDetails('<?= addslashes($txn['mt_id']) ?>')"
+                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                                 <i class="fas fa-eye"></i> View
+                                             </button>
+                                             <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank" onclick="event.stopPropagation();"
+                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;">
+                                                 <i class="fas fa-receipt"></i> Reprint
+                                             </a>
+                                             <span style="font-size:10.5px;color:#dc2626;font-weight:700;text-align:center;padding:2px 0;" title="Pending manager review">
+                                                 <i class="fas fa-clock"></i> Void Requested
+                                             </span>
+
+                                             <?php else: ?>
+                                             <!-- NORMAL / CORRECT: View, Reprint, Request Adjust, Request Void -->
+                                             <button type="button" onclick="event.stopPropagation(); viewMerchandiseDetails('<?= addslashes($txn['mt_id']) ?>')"
+                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                                 <i class="fas fa-eye"></i> View
+                                             </button>
+                                             <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank" onclick="event.stopPropagation();"
+                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;">
+                                                 <i class="fas fa-receipt"></i> Reprint
+                                             </a>
+                                             <button type="button" class="txn-btn secondary"
                                                 onclick="event.stopPropagation(); openTxnRequestModal(event, '<?= addslashes($txn['mt_id']) ?>', 'merchandise_transactions', 'Adjustment', '<?= addslashes($txn['customer_name'] ?? '') ?>')"
-                                                title="Request adjustment for this transaction"
-                                                style="display:inline-flex;align-items:center;justify-content:center;gap:3px;padding:3px 7px;border:1.5px solid #f59e0b !important;border-radius:5px;color:#92400e !important;background:#fffbeb !important;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1.4;">
-                                                 <i class="fas fa-sliders-h"></i> Adjust
+                                                title="Request adjustment - wrong item/qty/price/customer details"
+                                                style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                                 <i class="fas fa-sliders-h"></i> Request Adjust
                                              </button>
-                                             <!-- Request Void Button -->
-                                             <button type="button"
+                                             <button type="button" class="txn-btn danger"
                                                 onclick="event.stopPropagation(); openTxnRequestModal(event, '<?= addslashes($txn['mt_id']) ?>', 'merchandise_transactions', 'Void', '<?= addslashes($txn['customer_name'] ?? '') ?>')"
-                                                title="Request void for this transaction"
-                                                style="display:inline-flex;align-items:center;justify-content:center;gap:3px;padding:3px 7px;border:1.5px solid #ef4444 !important;border-radius:5px;color:#b91c1c !important;background:#fef2f2 !important;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1.4;">
-                                                 <i class="fas fa-ban"></i> Void
+                                                title="Request void - duplicate, cancelled or wrong transaction"
+                                                style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                                 <i class="fas fa-ban"></i> Request Void
                                              </button>
+                                             <?php endif; ?>
+
                                          </div>
                                      </td>
-                                </tr>
-                                <?php endforeach; ?>
+                                 </tr>
+                                 <?php endforeach; ?>
                                 </tbody>
                             </table>
                             </div>
@@ -9780,11 +10081,12 @@ input[list] {
         }
 
         // ── Alert helper ──────────────────────────────────────────────────────
+        // ── Alert helper (Right-side Floating Banner) ──────────────────────────
         function showTxnAlert(msg, type) {
             const colors = {
                 success: { bg: '#f0fdf4', border: '#86efac', color: '#166534' },
                 warning: { bg: '#fffbeb', border: '#fde68a', color: '#92400e' },
-                error:   { bg: '#fee2e2', border: '#fca5a5', color: '#991b1b' },
+                error:   { bg: '#fef2f2', border: '#fecaca', color: '#991b1b' },
                 info:    { bg: '#eff6ff', border: '#bfdbfe', color: '#1e40af' },
             };
             const c = colors[type] || colors.info;
@@ -9797,15 +10099,15 @@ input[list] {
 
             const div = document.createElement('div');
             div.id = 'txnAlertBanner';
-            div.style.cssText = `position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:9999;
-                background:${c.bg};border:1px solid ${c.border};color:${c.color};
-                padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;
-                display:flex;align-items:center;gap:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);
-                max-width:480px;width:90%;`;
-            div.innerHTML = `<i class="fas ${icon}"></i><span>${escHtml(msg)}</span>
-                <button onclick="this.parentElement.remove()" style="margin-left:auto;background:none;border:none;cursor:pointer;color:${c.color};font-size:16px;line-height:1;padding:0 0 0 8px;">×</button>`;
+            div.style.cssText = `position:fixed;top:84px;right:22px;left:auto;transform:none;z-index:999999;
+                background:${c.bg};border:1.5px solid ${c.border};color:${c.color};
+                padding:12px 18px;border-radius:10px;font-size:13.5px;font-weight:700;
+                display:flex;align-items:center;gap:10px;box-shadow:0 12px 30px rgba(0,0,0,.15);
+                max-width:440px;width:auto;`;
+            div.innerHTML = `<i class="fas ${icon}" style="font-size:16px;flex-shrink:0;"></i><span style="flex:1;">${escHtml(msg)}</span>
+                <button onclick="this.parentElement.remove()" style="margin-left:8px;background:none;border:none;cursor:pointer;color:${c.color};font-size:18px;line-height:1;padding:0 2px;opacity:0.8;">×</button>`;
             document.body.appendChild(div);
-            setTimeout(() => { if (div.parentElement) div.remove(); }, 4000);
+            setTimeout(() => { if (div.parentElement) div.remove(); }, 4500);
         }
 
         // ── Init ──────────────────────────────────────────────────────────────
@@ -9973,37 +10275,39 @@ input[list] {
                 <div style="width:100%;overflow-x:hidden !important;padding-bottom:12px;">
                 <table class="txn-table" id="joUnifiedTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse;">
                     <colgroup>
-                        <col style="width:3.5%;"><!-- JO Number -->
-                        <col style="width:9%;"><!-- OR No. -->
-                        <col style="width:9.5%;"><!-- Customer -->
-                        <col style="width:6%;"><!-- Plate No. -->
-                        <col style="width:4.5%;"><!-- Vehicle -->
-                        <col style="width:8.5%;"><!-- Service Type -->
-                        <col style="width:9.5%;"><!-- Assigned Mechanic -->
-                        <col style="width:6.5%;"><!-- Service Fee -->
-                        <col style="width:6%;"><!-- Labor Fee -->
-                        <col style="width:6%;"><!-- Status -->
-                        <col style="width:5%;"><!-- Pay Status -->
-                        <col style="width:7.5%;"><!-- Est. Completion -->
+                        <col style="width:5%;"><!-- JO # -->
+                        <col style="width:6%;"><!-- OR No. -->
+                        <col style="width:9%;"><!-- Customer -->
+                        <col style="width:5.5%;"><!-- Plate No. -->
+                        <col style="width:5%;"><!-- Vehicle -->
+                        <col style="width:7%;"><!-- Service Type -->
+                        <col style="width:8%;"><!-- Assigned Mechanic -->
+                        <col style="width:5%;"><!-- Service Fee -->
+                        <col style="width:5%;"><!-- Labor Fee -->
+                        <col style="width:6.5%;"><!-- JO Status -->
+                        <col style="width:6.5%;"><!-- Payment Status -->
+                        <col style="width:6%;"><!-- Payment Method -->
+                        <col style="width:6.5%;"><!-- Est. Completion -->
                         <col style="width:6%;"><!-- Date Created -->
-                        <col style="width:18%;"><!-- Actions -->
+                        <col style="width:13%;"><!-- Actions -->
                     </colgroup>
-                    <thead>
+                    <thead style="background:linear-gradient(135deg,#002F70 0%,#003d8f 100%);">
                         <tr>
-                            <th style="font-size:10px;text-align:left;padding:6px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Job Order Number">JO #</th>
-                            <th style="font-size:10px;text-align:left;padding:6px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Official Receipt Number">OR No.</th>
-                            <th style="font-size:10px;text-align:left;padding:6px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Customer Name">Customer</th>
-                            <th style="font-size:10px;text-align:left;padding:6px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Plate Number">Plate No.</th>
-                            <th style="font-size:10px;text-align:left;padding:6px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Vehicle Type">Vehicle</th>
-                            <th style="font-size:10px;text-align:left;padding:6px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Service Type">Service Type</th>
-                            <th style="font-size:10px;text-align:left;padding:6px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Assigned Mechanic">Assigned Mechanic</th>
-                            <th style="font-size:10px;text-align:right;padding:6px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Service Fee">Service Fee</th>
-                            <th style="font-size:10px;text-align:right;padding:6px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Labor Fee">Labor Fee</th>
-                            <th style="font-size:10px;text-align:left;padding:6px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Workflow Status">Status</th>
-                            <th style="font-size:10px;text-align:left;padding:6px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Payment Status">Payment</th>
-                            <th style="font-size:10px;text-align:left;padding:6px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Estimated Completion">Est. Completion</th>
-                            <th style="font-size:10px;text-align:left;padding:6px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Date Created">Date Created</th>
-                            <th style="font-size:10px;text-align:center;padding:6px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Available Actions">Actions</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Job Order Number">JO #</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Official Receipt Number">OR No.</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Customer Name">Customer</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Plate Number">Plate No.</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Vehicle Type">Vehicle</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Service Type">Svc Type</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Assigned Mechanic">Mechanic</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:right;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Service Fee">Svc Fee</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:right;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Labor Fee">Labor</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="JO Status">JO Status</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Payment Status">Pay Status</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Payment Method">Pay Method</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Estimated Completion">Est. Done</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Date Created">Created</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Actions">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -10013,8 +10317,21 @@ input[list] {
                         $pay_status  = $job['payment_status'] ?? 'Pending';
                         $remarks     = $job['rejection_remarks'] ?? $job['notes'] ?? $job['additional_notes'] ?? '';
 
+                        $inv_key     = ($job['_source'] ?? 'job_orders') . ':' . $job['id'];
+                        $pending_req = $pending_requests[$inv_key] ?? null;
+
                         // Determine combined workflow label + badge style
-                        if ($wf_status === 'Released') {
+                        if ($pending_req) {
+                            if (($pending_req['request_type'] ?? '') === 'Adjustment') {
+                                $wf_color='#d97706'; $wf_bg='#fef3c7'; $wf_label='Adjustment Requested'; $row_filter='adj_requested';
+                            } elseif (($pending_req['request_type'] ?? '') === 'Void') {
+                                $wf_color='#dc2626'; $wf_bg='#fee2e2'; $wf_label='Void Requested'; $row_filter='void_requested';
+                            }
+                        } elseif (in_array(strtolower($val_status), ['adjusted']) || in_array(strtolower($wf_status), ['adjusted'])) {
+                            $wf_color='#4338ca'; $wf_bg='#e0e7ff'; $wf_label='Adjusted'; $row_filter='adjusted';
+                        } elseif (in_array(strtolower($val_status), ['voided']) || in_array(strtolower($wf_status), ['voided']) || strtolower($wf_status) === 'voided') {
+                            $wf_color='#991b1b'; $wf_bg='#fee2e2'; $wf_label='Voided'; $row_filter='voided';
+                        } elseif ($wf_status === 'Released') {
                             $wf_color='#475569'; $wf_bg='#f1f5f9'; $wf_label='Released'; $row_filter='released';
                         } elseif ($wf_status === 'Completed' || $val_status === 'Completed') {
                             $wf_color='#16a34a'; $wf_bg='#dcfce7'; $wf_label='Completed'; $row_filter='completed';
@@ -10035,8 +10352,8 @@ input[list] {
                             $pay_color='#d97706'; $pay_label='PARTIALLY PAID';
                         } elseif ($pay_status === 'Pending' || $pay_status === 'Pending Payment' || $pay_status === 'Unpaid') {
                             $pay_color='#ea580c'; $pay_label='PENDING';
-                        } elseif ($pay_status === 'Credit Account' || $pay_status === 'Credit Transaction' || $pay_status === 'Credit' || $pay_status === 'Receivables/Credit') {
-                            $pay_color='#7c3aed'; $pay_label='CREDIT';
+                        } elseif ($pay_status === 'Credit Account' || $pay_status === 'Credit Transaction' || $pay_status === 'Credit' || $pay_status === 'Receivables/Credit' || $pay_status === 'A/R') {
+                            $pay_color='#7c3aed'; $pay_label='A/R';
                         } else {
                             $pay_color='#ea580c'; $pay_label='PENDING';
                         }
@@ -10055,7 +10372,6 @@ input[list] {
                         }
 
                         // ── Inventory Impact for this row ─────────────────────────────────────
-                        $inv_key      = ($job['_source'] ?? 'job_orders') . ':' . $job['id'];
                         $inv_items    = $inv_impact[$inv_key] ?? [];
 
                         // ── Receivables: due date + overdue ──────────────────────────────────
@@ -10075,14 +10391,11 @@ input[list] {
                         $manager_remark = trim($job['manager_notes'] ?? $job['admin_remarks'] ?? '');
 
                         // ── Shift Indicator ──────────────────────────────────────────────────
-                        // Use explicit shift_name/shift_period if available (MT rows),
-                        // otherwise derive from created_at time.
                         $shift_name_raw = trim($job['shift_name'] ?? $job['shift_period'] ?? '');
                         if (!empty($shift_name_raw)) {
                             $shift_label    = $shift_name_raw;
                             $shift_key_data = (stripos($shift_name_raw,'2') !== false || stripos($shift_name_raw,'pm') !== false || stripos($shift_name_raw,'night') !== false) ? 'shift2' : 'shift1';
                         } else {
-                            // Derive from created_at hour: 06:00-17:59 = Shift 1, else Shift 2
                             $created_hour = (int)date('H', strtotime($job['created_at']));
                             if ($created_hour >= 6 && $created_hour < 18) {
                                 $shift_label = 'Shift 1'; $shift_key_data = 'shift1';
@@ -10111,12 +10424,12 @@ input[list] {
                         style="<?= $wf_status === 'Rejected' ? 'background:#fff8f8;' : ($jo_is_overdue ? 'background:#fff5f5;border-left:3px solid #dc2626;' : '') ?>">
 
                         <!-- JO Number -->
-                        <td style="padding:10px;font-weight:700;color:<?= $wf_status==='Rejected' ? '#dc2626' : 'var(--petron-blue)' ?>;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        <td style="padding:8px 5px;font-weight:700;color:<?= $wf_status==='Rejected' ? '#dc2626' : '#002F70' ?>;font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;">
                             <?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>
                         </td>
 
                         <!-- OR No. -->
-                        <td style="padding:10px;font-size:11px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        <td style="padding:8px 5px;font-size:12px;color:#475569;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;">
                             <?php
                             $jo_or = '';
                             if (!empty($job['created_at'])) {
@@ -10127,34 +10440,34 @@ input[list] {
                         </td>
 
                         <!-- Customer -->
-                        <td style="padding:10px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                        <td style="padding:8px 5px;font-size:12px;color:#1e293b;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;"
                             title="<?= htmlspecialchars($job['customer_name'] ?? '') ?>">
                             <?= htmlspecialchars($job['customer_name'] ?? '—') ?>
                         </td>
 
                         <!-- Plate No. -->
-                        <td style="padding:10px;font-size:12px;font-weight:700;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        <td style="padding:8px 5px;font-size:12px;font-weight:700;color:#1e293b;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;">
                             <?= !empty($job['vehicle_plate']) ? htmlspecialchars($job['vehicle_plate']) : '<span style="color:#cbd5e1;">—</span>' ?>
                         </td>
 
                         <!-- Vehicle Type -->
-                        <td style="padding:10px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        <td style="padding:8px 5px;font-size:12px;color:#475569;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;">
                             <?= !empty($job['vehicle_type']) ? htmlspecialchars($job['vehicle_type']) : '<span style="color:#cbd5e1;">—</span>' ?>
                         </td>
 
                         <!-- Service Type -->
-                        <td style="padding:6px 4px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                        <td style="padding:8px 5px;font-size:12px;color:#0369a1;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;"
                             title="<?= htmlspecialchars($job['service_type'] ?? '—') ?>">
                             <?= htmlspecialchars($job['service_type'] ?? '—') ?>
                         </td>
 
                         <!-- Assigned Mechanic -->
-                        <td style="padding:10px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        <td style="padding:8px 5px;font-size:12px;color:#475569;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;">
                             <?php
                             $mech = trim($job['mechanic_name'] ?? '');
                             if ($mech && $mech !== 'Unassigned'): ?>
-                            <span style="display:inline-flex;align-items:center;gap:5px;">
-                                <i class="fas fa-user-cog" style="color:#64748b;font-size:10px;"></i>
+                            <span style="display:inline-flex;align-items:center;gap:3px;">
+                                <i class="fas fa-user-cog" style="color:#94a3b8;font-size:10px;flex-shrink:0;"></i>
                                 <?= htmlspecialchars($mech) ?>
                             </span>
                             <?php else: ?>
@@ -10163,36 +10476,53 @@ input[list] {
                         </td>
 
                         <!-- Service Fee -->
-                        <td style="padding:10px;font-size:12px;text-align:right;font-weight:700;color:var(--petron-blue);white-space:nowrap;">
+                        <td style="padding:8px 5px;font-size:12px;text-align:right;font-weight:700;color:#002F70;white-space:nowrap;vertical-align:middle;">
                             ₱<?= number_format((float)($job['service_fee'] ?? $job['estimated_cost'] ?? $job['total_cost'] ?? 0), 2) ?>
                         </td>
 
                         <!-- Labor Fee -->
-                        <td style="padding:10px;font-size:12px;text-align:right;font-weight:700;color:#16a34a;white-space:nowrap;">
+                        <td style="padding:8px 5px;font-size:12px;text-align:right;font-weight:700;color:#16a34a;white-space:nowrap;vertical-align:middle;">
                             <?php
                             $labor_val = (float)($job['actual_labor_cost'] ?? $job['estimated_labor_cost'] ?? 0);
                             echo $labor_val > 0 ? '₱' . number_format($labor_val, 2) : '<span style="color:#cbd5e1;">—</span>';
                             ?>
                         </td>
 
-                        <!-- Status -->
-                        <td style="padding:10px;">
-                            <span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.3px;white-space:nowrap;
+                        <!-- JO Status -->
+                        <td style="padding:8px 5px;vertical-align:middle;">
+                            <span style="display:inline-block;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap;
                                          background:<?= $wf_bg ?>;color:<?= $wf_color ?>;border:1px solid <?= $wf_color ?>40;">
                                 <?= $wf_label ?>
                             </span>
                         </td>
 
                         <!-- Payment Status -->
-                        <td style="padding:10px;">
-                            <span style="display:inline-block;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.3px;white-space:nowrap;
+                        <td style="padding:8px 5px;vertical-align:middle;">
+                            <span style="display:inline-block;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap;
                                          background:<?= $pay_color ?>18;color:<?= $pay_color ?>;border:1px solid <?= $pay_color ?>40;">
                                 <?= $pay_label ?>
                             </span>
                         </td>
 
+                        <!-- Payment Method -->
+                        <td style="padding:8px 5px;vertical-align:middle;">
+                            <?php
+                            $pay_method = trim($job['payment_method'] ?? 'Cash');
+                            if (empty($pay_method)) $pay_method = 'Cash';
+                            $pm_bg = '#f1f5f9'; $pm_fg = '#334155';
+                            if (stripos($pay_method, 'Cash') !== false) { $pm_bg = '#e0f2fe'; $pm_fg = '#0369a1'; }
+                            elseif (stripos($pay_method, 'Card') !== false) { $pm_bg = '#e0e7ff'; $pm_fg = '#3730a3'; }
+                            elseif (stripos($pay_method, 'GCash') !== false || stripos($pay_method, 'Maya') !== false) { $pm_bg = '#dcfce7'; $pm_fg = '#15803d'; }
+                            elseif (stripos($pay_method, 'Fleet') !== false || stripos($pay_method, 'Petron') !== false) { $pm_bg = '#fef3c7'; $pm_fg = '#b45309'; }
+                            elseif (stripos($pay_method, 'Credit') !== false || stripos($pay_method, 'A/R') !== false) { $pm_bg = '#f3e8ff'; $pm_fg = '#6b21a8'; }
+                            ?>
+                            <span style="display:inline-block;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600;background:<?= $pm_bg ?>;color:<?= $pm_fg ?>;white-space:nowrap;">
+                                <?= htmlspecialchars($pay_method) ?>
+                            </span>
+                        </td>
+
                         <!-- Est. Completion -->
-                        <td style="padding:10px;font-size:11px;color:#64748b;white-space:nowrap;">
+                        <td style="padding:8px 5px;font-size:12px;color:#475569;overflow:hidden;vertical-align:middle;">
                             <?php
                             $est_comp = $job['due_date'] ?? null;
                             $created_time = !empty($job['created_at']) ? strtotime($job['created_at']) : time();
@@ -10231,26 +10561,27 @@ input[list] {
                             $comp_ts = strtotime($est_disp);
                             $today_ts = strtotime(date('Y-m-d'));
                             $color = ($comp_ts < $today_ts && !in_array($wf_status ?? '', ['Completed'])) ? '#dc2626' : '#475569';
-                            echo '<span style="color:' . $color . ';font-weight:600;">' . htmlspecialchars($est_disp) . '</span>';
+                            echo '<span style="color:'.$color.';font-weight:600;font-size:12px;">'.htmlspecialchars($est_disp).'</span>';
                             if ($est_sub) {
-                                echo '<br><span style="font-size:10px;color:#0284c7;font-weight:500;">' . htmlspecialchars($est_sub) . '</span>';
+                                echo '<br><span style="font-size:11px;color:#0284c7;">'.htmlspecialchars($est_sub).'</span>';
                             }
                             ?>
                         </td>
 
                         <!-- Date Created -->
-                        <td style="padding:10px;font-size:11px;color:#64748b;white-space:nowrap;">
+                        <td style="padding:8px 5px;font-size:12px;color:#475569;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;">
                             <?= date('M j, Y', strtotime($job['created_at'])) ?><br>
-                            <span style="font-size:10px;"><?= date('h:i A', strtotime($job['created_at'])) ?></span>
+                            <span style="font-size:11px;color:#94a3b8;"><?= date('h:i A', strtotime($job['created_at'])) ?></span>
                         </td>
 
-
+                        <!-- Actions Column -->
                         <td style="padding:6px 3px;text-align:center;">
                             <?php
                                 $jo_total   = (float)($job['total_cost'] ?? $job['estimated_cost'] ?? 0);
                                 $jo_paid    = (float)($job['amount_paid'] ?? 0);
                                 $jo_balance = (float)($job['balance_due'] ?? 0);
                                 if ($jo_balance <= 0.009 && $jo_total > 0) $jo_balance = max(0, $jo_total - $jo_paid);
+                                $labor_fee_val = (float)($job['actual_labor_cost'] ?? $job['estimated_labor_cost'] ?? 0);
                                 
                                 // Prepare JO data for modals (JSON-encoded)
                                 $jo_data = json_encode([
@@ -10265,7 +10596,9 @@ input[list] {
                                     'mechanic' => $job['mechanic_name'] ?? 'Unassigned',
                                     'workflow_status' => $wf_label,
                                     'payment_status' => $pay_label,
+                                    'payment_method' => $pay_method,
                                     'total' => $jo_total,
+                                    'labor_fee' => $labor_fee_val,
                                     'paid' => $jo_paid,
                                     'balance' => $jo_balance,
                                     'remarks' => $remarks,
@@ -10275,53 +10608,132 @@ input[list] {
                                 ]);
                             ?>
                             <div style="display:flex;flex-direction:column;gap:3px;width:100%;">
-                                <?php if (in_array($val_status, ['Pending Validation', 'Approved']) && !in_array($wf_status, ['In Progress', 'Completed', 'Rejected'])): ?>
-                                <!-- Row 1: Adjust Button (only before In Progress) - GRAY -->
-                                <div style="display:flex;gap:3px;flex-wrap:nowrap;width:100%;">
-                                    <button type="button"
-                                            onclick='openAdjustJobOrderModal(<?= htmlspecialchars($jo_data, ENT_QUOTES) ?>)'
-                                            class="txn-btn secondary" 
-                                            style="flex:1;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
-                                        <i class="fas fa-edit"></i> Adjust
-                                    </button>
-                                </div>
-                                <?php endif; ?>
+                                <!-- Always show View button -->
+                                <button type="button"
+                                        onclick='viewJobOrderDetails(<?= htmlspecialchars($jo_data, ENT_QUOTES) ?>)'
+                                        class="txn-btn secondary" 
+                                        style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                    <i class="fas fa-eye"></i> View
+                                </button>
 
+                                <?php if ($wf_label === 'Voided'): ?>
+                                    <!-- VOIDED Status: View only + Voided Badge -->
+                                    <span style="font-size:10.5px;color:#991b1b;font-weight:700;text-align:center;padding:2px 0;">
+                                        <i class="fas fa-ban"></i> Voided
+                                    </span>
 
-                                <!-- Row 2: Workflow Actions -->
-                                <?php if ($wf_status === 'Released'): ?>
-                                    <!-- Released status: Print Receipt & Badge -->
+                                <?php elseif ($wf_label === 'Void Requested' || ($pending_req && ($pending_req['request_type'] ?? '') === 'Void')): ?>
+                                    <!-- VOID REQUESTED Status: View, Reprint + Badge -->
                                     <button type="button"
                                             onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
                                             class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
-                                        <i class="fas fa-print"></i> Print Receipt
+                                        <i class="fas fa-print"></i> Reprint
                                     </button>
-                                    <span style="font-size:10.5px;color:#475569;font-weight:600;text-align:center;padding:2px 0;display:flex;align-items:center;justify-content:center;gap:3px;">
-                                        <i class="fas fa-check-double"></i> Released
+                                    <span style="font-size:10.5px;color:#dc2626;font-weight:700;text-align:center;padding:2px 0;">
+                                        <i class="fas fa-clock"></i> Void Requested
                                     </span>
 
-                                <?php elseif ($wf_status === 'Rejected'): ?>
-                                    <!-- Rejected: Re-encode - GRAY -->
-                                    <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise" 
-                                       class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
-                                        <i class="fas fa-redo"></i> Re-encode
-                                    </a>
-                                    
-                                <?php elseif ($val_status === 'Pending Validation'): ?>
-                                    <!-- Pending: Awaiting approval -->
-                                    <span style="font-size:11px;color:#94a3b8;font-style:italic;text-align:center;padding:2px 0;">
-                                        <i class="fas fa-clock"></i> Awaiting approval
+                                <?php elseif ($wf_label === 'Adjustment Requested' || ($pending_req && ($pending_req['request_type'] ?? '') === 'Adjustment')): ?>
+                                    <!-- ADJUSTMENT REQUESTED Status: View, Reprint + Badge -->
+                                    <button type="button"
+                                            onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                        <i class="fas fa-print"></i> Reprint
+                                    </button>
+                                    <span style="font-size:10.5px;color:#d97706;font-weight:700;text-align:center;padding:2px 0;">
+                                        <i class="fas fa-clock"></i> Adjustment Requested
                                     </span>
-                                    
-                                <?php elseif ($wf_status === 'Completed'): ?>
-                                    <!-- Completed: Payment or Print Receipt + Release Vehicle Button -->
-                                    <?php if ($pay_status === 'Paid'): ?>
+
+                                <?php elseif ($wf_label === 'Adjusted'): ?>
+                                    <!-- ADJUSTED Status: View, Reprint + Badge -->
+                                    <button type="button"
+                                            onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                        <i class="fas fa-print"></i> Reprint
+                                    </button>
+                                    <span style="font-size:10.5px;color:#4338ca;font-weight:700;text-align:center;padding:2px 0;">
+                                        <i class="fas fa-check-circle"></i> Adjusted
+                                    </span>
+                                    <?php if (in_array($wf_status, ['Completed','Released'])): ?>
                                         <button type="button"
-                                                onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
-                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
-                                            <i class="fas fa-print"></i> Print Receipt
+                                                data-jo-id="<?= (int)$job['id'] ?>"
+                                                data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
+                                                data-jo-ref="<?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>"
+                                                data-jo-customer="<?= htmlspecialchars($job['customer_name'] ?? '—') ?>"
+                                                data-jo-status="<?= htmlspecialchars($wf_label) ?>"
+                                                data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
+                                                data-jo-paymethod="<?= htmlspecialchars($pay_method) ?>"
+                                                data-jo-total="<?= (float)$jo_total ?>"
+                                                data-jo-labor="<?= (float)$labor_fee_val ?>"
+                                                data-jo-paid="<?= (float)$jo_paid ?>"
+                                                data-jo-service="<?= htmlspecialchars($job['service_type'] ?? '') ?>"
+                                                data-jo-plate="<?= htmlspecialchars($job['vehicle_plate'] ?? '') ?>"
+                                                data-jo-vtype="<?= htmlspecialchars($job['vehicle_type'] ?? '') ?>"
+                                                data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
+                                                onclick="return openRequestAdjustModal(event, this);"
+                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                            <i class="fas fa-sliders-h"></i> Request Adjust
                                         </button>
-                                    <?php else: ?>
+                                        <button type="button"
+                                                data-jo-id="<?= (int)$job['id'] ?>"
+                                                data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
+                                                data-jo-ref="<?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>"
+                                                data-jo-customer="<?= htmlspecialchars($job['customer_name'] ?? '—') ?>"
+                                                data-jo-status="<?= htmlspecialchars($wf_label) ?>"
+                                                data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
+                                                onclick="return openRequestVoidModal(event, this);"
+                                                class="txn-btn danger" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;background:#dc2626;color:#fff;border:none;cursor:pointer;">
+                                            <i class="fas fa-ban"></i> Request Void
+                                        </button>
+                                    <?php endif; ?>
+
+                                <?php elseif ($wf_status === 'Released'): ?>
+                                    <!-- RELEASED Status: View, Reprint, Request Adjust, Request Void -->
+                                    <button type="button"
+                                            onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                        <i class="fas fa-print"></i> Reprint
+                                    </button>
+                                    <button type="button"
+                                            data-jo-id="<?= (int)$job['id'] ?>"
+                                            data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
+                                            data-jo-ref="<?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>"
+                                            data-jo-customer="<?= htmlspecialchars($job['customer_name'] ?? '—') ?>"
+                                            data-jo-status="<?= htmlspecialchars($wf_label) ?>"
+                                            data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
+                                            data-jo-paymethod="<?= htmlspecialchars($pay_method) ?>"
+                                            data-jo-total="<?= (float)$jo_total ?>"
+                                            data-jo-labor="<?= (float)$labor_fee_val ?>"
+                                            data-jo-paid="<?= (float)$jo_paid ?>"
+                                            data-jo-service="<?= htmlspecialchars($job['service_type'] ?? '') ?>"
+                                            data-jo-plate="<?= htmlspecialchars($job['vehicle_plate'] ?? '') ?>"
+                                            data-jo-vtype="<?= htmlspecialchars($job['vehicle_type'] ?? '') ?>"
+                                            data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
+                                            onclick="return openRequestAdjustModal(event, this);"
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                        <i class="fas fa-sliders-h"></i> Request Adjust
+                                    </button>
+                                    <button type="button"
+                                            data-jo-id="<?= (int)$job['id'] ?>"
+                                            data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
+                                            data-jo-ref="<?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>"
+                                            data-jo-customer="<?= htmlspecialchars($job['customer_name'] ?? '—') ?>"
+                                            data-jo-status="<?= htmlspecialchars($wf_label) ?>"
+                                            data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
+                                            onclick="return openRequestVoidModal(event, this);"
+                                            class="txn-btn danger" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;background:#dc2626;color:#fff;border:none;cursor:pointer;">
+                                        <i class="fas fa-ban"></i> Request Void
+                                    </button>
+
+                                <?php elseif ($wf_status === 'Completed'): ?>
+                                    <!-- COMPLETED Status: View, Reprint, Request Adjust, Request Void (+ Release/Settle) -->
+                                    <button type="button"
+                                            onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                        <i class="fas fa-print"></i> Reprint
+                                    </button>
+
+                                    <?php if ($pay_status !== 'Paid'): ?>
                                         <button type="button"
                                                 onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
                                                 class="txn-btn success" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
@@ -10340,49 +10752,72 @@ input[list] {
                                             <i class="fas fa-car-side"></i> Release Vehicle
                                         </button>
                                     </form>
-                                    
-                                <?php else: ?>
-                                    <!-- Approved / In Progress: Workflow progression -->
-                                    <?php if ($wf_status !== 'In Progress'): ?>
-                                    <!-- Start In Progress - DARK BLUE -->
-                                    <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="margin:0;width:100%;">
-                                        <input type="hidden" name="jo_action" value="set_in_progress">
-                                        <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
-                                        <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
-                                        <button type="submit" 
-                                                class="txn-btn primary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
-                                            <i class="fas fa-play"></i> Start In Progress
+
+                                    <div style="display:flex;gap:3px;width:100%;">
+                                        <button type="button"
+                                                data-jo-id="<?= (int)$job['id'] ?>"
+                                                data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
+                                                data-jo-ref="<?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>"
+                                                data-jo-customer="<?= htmlspecialchars($job['customer_name'] ?? '—') ?>"
+                                                data-jo-status="<?= htmlspecialchars($wf_label) ?>"
+                                                data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
+                                                data-jo-paymethod="<?= htmlspecialchars($pay_method) ?>"
+                                                data-jo-total="<?= (float)$jo_total ?>"
+                                                data-jo-labor="<?= (float)$labor_fee_val ?>"
+                                                data-jo-paid="<?= (float)$jo_paid ?>"
+                                                data-jo-service="<?= htmlspecialchars($job['service_type'] ?? '') ?>"
+                                                data-jo-plate="<?= htmlspecialchars($job['vehicle_plate'] ?? '') ?>"
+                                                data-jo-vtype="<?= htmlspecialchars($job['vehicle_type'] ?? '') ?>"
+                                                data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
+                                                onclick="return openRequestAdjustModal(event, this);"
+                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                            <i class="fas fa-sliders-h"></i> Request Adjust
                                         </button>
-                                    </form>
-                                    <?php endif; ?>
-                                    
-                                    <!-- IF PAID: Just mark Complete (no payment modal) -->
+                                        <button type="button"
+                                                data-jo-id="<?= (int)$job['id'] ?>"
+                                                data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
+                                                data-jo-ref="<?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>"
+                                                data-jo-customer="<?= htmlspecialchars($job['customer_name'] ?? '—') ?>"
+                                                data-jo-status="<?= htmlspecialchars($wf_label) ?>"
+                                                data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
+                                                onclick="return openRequestVoidModal(event, this);"
+                                                class="txn-btn danger" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;background:#dc2626;color:#fff;border:none;cursor:pointer;">
+                                            <i class="fas fa-ban"></i> Request Void
+                                        </button>
+                                    </div>
+
+                                <?php elseif ($wf_status === 'In Progress'): ?>
+                                    <!-- IN PROGRESS Status: View only + Active progress execution (NO Request Adjust/Void!) -->
                                     <?php if ($pay_status === 'Paid'): ?>
-                                    <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="margin:0;width:100%;">
-                                        <input type="hidden" name="jo_action" value="set_completed">
-                                        <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
-                                        <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
-                                        <button type="submit" 
-                                                class="txn-btn success" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
-                                            <i class="fas fa-check"></i> Mark Complete
-                                        </button>
-                                    </form>
+                                        <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="margin:0;width:100%;">
+                                            <input type="hidden" name="jo_action" value="set_completed">
+                                            <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
+                                            <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
+                                            <button type="submit" 
+                                                    class="txn-btn success" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                                <i class="fas fa-check"></i> Mark Complete
+                                            </button>
+                                        </form>
                                     <?php else: ?>
-                                    <!-- ELSE: Complete with payment - GREEN -->
-                                    <button type="button"
-                                            onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',true,'tracker')"
-                                            class="txn-btn success" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
-                                        <i class="fas fa-check"></i> Complete & Settle
-                                    </button>
+                                        <button type="button"
+                                                onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',true,'tracker')"
+                                                class="txn-btn success" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                            <i class="fas fa-check"></i> Complete & Settle
+                                        </button>
                                     <?php endif; ?>
-                                    
-                                    <?php if (in_array($pay_status, ['Partially Paid','Partial Payment','Partial','Unpaid','Pending Payment','Pending']) && $wf_status === 'In Progress'): ?>
-                                    <!-- Downpayment option - GREEN -->
-                                    <button type="button"
-                                            onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
-                                            class="txn-btn success">
-                                        <i class="fas fa-coins"></i> Accept Downpayment
-                                    </button>
+
+                                <?php else: ?>
+                                    <!-- Pending / Approved / Other initial states -->
+                                    <?php if ($wf_status !== 'In Progress' && $val_status !== 'Pending Validation'): ?>
+                                        <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="margin:0;width:100%;">
+                                            <input type="hidden" name="jo_action" value="set_in_progress">
+                                            <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
+                                            <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
+                                            <button type="submit" 
+                                                    class="txn-btn primary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                                <i class="fas fa-play"></i> Start In Progress
+                                            </button>
+                                        </form>
                                     <?php endif; ?>
                                 <?php endif; ?>
                             </div>
@@ -10901,26 +11336,26 @@ input[list] {
         
         <!-- View Job Order Details Modal -->
         <div id="viewJobOrderModal" style="display:none;position:fixed;inset:0;z-index:9999;
-             background:rgba(0,0,0,.5);align-items:center;justify-content:center;">
+             background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
           <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
-                      width:100%;max-width:600px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
-            <div style="background:#fff;border-bottom:1px solid #e2e8f0;padding:15px 20px;
-                        display:flex;align-items:center;justify-content:space-between;">
-              <div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:34px;height:34px;background:#f1f5f9;border-radius:8px;
+                      width:100%;max-width:600px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
+            <div style="background:#fff;border-bottom:1px solid #e2e8f0;padding:18px 24px;
+                        display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="width:36px;height:36px;background:#f0f7ff;border-radius:10px;
                             display:flex;align-items:center;justify-content:center;">
-                  <i class="fas fa-clipboard-list" style="color:#002F70;font-size:15px;"></i>
+                  <i class="fas fa-clipboard-list" style="color:#002F70;font-size:16px;"></i>
                 </div>
                 <div>
-                  <div style="color:#000;font-weight:700;font-size:14px;">Job Order Details</div>
-                  <div id="viewJORef" style="color:#64748b;font-size:11px;margin-top:1px;"></div>
+                  <div style="color:#002F70;font-weight:700;font-size:15px;">Job Order Details</div>
+                  <div id="viewJORef" style="color:#64748b;font-size:12px;margin-top:2px;"></div>
                 </div>
               </div>
             </div>
-            <div style="padding:20px;max-height:70vh;overflow-y:auto;">
+            <div style="padding:20px 24px 24px 24px;flex:1;overflow-y:auto;">
               <!-- Transaction Information -->
-              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:6px 12px;margin:0 -20px 14px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
-                <i class="fas fa-info-circle" style="margin-right:5px;"></i>Transaction Information
+              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:8px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-info-circle" style="margin-right:6px;"></i>Transaction Information
               </div>
               <div style="display:grid;gap:10px;">
                 <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
@@ -10949,8 +11384,8 @@ input[list] {
                 </div>
               </div>
               <!-- Services -->
-              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:6px 12px;margin:16px -20px 14px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
-                <i class="fas fa-wrench" style="margin-right:5px;"></i>Services
+              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-wrench" style="margin-right:6px;"></i>Services
               </div>
               <div style="display:grid;gap:10px;">
                 <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
@@ -10963,8 +11398,8 @@ input[list] {
                 </div>
               </div>
               <!-- Merchandise -->
-              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:6px 12px;margin:16px -20px 14px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
-                <i class="fas fa-box" style="margin-right:5px;"></i>Merchandise
+              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-box" style="margin-right:6px;"></i>Merchandise
               </div>
               <div style="display:grid;gap:10px;">
                 <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
@@ -10973,8 +11408,8 @@ input[list] {
                 </div>
               </div>
               <!-- Payment -->
-              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:6px 12px;margin:16px -20px 14px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
-                <i class="fas fa-credit-card" style="margin-right:5px;"></i>Payment
+              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-credit-card" style="margin-right:6px;"></i>Payment
               </div>
               <div style="display:grid;gap:10px;">
                 <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
@@ -10999,27 +11434,24 @@ input[list] {
                 </div>
               </div>
             </div>
-            <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;gap:8px;">
-              <button id="viewJOPrintBtn" onclick="printJobOrderReceiptFromModal()"
-                      style="padding:0 16px;height:36px;background:#002F70;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
-                <i class="fas fa-print"></i> Print Receipt
-              </button>
-              <button onclick="closeViewJobOrderModal()" style="padding:0 16px !important;height:36px !important;background:#ffffff !important;color:#64748b !important;
-                      border:1px solid #64748b !important;border-radius:7px !important;font-size:13px !important;font-weight:600 !important;cursor:pointer !important;
-                      display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all 0.15s !important;min-width:90px !important;"
-                      onmouseover="this.style.background='#64748b';this.style.color='#ffffff'"
-                      onmouseout="this.style.background='#ffffff';this.style.color='#64748b'">
+            <div style="padding:16px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-shrink:0;">
+              <button onclick="closeViewJobOrderModal()" style="padding:0 22px !important;height:38px !important;background:#ffffff !important;color:#64748b !important;
+                      border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;
+                      display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all 0.15s !important;min-width:100px !important;"
+                      onmouseover="this.style.background='#f1f5f9'"
+                      onmouseout="this.style.background='#ffffff'">
                 Close
               </button>
             </div>
           </div>
+        </div>
         <!-- View Merchandise Transaction Modal -->
         <div id="viewMerchandiseModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;
-             background:rgba(15,23,42,0.65);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+             background:rgba(15,23,42,0.65);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
           <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
-                      width:100%;max-width:700px;margin:0 auto;overflow:hidden;animation:pmSlideIn .18s ease;">
+                      width:100%;max-width:700px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
             <div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:22px 24px;
-                        display:flex;align-items:center;justify-content:space-between;">
+                        display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
               <div style="display:flex;align-items:center;gap:12px;">
                 <div style="width:38px;height:38px;background:rgba(255,255,255,.18);border-radius:10px;
                             display:flex;align-items:center;justify-content:center;">
@@ -11123,11 +11555,11 @@ input[list] {
 
         <!-- Update Status Modal -->
         <div id="updateStatusModal" style="display:none;position:fixed;inset:0;z-index:9999;
-             background:rgba(0,0,0,.5);align-items:center;justify-content:center;">
+             background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
           <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
-                      width:100%;max-width:480px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
+                      width:100%;max-width:480px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
             <div style="background:linear-gradient(135deg,#003d7a,#0369a1);padding:15px 20px;
-                        display:flex;align-items:center;justify-content:space-between;">
+                        display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
               <div style="display:flex;align-items:center;gap:10px;">
                 <div style="width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:8px;
                             display:flex;align-items:center;justify-content:center;">
@@ -11138,11 +11570,6 @@ input[list] {
                   <div id="updateStatusJORef" style="color:#93c5fd;font-size:11px;margin-top:1px;"></div>
                 </div>
               </div>
-              <button onclick="closeUpdateStatusModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;
-                      width:28px;height:28px;border-radius:6px;font-size:17px;cursor:pointer;
-                      display:flex;align-items:center;justify-content:center;"
-                      onmouseover="this.style.background='rgba(255,255,255,.28)'"
-                      onmouseout="this.style.background='rgba(255,255,255,.15)'">&times;</button>
             </div>
             <form id="updateStatusForm" method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker">
               <div style="padding:20px;">
@@ -11197,11 +11624,11 @@ input[list] {
 
         <!-- Adjust Job Order Modal -->
         <div id="adjustJobOrderModal" style="display:none;position:fixed;inset:0;z-index:9999;
-             background:rgba(0,0,0,.5);align-items:center;justify-content:center;">
+             background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
           <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
-                      width:100%;max-width:600px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
+                      width:100%;max-width:600px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
             <div style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:15px 20px;
-                        display:flex;align-items:center;justify-content:space-between;">
+                        display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
               <div style="display:flex;align-items:center;gap:10px;">
                 <div style="width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:8px;
                             display:flex;align-items:center;justify-content:center;">
@@ -11212,11 +11639,6 @@ input[list] {
                   <div id="adjustJORef" style="color:#fef3c7;font-size:11px;margin-top:1px;"></div>
                 </div>
               </div>
-              <button onclick="closeAdjustJobOrderModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;
-                      width:28px;height:28px;border-radius:6px;font-size:17px;cursor:pointer;
-                      display:flex;align-items:center;justify-content:center;"
-                      onmouseover="this.style.background='rgba(255,255,255,.28)'"
-                      onmouseout="this.style.background='rgba(255,255,255,.15)'">&times;</button>
             </div>
             <form id="adjustJobOrderForm" method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker">
               <div style="padding:20px;max-height:65vh;overflow-y:auto;">
@@ -11294,19 +11716,153 @@ input[list] {
           </div>
         </div>
 
-        <!-- Request Void / Request Adjustment Modal -->
-        <div id="txnRequestModal" style="display:none;position:fixed;inset:0;z-index:999999;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;">
-          <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);overflow:hidden;">
-             <div id="txnRequestHeader" style="background:#002F70;color:#ffffff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;">
+        <!-- Request Adjustment Modal -->
+        <div id="requestAdjustModal" style="display:none;position:fixed;inset:0;z-index:999999;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+          <div style="background:#fff;border-radius:14px;max-width:500px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);margin:auto;max-height:min(88vh, 640px);display:flex;flex-direction:column;overflow:hidden;">
+             <div style="background:#002F70;color:#ffffff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+               <h3 style="margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
+                  <i class="fas fa-sliders-h" style="color:#ffffff !important;"></i> <span>REQUEST ADJUSTMENT</span>
+               </h3>
+               <button type="button" onclick="closeRequestAdjustModal()" style="background:transparent;border:none;color:#ffffff;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;" title="Close">&times;</button>
+             </div>
+             <form id="requestAdjustForm" onsubmit="submitRequestAdjust(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
+               <input type="hidden" id="reqAdjTxnId" name="transaction_id">
+               <input type="hidden" id="reqAdjRecordSource" name="record_source">
+               <input type="hidden" id="reqAdjType" name="request_type" value="Adjustment">
+               
+               <div style="padding:16px 20px;flex:1;overflow-y:auto;min-height:0;">
+                 <!-- Transaction Brief Details Box -->
+                 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;color:#334155;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                   <div><span style="color:#64748b;font-size:11px;">JO No.:</span> <strong id="reqAdjJoNo" style="color:#002F70;display:block;">—</strong></div>
+                   <div><span style="color:#64748b;font-size:11px;">Customer:</span> <strong id="reqAdjCustomer" style="color:#0f172a;display:block;">—</strong></div>
+                   <div><span style="color:#64748b;font-size:11px;">Current Status:</span> <strong id="reqAdjStatus" style="color:#0f172a;display:block;">—</strong></div>
+                   <div><span style="color:#64748b;font-size:11px;">Payment Status:</span> <strong id="reqAdjPayStatus" style="color:#0f172a;display:block;">—</strong></div>
+                   <div style="grid-column:span 2;"><span style="color:#64748b;font-size:11px;">Payment Method:</span> <strong id="reqAdjPayMethod" style="color:#0f172a;display:block;">—</strong></div>
+                 </div>
+
+                 <!-- What needs to be corrected? -->
+                 <div style="margin-bottom:14px;">
+                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">What needs to be corrected? <span style="color:#ef4444;">*</span></label>
+                   <select id="reqAdjCorrectionField" name="correction_field" required onchange="onReqAdjFieldChange()" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                     <option value="Labor Fee">Labor Fee</option>
+                     <option value="Service Fee">Service Fee</option>
+                     <option value="Service Type">Service Type</option>
+                     <option value="Merchandise / Item">Merchandise / Item</option>
+                     <option value="Quantity">Quantity</option>
+                     <option value="Customer Information">Customer Information</option>
+                     <option value="Plate Number / Vehicle Information">Plate Number / Vehicle Information</option>
+                     <option value="Mechanic Assignment">Mechanic Assignment</option>
+                     <option value="Payment Method">Payment Method</option>
+                     <option value="Payment Amount / Down Payment">Payment Amount / Down Payment</option>
+                     <option value="Other Encoding Error">Other Encoding Error</option>
+                   </select>
+                 </div>
+
+                 <!-- Current Value -->
+                 <div style="margin-bottom:14px;">
+                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Current Value</label>
+                   <input type="text" id="reqAdjCurrentValue" name="current_value" readonly style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;color:#64748b;background:#f8fafc;outline:none;box-sizing:border-box;">
+                 </div>
+
+                 <!-- Requested Value -->
+                 <div style="margin-bottom:14px;">
+                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Requested Value <span style="color:#ef4444;">*</span></label>
+                   <input type="text" id="reqAdjRequestedValue" name="requested_value" required placeholder="Enter correct value (e.g. ₱150.00)" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                 </div>
+
+                 <!-- Reason -->
+                 <div style="margin-bottom:14px;">
+                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Reason <span style="color:#ef4444;">*</span></label>
+                   <input type="text" id="reqAdjReason" name="request_reason" required placeholder="e.g. Incorrect labor fee" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                 </div>
+
+                 <!-- Remarks -->
+                 <div style="margin-bottom:10px;">
+                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Remarks</label>
+                   <textarea id="reqAdjRemarks" name="remarks" rows="2" placeholder="Additional notes for manager review..." style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
+                 </div>
+               </div>
+
+               <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
+                 <button type="button" onclick="closeRequestAdjustModal()" class="txn-btn secondary">Cancel</button>
+                 <button type="submit" id="reqAdjSubmitBtn" class="txn-btn primary" style="background:#002F70;color:#fff;border:none;">
+                   <i class="fas fa-paper-plane"></i> Submit Adjustment Request
+                 </button>
+               </div>
+             </form>
+          </div>
+        </div>
+
+        <!-- Request Void Modal -->
+        <div id="requestVoidModal" style="display:none;position:fixed;inset:0;z-index:999999;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+          <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);margin:auto;max-height:min(88vh, 580px);display:flex;flex-direction:column;overflow:hidden;">
+             <div style="background:#dc2626;color:#ffffff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+               <h3 style="margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
+                  <i class="fas fa-ban" style="color:#ffffff !important;"></i> <span>REQUEST VOID</span>
+               </h3>
+               <button type="button" onclick="closeRequestVoidModal()" style="background:transparent;border:none;color:#ffffff;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;" title="Close">&times;</button>
+             </div>
+             <form id="requestVoidForm" onsubmit="submitRequestVoid(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
+               <input type="hidden" id="reqVoidTxnId" name="transaction_id">
+               <input type="hidden" id="reqVoidRecordSource" name="record_source">
+               <input type="hidden" id="reqVoidType" name="request_type" value="Void">
+               
+               <div style="padding:16px 20px;flex:1;overflow-y:auto;min-height:0;">
+                 <!-- Transaction Brief Details Box -->
+                 <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;color:#991b1b;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                   <div><span style="color:#7f1d1d;font-size:11px;">JO No.:</span> <strong id="reqVoidJoNo" style="color:#991b1b;display:block;">—</strong></div>
+                   <div><span style="color:#7f1d1d;font-size:11px;">Customer:</span> <strong id="reqVoidCustomer" style="color:#0f172a;display:block;">—</strong></div>
+                   <div><span style="color:#7f1d1d;font-size:11px;">JO Status:</span> <strong id="reqVoidStatus" style="color:#0f172a;display:block;">—</strong></div>
+                   <div><span style="color:#7f1d1d;font-size:11px;">Payment Status:</span> <strong id="reqVoidPayStatus" style="color:#0f172a;display:block;">—</strong></div>
+                 </div>
+
+                 <!-- Void Reason -->
+                 <div style="margin-bottom:14px;">
+                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Void Reason <span style="color:#ef4444;">*</span></label>
+                   <select id="reqVoidReasonSelect" name="request_reason" required style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                     <option value="Duplicate Transaction">Duplicate Transaction</option>
+                     <option value="Wrong Customer">Wrong Customer</option>
+                     <option value="Wrong Vehicle">Wrong Vehicle</option>
+                     <option value="Wrong Transaction Encoded">Wrong Transaction Encoded</option>
+                     <option value="Duplicate Service">Duplicate Service</option>
+                     <option value="Transaction Created by Mistake">Transaction Created by Mistake</option>
+                     <option value="Customer Cancelled Entire Service">Customer Cancelled Entire Service</option>
+                     <option value="Incorrect JO Cannot Be Adjusted">Incorrect JO Cannot Be Adjusted</option>
+                     <option value="Other">Other</option>
+                   </select>
+                 </div>
+
+                 <!-- Remarks -->
+                 <div style="margin-bottom:10px;">
+                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Remarks <span style="color:#ef4444;">*</span></label>
+                   <textarea id="reqVoidRemarks" name="remarks" required rows="3" placeholder="Provide details (e.g. Duplicate of JO-0004)..." style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
+                 </div>
+               </div>
+
+               <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
+                 <button type="button" onclick="closeRequestVoidModal()" class="txn-btn secondary">Cancel</button>
+                 <button type="submit" id="reqVoidSubmitBtn" class="txn-btn primary" style="background:#dc2626;color:#fff;border:none;">
+                   <i class="fas fa-paper-plane"></i> Submit Void Request
+                 </button>
+               </div>
+             </form>
+          </div>
+        </div>
+
+        <!-- Request Void / Request Adjustment Modal (Generic Fallback) -->
+        <div id="txnRequestModal" style="display:none;position:fixed;inset:0;z-index:999999;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+          <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);margin:auto;max-height:min(88vh, 580px);display:flex;flex-direction:column;overflow:hidden;">
+             <div id="txnRequestHeader" style="background:#002F70;color:#ffffff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
                <h3 id="txnRequestTitle" style="margin:0;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
                   <i id="txnRequestIcon" class="fas fa-paper-plane" style="color:#ffffff !important;"></i> <span id="txnRequestTitleText" style="color:#ffffff !important;">Request Transaction Action</span>
                </h3>
+               <button type="button" onclick="closeTxnRequestModal()" style="background:transparent;border:none;color:#ffffff;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;" title="Close">&times;</button>
              </div>
-             <form id="txnRequestForm" onsubmit="submitTxnRequest(event)">
+             <form id="txnRequestForm" onsubmit="submitTxnRequest(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
                <input type="hidden" id="txnRequestTxnId" name="transaction_id">
                <input type="hidden" id="txnRequestRecordSource" name="record_source">
                <input type="hidden" id="txnRequestType" name="request_type">
-               <div style="padding:20px;">
+               <div style="padding:16px 20px;flex:1;overflow-y:auto;min-height:0;">
                  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#334155;">
                    <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Target Transaction</div>
                    <div style="font-weight:700;color:#0f172a;" id="txnRequestTargetInfo">Transaction #—</div>
@@ -11322,7 +11878,7 @@ input[list] {
                   <textarea id="txnRequestReason" name="request_reason" required rows="3" placeholder="Explain clearly why this void or adjustment is needed for the manager to approve..." style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
                 </div>
               </div>
-              <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;background:#f8fafc;">
+              <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
                 <button type="button" onclick="closeTxnRequestModal()" class="txn-btn secondary">Cancel</button>
                 <button type="submit" id="txnRequestSubmitBtn" class="txn-btn primary">
                   <i class="fas fa-paper-plane"></i> Submit Request
@@ -11341,6 +11897,10 @@ input[list] {
         var _currentViewJOSource = '';
 
         function viewJobOrderDetails(joData) {
+            ['viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal', 'requestAdjustModal', 'requestVoidModal'].forEach(function(id) {
+                var m = document.getElementById(id);
+                if (m) m.style.display = 'none';
+            });
             var fmt = function(n){ return '₱' + parseFloat(n).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}); };
 
             _currentViewJORef    = joData.jo_ref || '';
@@ -11620,8 +12180,126 @@ input[list] {
             });
         }
         
+        // Dedicated Job Order Request Adjust & Request Void JS Functions
+        window._activeJoDataForReq = window._activeJoDataForReq || null;
+
+        window.closeRequestAdjustModal = function() {
+            document.getElementById('requestAdjustModal').style.display = 'none';
+        };
+
+        window.onReqAdjFieldChange = function() {
+            if (!_activeJoDataForReq) return;
+            var field = document.getElementById('reqAdjCorrectionField').value;
+            var curVal = '—';
+            if (field === 'Labor Fee') {
+                curVal = _activeJoDataForReq.labor_fee ? ('₱' + parseFloat(_activeJoDataForReq.labor_fee).toFixed(2)) : '₱100.00';
+            } else if (field === 'Service Fee') {
+                curVal = _activeJoDataForReq.total ? ('₱' + parseFloat(_activeJoDataForReq.total).toFixed(2)) : '₱0.00';
+            } else if (field === 'Service Type') {
+                curVal = _activeJoDataForReq.service_type || '—';
+            } else if (field === 'Customer Information') {
+                curVal = _activeJoDataForReq.customer || '—';
+            } else if (field === 'Plate Number / Vehicle Information') {
+                curVal = (_activeJoDataForReq.vehicle_plate || '') + ' ' + (_activeJoDataForReq.vehicle_type || '');
+            } else if (field === 'Mechanic Assignment') {
+                curVal = _activeJoDataForReq.mechanic || 'Unassigned';
+            } else if (field === 'Payment Method') {
+                curVal = _activeJoDataForReq.payment_method || 'Cash';
+            } else if (field === 'Payment Amount / Down Payment') {
+                curVal = '₱' + parseFloat(_activeJoDataForReq.paid || 0).toFixed(2);
+            } else {
+                curVal = '₱' + parseFloat(_activeJoDataForReq.total || 0).toFixed(2);
+            }
+            document.getElementById('reqAdjCurrentValue').value = curVal;
+        };
+
+        window.submitRequestAdjust = function(e) {
+            e.preventDefault();
+            var btn = document.getElementById('reqAdjSubmitBtn');
+            var origText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+
+            var payload = {
+                transaction_id: parseInt(document.getElementById('reqAdjTxnId').value),
+                record_source: document.getElementById('reqAdjRecordSource').value,
+                request_type: 'Adjustment',
+                correction_field: document.getElementById('reqAdjCorrectionField').value,
+                current_value: document.getElementById('reqAdjCurrentValue').value,
+                requested_value: document.getElementById('reqAdjRequestedValue').value.trim(),
+                request_reason: document.getElementById('reqAdjReason').value.trim(),
+                remarks: document.getElementById('reqAdjRemarks').value.trim()
+            };
+
+            fetch('../backend/api/request_transaction_action.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+                if (data.success) {
+                    closeRequestAdjustModal();
+                    showTxnAlert('✔ ' + (data.message || 'Adjustment request submitted successfully! Status: ADJUSTMENT REQUESTED.'), 'success');
+                    setTimeout(function() { location.reload(); }, 1200);
+                } else {
+                    showTxnAlert('❌ ' + (data.error || 'Failed to submit adjustment request'), 'error');
+                }
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+                showTxnAlert('❌ Network error: ' + err.message, 'error');
+            });
+        };
+
+        window.closeRequestVoidModal = function() {
+            document.getElementById('requestVoidModal').style.display = 'none';
+        };
+
+        window.submitRequestVoid = function(e) {
+            e.preventDefault();
+            var btn = document.getElementById('reqVoidSubmitBtn');
+            var origText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+
+            var payload = {
+                transaction_id: parseInt(document.getElementById('reqVoidTxnId').value),
+                record_source: document.getElementById('reqVoidRecordSource').value,
+                request_type: 'Void',
+                request_reason: document.getElementById('reqVoidReasonSelect').value,
+                remarks: document.getElementById('reqVoidRemarks').value.trim()
+            };
+
+            fetch('../backend/api/request_transaction_action.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+                if (data.success) {
+                    closeRequestVoidModal();
+                    showTxnAlert('✔ ' + (data.message || 'Void request submitted successfully! Status: VOID REQUESTED.'), 'success');
+                    setTimeout(function() { location.reload(); }, 1200);
+                } else {
+                    showTxnAlert('❌ ' + (data.error || 'Failed to submit void request'), 'error');
+                }
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+                showTxnAlert('❌ Network error: ' + err.message, 'error');
+            });
+        };
+        
         // Close modals on outside click
-        ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal'].forEach(function(modalId) {
+        ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal', 'requestAdjustModal', 'requestVoidModal'].forEach(function(modalId) {
             var el = document.getElementById(modalId);
             if (el) {
                 el.addEventListener('click', function(e) {

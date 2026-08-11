@@ -333,3 +333,38 @@ function cleanup_old_audit_logs($days = 90) {
         return false;
     }
 }
+
+/**
+ * Log structured action to audit_trail table
+ */
+function log_structured_audit(array $params): bool {
+    global $pdo;
+    if (!isset($pdo)) return false;
+    try {
+        $userId        = $params['user_id']        ?? ($_SESSION['user_id'] ?? null);
+        $userRole      = $params['user_role']      ?? ($_SESSION['user_role'] ?? $_SESSION['role'] ?? 'System');
+        $action        = $params['action']         ?? 'Action';
+        $module        = $params['module']         ?? 'Transactions';
+        $txnId         = $params['transaction_id']  ?? null;
+        $orNo          = $params['or_number']       ?? null;
+        $requestId     = $params['request_id']      ?? null;
+        $oldVals       = isset($params['old_values']) ? (is_array($params['old_values']) ? json_encode($params['old_values']) : $params['old_values']) : null;
+        $newVals       = isset($params['new_values']) ? (is_array($params['new_values']) ? json_encode($params['new_values']) : $params['new_values']) : null;
+        $reason        = $params['reason']         ?? null;
+        $ip            = $_SERVER['REMOTE_ADDR']   ?? '127.0.0.1';
+        $stationId     = $params['station_id']     ?? ($_SESSION['station_id'] ?? 0);
+
+        $stmt = $pdo->prepare("
+            INSERT INTO audit_trail 
+            (user_id, user_role, action, module, transaction_id, or_number, request_id, old_values_json, new_values_json, reason, ip_address, station_id, action_type, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        ");
+        $stmt->execute([
+            $userId, $userRole, $action, $module, $txnId, $orNo, $requestId, $oldVals, $newVals, $reason, $ip, $stationId, $action
+        ]);
+        return true;
+    } catch (Exception $e) {
+        error_log("Failed to log structured audit: " . $e->getMessage());
+        return false;
+    }
+}

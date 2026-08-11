@@ -341,8 +341,52 @@ try {
     
     // ── 4. COMMIT TRANSACTION ────────────────────────────────────────────────
     $pdo->commit();
-    
+
+    // ── 4b. POST-COMMIT: Credit Account → Create AR record ──────────────────
+    $pm_lower = strtolower(trim($payment_method));
+    if (in_array($pm_lower, ['credit account','credit','ar','account receivable'])) {
+        try {
+            $amt = $total_amount ?? $service_total ?? 0;
+            $txn_str = $txn_id_str ?? $jo_id_str ?? '';
+            $cid = $input['customer_id'] ?? null;
+            $or_no = 'OR-' . date('Y') . '-' . str_pad($transaction_id ?? 0, 6, '0', STR_PAD_LEFT);
+
+            // Ensure station_id column exists
+            try { $pdo->exec("ALTER TABLE customer_accounts_receivable ADD COLUMN IF NOT EXISTS station_id INT NOT NULL DEFAULT 0"); } catch (Exception $e) {}
+
+            $pdo->prepare("
+                INSERT INTO customer_accounts_receivable
+                (customer_id, transaction_id, transaction_db_id, or_number, total_amount, amount_paid, outstanding_balance, status, station_id, created_at)
+                VALUES (?, ?, ?, ?, ?, 0, ?, 'Active', ?, NOW())
+            ")->execute([$cid, $txn_str, $transaction_id, $or_no, $amt, $amt, $station_id]);
+        } catch (Exception $are) {
+            error_log('AR record creation error: ' . $are->getMessage());
+        }
+    }
+
+    // ── 4c. Structured Audit Trail: Transaction Created ──────────────────────
+    try {
+        require_once __DIR__ . '/audit_logging.php';
+        log_structured_audit([
+            'user_id'        => $me['id'],
+            'user_role'      => $role,
+            'action'         => 'Transaction Created',
+            'module'         => 'Transactions',
+            'transaction_id' => $txn_id_str ?? $jo_id_str ?? '',
+            'or_number'      => 'OR-' . date('Y') . '-' . str_pad($transaction_id ?? 0, 6, '0', STR_PAD_LEFT),
+            'new_values'     => [
+                'transaction_type' => $transaction_type,
+                'payment_method'   => $payment_method,
+                'payment_status'   => $payment_status,
+                'total_amount'     => $total_amount ?? $service_total ?? 0,
+                'customer'         => $customer_name
+            ],
+            'station_id'     => $station_id
+        ]);
+    } catch (Exception $ate) { error_log('Audit trail error: ' . $ate->getMessage()); }
+
     // ── 5. PREPARE RECEIPT DATA ──────────────────────────────────────────────
+
     $receipt_data = [
         'transaction_id' => $txn_id_str ?? null,
         'job_order_id' => $jo_id_str ?? null,

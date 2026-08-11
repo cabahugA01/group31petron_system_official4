@@ -9,10 +9,14 @@ if (!isset($pdo)) return;
 
 $fixes = [
     // ── merchandise_transactions columns ─────────────────────────────────────
+    "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS customer_id        INT          DEFAULT NULL",
     "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS validation_status  VARCHAR(60)  DEFAULT 'Pending'",
     "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS workflow_status     VARCHAR(60)  DEFAULT 'Pending'",
     "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS validated_by        INT          DEFAULT NULL",
     "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS validated_at        DATETIME     DEFAULT NULL",
+    "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS void_reason         TEXT         DEFAULT NULL",
+    "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS adjustment_reason   TEXT         DEFAULT NULL",
+    "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS manager_remarks     TEXT         DEFAULT NULL",
     "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS rejection_reason    TEXT         DEFAULT NULL",
     "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS remarks             TEXT         DEFAULT NULL",
     "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS amount_paid         DECIMAL(12,2) DEFAULT 0",
@@ -33,39 +37,114 @@ $fixes = [
     "ALTER TABLE fuel_transactions ADD COLUMN IF NOT EXISTS manager_id    INT          DEFAULT NULL",
 
     // ── job_orders columns ────────────────────────────────────────────────────
+    "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS customer_id       INT          DEFAULT NULL",
     "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS validation_status VARCHAR(60)  DEFAULT 'Pending Validation'",
     "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS validated_by      INT          DEFAULT NULL",
     "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS validated_at      DATETIME     DEFAULT NULL",
+    "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS void_reason       TEXT         DEFAULT NULL",
+    "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS adjustment_reason TEXT         DEFAULT NULL",
+    "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS manager_remarks   TEXT         DEFAULT NULL",
     "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS rejection_reason  TEXT         DEFAULT NULL",
     "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS amount_paid       DECIMAL(12,2) DEFAULT 0",
     "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS balance_due       DECIMAL(12,2) DEFAULT NULL",
     "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS payment_status    VARCHAR(60)  DEFAULT 'Unpaid'",
     "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS updated_at        DATETIME     DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP",
-
-    // ── users generated column ────────────────────────────────────────────────
-    "ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR(255) GENERATED ALWAYS AS (TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')))) STORED",
 ];
 
 foreach ($fixes as $sql) {
     try { $pdo->exec($sql); } catch (Exception $e) { /* column may already exist */ }
 }
 
+// ── transaction_requests table ───────────────────────────────────────────────
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS transaction_requests (
+            id                    INT AUTO_INCREMENT PRIMARY KEY,
+            transaction_id        VARCHAR(255) NOT NULL,
+            transaction_db_id     INT          NOT NULL,
+            transaction_source    VARCHAR(60)  NOT NULL DEFAULT 'merchandise_transactions',
+            request_type          VARCHAR(60)  NOT NULL,
+            requested_by          INT          NOT NULL,
+            reason                TEXT         NOT NULL,
+            proposed_changes_json TEXT         DEFAULT NULL,
+            status                VARCHAR(60)  NOT NULL DEFAULT 'Pending',
+            resolved_by           INT          DEFAULT NULL,
+            resolved_at           DATETIME     DEFAULT NULL,
+            created_at            DATETIME     DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_tr_txn  (transaction_id),
+            INDEX idx_tr_stat (status),
+            INDEX idx_tr_src  (transaction_source, transaction_db_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+} catch (Exception $e) {}
+
+// ── adjustment_history table ─────────────────────────────────────────────────
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS adjustment_history (
+            id                 INT AUTO_INCREMENT PRIMARY KEY,
+            transaction_id     VARCHAR(255) NOT NULL,
+            transaction_db_id  INT          NOT NULL,
+            request_id         INT          DEFAULT NULL,
+            requested_by       INT          DEFAULT NULL,
+            approved_by        INT          NOT NULL,
+            reason             TEXT         NOT NULL,
+            old_values_json    TEXT         NOT NULL,
+            new_values_json    TEXT         NOT NULL,
+            created_at         DATETIME     DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_ah_txn   (transaction_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+} catch (Exception $e) {}
+
+// ── customer_accounts_receivable table ─────────────────────────────────────────
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS customer_accounts_receivable (
+            id                  INT AUTO_INCREMENT PRIMARY KEY,
+            customer_id         INT          NOT NULL,
+            transaction_id      VARCHAR(255) NOT NULL,
+            transaction_db_id   INT          NOT NULL,
+            or_number           VARCHAR(100) DEFAULT NULL,
+            total_amount        DECIMAL(12,2) NOT NULL DEFAULT 0,
+            amount_paid         DECIMAL(12,2) NOT NULL DEFAULT 0,
+            outstanding_balance DECIMAL(12,2) NOT NULL DEFAULT 0,
+            status              VARCHAR(60)  NOT NULL DEFAULT 'Active',
+            created_at          DATETIME     DEFAULT CURRENT_TIMESTAMP,
+            updated_at          DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_car_cust (customer_id),
+            INDEX idx_car_txn  (transaction_id),
+            INDEX idx_car_stat (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+} catch (Exception $e) {}
+
 // ── audit_trail table ─────────────────────────────────────────────────────────
 try {
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS audit_trail (
-            id             INT AUTO_INCREMENT PRIMARY KEY,
-            transaction_id VARCHAR(255) NOT NULL,
-            manager_id     INT          NOT NULL,
-            action_type    VARCHAR(60)  NOT NULL,
-            new_value      TEXT         DEFAULT NULL,
-            old_value      TEXT         DEFAULT NULL,
-            station_id     INT          NOT NULL DEFAULT 0,
-            entity_type    VARCHAR(60)  DEFAULT NULL,
-            created_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_txn  (transaction_id),
-            INDEX idx_mgr  (manager_id),
-            INDEX idx_ts   (created_at)
+            id              INT AUTO_INCREMENT PRIMARY KEY,
+            user_id         INT          DEFAULT NULL,
+            user_role       VARCHAR(60)  DEFAULT NULL,
+            action          VARCHAR(100) DEFAULT NULL,
+            module          VARCHAR(100) DEFAULT NULL,
+            transaction_id  VARCHAR(255) DEFAULT NULL,
+            or_number       VARCHAR(100) DEFAULT NULL,
+            request_id      INT          DEFAULT NULL,
+            old_values_json TEXT         DEFAULT NULL,
+            new_values_json TEXT         DEFAULT NULL,
+            reason          TEXT         DEFAULT NULL,
+            ip_address      VARCHAR(60)  DEFAULT NULL,
+            manager_id      INT          DEFAULT NULL,
+            action_type     VARCHAR(60)  DEFAULT NULL,
+            new_value       TEXT         DEFAULT NULL,
+            old_value       TEXT         DEFAULT NULL,
+            station_id      INT          NOT NULL DEFAULT 0,
+            entity_type     VARCHAR(60)  DEFAULT NULL,
+            created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_txn   (transaction_id),
+            INDEX idx_user  (user_id),
+            INDEX idx_ts    (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ");
 } catch (Exception $e) {}

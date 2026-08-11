@@ -260,11 +260,57 @@ try {
         error_log('transaction_adjustments insert warning: ' . $e->getMessage());
     }
 
+    // ── Log into adjustment_history ───────────────────────────────────────────
+    try {
+        $pdo->prepare("
+            INSERT INTO adjustment_history (
+                transaction_id, transaction_db_id, requested_by, approved_by,
+                reason, old_values_json, new_values_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+        ")->execute([
+            $txn['transaction_id'] ?? ('TXN-' . $row_id),
+            $row_id,
+            $txn['staff_id'] ?? null,
+            $me['id'],
+            $adjustment_reason,
+            $old_snap,
+            $new_snap
+        ]);
+    } catch (Exception $e) {}
+
+    // ── Update Customer Accounts Receivable if Credit Account ──────────────────
+    if (!empty($txn['customer_id'])) {
+        try {
+            $effective_pstat = $payment_status ?: ($txn['payment_status'] ?? '');
+            if (in_array(strtolower($effective_pstat), ['credit account', 'credit', 'account receivable', 'ar'])) {
+                $pdo->prepare("
+                    UPDATE customer_accounts_receivable 
+                    SET total_amount = ?, outstanding_balance = GREATEST(0, ? - amount_paid), status = 'Active', updated_at = NOW() 
+                    WHERE (transaction_id = ? OR transaction_db_id = ?) AND status = 'Active'
+                ")->execute([$new_total, $new_total, $txn['transaction_id'] ?? '', $row_id]);
+            }
+        } catch (Exception $care) {}
+    }
+
     // Auto-approve pending transaction_requests for this transaction
     try {
-        $upd_req = $pdo->prepare("UPDATE transaction_requests SET status = 'Approved', reviewed_by = ?, reviewed_at = NOW(), review_remarks = ? WHERE (transaction_id = ? OR transaction_id = ?) AND status = 'Pending'");
-        $upd_req->execute([$me['id'], $manager_remarks, (string)$row_id, $txn['transaction_id'] ?? '']);
+        $upd_req = $pdo->prepare("UPDATE transaction_requests SET status = 'Approved', resolved_by = ?, resolved_at = NOW() WHERE (transaction_id = ? OR transaction_db_id = ?) AND status = 'Pending'");
+        $upd_req->execute([$me['id'], (string)$row_id, $row_id]);
     } catch (Exception $e) {}
+
+    require_once __DIR__ . '/../audit_logging.php';
+    log_structured_audit([
+        'user_id'        => $me['id'],
+        'user_role'      => $role,
+        'action'         => 'Adjustment Approved/Executed',
+        'module'         => 'Transactions',
+        'transaction_id' => $txn['transaction_id'] ?? ('TXN-' . $row_id),
+        'or_number'       => 'OR-' . date('Y', strtotime($txn['transaction_date'] ?? $txn['created_at'] ?? 'now')) . '-' . str_pad($row_id, 6, '0', STR_PAD_LEFT),
+        'old_values'     => $old_snap,
+        'new_values'     => $new_snap,
+        'reason'         => $adjustment_reason,
+        'station_id'     => $station_id
+    ]);
 
     $pdo->commit();
 

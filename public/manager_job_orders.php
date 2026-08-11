@@ -227,6 +227,17 @@ try {
     $r = $pdo->prepare($full_sql);
     $r->execute(array_merge($params, $mt_params2));
     $job_orders = $r->fetchAll(PDO::FETCH_ASSOC);
+
+    // Pre-fetch pending transaction_requests
+    $pending_txn_requests = [];
+    try {
+        $pr_stmt = $pdo->prepare("SELECT * FROM transaction_requests WHERE station_id = ? AND status = 'Pending'");
+        $pr_stmt->execute([$station_id]);
+        foreach ($pr_stmt->fetchAll(PDO::FETCH_ASSOC) as $pr) {
+            $pr_key = ($pr['record_source'] ?? 'job_orders') . ':' . $pr['transaction_id'];
+            $pending_txn_requests[$pr_key] = $pr;
+        }
+    } catch (Exception $pr_err) {}
 } catch (Exception $e) {}
 
 $flash_success = $_SESSION['success'] ?? null; unset($_SESSION['success']);
@@ -274,7 +285,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="page-head">
   <div>
     <h1 class="h1" style="font-size:20px;font-weight:bold;color:#00264D;"><i class="fas fa-wrench" style="margin-right:8px;"></i>JOB ORDERS</h1>
-    <div class="sub" style="font-size:13px;opacity:.85;color:#6c757d;font-weight:bold;">MANAGER VALIDATION &bull; APPROVE / REJECT / ADJUST</div>
+    <div class="sub" style="font-size:13px;opacity:.85;color:#6c757d;font-weight:bold;">MANAGER VALIDATION &bull; APPROVE / REJECT / ADJUST / VOID</div>
   </div>
 </div>
 
@@ -294,7 +305,7 @@ include __DIR__ . '/../partials/header.php';
   <form method="GET" action="manager_job_orders.php" class="filter-bar">
     <select name="status" style="padding:7px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
       <option value="">All Statuses</option>
-      <?php foreach (['Pending Validation','Approved','Validated','In Progress','Completed','Rejected','Cancelled','Adjusted'] as $opt): ?>
+      <?php foreach (['Pending Validation','Approved','Validated','In Progress','Completed','Rejected','Cancelled','Adjusted','Voided','Adjustment Requested','Void Requested'] as $opt): ?>
       <option value="<?php echo $opt; ?>" <?php echo $status_filter === $opt ? 'selected' : ''; ?>><?php echo $opt; ?></option>
       <?php endforeach; ?>
     </select>
@@ -316,21 +327,32 @@ include __DIR__ . '/../partials/header.php';
       <tbody>
       <?php
       $stMap = [
-          'Pending Validation'=>['#FFF3CD','#92400E'],
-          'Approved'          =>['#D1FAE5','#065F46'],
-          'Validated'         =>['#D1FAE5','#065F46'],
-          'In Progress'       =>['#DBEAFE','#1E40AF'],
-          'Completed'         =>['#DCFCE7','#14532D'],
-          'Rejected'          =>['#FEE2E2','#991B1B'],
-          'Cancelled'         =>['#FEE2E2','#991B1B'],
-          'Adjusted'          =>['#E0E7FF','#3730A3'],
+          'Pending Validation'   => ['#FFF3CD','#92400E'],
+          'Approved'             => ['#D1FAE5','#065F46'],
+          'Validated'            => ['#D1FAE5','#065F46'],
+          'In Progress'          => ['#DBEAFE','#1E40AF'],
+          'Completed'            => ['#DCFCE7','#14532D'],
+          'Rejected'             => ['#FEE2E2','#991B1B'],
+          'Cancelled'            => ['#FEE2E2','#991B1B'],
+          'Adjusted'             => ['#E0E7FF','#3730A3'],
+          'Voided'               => ['#FEE2E2','#991B1B'],
+          'Adjustment Requested' => ['#FEF3C7','#B45309'],
+          'Void Requested'       => ['#FEE2E2','#DC2626'],
       ];
       foreach ($job_orders as $j):
+          $key = ($j['_source'] ?? 'job_orders') . ':' . $j['id'];
+          $pending_req = $pending_txn_requests[$key] ?? null;
+
           $st  = $j['validation_status'] ?: $j['status'] ?: 'Pending Validation';
+          if ($pending_req) {
+              $st = ($pending_req['request_type'] === 'Void') ? 'Void Requested' : 'Adjustment Requested';
+          }
+
           $sc  = $stMap[$st] ?? ['#f3f4f6','#374151'];
           $svc = htmlspecialchars($j['service_type'] ?: $j['service_description'] ?: '—');
           $isPending   = in_array($st, ['Pending Validation','Pending']);
-          $canAdjust   = !in_array($st, ['Completed','Cancelled']);
+          $canAdjust   = !in_array($st, ['Completed','Cancelled','Voided']) || ($pending_req && $pending_req['request_type'] === 'Adjustment');
+          $isVoidReq   = ($pending_req && $pending_req['request_type'] === 'Void');
       ?>
       <tr>
         <td style="font-weight:700;color:#00264D;">#<?php echo (int)$j['id']; ?></td>
@@ -362,13 +384,20 @@ include __DIR__ . '/../partials/header.php';
               </button>
             </form>
             <?php endif; ?>
-            <?php if ($canAdjust): ?>
+
+            <?php if ($isVoidReq): ?>
+            <button type="button" class="jo-act-btn" style="background:#dc2626;color:#fff;"
+              onclick="if(confirm('Approve VOID request for Job Order #<?php echo (int)$j['id']; ?>?')){ fetch('../backend/api/void_transaction_manager.php', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({transaction_id:<?php echo (int)$j['id']; ?>, void_reason:'Approved staff void request: <?php echo addslashes(htmlspecialchars($pending_req['request_reason'] ?? '')); ?>'})}).then(r=>r.json()).then(d=>{ alert(d.message||d.error); location.reload(); }); }">
+              <i class="fas fa-ban"></i> Void
+            </button>
+            <?php elseif ($canAdjust): ?>
             <button type="button" class="jo-act-btn" style="background:#00264D;color:#fff;"
               onclick="openAdjust(<?php echo (int)$j['id']; ?>, '<?php echo addslashes(htmlspecialchars($j['cust'])); ?>', <?php echo (float)$j['estimated_cost']; ?>, '<?php echo addslashes(htmlspecialchars($j['notes'] ?? '')); ?>')">
               <i class="fas fa-edit"></i> Adjust
             </button>
             <?php endif; ?>
-            <?php if (!$isPending && !$canAdjust): ?>
+
+            <?php if (!$isPending && !$canAdjust && !$isVoidReq): ?>
             <span style="font-size:11px;color:#9ca3af;">—</span>
             <?php endif; ?>
           </div>

@@ -21,16 +21,31 @@ $raw  = file_get_contents('php://input');
 $data = $raw ? (json_decode($raw, true) ?? []) : [];
 if (!$data) $data = $_POST;
 
-$transaction_id = (int)  ($data['transaction_id'] ?? 0);
-$record_source  = trim(   $data['record_source']  ?? 'merchandise_transactions');
-$request_type   = trim(   $data['request_type']   ?? '');
-$request_reason = trim(   $data['request_reason'] ?? '');
-$new_amount     = isset($data['new_amount']) && $data['new_amount'] !== '' ? (float)$data['new_amount'] : null;
+// Ensure table schema includes optional columns for adjustment requests
+foreach ([
+    "ALTER TABLE `transaction_requests` ADD COLUMN `correction_field` VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE `transaction_requests` ADD COLUMN `current_value` TEXT DEFAULT NULL",
+    "ALTER TABLE `transaction_requests` ADD COLUMN `requested_value` TEXT DEFAULT NULL",
+    "ALTER TABLE `transaction_requests` ADD COLUMN `remarks` TEXT DEFAULT NULL",
+] as $_tr_col) {
+    try { $pdo->exec($_tr_col); } catch (Exception $e) {}
+}
 
-if (!$transaction_id)           { echo json_encode(['success'=>false,'error'=>'Transaction ID is required']); exit; }
+$transaction_id   = (int)  ($data['transaction_id'] ?? 0);
+$record_source    = trim(   $data['record_source']  ?? 'job_orders');
+$request_type     = trim(   $data['request_type']   ?? '');
+$request_reason   = trim(   $data['request_reason'] ?? '');
+$new_amount       = isset($data['new_amount']) && $data['new_amount'] !== '' ? (float)$data['new_amount'] : null;
+
+$correction_field = trim(   $data['correction_field'] ?? '');
+$current_value    = trim(   $data['current_value']    ?? '');
+$requested_value  = trim(   $data['requested_value']  ?? '');
+$remarks          = trim(   $data['remarks']          ?? '');
+
+if (!$transaction_id)                               { echo json_encode(['success'=>false,'error'=>'Transaction ID is required']); exit; }
 if (!in_array($request_type, ['Void','Adjustment'])) { echo json_encode(['success'=>false,'error'=>'Invalid request type']); exit; }
-if (!$request_reason)           { echo json_encode(['success'=>false,'error'=>'Reason is required']); exit; }
-if (!in_array($record_source, ['merchandise_transactions','job_orders'])) $record_source = 'merchandise_transactions';
+if (!$request_reason && !$correction_field)         { echo json_encode(['success'=>false,'error'=>'Reason is required']); exit; }
+if (!in_array($record_source, ['merchandise_transactions','job_orders'])) $record_source = 'job_orders';
 
 try {
     if ($record_source === 'job_orders') {
@@ -56,13 +71,32 @@ try {
     $dup->execute([$transaction_id, $record_source, $request_type]);
     if ($dup->fetchColumn()) { echo json_encode(['success'=>false,'error'=>"A pending {$request_type} request already exists for this transaction"]); exit; }
 
-    $ins = $pdo->prepare("INSERT INTO transaction_requests (station_id,transaction_id,record_source,request_type,request_reason,requested_by,status,new_amount,requested_at) VALUES (?,?,?,?,?,?,'Pending',?,NOW())");
-    $ins->execute([$station_id,$transaction_id,$record_source,$request_type,$request_reason,$user_id,$new_amount]);
+    $full_reason = $request_reason;
+    if ($request_type === 'Adjustment' && $correction_field) {
+        $full_reason = "[{$correction_field}] " . ($request_reason ?: "Correction requested: {$current_value} -> {$requested_value}");
+    }
+
+    $ins = $pdo->prepare("INSERT INTO transaction_requests 
+        (station_id, transaction_id, record_source, request_type, request_reason, requested_by, status, new_amount, correction_field, current_value, requested_value, remarks, requested_at) 
+        VALUES (?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, ?, NOW())");
+    $ins->execute([
+        $station_id,
+        $transaction_id,
+        $record_source,
+        $request_type,
+        $full_reason,
+        $user_id,
+        $new_amount,
+        $correction_field ?: null,
+        $current_value ?: null,
+        $requested_value ?: null,
+        $remarks ?: null
+    ]);
     $request_id = $pdo->lastInsertId();
 
     $customer_name = $txn['customer_name'] ?? ('TXN #'.$transaction_id);
-    $staff_name    = $me['full_name'] ?? 'Staff';
-    $notif_msg     = "{$staff_name} requested a {$request_type} for {$customer_name}. Reason: {$request_reason}";
+    $staff_name    = $me['name'] ?? $me['username'] ?? 'Staff';
+    $notif_msg     = "{$staff_name} requested a {$request_type} for {$customer_name}. Reason: {$full_reason}";
     try {
         $cols  = $pdo->query("SHOW COLUMNS FROM notifications")->fetchAll(PDO::FETCH_COLUMN);
         $has_s = in_array('station_id',$cols);
@@ -72,15 +106,31 @@ try {
         $p=["Staff {$request_type} Request",$notif_msg,'transaction_request'];
         if($has_s){$f.=',station_id';$v.=',?';$p[]=$station_id;}
         if($has_r){$f.=',target_role';$v.=',?';$p[]='manager';}
-        if($has_l){$f.=',link';$v.=',?';$p[]='admin_dashboard.php?section=validation&tr_id='.$request_id;}
+        if($has_l){$f.=',link';$v.=',?';$p[]='manager_job_orders.php';}
         $pdo->prepare("INSERT INTO notifications ({$f}) VALUES ({$v})")->execute($p);
     } catch(Exception $ne){ error_log('notif error: '.$ne->getMessage()); }
 
     if(function_exists('log_activity')) {
-        log_activity($pdo,$user_id,"Request {$request_type}","Req#{$request_id}|{$request_type}|TXN#{$transaction_id}|{$request_reason}");
+        log_activity($pdo,$user_id,"Request {$request_type}","Req#{$request_id}|{$request_type}|TXN#{$transaction_id}|{$full_reason}");
     }
 
-    echo json_encode(['success'=>true,'request_id'=>(int)$request_id,'message'=>"{$request_type} request submitted! Request ID: #{$request_id}. Status: Pending Manager Review."]);
+    require_once __DIR__ . '/../audit_logging.php';
+    log_structured_audit([
+        'user_id'        => $user_id,
+        'user_role'      => $role,
+        'action'         => "{$request_type} Requested",
+        'module'         => 'Transactions',
+        'transaction_id' => (string)$transaction_id,
+        'request_id'     => (int)$request_id,
+        'reason'         => $full_reason,
+        'station_id'     => $station_id
+    ]);
+
+    echo json_encode([
+        'success' => true,
+        'request_id' => (int)$request_id,
+        'message' => "{$request_type} request submitted successfully! Status: " . strtoupper($request_type) . " REQUESTED."
+    ]);
 } catch(Exception $e){
     error_log('req_txn_action: '.$e->getMessage());
     echo json_encode(['success'=>false,'error'=>'Database error: '.$e->getMessage()]);

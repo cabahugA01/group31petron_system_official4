@@ -1,15 +1,20 @@
 <?php
 require_once __DIR__ . '/../public/db_connect.php';
 
-$output = "DATABASE TABLES AND COLUMNS:\n\n";
-$tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
-foreach ($tables as $t) {
-    $output .= "=== TABLE: $t ===\n";
-    $cols = $pdo->query("DESCRIBE `$t`")->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($cols as $c) {
-        $output .= "  {$c['Field']} | {$c['Type']} | Null:{$c['Null']} | Default:{$c['Default']}\n";
+function check_table($pdo, $table) {
+    echo "=== TABLE: $table ===\n";
+    try {
+        $stmt = $pdo->query("SHOW COLUMNS FROM `$table`");
+        $cols = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($cols as $c) {
+            echo "{$c['Field']} - {$c['Type']} - NULL:{$c['Null']} - DEF:{$c['Default']}\n";
+        }
+    } catch (Exception $e) {
+        echo "Error: " . $e->getMessage() . "\n";
     }
-    $output .= "\n";
+    echo "\n";
 }
-file_put_contents(__DIR__ . '/db_schema_utf8.txt', $output);
-echo "SUCCESS";
+
+check_table($pdo, 'transaction_requests');
+check_table($pdo, 'job_orders');
+check_table($pdo, 'merchandise_transactions');

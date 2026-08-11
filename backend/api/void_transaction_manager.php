@@ -337,9 +337,34 @@ try {
         $source,
     ]);
 
+    // ── Reverse Accounts Receivable if Credit Account ───────────────────────
+    if (!empty($txn['customer_id'])) {
+        try {
+            $pdo->prepare("
+                UPDATE customer_accounts_receivable 
+                SET status = 'Voided', outstanding_balance = 0, updated_at = NOW() 
+                WHERE (transaction_id = ? OR transaction_db_id = ?) AND status = 'Active'
+            ")->execute([$txn['transaction_id'] ?? '', $row_id]);
+        } catch (Exception $care) {}
+    }
+
     // Auto-approve pending transaction_requests for this transaction
-    $upd_req = $pdo->prepare("UPDATE transaction_requests SET status = 'Approved', reviewed_by = ?, reviewed_at = NOW(), review_remarks = ? WHERE (transaction_id = ? OR transaction_id = ?) AND status = 'Pending'");
-    $upd_req->execute([$me['id'], $manager_remarks, (string)$row_id, $txn['transaction_id'] ?? '']);
+    $upd_req = $pdo->prepare("UPDATE transaction_requests SET status = 'Approved', resolved_by = ?, resolved_at = NOW() WHERE (transaction_id = ? OR transaction_db_id = ?) AND status = 'Pending'");
+    $upd_req->execute([$me['id'], (string)$row_id, $row_id]);
+
+    require_once __DIR__ . '/../audit_logging.php';
+    log_structured_audit([
+        'user_id'        => $me['id'],
+        'user_role'      => $role,
+        'action'         => 'Void Approved/Executed',
+        'module'         => 'Transactions',
+        'transaction_id' => $txn['transaction_id'] ?? ('JO-' . $row_id),
+        'or_number'       => 'OR-' . date('Y', strtotime($txn['transaction_date'] ?? $txn['created_at'] ?? 'now')) . '-' . str_pad($row_id, 6, '0', STR_PAD_LEFT),
+        'old_values'     => $old_snap,
+        'new_values'     => $new_snap,
+        'reason'         => $void_reason,
+        'station_id'     => $station_id
+    ]);
 
     $pdo->commit();
 

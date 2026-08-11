@@ -62,6 +62,12 @@ try {
                 mt.ewallet_provider,
                 mt.subtotal_amount,
                 mt.vat_amount,
+                mt.transaction_type,
+                mt.job_order_service,
+                mt.job_order_vehicle_plate,
+                mt.job_order_vehicle_type,
+                mt.job_order_mechanic_name,
+                mt.job_order_description,
                 COALESCE(NULLIF(CONCAT(u_staff.first_name,' ',u_staff.last_name),' '), u_staff.username, 'Unknown') AS staff_name,
                 COALESCE(NULLIF(CONCAT(u_validated.first_name,' ',u_validated.last_name),' '), u_validated.username, 'N/A') AS validated_by_name
             FROM merchandise_transactions mt
@@ -127,9 +133,10 @@ try {
             : date('M d, Y h:i A', strtotime($row['transaction_date'] > '2000-01-01' ? $row['transaction_date'] : $row['created_at']));
 
         // Format response for merchandise transaction
+        $is_jo_type = (in_array(strtolower($row['transaction_type'] ?? ''), ['job_order', 'combined']) || !empty(trim($row['job_order_service'] ?? '')));
         echo json_encode([
             'success' => true,
-            'type' => 'merchandise',
+            'type' => $is_jo_type ? 'job_order' : 'merchandise',
             'transaction_id' => $row['transaction_id'],
             'customer_name' => $row['customer_name'] ?: 'Walk-in',
             'item_sku' => $formatted_item_sku,
@@ -138,14 +145,17 @@ try {
             'unit_price' => number_format((float)$row['unit_price'], 2),
             'total_amount' => number_format((float)$row['total_amount'], 2),
             'payment_method' => $row['payment_method'],
+            'payment_status' => $row['validation_status'] ?: 'Paid',
             'transaction_date' => date('M d, Y h:i A', strtotime($row['transaction_date'] > '2000-01-01' ? $row['transaction_date'] : $row['created_at'])),
             'validation_status' => $row['validation_status'],
+            'job_status' => $row['validation_status'] ?: 'Completed',
             'validated_at' => $validated_at,
             'rejection_reason' => $row['rejection_reason'] ?: 'N/A',
             'adjustment_reason' => $row['adjustment_reason'] ?: 'N/A',
             'remarks' => $row['remarks'] ?: 'N/A',
             'shift' => $row['shift_name'] ?: $row['shift_period'] ?: 'N/A',
             'amount_tendered' => $tendered > 0 ? number_format($tendered, 2) : 'N/A',
+            'amount_paid' => $tendered > 0 ? number_format($tendered, 2) : number_format((float)$row['total_amount'], 2),
             'change_amount' => $change_calc,
             'card_reference' => $row['card_reference'] ?: 'N/A',
             'card_type' => $row['card_type'] ?: 'N/A',
@@ -153,8 +163,42 @@ try {
             'ewallet_provider' => $row['ewallet_provider'] ?: 'N/A',
             'subtotal_amount' => $row['subtotal_amount'] ? number_format((float)$row['subtotal_amount'], 2) : 'N/A',
             'vat_amount' => $row['vat_amount'] ? number_format((float)$row['vat_amount'], 2) : 'N/A',
+            'transaction_type' => $row['transaction_type'] ?? 'merchandise',
+            'service_type' => $row['job_order_service'] ?: 'N/A',
+            'vehicle_plate' => $row['job_order_vehicle_plate'] ?: 'N/A',
+            'vehicle_type' => $row['job_order_vehicle_type'] ?: 'N/A',
+            'mechanic_name' => $row['job_order_mechanic_name'] ?: 'Station Mechanic',
+            'service_description' => $row['job_order_description'] ?: 'N/A',
+            'required_parts' => 'N/A',
+            'estimated_cost' => number_format((float)$row['total_amount'], 2),
+            'job_order_service' => $row['job_order_service'] ?? '',
+            'job_order_vehicle_plate' => $row['job_order_vehicle_plate'] ?? '',
+            'job_order_vehicle_type' => $row['job_order_vehicle_type'] ?? '',
+            'job_order_mechanic_name' => $row['job_order_mechanic_name'] ?? '',
+            'job_order_description' => $row['job_order_description'] ?? '',
             'staff_name' => $row['staff_name'] ?: 'Unknown',
-            'validated_by' => $validated_by
+            'validated_by' => $validated_by,
+            'adjustment_history' => (function() use ($pdo, $row, $id) {
+                try {
+                    $s = $pdo->prepare("SELECT ah.*, COALESCE(NULLIF(TRIM(CONCAT_WS(' ',u.first_name,u.last_name)),''),u.username,'Manager') AS approved_by_name FROM adjustment_history ah LEFT JOIN users u ON u.id=ah.approved_by WHERE ah.transaction_db_id=? OR ah.transaction_id=? ORDER BY ah.created_at DESC LIMIT 10");
+                    $s->execute([$id, $row['transaction_id'] ?? '']);
+                    return $s->fetchAll(PDO::FETCH_ASSOC);
+                } catch (Exception $e) { return []; }
+            })(),
+            'audit_trail' => (function() use ($pdo, $row) {
+                try {
+                    $s = $pdo->prepare("SELECT at.*, COALESCE(NULLIF(TRIM(CONCAT_WS(' ',u.first_name,u.last_name)),''),u.username,'System') AS user_name FROM audit_trail at LEFT JOIN users u ON u.id=at.user_id WHERE at.transaction_id=? ORDER BY at.created_at DESC LIMIT 20");
+                    $s->execute([$row['transaction_id'] ?? '']);
+                    return $s->fetchAll(PDO::FETCH_ASSOC);
+                } catch (Exception $e) { return []; }
+            })(),
+            'ar_record' => (function() use ($pdo, $id, $row) {
+                try {
+                    $s = $pdo->prepare("SELECT * FROM customer_accounts_receivable WHERE transaction_db_id=? OR transaction_id=? LIMIT 1");
+                    $s->execute([$id, $row['transaction_id'] ?? '']);
+                    return $s->fetch(PDO::FETCH_ASSOC) ?: null;
+                } catch (Exception $e) { return null; }
+            })()
         ]);
         
     } elseif ($type === 'job_orders') {
@@ -255,7 +299,17 @@ try {
             'adjustment_reason' => $row['adjustment_reason'] ?: 'N/A',
             'staff_name' => $row['staff_name'] ?: 'Unknown',
             'validated_by' => $jo_validated_by,
-            'mechanic_name' => $row['mechanic_name'] ?: 'Not assigned'
+            'mechanic_name' => $row['mechanic_name'] ?: 'Not assigned',
+            'audit_trail' => (function() use ($pdo, $row, $id) {
+                try {
+                    $jo_no = $row['job_order_number'] ?? 'JO-'.$id;
+                    $s = $pdo->prepare("SELECT at.*, COALESCE(NULLIF(TRIM(CONCAT_WS(' ',u.first_name,u.last_name)),''),u.username,'System') AS user_name FROM audit_trail at LEFT JOIN users u ON u.id=at.user_id WHERE at.transaction_id=? ORDER BY at.created_at DESC LIMIT 20");
+                    $s->execute([$jo_no]);
+                    return $s->fetchAll(PDO::FETCH_ASSOC);
+                } catch (Exception $e) { return []; }
+            })(),
+            'adjustment_history' => [],
+            'ar_record' => null
         ]);
         
     } else {
