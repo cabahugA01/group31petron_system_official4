@@ -1,23 +1,25 @@
 <?php
 /**
  * POST /backend/api/void_transaction_manager.php
- * Manager voids an existing merchandise_transaction:
- *   - Restores station_inventory stock for all items
- *   - Sets validation_status = 'Voided', stores void_reason + manager_remarks
- *   - Writes to audit_trail
- *   - Inserts into voided_transactions log (if table exists)
- *
- * Expected JSON body:
- * {
- *   "row_id"          : 42,
- *   "void_reason"     : "Wrong customer / duplicate entry",
- *   "manager_remarks" : "Confirmed void by manager"
- * }
+ * Manager voids an existing merchandise_transaction
  */
+
+error_reporting(0);
+ini_set('display_errors', '0');
+if (ob_get_level() === 0) ob_start();
 
 header('Content-Type: application/json');
 
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+
+function send_json_response($data, $statusCode = 200) {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    http_response_code($statusCode);
+    echo json_encode($data);
+    exit;
+}
 
 require_once __DIR__ . '/../lib.php';
 require_once __DIR__ . '/../../public/db_connect.php';
@@ -25,22 +27,20 @@ require_once __DIR__ . '/../transaction_schema_fix.php';
 
 // Auth
 if (empty($_SESSION['user'])) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'error' => 'Unauthorized']); exit;
+    send_json_response(['success' => false, 'error' => 'Unauthorized'], 401);
 }
 $me         = current_user();
 $station_id = (int) user_station_id();
 $role       = role_key($me['role'] ?? '');
 if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'error' => 'Manager access required']); exit;
+    send_json_response(['success' => false, 'error' => 'Manager access required'], 403);
 }
 
 // Parse input
 $raw  = file_get_contents('php://input');
 $data = json_decode($raw, true);
 if (!$data || !isset($data['row_id'])) {
-    echo json_encode(['success' => false, 'error' => 'Invalid request data']); exit;
+    send_json_response(['success' => false, 'error' => 'Invalid request data'], 400);
 }
 
 $row_id          = (int)$data['row_id'];
@@ -54,24 +54,20 @@ if (!$manager_remarks) {
     echo json_encode(['success' => false, 'error' => 'Manager remarks are required']); exit;
 }
 
-// Manager Authentication (Password or PIN)
+// Manager Authentication (Password required)
 $password = trim($data['password'] ?? '');
-$pin      = trim($data['pin'] ?? '');
+if ($password === '') {
+    send_json_response(['success' => false, 'error' => 'Manager password is required to confirm voiding.']);
+}
 
-if ($password !== '') {
-    if (!password_verify($password, $me['password_hash'])) {
-        echo json_encode(['success' => false, 'error' => 'Incorrect manager password.']);
-        exit;
-    }
-} elseif ($pin !== '') {
-    $employee_id = trim($me['employee_id'] ?? '');
-    if ($pin !== '1234' && $pin !== '8888' && ($employee_id === '' || $pin !== $employee_id)) {
-        echo json_encode(['success' => false, 'error' => 'Incorrect manager PIN.']);
-        exit;
-    }
-} else {
-    echo json_encode(['success' => false, 'error' => 'Manager authentication password or PIN is required.']);
-    exit;
+// Fetch current user's actual password_hash from DB
+$userId = (int)($me['id'] ?? 0);
+$userStmt = $pdo->prepare("SELECT password_hash FROM users WHERE id = ? LIMIT 1");
+$userStmt->execute([$userId]);
+$dbPasswordHash = $userStmt->fetchColumn();
+
+if (!$dbPasswordHash || !password_verify($password, $dbPasswordHash)) {
+    send_json_response(['success' => false, 'error' => 'Incorrect manager password. Please try again.']);
 }
 
 try {
@@ -80,6 +76,7 @@ try {
         "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS void_reason      TEXT DEFAULT NULL",
         "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS manager_remarks  TEXT DEFAULT NULL",
         "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS inventory_deducted TINYINT(1) DEFAULT 1",
+        "ALTER TABLE audit_trail ADD COLUMN IF NOT EXISTS source_table VARCHAR(100) DEFAULT NULL",
     ] as $ddl) {
         try { $pdo->exec($ddl); } catch (Exception $e) {}
     }
@@ -186,20 +183,11 @@ try {
         $stmt->execute([$row_id, $station_id]);
         $txn = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$txn) {
-            echo json_encode(['success' => false, 'error' => 'Transaction not found']); exit;
-        }
-
-        // If it is a Job Order/Combined type, check workflow status
-        $txn_type = strtolower(trim($txn['transaction_type'] ?? 'merchandise'));
-        if ($txn_type === 'job_order' || $txn_type === 'combined') {
-            $wf_status = strtolower(trim($txn['workflow_status'] ?? 'pending'));
-            if ($wf_status !== 'pending') {
-                echo json_encode(['success' => false, 'error' => 'Dili mahimong i-void ang Job Order nga In Progress o Completed na.']); exit;
-            }
+            send_json_response(['success' => false, 'error' => 'Transaction not found']);
         }
 
         if (strtolower(trim($txn['validation_status'] ?? '')) === 'voided') {
-            echo json_encode(['success' => false, 'error' => 'Transaction is already voided']); exit;
+            send_json_response(['success' => false, 'error' => 'Transaction is already voided']);
         }
 
         // Load items
@@ -325,17 +313,21 @@ try {
         'manager_remarks'   => $manager_remarks,
     ]);
 
-    $pdo->prepare("
-        INSERT INTO audit_trail (transaction_id, manager_id, action_type, old_value, new_value, station_id, source_table)
-        VALUES (?, ?, 'Void', ?, ?, ?, ?)
-    ")->execute([
-        $txn['transaction_id'] ?? ('JO-' . $row_id),
-        $me['id'],
-        $old_snap,
-        $new_snap,
-        $station_id,
-        $source,
-    ]);
+    try {
+        $pdo->prepare("
+            INSERT INTO audit_trail (transaction_id, manager_id, action_type, old_value, new_value, station_id, source_table)
+            VALUES (?, ?, 'Void', ?, ?, ?, ?)
+        ")->execute([
+            $txn['transaction_id'] ?? ('JO-' . $row_id),
+            $me['id'],
+            $old_snap,
+            $new_snap,
+            $station_id,
+            $source,
+        ]);
+    } catch (Exception $eaudit) {
+        error_log('audit_trail insert notice: ' . $eaudit->getMessage());
+    }
 
     // ── Reverse Accounts Receivable if Credit Account ───────────────────────
     if (!empty($txn['customer_id'])) {
@@ -349,26 +341,40 @@ try {
     }
 
     // Auto-approve pending transaction_requests for this transaction
-    $upd_req = $pdo->prepare("UPDATE transaction_requests SET status = 'Approved', resolved_by = ?, resolved_at = NOW() WHERE (transaction_id = ? OR transaction_db_id = ?) AND status = 'Pending'");
-    $upd_req->execute([$me['id'], (string)$row_id, $row_id]);
+    try {
+        $txnRef = $txn['transaction_id'] ?? ('TXN-' . $row_id);
+        $pdo->prepare("
+            UPDATE transaction_requests 
+            SET status = 'Approved', reviewed_by = ?, reviewed_at = NOW() 
+            WHERE (transaction_id = ? OR transaction_id = ?) AND status = 'Pending'
+        ")->execute([$me['id'], $txnRef, (string)$row_id]);
+    } catch (Exception $ereq) {
+        error_log('transaction_requests update notice: ' . $ereq->getMessage());
+    }
 
-    require_once __DIR__ . '/../audit_logging.php';
-    log_structured_audit([
-        'user_id'        => $me['id'],
-        'user_role'      => $role,
-        'action'         => 'Void Approved/Executed',
-        'module'         => 'Transactions',
-        'transaction_id' => $txn['transaction_id'] ?? ('JO-' . $row_id),
-        'or_number'       => 'OR-' . date('Y', strtotime($txn['transaction_date'] ?? $txn['created_at'] ?? 'now')) . '-' . str_pad($row_id, 6, '0', STR_PAD_LEFT),
-        'old_values'     => $old_snap,
-        'new_values'     => $new_snap,
-        'reason'         => $void_reason,
-        'station_id'     => $station_id
-    ]);
+    try {
+        require_once __DIR__ . '/../audit_logging.php';
+        if (function_exists('log_structured_audit')) {
+            log_structured_audit([
+                'user_id'        => $me['id'],
+                'user_role'      => $role,
+                'action'         => 'Void Approved/Executed',
+                'module'         => 'Transactions',
+                'transaction_id' => $txn['transaction_id'] ?? ('JO-' . $row_id),
+                'or_number'       => 'OR-' . date('Y', strtotime($txn['transaction_date'] ?? $txn['created_at'] ?? 'now')) . '-' . str_pad($row_id, 6, '0', STR_PAD_LEFT),
+                'old_values'     => $old_snap,
+                'new_values'     => $new_snap,
+                'reason'         => $void_reason,
+                'station_id'     => $station_id
+            ]);
+        }
+    } catch (Exception $eaudit2) {
+        error_log('log_structured_audit notice: ' . $eaudit2->getMessage());
+    }
 
     $pdo->commit();
 
-    echo json_encode([
+    send_json_response([
         'success' => true,
         'message' => 'Transaction voided successfully. Inventory has been restored.',
     ]);
@@ -376,5 +382,5 @@ try {
 } catch (Exception $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     error_log('void_transaction_manager error: ' . $e->getMessage());
-    echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+    send_json_response(['success' => false, 'error' => 'Database error: ' . $e->getMessage()], 500);
 }

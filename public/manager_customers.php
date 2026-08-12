@@ -34,7 +34,7 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-.cust-page { color:#0f172a; padding: 0 !important; margin: 0 !important; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden !important; }
+.cust-page { color:#0f172a; padding: 0 0 35px 0 !important; margin: 0 !important; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden !important; }
 .cust-head { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-top:0 !important; margin-bottom:25px !important; padding:0 !important; border:none !important; width:100%; }
 .cust-head h1 { margin:0; color:#002f70; font-size:24px !important; font-weight:700 !important; text-transform:uppercase !important; letter-spacing:0.5px !important; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important; display:flex; align-items:center; gap:10px; }
 
@@ -104,10 +104,13 @@ include __DIR__ . '/../partials/header.php';
 .pill.fleet { background:#faf5ff; color:#6b21a8; }
 .pill.corporate { background:#f0f9ff; color:#0369a1; }
 
-/* Modals - Framed between Top Header and Bottom Footer */
-.modal-backdrop { display:none; position:fixed; inset:0; background:rgba(15,23,42,.6); z-index:99999; align-items:center; justify-content:center; padding-top:70px; padding-bottom:50px; overflow:hidden; }
+/* Modals - Framed between Top Header and Bottom Footer, Centered in Main Layout */
+.modal-backdrop { display:none; position:fixed; top:0; right:0; bottom:0; left:250px; background:rgba(15,23,42,.6); z-index:99999; align-items:center; justify-content:center; padding-top:70px; padding-bottom:50px; overflow:hidden; }
 .modal-backdrop.open { display:flex; }
-.cust-modal { width:min(920px, calc(100% - 32px)); max-height:calc(100vh - 130px); background:#fff; border-radius:10px; border:1px solid #e2e8f0; box-shadow:0 20px 50px rgba(0,0,0,.25); display:flex; flex-direction:column; overflow:hidden; margin:0 auto; }
+@media (max-width: 991px) {
+    .modal-backdrop { left:0 !important; }
+}
+.cust-modal { width:min(920px, calc(100% - 32px)); max-height:calc(100vh - 130px); background:#fff; border-radius:10px; border:1px solid #e2e8f0; box-shadow:0 20px 50px rgba(0,0,0,.25); display:flex; flex-direction:column; overflow:hidden; margin:auto !important; }
 .cust-modal.sm { width:min(480px, 94vw); }
 .cust-modal > form { display:flex; flex-direction:column; min-height:0; flex:1 1 auto; }
 .modal-head { padding:14px 20px; border-bottom:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:space-between; align-items:center; flex:0 0 auto; }
@@ -193,6 +196,47 @@ button.remove-v-btn i {
 @media (max-width:768px) {
     .cust-cards, .cust-toolbar, .form-grid, .view-grid { grid-template-columns:1fr; }
 }
+
+/* ── AR HISTORY STYLES ─────────────────────────────────────── */
+.view-tabs { display: flex !important; flex-wrap: wrap !important; margin-bottom: 0 !important; border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; border-bottom: 3px solid #00264D !important; gap: 0 !important; background: transparent !important; padding: 0 !important; width: 100% !important; }
+.view-tab, button.view-tab { flex: 1 !important; min-width: 120px !important; padding: 11px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-radius: 0 !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; text-align: center !important; cursor: pointer !important; margin-bottom: 0 !important; box-shadow: none !important; outline: none !important; }
+.view-tab:last-child, button.view-tab:last-child { border-right: none !important; }
+.view-tab:hover, button.view-tab:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
+.view-tab.active, button.view-tab.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; box-shadow: none !important; }
+.view-panel { display:none; }
+.view-panel.active { display:block; }
+
+/* AR Summary Cards */
+.ar-cards { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:16px; }
+.ar-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; }
+.ar-card .ac-label { font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:.4px; margin-bottom:4px; }
+.ar-card .ac-value { font-size:18px; font-weight:900; color:#002f70; line-height:1.1; }
+.ar-card.danger  .ac-value { color:#dc2626; }
+.ar-card.warning .ac-value { color:#d97706; }
+.ar-card.success .ac-value { color:#16a34a; }
+.ar-card.info    .ac-value { color:#0369a1; }
+@media(max-width:768px){ .ar-cards{ grid-template-columns:1fr 1fr; } }
+
+/* AR totals banner */
+.ar-totals-bar { background:#002f70; color:#fff; border-radius:8px; padding:12px 18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; font-size:13px; }
+.ar-totals-bar .atb-item { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.ar-totals-bar .atb-label { font-size:10px; font-weight:600; opacity:.75; text-transform:uppercase; }
+.ar-totals-bar .atb-value { font-size:16px; font-weight:900; }
+.ar-totals-bar .atb-divider { width:1px; background:rgba(255,255,255,.25); align-self:stretch; }
+
+/* AR status pills */
+.pill.ar-paid        { background:#dcfce7; color:#166534; }
+.pill.ar-outstanding { background:#fef3c7; color:#92400e; }
+.pill.ar-overdue     { background:#fee2e2; color:#991b1b; }
+.pill.ar-partial     { background:#ede9fe; color:#5b21b6; }
+.pill.ar-good        { background:#dcfce7; color:#166534; }
+.pill.ar-noar        { background:#f1f5f9; color:#64748b; }
+
+/* Payment status badge */
+.pstatus-badge { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:800; padding:4px 10px; border-radius:6px; }
+.pstatus-badge.overdue    { background:#fee2e2; color:#991b1b; }
+.pstatus-badge.outstanding{ background:#fef3c7; color:#92400e; }
+.pstatus-badge.good       { background:#dcfce7; color:#166534; }
 </style>
 
 <div class="cust-page">
@@ -222,11 +266,8 @@ button.remove-v-btn i {
             <label>Customer Type</label>
             <select id="filterType" onchange="loadManagerCustomers()">
                 <option value="">All Types</option>
-                <option value="walk-in">Walk-in</option>
-                <option value="regular">Regular</option>
-                <option value="credit">Credit</option>
-                <option value="fleet">Fleet</option>
-                <option value="corporate">Corporate</option>
+                <option value="walk-in">Walk in</option>
+                <option value="registered">Registered</option>
             </select>
         </div>
         <div class="cust-field">
@@ -400,10 +441,7 @@ button.remove-v-btn i {
                         <label>Customer Type <span style="color:red;">*</span></label>
                         <select id="customerType" name="customer_type" required onchange="toggleCreditSection()">
                             <option value="walk-in">Walk-in</option>
-                            <option value="regular">Regular</option>
-                            <option value="credit">Credit</option>
-                            <option value="fleet">Fleet</option>
-                            <option value="corporate">Corporate</option>
+                            <option value="registered">Registered</option>
                         </select>
                     </div>
                     <div class="cust-field">
@@ -477,8 +515,8 @@ button.remove-v-btn i {
                         <input type="file" id="orFile" name="or_file" accept="image/*,.pdf">
                     </div>
 
-                    <!-- Financial Information (Credit Customer Only) -->
-                    <div class="form-title credit-only">Credit Information (Credit Customer Only)</div>
+                    <!-- Financial Information -->
+                    <div class="form-title credit-only">Credit Information</div>
                     <div class="cust-field credit-only">
                         <label>Credit Limit (₱) <span style="color:red;">*</span></label>
                         <input type="number" id="creditLimit" name="credit_limit" step="0.01" min="0" value="0.00" placeholder="e.g. 50000" oninput="calcAvailableCredit()">
@@ -500,6 +538,20 @@ button.remove-v-btn i {
                         <label>Available Credit <small style="color:#166534; font-weight:normal;">(Read Only - Credit Limit − Outstanding)</small></label>
                         <input type="text" id="availableCredit" readonly value="₱0.00" style="background:#f0fdf4; font-weight:700; color:#166534; cursor:not-allowed; border:1px solid #bbf7d0;">
                     </div>
+                    <!-- Loyalty Program Information -->
+                    <div class="form-title">Loyalty Program</div>
+                    <div class="cust-field">
+                        <label>Loyalty Program</label>
+                        <input type="text" readonly value="Petron Rewards Card" style="background:#f1f5f9; font-weight:700; color:#002F70; cursor:not-allowed;">
+                    </div>
+                    <div class="cust-field">
+                        <label>Loyalty Card No. <small style="color:#64748b; font-weight:normal;">(Optional - e.g. PRC-00012345)</small></label>
+                        <input type="text" id="loyaltyCardNo" name="loyalty_card_no" placeholder="e.g. PRC-00012345">
+                    </div>
+                    <div class="cust-field">
+                        <label>Points Balance <small style="color:#64748b; font-weight:normal;">(System Controlled - Read Only)</small></label>
+                        <input type="text" id="custPointsBalance" readonly value="0" style="background:#f8fafc; font-weight:700; color:#16a34a; cursor:not-allowed;">
+                    </div>
                 </div>
             </div>
             <div class="modal-actions">
@@ -512,118 +564,351 @@ button.remove-v-btn i {
 
 <!-- MODAL: VIEW CUSTOMER -->
 <div class="modal-backdrop" id="customerViewModal">
-    <div class="cust-modal">
+    <div class="cust-modal" style="width:min(1040px, calc(100% - 32px));">
         <div class="modal-head">
-            <h3><i class="fas fa-id-card"></i> View Customer Profile</h3>
+            <div style="display:flex;align-items:center;gap:12px;flex:1;">
+                <h3><i class="fas fa-id-card"></i> <span id="vModalTitle">View Customer Profile</span></h3>
+                <div id="vARStatusBadge" style="display:none;"></div>
+            </div>
             <button type="button" class="modal-close" onclick="closeModal('customerViewModal')">&times;</button>
         </div>
-        <div class="modal-body">
-            <div class="view-grid">
-                <!-- Summary -->
-                <div class="view-box">
-                    <h4>Customer Summary</h4>
-                    <div class="info-row"><span>Customer ID</span><span id="vCustId">-</span></div>
-                    <div class="info-row"><span>Customer Since</span><span id="vCustSince">-</span></div>
-                    <div class="info-row"><span>Customer Type</span><span id="vType">-</span></div>
-                    <div class="info-row"><span>Status</span><span id="vStatus">-</span></div>
-                    <div class="info-row"><span>Contact No.</span><span id="vContact">-</span></div>
-                    <div class="info-row"><span>Email</span><span id="vEmail">-</span></div>
-                    <div class="info-row"><span>Address</span><span id="vAddress">-</span></div>
-                </div>
 
-                <!-- Credit Summary -->
-                <div class="view-box">
-                    <h4>Credit Summary</h4>
-                    <div class="info-row"><span>Credit Limit</span><span id="vCreditLimit">₱0.00</span></div>
-                    <div class="info-row"><span>Outstanding Balance</span><span id="vOutstanding">₱0.00</span></div>
-                    <div class="info-row"><span>Available Credit</span><span id="vAvailableCredit">₱0.00</span></div>
-                    <div class="info-row"><span>Payment Terms</span><span id="vTerms">30 Days</span></div>
-                </div>
-
-                <!-- Vehicles Table -->
-                <div class="view-box" style="grid-column:1 / -1;">
-                    <h4>Registered Vehicles</h4>
-                    <table class="cust-table" style="margin-top:6px;">
-                        <thead>
-                            <tr>
-                                <th>Plate No.</th>
-                                <th>Vehicle Type</th>
-                                <th>Brand</th>
-                                <th>Model</th>
-                                <th>Status</th>
-                                <th style="text-align:right;">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="vVehiclesBody">
-                            <tr><td colspan="6" class="empty">No vehicles registered.</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Transactions History -->
-                <div class="view-box" style="grid-column:1 / -1;">
-                    <h4>Transaction History</h4>
-                    <table class="cust-table" style="margin-top:6px;">
-                        <thead>
-                            <tr>
-                                <th>Transaction ID</th>
-                                <th>Date</th>
-                                <th>Type</th>
-                                <th>Amount</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="vTxBody">
-                            <tr><td colspan="5" class="empty">No recent transactions.</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Job Order History -->
-                <div class="view-box" style="grid-column:1 / -1;">
-                    <h4>Job Order History</h4>
-                    <table class="cust-table" style="margin-top:6px;">
-                        <thead>
-                            <tr>
-                                <th>JO No.</th>
-                                <th>Vehicle</th>
-                                <th>Service</th>
-                                <th>Mechanic</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="vJoBody">
-                            <tr><td colspan="5" class="empty">No job orders found.</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Uploaded Documents -->
-                <div class="view-box">
-                    <h4>Uploaded Documents</h4>
-                    <div class="info-row"><span>Govt ID (<span id="vGovType">ID</span>)</span><span id="vGovFileLink">-</span></div>
-                    <div class="info-row"><span>Certificate of Reg. (CR)</span><span id="vCrFileLink">-</span></div>
-                    <div class="info-row"><span>Official Receipt (OR)</span><span id="vOrFileLink">-</span></div>
-                </div>
-
-                <!-- Timeline Log -->
-                <div class="view-box">
-                    <h4>Activity Timeline</h4>
-                    <div class="timeline" id="vTimeline">
-                        <!-- Timeline events render here -->
-                    </div>
-                </div>
+        <!-- View Tab Navigation -->
+        <div style="padding:14px 22px 0 22px; background:#fff;">
+            <div class="view-tabs">
+                <button class="view-tab active" onclick="switchViewTab('profile')" id="vtab-profile">
+                    <i class="fas fa-user"></i> Profile
+                </button>
+                <button class="view-tab" onclick="switchViewTab('ar')" id="vtab-ar">
+                    <i class="fas fa-file-invoice-dollar"></i> AR History
+                </button>
+                <button class="view-tab" onclick="switchViewTab('payments')" id="vtab-payments">
+                    <i class="fas fa-money-bill-wave"></i> Payment History
+                </button>
             </div>
         </div>
+
+        <div class="modal-body">
+
+            <!-- ═══ PANEL: PROFILE ════════════════════════════════════════════ -->
+            <div class="view-panel active" id="vpanel-profile">
+                <div class="view-grid">
+                    <!-- Summary -->
+                    <div class="view-box">
+                        <h4>Customer Summary</h4>
+                        <div class="info-row"><span>Customer ID</span><span id="vCustId">-</span></div>
+                        <div class="info-row"><span>Customer Since</span><span id="vCustSince">-</span></div>
+                        <div class="info-row"><span>Customer Type</span><span id="vType">-</span></div>
+                        <div class="info-row"><span>Status</span><span id="vStatus">-</span></div>
+                        <div class="info-row"><span>Contact No.</span><span id="vContact">-</span></div>
+                        <div class="info-row"><span>Email</span><span id="vEmail">-</span></div>
+                        <div class="info-row"><span>Address</span><span id="vAddress">-</span></div>
+                    </div>
+
+                    <!-- Credit Summary -->
+                    <div class="view-box">
+                        <h4>Credit Summary</h4>
+                        <div class="info-row"><span>Credit Limit</span><span id="vCreditLimit">₱0.00</span></div>
+                        <div class="info-row"><span>Outstanding Balance</span><span id="vOutstanding">₱0.00</span></div>
+                        <div class="info-row"><span>Available Credit</span><span id="vAvailableCredit">₱0.00</span></div>
+                        <div class="info-row"><span>Payment Terms</span><span id="vTerms">30 Days</span></div>
+                    </div>
+
+                    <!-- Loyalty Program Summary -->
+                    <div class="view-box" style="grid-column:1 / -1;">
+                        <h4>Loyalty Program (Petron Rewards Card)</h4>
+                        <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; margin-top:8px;">
+                            <div class="info-row" style="flex-direction:column; align-items:flex-start; background:#f8fafc; padding:8px 12px; border-radius:6px; border:1px solid #e2e8f0;">
+                                <span style="font-size:11px; color:#64748b;">Program</span>
+                                <span style="font-weight:700; color:#002F70; font-size:13px;">Petron Rewards Card</span>
+                            </div>
+                            <div class="info-row" style="flex-direction:column; align-items:flex-start; background:#f8fafc; padding:8px 12px; border-radius:6px; border:1px solid #e2e8f0;">
+                                <span style="font-size:11px; color:#64748b;">Card No.</span>
+                                <span id="vProfileCardNo" style="font-weight:700; color:#1e293b; font-size:13px;">—</span>
+                            </div>
+                            <div class="info-row" style="flex-direction:column; align-items:flex-start; background:#f0fdf4; padding:8px 12px; border-radius:6px; border:1px solid #bbf7d0;">
+                                <span style="font-size:11px; color:#166534;">Points Balance</span>
+                                <span id="vProfilePoints" style="font-weight:700; color:#16a34a; font-size:14px;">0</span>
+                            </div>
+                            <div class="info-row" style="flex-direction:column; align-items:flex-start; background:#f8fafc; padding:8px 12px; border-radius:6px; border:1px solid #e2e8f0;">
+                                <span style="font-size:11px; color:#64748b;">Status</span>
+                                <span id="vProfileLoyaltyStatus" class="pill muted">No Card</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Vehicles Table -->
+                    <div class="view-box" style="grid-column:1 / -1;">
+                        <h4>Registered Vehicles</h4>
+                        <table class="cust-table" style="margin-top:6px;">
+                            <thead>
+                                <tr>
+                                    <th>Plate No.</th>
+                                    <th>Vehicle Type</th>
+                                    <th>Brand</th>
+                                    <th>Model</th>
+                                    <th>Status</th>
+                                    <th style="text-align:right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vVehiclesBody">
+                                <tr><td colspan="6" class="empty">No vehicles registered.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Transactions History -->
+                    <div class="view-box" style="grid-column:1 / -1;">
+                        <h4>Transaction History</h4>
+                        <table class="cust-table" style="margin-top:6px;">
+                            <thead>
+                                <tr>
+                                    <th>Transaction ID</th>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vTxBody">
+                                <tr><td colspan="5" class="empty">No recent transactions.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Job Order History -->
+                    <div class="view-box" style="grid-column:1 / -1;">
+                        <h4>Job Order History</h4>
+                        <table class="cust-table" style="margin-top:6px;">
+                            <thead>
+                                <tr>
+                                    <th>JO No.</th>
+                                    <th>Vehicle</th>
+                                    <th>Service</th>
+                                    <th>Mechanic</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vJoBody">
+                                <tr><td colspan="5" class="empty">No job orders found.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Loyalty Points History -->
+                    <div class="view-box" style="grid-column:1 / -1;">
+                        <h4 style="display:flex; justify-content:space-between; align-items:center;">
+                            <span>Loyalty Points History</span>
+                            <span style="font-size:12px; font-weight:600; color:#16a34a;">Card #: <strong id="vLoyaltyCardNo">-</strong> | Points Balance: <strong id="vLoyaltyPointsBalance">0</strong></span>
+                        </h4>
+                        <table class="cust-table" style="margin-top:6px;">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Reference</th>
+                                    <th>Transaction Type</th>
+                                    <th style="text-align:right;">Points Earned</th>
+                                    <th style="text-align:right;">Points Redeemed</th>
+                                    <th style="text-align:right;">Balance After</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vLoyaltyBody">
+                                <tr><td colspan="6" class="empty">No loyalty transactions recorded yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Uploaded Documents -->
+                    <div class="view-box">
+                        <h4>Uploaded Documents</h4>
+                        <div class="info-row"><span>Govt ID (<span id="vGovType">ID</span>)</span><span id="vGovFileLink">-</span></div>
+                        <div class="info-row"><span>Certificate of Reg. (CR)</span><span id="vCrFileLink">-</span></div>
+                        <div class="info-row"><span>Official Receipt (OR)</span><span id="vOrFileLink">-</span></div>
+                    </div>
+
+                    <!-- Timeline Log -->
+                    <div class="view-box">
+                        <h4>Activity Timeline</h4>
+                        <div class="timeline" id="vTimeline">
+                            <!-- Timeline events render here -->
+                        </div>
+                    </div>
+                </div>
+            </div><!-- end vpanel-profile -->
+
+            <!-- ═══ PANEL: AR HISTORY ══════════════════════════════════════════ -->
+            <div class="view-panel" id="vpanel-ar">
+
+                <!-- AR Summary Cards -->
+                <div class="ar-cards" id="arSummaryCards">
+                    <div class="ar-card warning">
+                        <div class="ac-label">Total Credit Purchases</div>
+                        <div class="ac-value" id="arTotalPurchases">₱0.00</div>
+                    </div>
+                    <div class="ar-card success">
+                        <div class="ac-label">Total Payments</div>
+                        <div class="ac-value" id="arTotalPayments">₱0.00</div>
+                    </div>
+                    <div class="ar-card danger">
+                        <div class="ac-label">Outstanding Balance</div>
+                        <div class="ac-value" id="arOutstanding">₱0.00</div>
+                    </div>
+                    <div class="ar-card danger">
+                        <div class="ac-label">Overdue Balance</div>
+                        <div class="ac-value" id="arOverdue">₱0.00</div>
+                    </div>
+                    <div class="ar-card info">
+                        <div class="ac-label">Available Credit</div>
+                        <div class="ac-value" id="arAvailCredit">₱0.00</div>
+                    </div>
+                    <div class="ar-card">
+                        <div class="ac-label">Credit Limit</div>
+                        <div class="ac-value" id="arCreditLimit">₱0.00</div>
+                    </div>
+                    <div class="ar-card">
+                        <div class="ac-label">Next Due Date</div>
+                        <div class="ac-value" style="font-size:14px;" id="arNextDue">—</div>
+                    </div>
+                    <div class="ar-card">
+                        <div class="ac-label">Payment Status</div>
+                        <div id="arPayStatus" style="margin-top:4px;"><span class="pill ar-noar">No AR</span></div>
+                    </div>
+                </div>
+
+                <!-- AR Totals Bar -->
+                <div class="ar-totals-bar" id="arTotalsBar">
+                    <div class="atb-item">
+                        <div class="atb-label">Merchandise Credit</div>
+                        <div class="atb-value" id="arMerchTotal">₱0.00</div>
+                    </div>
+                    <div class="atb-divider"></div>
+                    <div class="atb-item">
+                        <div class="atb-label">Job Order Credit</div>
+                        <div class="atb-value" id="arJOTotal">₱0.00</div>
+                    </div>
+                    <div class="atb-divider"></div>
+                    <div class="atb-item" style="font-size:15px;">
+                        <div class="atb-label">Total Outstanding AR</div>
+                        <div class="atb-value" id="arTotalAR">₱0.00</div>
+                    </div>
+                </div>
+
+                <!-- Record Payment button (Manager/Admin only, shown via JS) -->
+                <div id="arPayBtnRow" style="display:none; justify-content:flex-end; margin-bottom:10px;">
+                    <button type="button" class="btn-plain success" onclick="openPaymentModal()" id="btnRecordPayment">
+                        <i class="fas fa-plus-circle"></i> Record Payment
+                    </button>
+                </div>
+
+                <!-- AR History Table -->
+                <div class="view-box" style="overflow-x:auto;">
+                    <h4 style="display:flex; align-items:center; justify-content:space-between;">
+                        <span><i class="fas fa-list-alt" style="color:#002f70;"></i> AR History</span>
+                        <span id="arRowCount" style="font-size:11px; font-weight:600; color:#64748b;"></span>
+                    </h4>
+                    <table class="cust-table" style="margin-top:6px; min-width:800px;">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Reference No.</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                                <th style="text-align:right;">Amount</th>
+                                <th style="text-align:right;">Paid</th>
+                                <th style="text-align:right;">Balance</th>
+                                <th>Due Date</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="arHistoryBody">
+                            <tr><td colspan="10" class="empty"><i class="fas fa-spinner fa-spin"></i> Loading AR history...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div><!-- end vpanel-ar -->
+
+            <!-- ═══ PANEL: PAYMENT HISTORY ════════════════════════════════════ -->
+            <div class="view-panel" id="vpanel-payments">
+                <div class="view-box" style="overflow-x:auto;">
+                    <h4><i class="fas fa-receipt" style="color:#002f70;"></i> Payment History</h4>
+                    <table class="cust-table" style="margin-top:6px; min-width:640px;">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Receipt No.</th>
+                                <th>Reference No.</th>
+                                <th>Payment Type</th>
+                                <th style="text-align:right;">Amount Paid</th>
+                                <th>Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody id="arPaymentBody">
+                            <tr><td colspan="6" class="empty">No payment records yet.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div><!-- end vpanel-payments -->
+
+        </div><!-- end modal-body -->
+
         <div class="modal-actions">
             <button type="button" class="btn-plain muted" onclick="closeModal('customerViewModal')">Close</button>
             <button type="button" class="btn-plain primary" onclick="editFromCurrentView()"><i class="fas fa-edit"></i> Edit Customer</button>
-            <button type="button" class="btn-plain danger" onclick="openArchiveFromView()"><i class="fas fa-archive"></i> Archive Customer</button>
+            <button type="button" id="vModalArchiveBtn" class="btn-plain danger" onclick="openArchiveFromView()"><i class="fas fa-archive"></i> Archive Customer</button>
         </div>
     </div>
 </div>
 
-<!-- MODAL: ARCHIVE CUSTOMER -->
+<!-- MODAL: RECORD AR PAYMENT -->
+<div class="modal-backdrop" id="arPaymentModal">
+    <div class="cust-modal sm">
+        <div class="modal-head">
+            <h3><i class="fas fa-money-bill-wave"></i> Record AR Payment</h3>
+            <button type="button" class="modal-close" onclick="closeModal('arPaymentModal')">&times;</button>
+        </div>
+        <form id="arPaymentForm">
+            <div class="modal-body">
+                <input type="hidden" id="payCustomerId">
+                <input type="hidden" id="paySourceId">
+                <input type="hidden" id="paySource">
+
+                <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:10px 14px; margin-bottom:14px;">
+                    <div style="font-size:11px; color:#064e3b; font-weight:700; text-transform:uppercase; margin-bottom:4px;">Applying payment to:</div>
+                    <div id="payRefDisplay" style="font-size:13px; font-weight:800; color:#002f70;">— General Payment —</div>
+                    <div id="payBalDisplay" style="font-size:12px; color:#475569; margin-top:2px;"></div>
+                </div>
+
+                <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+                    <div class="cust-field">
+                        <label>Amount (₱) <span style="color:red;">*</span></label>
+                        <input type="number" id="payAmount" step="0.01" min="0.01" placeholder="0.00" required>
+                    </div>
+                    <div class="cust-field">
+                        <label>Payment Method</label>
+                        <select id="payMethod">
+                            <option value="Cash">Cash</option>
+                            <option value="GCash">GCash</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                            <option value="Credit Card">Credit Card</option>
+                            <option value="Check">Check</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="cust-field" style="grid-column:1/-1;">
+                        <label>Reference No. / Notes</label>
+                        <input type="text" id="payRemarks" placeholder="e.g. GCash ref, check no., notes...">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-plain muted" onclick="closeModal('arPaymentModal')">Cancel</button>
+                <button type="submit" class="btn-plain success"><i class="fas fa-check"></i> Save Payment</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div class="modal-backdrop" id="archiveModal">
     <div class="cust-modal sm">
         <div class="modal-head">
@@ -707,13 +992,18 @@ function money(val) {
 }
 
 function toast(msg, type = 'success') {
-    const stack = document.getElementById('toastStack');
-    const el = document.createElement('div');
-    el.className = 'toast ' + type;
-    el.innerHTML = `${h(msg)}<button type="button">&times;</button>`;
-    el.querySelector('button').onclick = () => el.remove();
-    stack.appendChild(el);
-    setTimeout(() => el.remove(), 4000);
+    if (window.showGlobalToast) {
+        window.showGlobalToast(msg, type);
+    } else {
+        const stack = document.getElementById('toastStack');
+        if (!stack) return;
+        const el = document.createElement('div');
+        el.className = 'toast ' + type;
+        el.innerHTML = `${h(msg)}<button type="button">&times;</button>`;
+        el.querySelector('button').onclick = () => el.remove();
+        stack.appendChild(el);
+        setTimeout(() => el.remove(), 4000);
+    }
 }
 
 function closeModal(id) {
@@ -852,15 +1142,19 @@ function renderCustomerListTable(customers) {
         return;
     }
 
-    tbody.innerHTML = customers.map(c => `
+    tbody.innerHTML = customers.map(c => {
+        const isReg = (c.customer_type !== 'walk-in');
+        const typeLabel = isReg ? 'REGISTERED' : 'WALK-IN';
+        const typeClass = isReg ? 'credit' : 'walk-in';
+        return `
         <tr>
             <td><strong>${h(c.customer_id)}</strong></td>
             <td><strong>${h(c.customer_name)}</strong></td>
-            <td><span class="pill ${h(c.customer_type)}">${h(c.customer_type)}</span></td>
+            <td><span class="pill ${typeClass}">${typeLabel}</span></td>
             <td>${h(c.contact_number)}</td>
             <td>${formatVehicleCell(c)}</td>
-            <td>${c.customer_type === 'credit' ? money(c.credit_limit) : '-'}</td>
-            <td>${c.customer_type === 'credit' ? money(c.outstanding_balance) : '-'}</td>
+            <td>${isReg ? money(c.credit_limit) : '-'}</td>
+            <td>${isReg ? money(c.outstanding_balance) : '-'}</td>
             <td>${c.last_transaction ? h(c.last_transaction) : 'No transactions'}</td>
             <td><small style="color:#475569; font-weight:600;">${formatDateCell(c.registered_at)}</small></td>
             <td><span class="pill ${h(c.status)}">${h(c.status)}</span></td>
@@ -872,7 +1166,7 @@ function renderCustomerListTable(customers) {
                 </div>
             </td>
         </tr>
-    `).join('');
+    `;}).join('');
 }
 
 function renderArchivedTable(customers) {
@@ -888,7 +1182,7 @@ function renderArchivedTable(customers) {
         <tr>
             <td><strong>${h(c.customer_id)}</strong></td>
             <td><strong>${h(c.customer_name)}</strong></td>
-            <td><span class="pill ${h(c.customer_type)}">${h(c.customer_type)}</span></td>
+            <td><span class="pill ${(c.customer_type !== 'walk-in') ? 'credit' : 'walk-in'}">${(c.customer_type !== 'walk-in') ? 'REGISTERED' : 'WALK-IN'}</span></td>
             <td>${c.archived_at ? h(c.archived_at) : '-'}</td>
             <td>${h(c.archive_reason || 'Inactive')}</td>
             <td style="text-align:center;">
@@ -954,30 +1248,30 @@ function loadCustomerRequests() {
 let currentRawOutstanding = 0;
 
 function calcAvailableCredit() {
-    const limit = parseFloat(document.getElementById('creditLimit').value) || 0;
+    const limitEl = document.getElementById('creditLimit');
+    const availEl = document.getElementById('availableCredit');
+    if (!limitEl || !availEl) return;
+    const limit = parseFloat(limitEl.value) || 0;
     const available = Math.max(0, limit - currentRawOutstanding);
-    document.getElementById('availableCredit').value = money(available);
+    availEl.value = money(available);
 }
 
 function toggleCreditSection() {
-    const type = document.getElementById('customerType').value;
-    const isCredit = (type === 'credit');
     document.querySelectorAll('.credit-only').forEach(el => {
-        el.style.display = isCredit ? 'block' : 'none';
+        el.style.display = 'block';
     });
-    if (!isCredit) {
-        document.getElementById('creditLimit').value = '0.00';
-        currentRawOutstanding = 0;
-        document.getElementById('outstandingBalance').value = '₱0.00';
-        document.getElementById('availableCredit').value = '₱0.00';
-    } else {
-        calcAvailableCredit();
-    }
+    calcAvailableCredit();
+}
+
+function safeSetVal(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
 }
 
 function addVehicleRow(v = {}) {
     vehicleIndex++;
     const container = document.getElementById('vehiclesContainer');
+    if (!container) return;
     const div = document.createElement('div');
     div.className = 'vehicle-card';
     div.id = 'vehicleRow_' + vehicleIndex;
@@ -994,11 +1288,9 @@ function addVehicleRow(v = {}) {
                 <datalist id="vtype-list-${v.id||0}">
                     <option value="Sedan">
                     <option value="SUV">
-                    <option value="Pickup">
-                    <option value="Motorcycle">
-                    <option value="Truck">
+                    <option value="Pickup Truck">
                     <option value="Van">
-                    <option value="Others">
+                    <option value="Motorcycle">
                 </datalist>
             </div>
             <div class="cust-field">
@@ -1031,18 +1323,25 @@ function addVehicleRow(v = {}) {
 }
 
 function openCustomerForm(mode = 'add', id = 0) {
-    document.getElementById('formMode').value = mode;
-    document.getElementById('formTitle').innerText = mode === 'add' ? 'Add New Customer' : 'Edit Customer';
-    document.getElementById('customerForm').reset();
-    document.getElementById('vehiclesContainer').innerHTML = '';
+    safeSetVal('formMode', mode);
+    const formTitle = document.getElementById('formTitle');
+    if (formTitle) formTitle.innerText = mode === 'add' ? 'Add New Customer' : 'Edit Customer';
+    
+    const form = document.getElementById('customerForm');
+    if (form) form.reset();
+    
+    const vContainer = document.getElementById('vehiclesContainer');
+    if (vContainer) vContainer.innerHTML = '';
     vehicleIndex = 0;
 
     if (mode === 'add') {
         currentRawOutstanding = 0;
-        document.getElementById('creditLimit').value = '0.00';
-        document.getElementById('creditTerms').value = '30 Days';
-        document.getElementById('outstandingBalance').value = '₱0.00';
-        document.getElementById('availableCredit').value = '₱0.00';
+        safeSetVal('creditLimit', '0.00');
+        safeSetVal('creditTerms', '30 Days');
+        safeSetVal('outstandingBalance', '₱0.00');
+        safeSetVal('availableCredit', '₱0.00');
+        safeSetVal('loyaltyCardNo', '');
+        safeSetVal('custPointsBalance', '0');
         addVehicleRow(); // default 1 vehicle row
         toggleCreditSection();
         openModal('customerFormModal');
@@ -1052,20 +1351,22 @@ function openCustomerForm(mode = 'add', id = 0) {
             .then(res => {
                 if (!res.success) { toast(res.error, 'error'); return; }
                 const c = res.customer;
-                document.getElementById('recordId').value = c.id;
-                document.getElementById('customerType').value = c.customer_type || 'walk-in';
-                document.getElementById('custStatus').value = c.status || 'active';
-                document.getElementById('firstName').value = c.first_name || '';
-                document.getElementById('middleName').value = c.middle_name || '';
-                document.getElementById('lastName').value = c.last_name || '';
-                document.getElementById('contactNumber').value = c.contact_number || '';
-                document.getElementById('address').value = c.address || '';
-                document.getElementById('email').value = c.email || '';
-                document.getElementById('govIdType').value = c.gov_id_type || '';
-                document.getElementById('creditLimit').value = c.credit_limit || 0;
-                document.getElementById('creditTerms').value = c.credit_terms || '30 Days';
+                safeSetVal('recordId', c.id);
+                safeSetVal('customerType', (c.customer_type === 'walk-in') ? 'walk-in' : 'registered');
+                safeSetVal('custStatus', c.status || 'active');
+                safeSetVal('firstName', c.first_name || '');
+                safeSetVal('middleName', c.middle_name || '');
+                safeSetVal('lastName', c.last_name || '');
+                safeSetVal('contactNumber', c.contact_number || '');
+                safeSetVal('address', c.address || '');
+                safeSetVal('email', c.email || '');
+                safeSetVal('govIdType', c.gov_id_type || '');
+                safeSetVal('creditLimit', c.credit_limit || 0);
+                safeSetVal('creditTerms', c.credit_terms || '30 Days');
+                safeSetVal('loyaltyCardNo', c.loyalty_card_no || c.customer_id || '');
+                safeSetVal('custPointsBalance', c.points || 0);
                 currentRawOutstanding = parseFloat(c.outstanding_balance || 0);
-                document.getElementById('outstandingBalance').value = money(currentRawOutstanding);
+                safeSetVal('outstandingBalance', money(currentRawOutstanding));
                 calcAvailableCredit();
 
                 const vehicles = res.vehicles || [];
@@ -1074,9 +1375,12 @@ function openCustomerForm(mode = 'add', id = 0) {
                 } else {
                     addVehicleRow({ plate_number: c.plate_no, brand: c.vehicle_make, model: c.vehicle_model, vehicle_type: c.vehicle_type });
                 }
-
                 toggleCreditSection();
                 openModal('customerFormModal');
+            })
+            .catch(err => {
+                console.error("Fetch view customer error:", err);
+                toast("Error loading customer data.", "error");
             });
     }
 }
@@ -1126,7 +1430,7 @@ document.getElementById('customerForm').onsubmit = function(e) {
                 return;
             }
             if (!res.success) { toast(res.error || 'Failed to save customer.', 'error'); return; }
-            toast(res.message || 'Customer saved successfully!');
+            toast(res.message || 'Customer saved successfully!', 'success');
             closeModal('customerFormModal');
             document.getElementById('filterSearch').value = '';
             document.getElementById('filterType').value = '';
@@ -1139,6 +1443,7 @@ document.getElementById('customerForm').onsubmit = function(e) {
 };
 
 function viewCustomer(id) {
+    switchViewTab('profile');
     fetch(`${apiUrl}?action=view&id=${id}`)
         .then(r => r.json())
         .then(res => {
@@ -1160,24 +1465,64 @@ function viewCustomer(id) {
             document.getElementById('vAvailableCredit').innerText = money(c.available_credit);
             document.getElementById('vTerms').innerText = c.credit_terms || '30 Days';
 
+            // Loyalty Summary
+            const cardNo = c.loyalty_card_no || (res.loyalty_account ? res.loyalty_account.card_number : '');
+            const pts = c.points || (res.loyalty_account ? res.loyalty_account.points_balance : 0);
+            document.getElementById('vProfileCardNo').innerText = cardNo ? cardNo : '—';
+            document.getElementById('vProfilePoints').innerText = pts || 0;
+            const lStatusEl = document.getElementById('vProfileLoyaltyStatus');
+            if (lStatusEl) {
+                if (cardNo) {
+                    lStatusEl.className = 'pill active';
+                    lStatusEl.innerText = 'Active';
+                } else {
+                    lStatusEl.className = 'pill muted';
+                    lStatusEl.innerText = 'No Card';
+                }
+            }
+
+            // Dynamic Archive / Restore button for Customer in Modal
+            const archiveBtn = document.getElementById('vModalArchiveBtn');
+            if (archiveBtn) {
+                if ((c.status || '').toLowerCase() === 'archived') {
+                    archiveBtn.className = 'btn-plain success';
+                    archiveBtn.innerHTML = '<i class="fas fa-undo"></i> Restore Customer';
+                    archiveBtn.onclick = function() { restoreCustomer(c.id); };
+                } else {
+                    archiveBtn.className = 'btn-plain danger';
+                    archiveBtn.innerHTML = '<i class="fas fa-archive"></i> Archive Customer';
+                    archiveBtn.onclick = function() { openArchiveFromView(); };
+                }
+            }
+
             // Vehicles
             const vBody = document.getElementById('vVehiclesBody');
             const vehicles = res.vehicles || [];
             if (!vehicles.length) {
                 vBody.innerHTML = `<tr><td colspan="6" class="empty">No vehicles registered.</td></tr>`;
             } else {
-                vBody.innerHTML = vehicles.map(v => `
-                    <tr>
-                        <td><strong>${h(v.plate_number)}</strong></td>
-                        <td>${h(v.vehicle_type || 'N/A')}</td>
-                        <td>${h(v.brand || 'N/A')}</td>
-                        <td>${h(v.model || 'N/A')}</td>
-                        <td><span class="pill ${h(v.status || 'active')}">${h(v.status || 'active')}</span></td>
-                        <td style="text-align:right;">
-                            ${v.id ? `<button type="button" class="btn-plain danger" style="height:26px; padding:0 6px; font-size:10px;" onclick="archiveVehicle(${v.id})"><i class="fas fa-trash"></i> Archive</button>` : '-'}
-                        </td>
-                    </tr>
-                `).join('');
+                vBody.innerHTML = vehicles.map(v => {
+                    const isVArchived = (v.status || '').toLowerCase() === 'archived';
+                    const vBtn = isVArchived
+                        ? `<button type="button" class="btn-plain success" style="height:26px; padding:0 8px; font-size:10px;" onclick="restoreVehicle(${v.id})"><i class="fas fa-undo"></i> Restore</button>`
+                        : `<button type="button" class="btn-plain danger" style="height:26px; padding:0 8px; font-size:10px;" onclick="archiveVehicle(${v.id})"><i class="fas fa-archive"></i> Archive</button>`;
+                    const statusBadge = isVArchived
+                        ? `<span class="pill archived">ARCHIVED</span>`
+                        : `<span class="pill ${h(v.status || 'active')}">${h(v.status || 'active')}</span>`;
+
+                    return `
+                        <tr>
+                            <td><strong>${h(v.plate_number)}</strong></td>
+                            <td>${h(v.vehicle_type || 'N/A')}</td>
+                            <td>${h(v.brand || 'N/A')}</td>
+                            <td>${h(v.model || 'N/A')}</td>
+                            <td>${statusBadge}</td>
+                            <td style="text-align:right;">
+                                ${v.id ? vBtn : '-'}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
             }
 
             // Transactions
@@ -1212,6 +1557,31 @@ function viewCustomer(id) {
                         <td><span class="pill active">${h(j.status || 'Completed')}</span></td>
                     </tr>
                 `).join('');
+            }
+
+            // Loyalty Points History
+            const cardEl = document.getElementById('vLoyaltyCardNo');
+            const ptsEl  = document.getElementById('vLoyaltyPointsBalance');
+            if (cardEl) cardEl.innerText = c.customer_id || ('CUS-1253-' + String(c.id).padStart(3, '0'));
+            if (ptsEl)  ptsEl.innerText  = c.points || 0;
+
+            const lBody = document.getElementById('vLoyaltyBody');
+            const lHistory = res.loyalty_history || [];
+            if (lBody) {
+                if (!lHistory.length) {
+                    lBody.innerHTML = `<tr><td colspan="6" class="empty">No loyalty transactions recorded yet.</td></tr>`;
+                } else {
+                    lBody.innerHTML = lHistory.map(lh => `
+                        <tr>
+                            <td><small style="color:#475569; font-weight:600;">${formatDateCell(lh.date)}</small></td>
+                            <td><strong>${h(lh.reference || '-')}</strong></td>
+                            <td>${h(lh.transaction_type || 'Merchandise')}</td>
+                            <td style="text-align:right; font-weight:700; color:#16a34a;">+${lh.points_earned || 0}</td>
+                            <td style="text-align:right; font-weight:700; color:#dc2626;">-${lh.points_redeemed || 0}</td>
+                            <td style="text-align:right; font-weight:700; color:#002F70;">${lh.balance || 0}</td>
+                        </tr>
+                    `).join('');
+                }
             }
 
             // Documents
@@ -1249,6 +1619,215 @@ function openArchiveFromView() {
     }
 }
 
+// ── VIEW TAB SWITCHER ─────────────────────────────────────────────────────────
+let currentViewTab = 'profile';
+
+function switchViewTab(tab) {
+    currentViewTab = tab;
+    document.querySelectorAll('.view-tab').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.view-panel').forEach(el => el.classList.remove('active'));
+    document.getElementById('vtab-' + tab)?.classList.add('active');
+    document.getElementById('vpanel-' + tab)?.classList.add('active');
+
+    if (tab === 'ar' && currentCustomer) {
+        loadARHistory(currentCustomer.id);
+    }
+    if (tab === 'payments' && currentCustomer) {
+        loadARHistory(currentCustomer.id); // reuse same call, payments populated from same response
+    }
+}
+
+// ── LOAD AR HISTORY ───────────────────────────────────────────────────────────
+function loadARHistory(customerId) {
+    document.getElementById('arHistoryBody').innerHTML = `<tr><td colspan="10" class="empty"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>`;
+    document.getElementById('arPaymentBody').innerHTML = `<tr><td colspan="6" class="empty"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>`;
+
+    fetch(`${apiUrl}?action=ar_history&customer_id=${customerId}`)
+        .then(r => r.text())
+        .then(text => {
+            let res;
+            try { res = JSON.parse(text.replace(/^\uFEFF/, '').trim()); }
+            catch(e) { console.error('AR non-JSON:', text); return; }
+
+            if (!res.success) {
+                document.getElementById('arHistoryBody').innerHTML = `<tr><td colspan="10" class="empty">Error loading AR data.</td></tr>`;
+                return;
+            }
+
+            const s = res.summary || {};
+
+            // AR Summary Cards
+            document.getElementById('arTotalPurchases').innerText = money(s.total_credit_purchases || 0);
+            document.getElementById('arTotalPayments').innerText  = money(s.total_payments || 0);
+            document.getElementById('arOutstanding').innerText    = money(s.outstanding_balance || 0);
+            document.getElementById('arOverdue').innerText        = money(s.overdue_balance || 0);
+            document.getElementById('arAvailCredit').innerText    = money(s.available_credit || 0);
+            document.getElementById('arCreditLimit').innerText    = money(s.credit_limit || 0);
+            document.getElementById('arNextDue').innerText        = s.next_due_date ? formatDateCell(s.next_due_date) : '—';
+
+            // Payment status pill
+            const pStatus = s.payment_status || 'No AR';
+            const pClass = { 'Good Standing':'ar-good', 'Outstanding':'ar-outstanding', 'Overdue':'ar-overdue', 'No AR':'ar-noar' }[pStatus] || 'ar-noar';
+            document.getElementById('arPayStatus').innerHTML = `<span class="pill ${pClass}">${h(pStatus)}</span>`;
+
+            // Header badge
+            const badge = document.getElementById('vARStatusBadge');
+            if (pStatus !== 'No AR') {
+                badge.style.display = 'flex';
+                badge.innerHTML = `<span class="pstatus-badge ${pStatus === 'Overdue' ? 'overdue' : pStatus === 'Outstanding' ? 'outstanding' : 'good'}"><i class="fas fa-circle" style="font-size:7px;"></i> ${h(pStatus)}</span>`;
+            } else {
+                badge.style.display = 'none';
+            }
+
+            // Totals bar
+            document.getElementById('arMerchTotal').innerText = money(s.total_merchandise_credit || 0);
+            document.getElementById('arJOTotal').innerText    = money(s.total_job_order_credit || 0);
+            document.getElementById('arTotalAR').innerText    = money(s.outstanding_balance || 0);
+
+            // Record Payment button (Manager/Admin can record)
+            const payBtnRow = document.getElementById('arPayBtnRow');
+            if (payBtnRow) payBtnRow.style.display = 'flex';
+
+            // AR Rows table
+            renderARTable(res.ar_rows || [], customerId);
+
+            // Payment History
+            renderARPaymentHistory(res.payments || []);
+        })
+        .catch(() => {
+            document.getElementById('arHistoryBody').innerHTML = `<tr><td colspan="10" class="empty">Network error loading AR data.</td></tr>`;
+        });
+}
+
+function renderARTable(rows, customerId) {
+    const tbody = document.getElementById('arHistoryBody');
+    document.getElementById('arRowCount').innerText = rows.length + ' record(s)';
+
+    if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="10" class="empty" style="padding:24px;"><i class="fas fa-file-invoice-dollar" style="font-size:24px; color:#cbd5e1; display:block; margin-bottom:6px;"></i>No AR records found. Credit purchases will appear here.</td></tr>`;
+        return;
+    }
+
+    const arStatusMap = {
+        'Paid':        'ar-paid',
+        'Outstanding': 'ar-outstanding',
+        'Overdue':     'ar-overdue',
+        'Partial':     'ar-partial',
+    };
+
+    tbody.innerHTML = rows.map(r => {
+        const stClass = arStatusMap[r.status] || 'ar-outstanding';
+        const txIcon  = r.tx_type === 'Job Order'
+            ? '<i class="fas fa-tools" style="color:#6b21a8;margin-right:4px;"></i>'
+            : '<i class="fas fa-shopping-cart" style="color:#0369a1;margin-right:4px;"></i>';
+        const dueTxt  = r.due_date ? formatDateCell(r.due_date) : '—';
+        const balNum  = parseFloat(r.balance) || 0;
+
+        const payBtn = balNum > 0
+            ? `<button type="button" class="btn-plain success" style="height:26px;padding:0 8px;font-size:10px;"
+                 onclick="openPaymentModal('${h(r.reference)}', ${balNum}, '${r.source}', ${r.db_id})">
+                 <i class="fas fa-money-bill"></i> Pay
+               </button>`
+            : `<span style="color:#94a3b8; font-size:11px;">—</span>`;
+
+        return `
+        <tr>
+            <td style="font-size:12px; color:#475569;">${h(r.date || '—')}</td>
+            <td><strong style="color:#002f70;">${h(r.reference || '—')}</strong></td>
+            <td>${txIcon}<span style="font-size:11px; font-weight:700;">${h(r.tx_type)}</span></td>
+            <td style="font-size:12px; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${h(r.description)}">${h(r.description)}</td>
+            <td style="text-align:right; font-weight:700;">${money(r.amount)}</td>
+            <td style="text-align:right; color:#16a34a; font-weight:700;">${money(r.paid)}</td>
+            <td style="text-align:right; color:${balNum > 0 ? '#dc2626' : '#16a34a'}; font-weight:800;">${money(balNum)}</td>
+            <td style="font-size:12px;">${dueTxt}</td>
+            <td><span class="pill ${stClass}">${h(r.status)}</span></td>
+            <td>${payBtn}</td>
+        </tr>`;
+    }).join('');
+}
+
+function renderARPaymentHistory(payments) {
+    const tbody = document.getElementById('arPaymentBody');
+    if (!payments || !payments.length) {
+        tbody.innerHTML = `<tr><td colspan="6" class="empty">No payment records found.</td></tr>`;
+        return;
+    }
+    tbody.innerHTML = payments.map(p => `
+        <tr>
+            <td style="font-size:12px;">${h(p.pay_date || '—')}</td>
+            <td><strong style="color:#002f70;">${h(p.receipt_no || '—')}</strong></td>
+            <td style="font-size:12px; color:#475569;">${h(p.reference_no || '—')}</td>
+            <td><span class="pill regular">${h(p.payment_method || 'Cash')}</span></td>
+            <td style="text-align:right; color:#16a34a; font-weight:800;">${money(p.amount_paid)}</td>
+            <td style="font-size:12px; color:#64748b;">${h(p.remarks || '—')}</td>
+        </tr>`
+    ).join('');
+}
+
+// ── PAYMENT MODAL ─────────────────────────────────────────────────────────────
+let currentArRow = { reference: '', balance: 0, source: '', sourceId: 0 };
+
+function openPaymentModal(reference = '', balance = 0, source = '', sourceId = 0) {
+    currentArRow = { reference, balance, source, sourceId };
+
+    document.getElementById('payCustomerId').value = currentCustomer?.id || '';
+    document.getElementById('paySourceId').value   = sourceId;
+    document.getElementById('paySource').value     = source;
+    document.getElementById('payAmount').value     = balance > 0 ? balance.toFixed(2) : '';
+    document.getElementById('payMethod').value     = 'Cash';
+    document.getElementById('payRemarks').value    = '';
+
+    const refDisplay = document.getElementById('payRefDisplay');
+    const balDisplay = document.getElementById('payBalDisplay');
+    if (reference) {
+        refDisplay.innerText = reference;
+        balDisplay.innerText = `Balance due: ${money(balance)}`;
+    } else {
+        refDisplay.innerText = '— General Payment —';
+        balDisplay.innerText = '';
+    }
+
+    openModal('arPaymentModal');
+}
+
+document.getElementById('arPaymentForm').onsubmit = function(e) {
+    e.preventDefault();
+    const customerId = document.getElementById('payCustomerId').value;
+    const amount     = parseFloat(document.getElementById('payAmount').value) || 0;
+    const method     = document.getElementById('payMethod').value;
+    const remarks    = document.getElementById('payRemarks').value;
+    const sourceId   = document.getElementById('paySourceId').value;
+    const source     = document.getElementById('paySource').value;
+
+    if (!customerId || amount <= 0) { toast('Invalid payment data.', 'error'); return; }
+
+    const body = new URLSearchParams({
+        action: 'ar_payment',
+        customer_id: customerId,
+        amount,
+        payment_method: method,
+        remarks,
+        reference_no: currentArRow.reference || '',
+        source_id: sourceId,
+        source
+    });
+
+    fetch(apiUrl, { method: 'POST', body })
+        .then(r => r.text())
+        .then(text => {
+            let res;
+            try { res = JSON.parse(text.replace(/^\uFEFF/, '').trim()); }
+            catch(e) { toast('Error saving payment.', 'error'); return; }
+
+            if (!res.success) { toast(res.error || 'Failed to save payment.', 'error'); return; }
+            toast(res.message || 'Payment recorded!');
+            closeModal('arPaymentModal');
+            loadARHistory(customerId);
+            loadManagerCustomers(); // refresh outstanding balance in list
+        })
+        .catch(() => toast('Network error saving payment.', 'error'));
+};
+
 function openArchiveModal(id) {
     document.getElementById('archiveCustId').value = id;
     document.getElementById('archiveReason').value = 'Inactive';
@@ -1266,35 +1845,55 @@ document.getElementById('archiveForm').onsubmit = function(e) {
     fetch(apiUrl, { method: 'POST', body })
         .then(r => r.json())
         .then(res => {
-            if (!res.success) { toast(res.error, 'error'); return; }
-            toast(res.message);
+            if (!res.success) { toast(res.error || 'Failed to archive customer.', 'error'); return; }
+            toast(res.message || 'Customer archived successfully!', 'success');
             closeModal('archiveModal');
             loadManagerCustomers();
         });
 };
 
 function restoreCustomer(id) {
-    if (!confirm('Are you sure you want to restore this customer to Active status?')) return;
+    if (!confirm('Are you sure you want to restore this customer to active status?')) return;
     const body = new URLSearchParams({ action: 'restore', id });
     fetch(apiUrl, { method: 'POST', body })
         .then(r => r.json())
         .then(res => {
-            if (!res.success) { toast(res.error, 'error'); return; }
-            toast(res.message);
+            if (!res.success) { toast(res.error || 'Failed to restore customer.', 'error'); return; }
+            toast(res.message || 'Customer restored to active status successfully!', 'success');
             loadManagerCustomers();
-        });
+            if (currentCustomer && currentCustomer.id == id) {
+                viewCustomer(id);
+            }
+        })
+        .catch(err => toast('Network error restoring customer.', 'error'));
 }
 
 function archiveVehicle(vId) {
-    if (!confirm('Archive this vehicle?')) return;
+    if (!confirm('Are you sure you want to archive this vehicle?')) return;
     const body = new URLSearchParams({ action: 'archive_vehicle', vehicle_id: vId });
     fetch(apiUrl, { method: 'POST', body })
         .then(r => r.json())
         .then(res => {
-            if (!res.success) { toast(res.error, 'error'); return; }
-            toast(res.message);
+            if (!res.success) { toast(res.error || 'Failed to archive vehicle.', 'error'); return; }
+            toast(res.message || 'Vehicle archived successfully!', 'success');
             if (currentCustomer) viewCustomer(currentCustomer.id);
-        });
+            loadManagerCustomers();
+        })
+        .catch(err => toast('Network error archiving vehicle.', 'error'));
+}
+
+function restoreVehicle(vId) {
+    if (!confirm('Are you sure you want to restore this vehicle?')) return;
+    const body = new URLSearchParams({ action: 'restore_vehicle', vehicle_id: vId });
+    fetch(apiUrl, { method: 'POST', body })
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success) { toast(res.error || 'Failed to restore vehicle.', 'error'); return; }
+            toast(res.message || 'Vehicle restored successfully!', 'success');
+            if (currentCustomer) viewCustomer(currentCustomer.id);
+            loadManagerCustomers();
+        })
+        .catch(err => toast('Network error restoring vehicle.', 'error'));
 }
 
 function openReviewModal(reqId) {
@@ -1326,8 +1925,8 @@ function submitReviewAction(type) {
                 toast('Error reviewing request.', 'error');
                 return;
             }
-            if (!res.success) { toast(res.error, 'error'); return; }
-            toast(res.message);
+            if (!res.success) { toast(res.error || 'Failed to review request.', 'error'); return; }
+            toast(res.message || 'Customer request updated successfully!', 'success');
             closeModal('reviewModal');
             loadCustomerRequests();
             loadManagerCustomers();

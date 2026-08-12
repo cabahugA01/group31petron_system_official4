@@ -684,10 +684,6 @@ try {
                     <td>Labor Income</td>
                     <td style="text-align:right;">₱<?= number_format($collection_summary['labor_income'], 2) ?></td>
                 </tr>
-                <tr>
-                    <td>Parts Sales</td>
-                    <td style="text-align:right;">₱<?= number_format($collection_summary['parts_sales'], 2) ?></td>
-                </tr>
                 <tr style="border-top:2px solid #e2e8f0; background:#f8f9fa;">
                     <td style="font-weight:700;">Gross Sales</td>
                     <td style="text-align:right; font-weight:700;">₱<?= number_format($collection_summary['gross_sales'], 2) ?></td>

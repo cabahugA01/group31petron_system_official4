@@ -964,7 +964,6 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                     <table style="width: 100%; font-size: 11px;">
                         <tr><td>Merchandise Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['merchandise_sales']??0,2)?></td></tr>
                         <tr><td>Labor Income</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['labor_income']??0,2)?></td></tr>
-                        <tr><td>Parts Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['parts_sales']??0,2)?></td></tr>
                         <tr style="border-top: 2px solid #00264D; font-weight: 700;"><td>Grand Total</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift1']['grand_total']??0,2)?></td></tr>
                     </table>
                 </div>
@@ -973,7 +972,6 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                     <table style="width: 100%; font-size: 11px;">
                         <tr><td>Merchandise Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['merchandise_sales']??0,2)?></td></tr>
                         <tr><td>Labor Income</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['labor_income']??0,2)?></td></tr>
-                        <tr><td>Parts Sales</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['parts_sales']??0,2)?></td></tr>
                         <tr style="border-top: 2px solid #00264D; font-weight: 700;"><td>Grand Total</td><td style="text-align: right;">&#x20B1;<?=number_format($reportData['shift_summary']['shift2']['grand_total']??0,2)?></td></tr>
                     </table>
                 </div>

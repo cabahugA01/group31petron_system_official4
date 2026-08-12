@@ -475,8 +475,12 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Customer Name</label>
-                    <input type="text" id="customer_name" class="form-input" placeholder="Enter customer name or select a JO above" required>
+                    <label class="form-label">Customer <span style="font-weight:400;color:#888;font-size:12px;">(Walk-in by default)</span></label>
+                    <select id="customer_id_select" class="form-select" onchange="handleCustomerSelect(this)">
+                        <option value="0">Walk-in Customer</option>
+                    </select>
+                    <input type="hidden" id="customer_id" value="0">
+                    <input type="text" id="customer_name" style="display:none;" value="Walk-in Customer">
                 </div>
             </div>
                 <div class="form-group">
@@ -484,11 +488,13 @@ include __DIR__ . '/../partials/header.php';
                     <select id="payment_method" class="form-select" required>
                         <option value="">Select payment method</option>
                         <option value="Cash">Cash</option>
-                        <option value="Card">Card</option>
-                        <option value="E-Wallet">E-Wallet</option>
+                        <option value="GCash">GCash</option>
+                        <option value="Maya">Maya</option>
+                        <option value="Credit Card">Credit Card</option>
+                        <option value="Debit Card">Debit Card</option>
                         <option value="Petron E-Fuel">Petron E-Fuel</option>
                         <option value="Fleet Card">Fleet Card</option>
-                        <option value="Credit">Credit</option>
+                        <option value="Credit Account">Credit Account</option>
                     </select>
                 </div>
             </div>
@@ -539,17 +545,8 @@ include __DIR__ . '/../partials/header.php';
             <div id="ewallet_payment_section" class="payment-section" style="display: none;">
                 <div class="form-row">
                     <div class="form-group">
-                        <label class="form-label">E-Wallet Reference</label>
-                        <input type="text" id="ewallet_reference" class="form-input" placeholder="Reference number">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">E-Wallet Provider</label>
-                        <select id="ewallet_provider" class="form-select">
-                            <option value="">Select provider</option>
-                            <option value="GCash">GCash</option>
-                            <option value="PayMaya">PayMaya</option>
-                            <option value="Coins.ph">Coins.ph</option>
-                        </select>
+                        <label class="form-label">Reference Number</label>
+                        <input type="text" id="ewallet_reference" class="form-input" placeholder="GCash/Maya reference number">
                     </div>
                 </div>
             </div>
@@ -692,14 +689,27 @@ async function loadCustomers() {
 }
 
 function populateCustomerDropdown() {
-    const select = document.getElementById('credit_customer_id');
-    select.innerHTML = '<option value="">Select credit customer</option>';
+    // Populate credit customer dropdown (for Credit Account method)
+    const creditSelect = document.getElementById('credit_customer_id');
+    creditSelect.innerHTML = '<option value="">Select credit customer</option>';
+    
+    // Populate main customer dropdown (Walk-in + all active customers)
+    const mainSelect = document.getElementById('customer_id_select');
+    mainSelect.innerHTML = '<option value="0">Walk-in Customer</option>';
     
     customers.forEach(customer => {
-        const option = document.createElement('option');
-        option.value = customer.id;
-        option.textContent = `${customer.name} (Available: ${customer.available_credit})`;
-        select.appendChild(option);
+        // Credit dropdown
+        const opt1 = document.createElement('option');
+        opt1.value = customer.id;
+        opt1.textContent = `${customer.name} (Available: ${customer.available_credit})`;
+        creditSelect.appendChild(opt1);
+        
+        // Main dropdown
+        const opt2 = document.createElement('option');
+        opt2.value = customer.id;
+        opt2.dataset.name = customer.name;
+        opt2.textContent = customer.name;
+        mainSelect.appendChild(opt2);
     });
 }
 
@@ -928,23 +938,32 @@ function handlePaymentMethodChange() {
     
     // Show relevant section
     switch (method) {
-        case 'Credit':
+        case 'Credit Account':
             document.getElementById('credit_customer_section').style.display = 'block';
             break;
         case 'Cash':
             document.getElementById('cash_payment_section').style.display = 'block';
             break;
-        case 'Card':
+        case 'Credit Card':
+        case 'Debit Card':
         case 'Fleet Card':
             document.getElementById('card_payment_section').style.display = 'block';
             break;
-        case 'E-Wallet':
+        case 'GCash':
+        case 'Maya':
             document.getElementById('ewallet_payment_section').style.display = 'block';
             break;
         case 'Petron E-Fuel':
             document.getElementById('efuel_payment_section').style.display = 'block';
             break;
     }
+}
+
+function handleCustomerSelect(sel) {
+    const custId = sel.value;
+    const custText = sel.options[sel.selectedIndex].dataset.name || sel.options[sel.selectedIndex].textContent.split('(')[0].trim();
+    document.getElementById('customer_id').value = custId;
+    document.getElementById('customer_name').value = custId === '0' ? 'Walk-in Customer' : custText;
 }
 
 function calculateChange() {
@@ -977,14 +996,9 @@ async function submitTransaction() {
         return;
     }
     
-    // Validate required fields
-    const customerName = document.getElementById('customer_name').value.trim();
+    // customer_name is auto-set from the dropdown (Walk-in is default)
+    const customerName = document.getElementById('customer_name').value.trim() || 'Walk-in Customer';
     const paymentMethod = document.getElementById('payment_method').value;
-    
-    if (!customerName) {
-        showNotification('Please enter customer name', 'warning');
-        return;
-    }
     
     if (!paymentMethod) {
         showNotification('Please select payment method', 'warning');
@@ -992,7 +1006,7 @@ async function submitTransaction() {
     }
     
     // Validate payment details
-    if (paymentMethod === 'Account Receivable') {
+    if (paymentMethod === 'Credit Account') {
         const creditCustomerId = document.getElementById('credit_customer_id').value;
         if (!creditCustomerId) {
             showNotification('Please select credit customer', 'warning');
@@ -1013,7 +1027,7 @@ async function submitTransaction() {
         }
     }
 
-    if (paymentMethod === 'Credit Card') {
+    if (paymentMethod === 'Credit Card' || paymentMethod === 'Debit Card') {
         const cardRef = document.getElementById('card_reference').value.trim();
         if (!cardRef) {
             showNotification('Please enter the card reference number.', 'warning');
@@ -1021,7 +1035,7 @@ async function submitTransaction() {
         }
     }
 
-    if (paymentMethod === 'E-Wallet') {
+    if (paymentMethod === 'GCash' || paymentMethod === 'Maya') {
         const eRef = document.getElementById('ewallet_reference').value.trim();
         if (!eRef) {
             showNotification('Please enter the e-wallet reference number.', 'warning');
@@ -1029,7 +1043,7 @@ async function submitTransaction() {
         }
     }
 
-    if (paymentMethod === 'E-Fuel Card') {
+    if (paymentMethod === 'Petron E-Fuel') {
         const efuelNum = document.getElementById('efuel_card_number').value.trim();
         if (!efuelNum) {
             showNotification('Please enter the E-Fuel card number.', 'warning');
@@ -1038,19 +1052,23 @@ async function submitTransaction() {
     }
     
     // Prepare transaction data
+    const isEwallet = (paymentMethod === 'GCash' || paymentMethod === 'Maya');
+    const isCard = (paymentMethod === 'Credit Card' || paymentMethod === 'Debit Card');
+    const customerId = parseInt(document.getElementById('customer_id').value) || 0;
     const transactionData = {
         items: cart,
-        customer_name: customerName,
+        customer_id: customerId,
+        customer_name: document.getElementById('customer_name').value || 'Walk-in Customer',
         payment_method: paymentMethod,
-        credit_customer_id: paymentMethod === 'Account Receivable' ? document.getElementById('credit_customer_id').value : null,
+        credit_customer_id: paymentMethod === 'Credit Account' ? document.getElementById('credit_customer_id').value : null,
         remarks: document.getElementById('remarks').value,
         amount_tendered: paymentMethod === 'Cash' ? parseFloat(document.getElementById('amount_tendered').value) : null,
         change_amount: paymentMethod === 'Cash' ? parseFloat(document.getElementById('change_amount').value) : null,
-        card_reference: paymentMethod === 'Credit Card' ? document.getElementById('card_reference').value : null,
-        card_type: paymentMethod === 'Credit Card' ? document.getElementById('card_type').value : null,
-        ewallet_reference: paymentMethod === 'E-Wallet' ? document.getElementById('ewallet_reference').value : null,
-        ewallet_provider: paymentMethod === 'E-Wallet' ? document.getElementById('ewallet_provider').value : null,
-        efuel_card_number: paymentMethod === 'E-Fuel Card' ? document.getElementById('efuel_card_number').value : null
+        card_reference: isCard ? document.getElementById('card_reference').value : null,
+        card_type: isCard ? paymentMethod : null,
+        ewallet_reference: isEwallet ? document.getElementById('ewallet_reference').value : null,
+        ewallet_provider: isEwallet ? paymentMethod : null,
+        efuel_card_number: paymentMethod === 'Petron E-Fuel' ? document.getElementById('efuel_card_number').value : null
     };
     
     try {
@@ -1072,8 +1090,9 @@ async function submitTransaction() {
             
             // Clear form and cart
             clearCart();
-            document.getElementById('customer_name').value = '';
-            document.getElementById('customer_name').classList.remove('auto-pulled');
+            document.getElementById('customer_id_select').value = '0';
+            document.getElementById('customer_id').value = '0';
+            document.getElementById('customer_name').value = 'Walk-in Customer';
             document.getElementById('job_order_ref').value = '';
             document.getElementById('jo_lookup_status').textContent = '';
             document.getElementById('payment_method').value = '';

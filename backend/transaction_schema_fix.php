@@ -36,7 +36,16 @@ $fixes = [
     "ALTER TABLE fuel_transactions ADD COLUMN IF NOT EXISTS reject_reason TEXT         DEFAULT NULL",
     "ALTER TABLE fuel_transactions ADD COLUMN IF NOT EXISTS manager_id    INT          DEFAULT NULL",
 
+    "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS job_order_vehicle_brand    VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS job_order_vehicle_model    VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS job_order_year_model       VARCHAR(20)  DEFAULT NULL",
+    "ALTER TABLE merchandise_transactions ADD COLUMN IF NOT EXISTS job_order_estimated_duration INT         DEFAULT NULL",
+
     // ── job_orders columns ────────────────────────────────────────────────────
+    "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS vehicle_brand VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS vehicle_model VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS year_model    VARCHAR(20)  DEFAULT NULL",
+    "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS contact_number VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS customer_id       INT          DEFAULT NULL",
     "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS validation_status VARCHAR(60)  DEFAULT 'Pending Validation'",
     "ALTER TABLE job_orders ADD COLUMN IF NOT EXISTS validated_by      INT          DEFAULT NULL",

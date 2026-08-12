@@ -69,10 +69,28 @@ try {
     $stmt2->execute([$txn['id']]);
     $items = $stmt2->fetchAll(PDO::FETCH_ASSOC);
 
+    // Fetch adjustment request details if any
+    $adjReq = null;
+    try {
+        $stmtReq = $pdo->prepare("
+            SELECT tr.*, 
+                   COALESCE(NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''), u.username, 'Staff') AS requested_by_name
+            FROM transaction_requests tr
+            LEFT JOIN users u ON tr.requested_by = u.id
+            WHERE tr.transaction_id = ? AND tr.station_id = ? AND tr.request_type = 'Adjustment'
+            ORDER BY tr.id DESC LIMIT 1
+        ");
+        $stmtReq->execute([$txn['id'], $station_id]);
+        $adjReq = $stmtReq->fetch(PDO::FETCH_ASSOC) ?: null;
+    } catch (Exception $e) {
+        $adjReq = null;
+    }
+
     echo json_encode([
-        'success' => true,
-        'txn'     => $txn,
-        'items'   => $items,
+        'success'            => true,
+        'txn'                => $txn,
+        'items'              => $items,
+        'adjustment_request' => $adjReq,
     ]);
 
 } catch (Exception $e) {

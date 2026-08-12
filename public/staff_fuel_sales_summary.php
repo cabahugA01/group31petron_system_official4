@@ -92,16 +92,32 @@ try {
     }
 } catch (Exception $e) {}
 
+$active_tab = strtolower(trim($_GET['tab'] ?? $_GET['type'] ?? 'fuel'));
+if (!in_array($active_tab, ['fuel', 'merchandise'], true)) {
+    $active_tab = 'fuel';
+}
+
 // Date handling
 $today = date('Y-m-d');
-// Default to most recent date with fuel data for this station (fallback to today)
 $default_date = $today;
-try {
-    $dr = $pdo->prepare("SELECT DATE(transaction_date) AS d FROM fuel_transactions WHERE station_id=? ORDER BY transaction_date DESC LIMIT 1");
-    $dr->execute([$station_id]);
-    $dr_row = $dr->fetch(PDO::FETCH_ASSOC);
-    if ($dr_row && $dr_row['d']) $default_date = $dr_row['d'];
-} catch (Exception $e) {}
+
+if (empty($_GET['date_from']) && empty($_GET['report_date'])) {
+    if ($active_tab === 'merchandise') {
+        try {
+            $dr = $pdo->prepare("SELECT DATE(COALESCE(transaction_date, created_at)) AS d FROM merchandise_transactions WHERE station_id=? ORDER BY COALESCE(transaction_date, created_at) DESC LIMIT 1");
+            $dr->execute([$station_id]);
+            $dr_row = $dr->fetch(PDO::FETCH_ASSOC);
+            if ($dr_row && $dr_row['d']) $default_date = $dr_row['d'];
+        } catch (Exception $e) {}
+    } else {
+        try {
+            $dr = $pdo->prepare("SELECT DATE(transaction_date) AS d FROM fuel_transactions WHERE station_id=? ORDER BY transaction_date DESC LIMIT 1");
+            $dr->execute([$station_id]);
+            $dr_row = $dr->fetch(PDO::FETCH_ASSOC);
+            if ($dr_row && $dr_row['d']) $default_date = $dr_row['d'];
+        } catch (Exception $e) {}
+    }
+}
 
 // Support date range: date_from / date_to (fall back to legacy report_date)
 $date_from = trim($_GET['date_from'] ?? $_GET['report_date'] ?? $default_date);
@@ -117,11 +133,6 @@ if ($date_to !== $date_from) {
 $export_date_slug = date('Ymd', strtotime($date_from));
 if ($date_to !== $date_from) {
     $export_date_slug .= '_to_' . date('Ymd', strtotime($date_to));
-}
-
-$active_tab = strtolower(trim($_GET['tab'] ?? $_GET['type'] ?? 'fuel'));
-if (!in_array($active_tab, ['fuel', 'merchandise'], true)) {
-    $active_tab = 'fuel';
 }
 
 // Helper: Check table existence
@@ -291,9 +302,9 @@ function staff_report_fetch_merchandise_rows(PDO $pdo, int $station_id, string $
                        SUM(COALESCE(subtotal, COALESCE(quantity, 0) * COALESCE(unit_price, 0), 0)) AS item_subtotal
                 FROM merchandise_transaction_items
                 GROUP BY transaction_id
-            ) mis ON mis.transaction_id = mt.id
+            ) mis ON (mis.transaction_id = CAST(mt.id AS CHAR) OR mis.transaction_id = mt.transaction_id)
             LEFT JOIN merchandise_transaction_items mti
-                   ON mti.transaction_id = mt.id
+                   ON (mti.transaction_id = CAST(mt.id AS CHAR) OR mti.transaction_id = mt.transaction_id)
                   AND LOWER(COALESCE(mti.item_type, 'merchandise')) <> 'service'
             LEFT JOIN users u ON mt.staff_id = u.id
             WHERE mt.station_id = ?
@@ -1427,27 +1438,7 @@ try {
 $merchandise_report_transactions = staff_report_fetch_merchandise_rows($pdo, (int)$station_id, $date_from, $date_to);
 $service_income_transactions = staff_report_fetch_service_income_rows($pdo, (int)$station_id, $date_from, $date_to);
 
-if (!$is_manager_or_admin && !empty($user_current_shift)) {
-    $merchandise_report_transactions = array_filter($merchandise_report_transactions, function($trans) use ($user_current_shift) {
-        $shiftLabel = (string)($trans['shift'] ?? $trans['shift_period'] ?? '');
-        if ($shiftLabel === '' && !empty($trans['created_at'])) {
-            $hour = (int)date('H', strtotime((string)$trans['created_at']));
-            $shiftLabel = ($hour >= 6 && $hour < 14) ? 'Shift 1' : 'Shift 2';
-        }
-        $isS1 = is_shift1($shiftLabel);
-        return $user_current_shift === 'shift1' ? $isS1 : !$isS1;
-    });
-
-    $service_income_transactions = array_filter($service_income_transactions, function($trans) use ($user_current_shift) {
-        $shiftLabel = (string)($trans['shift'] ?? $trans['shift_period'] ?? '');
-        if ($shiftLabel === '' && !empty($trans['created_at'])) {
-            $hour = (int)date('H', strtotime((string)$trans['created_at']));
-            $shiftLabel = ($hour >= 6 && $hour < 14) ? 'Shift 1' : 'Shift 2';
-        }
-        $isS1 = is_shift1($shiftLabel);
-        return $user_current_shift === 'shift1' ? $isS1 : !$isS1;
-    });
-}
+// Preserve all fetched merchandise & service rows for the requested date range
 
 $total_merch_amount = array_sum(array_map(static fn($row) => (float)($row['total_amount'] ?? 0), $merchandise_report_transactions));
 $total_service_amount = array_sum(array_map(static fn($row) => (float)($row['total_amount'] ?? 0), $service_income_transactions));
@@ -1559,6 +1550,8 @@ $filter_fuel_type = trim($_GET['filter_fuel_type'] ?? '');
 $filter_ugt       = trim($_GET['filter_ugt'] ?? '');
 $filter_search    = trim($_GET['filter_search'] ?? '');
 $filter_pm        = trim($_GET['filter_pm'] ?? '');
+$filter_category  = trim($_GET['filter_category'] ?? '');
+$filter_txn_type  = trim($_GET['filter_txn_type'] ?? '');
 
 // 1. Build UGT Map from fuel_inventory table
 $ugt_map = [];
@@ -1667,9 +1660,12 @@ foreach ($merchandise_report_transactions as $mt) {
     if ($filter_pm !== '' && strtolower(trim($mt['payment_method'] ?? '')) !== strtolower($filter_pm)) {
         continue;
     }
+    if ($filter_category !== '' && strtolower(trim($mt['category'] ?? '')) !== strtolower($filter_category)) {
+        continue;
+    }
     if ($filter_search !== '') {
         $s = strtolower($filter_search);
-        $searchable = strtolower(($mt['transaction_number'] ?? $mt['id'] ?? '') . ' ' . ($mt['product_name'] ?? '') . ' ' . ($mt['encoder'] ?? ''));
+        $searchable = strtolower(($mt['transaction_number'] ?? $mt['id'] ?? '') . ' ' . ($mt['product_name'] ?? '') . ' ' . ($mt['customer_name'] ?? '') . ' ' . ($mt['encoder'] ?? ''));
         if (strpos($searchable, $s) === false) {
             continue;
         }
@@ -1683,9 +1679,12 @@ foreach ($service_income_transactions as $st) {
     if ($filter_pm !== '' && strtolower(trim($st['payment_method'] ?? '')) !== strtolower($filter_pm)) {
         continue;
     }
+    if ($filter_category !== '' && strtolower($filter_category) !== 'services' && strtolower(trim($st['category'] ?? 'Services')) !== strtolower($filter_category)) {
+        continue;
+    }
     if ($filter_search !== '') {
         $s = strtolower($filter_search);
-        $searchable = strtolower(($st['source_key'] ?? $st['id'] ?? '') . ' ' . ($st['service_type'] ?? '') . ' ' . ($st['encoder'] ?? ''));
+        $searchable = strtolower(($st['source_key'] ?? $st['id'] ?? '') . ' ' . ($st['service_type'] ?? '') . ' ' . ($st['customer_name'] ?? '') . ' ' . ($st['encoder'] ?? ''));
         if (strpos($searchable, $s) === false) {
             continue;
         }
@@ -1775,11 +1774,11 @@ if (!$is_manager_or_admin && !empty($user_current_shift)) {
 $merch_sales_summary_total = array_sum(array_map(fn($r) => (float)($r['total_amount'] ?? 0), $filtered_merchandise_rows));
 $labor_fee_summary_total   = array_sum(array_map(fn($r) => (float)($r['labor_fee'] ?? 0), $filtered_service_rows));
 $service_fee_summary_total = array_sum(array_map(fn($r) => (float)($r['service_fee'] ?? 0), $filtered_service_rows));
-$parts_sales_summary_total = array_sum(array_map(fn($r) => (float)($r['parts_cost'] ?? 0), $filtered_service_rows));
+$parts_sales_summary_total = 0; // All parts sales belong to Merchandise Sales
 $service_revenue_summary_total = $labor_fee_summary_total + $service_fee_summary_total;
-$credit_sales_summary_total = $accepted_payment_methods['Credit Account']['amount'];
-$fleet_sales_summary_total  = $accepted_payment_methods['Petron Fleet Card']['amount'];
-$overall_shift_sales_summary_total = $merch_sales_summary_total + $labor_fee_summary_total + $service_fee_summary_total + $parts_sales_summary_total;
+$credit_sales_summary_total = $accepted_payment_methods['Credit Account']['amount'] ?? 0;
+$fleet_sales_summary_total  = $accepted_payment_methods['Petron Fleet Card']['amount'] ?? 0;
+$overall_shift_sales_summary_total = $merch_sales_summary_total + $labor_fee_summary_total + $service_fee_summary_total;
 
 
 // ============================================================
@@ -3474,8 +3473,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         <input type="date" id="date_to" value="<?= htmlspecialchars($date_to) ?>" max="<?= $today ?>"
                style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:4px;font-size:13px;background:#fff;">
 
-        <?php if ($active_tab === 'fuel'): ?>
-            <!-- Fuel Filters -->
+        <!-- Fuel Filters Group -->
+        <div id="fuel-filters-group" style="display:<?= $active_tab === 'fuel' ? 'flex' : 'none' ?>;align-items:center;gap:10px;flex-wrap:wrap;">
             <label style="font-weight:700;color:#002F6C;font-size:12px;text-transform:uppercase;letter-spacing:.4px;">Fuel Type</label>
             <select id="filter_fuel_type" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:4px;font-size:13px;background:#fff;">
                 <option value="">All Types</option>
@@ -3495,8 +3494,37 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                     </option>
                 <?php endforeach; ?>
             </select>
-        <?php else: ?>
-            <!-- Merchandise / Payment Filters -->
+        </div>
+
+        <!-- Merchandise / Service Filters Group -->
+        <div id="merch-filters-group" style="display:<?= $active_tab === 'merchandise' ? 'flex' : 'none' ?>;align-items:center;gap:10px;flex-wrap:wrap;">
+            <label style="font-weight:700;color:#002F6C;font-size:12px;text-transform:uppercase;letter-spacing:.4px;">Category</label>
+            <select id="filter_category" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:4px;font-size:13px;background:#fff;">
+                <option value="">All Categories</option>
+                <?php 
+                $inv_cats = [];
+                try {
+                    $inv_cats = $pdo->query("SELECT name FROM product_categories WHERE LOWER(name) <> 'fuel products' ORDER BY name ASC")->fetchAll(PDO::FETCH_COLUMN) ?: [];
+                } catch (Exception $e) {}
+                if (empty($inv_cats)) {
+                    $inv_cats = ['Car Accessories', 'Drinks/Food', 'Filters', 'Merchandise', 'Oils/Lubes/Grease', 'Others', 'Services', 'Snacks', 'VIC Filters'];
+                }
+                foreach ($inv_cats as $catOpt): 
+                ?>
+                    <option value="<?= htmlspecialchars($catOpt) ?>" <?= strcasecmp($filter_category, $catOpt) === 0 ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($catOpt) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+
+            <label style="font-weight:700;color:#002F6C;font-size:12px;text-transform:uppercase;letter-spacing:.4px;">Transaction Type</label>
+            <select id="filter_txn_type" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:4px;font-size:13px;background:#fff;">
+                <option value="">All Types</option>
+                <option value="Merchandise Only" <?= strcasecmp($filter_txn_type, 'Merchandise Only') === 0 ? 'selected' : '' ?>>Merchandise Only</option>
+                <option value="Job Order Only" <?= strcasecmp($filter_txn_type, 'Job Order Only') === 0 ? 'selected' : '' ?>>Job Order Only</option>
+                <option value="Job Order + Merchandise" <?= (strcasecmp($filter_txn_type, 'Job Order + Merchandise') === 0 || strcasecmp($filter_txn_type, 'combined') === 0) ? 'selected' : '' ?>>Job Order + Merchandise</option>
+            </select>
+
             <label style="font-weight:700;color:#002F6C;font-size:12px;text-transform:uppercase;letter-spacing:.4px;">Payment Method</label>
             <select id="filter_pm" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:4px;font-size:13px;background:#fff;">
                 <option value="">All Methods</option>
@@ -3506,16 +3534,16 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                     </option>
                 <?php endforeach; ?>
             </select>
-        <?php endif; ?>
+        </div>
 
         <label style="font-weight:700;color:#002F6C;font-size:12px;text-transform:uppercase;letter-spacing:.4px;">Search</label>
-        <input type="text" id="filter_search" value="<?= htmlspecialchars($filter_search) ?>" placeholder="Search keyword..."
-               style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:4px;font-size:13px;width:150px;">
+        <input type="text" id="filter_search" value="<?= htmlspecialchars($filter_search) ?>" placeholder="<?= $active_tab === 'fuel' ? 'Search fuel, UGT...' : 'Search product, customer, OR no...' ?>"
+               style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:4px;font-size:13px;width:180px;">
 
         <button class="btn btn-primary btn-sm" onclick="applyFilters()" style="padding:6px 14px;font-weight:700;">
             <i class="fa-solid fa-filter me-1"></i> Apply
         </button>
-        <?php if ($filter_fuel_type !== '' || $filter_ugt !== '' || $filter_search !== '' || $filter_pm !== ''): ?>
+        <?php if ($filter_fuel_type !== '' || $filter_ugt !== '' || $filter_search !== '' || $filter_pm !== '' || $filter_category !== '' || $filter_txn_type !== ''): ?>
             <button class="btn btn-outline-secondary btn-sm" onclick="resetFilters()" style="padding:6px 12px;">Reset</button>
         <?php endif; ?>
     </div>
@@ -4064,10 +4092,6 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                                 <td style="padding:7px 10px; border:1px solid #ddd; font-weight:600;">Service Fee Revenue</td>
                                 <td style="padding:7px 10px; border:1px solid #ddd; text-align:right; font-weight:700;">₱<?= number_format($service_fee_summary_total, 2) ?></td>
                             </tr>
-                            <tr>
-                                <td style="padding:7px 10px; border:1px solid #ddd; font-weight:600;">Parts Sales</td>
-                                <td style="padding:7px 10px; border:1px solid #ddd; text-align:right; font-weight:700;">₱<?= number_format($parts_sales_summary_total, 2) ?></td>
-                            </tr>
                             <tr style="background:#f8fafc; font-weight:700;">
                                 <td style="padding:7px 10px; border:1px solid #ddd; color:#0369a1;">Service Revenue (Labor + Service Fee)</td>
                                 <td style="padding:7px 10px; border:1px solid #ddd; text-align:right; color:#0369a1;">₱<?= number_format($service_revenue_summary_total, 2) ?></td>
@@ -4144,6 +4168,18 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         if (targetContent) {
             targetContent.classList.add('active');
         }
+
+        // Toggle tailored filter groups for each report
+        const fuelFilters  = document.getElementById('fuel-filters-group');
+        const merchFilters = document.getElementById('merch-filters-group');
+        if (fuelFilters)  fuelFilters.style.display  = (tabName === 'fuel') ? 'flex' : 'none';
+        if (merchFilters) merchFilters.style.display = (tabName === 'merchandise') ? 'flex' : 'none';
+
+        // Update search placeholder
+        const searchInp = document.getElementById('filter_search');
+        if (searchInp) {
+            searchInp.placeholder = (tabName === 'fuel') ? 'Search fuel, UGT...' : 'Search product, customer, OR no...';
+        }
         
         // Dynamically update the Excel export button type parameter
         const excelLink = document.querySelector('.rpt-btn-excel, .flt-btn-excel');
@@ -4156,6 +4192,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         // Update browser URL query parameter without full reload
         const currentUrl = new URL(window.location.href);
         currentUrl.searchParams.set('tab', tabName);
+        currentUrl.searchParams.set('type', tabName);
         window.history.replaceState({}, '', currentUrl.toString());
     }
 
@@ -4175,35 +4212,47 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         currentUrl.searchParams.set('date_to',     dateTo);
         currentUrl.searchParams.set('report_date', dateFrom); // backward compat
 
-        const ftSel = document.getElementById('filter_fuel_type');
-        if (ftSel) {
-            if (ftSel.value) currentUrl.searchParams.set('filter_fuel_type', ftSel.value);
+        // Detect current active tab
+        const activeTabBtn = document.querySelector('.rpt-subtab-nav .rpt-subtab-btn.active, .tab-navigation .tab-btn.active');
+        const isMerch = activeTabBtn && activeTabBtn.textContent.includes('MERCHANDISE');
+        const activeTab = isMerch ? 'merchandise' : 'fuel';
+        currentUrl.searchParams.set('tab', activeTab);
+        currentUrl.searchParams.set('type', activeTab);
+
+        if (activeTab === 'fuel') {
+            const ftSel = document.getElementById('filter_fuel_type');
+            if (ftSel && ftSel.value) currentUrl.searchParams.set('filter_fuel_type', ftSel.value);
             else currentUrl.searchParams.delete('filter_fuel_type');
-        }
 
-        const ugtSel = document.getElementById('filter_ugt');
-        if (ugtSel) {
-            if (ugtSel.value) currentUrl.searchParams.set('filter_ugt', ugtSel.value);
+            const ugtSel = document.getElementById('filter_ugt');
+            if (ugtSel && ugtSel.value) currentUrl.searchParams.set('filter_ugt', ugtSel.value);
             else currentUrl.searchParams.delete('filter_ugt');
-        }
 
-        const pmSel = document.getElementById('filter_pm');
-        if (pmSel) {
-            if (pmSel.value) currentUrl.searchParams.set('filter_pm', pmSel.value);
+            currentUrl.searchParams.delete('filter_category');
+            currentUrl.searchParams.delete('filter_txn_type');
+            currentUrl.searchParams.delete('filter_pm');
+        } else {
+            const catSel = document.getElementById('filter_category');
+            if (catSel && catSel.value) currentUrl.searchParams.set('filter_category', catSel.value);
+            else currentUrl.searchParams.delete('filter_category');
+
+            const ttSel = document.getElementById('filter_txn_type');
+            if (ttSel && ttSel.value) currentUrl.searchParams.set('filter_txn_type', ttSel.value);
+            else currentUrl.searchParams.delete('filter_txn_type');
+
+            const pmSel = document.getElementById('filter_pm');
+            if (pmSel && pmSel.value) currentUrl.searchParams.set('filter_pm', pmSel.value);
             else currentUrl.searchParams.delete('filter_pm');
+
+            currentUrl.searchParams.delete('filter_fuel_type');
+            currentUrl.searchParams.delete('filter_ugt');
         }
 
         const searchInp = document.getElementById('filter_search');
-        if (searchInp) {
-            if (searchInp.value.trim()) currentUrl.searchParams.set('filter_search', searchInp.value.trim());
-            else currentUrl.searchParams.delete('filter_search');
-        }
-
-        // Keep the active tab query parameter when applying date filter
-        const activeTabBtn = document.querySelector('.rpt-subtab-nav .rpt-subtab-btn.active, .tab-navigation .tab-btn.active');
-        if (activeTabBtn) {
-            const isMerch = activeTabBtn.textContent.includes('MERCHANDISE');
-            currentUrl.searchParams.set('tab', isMerch ? 'merchandise' : 'fuel');
+        if (searchInp && searchInp.value.trim()) {
+            currentUrl.searchParams.set('filter_search', searchInp.value.trim());
+        } else {
+            currentUrl.searchParams.delete('filter_search');
         }
 
         window.location.href = currentUrl.toString();
@@ -4213,6 +4262,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         const currentUrl = new URL(window.location.href);
         currentUrl.searchParams.delete('filter_fuel_type');
         currentUrl.searchParams.delete('filter_ugt');
+        currentUrl.searchParams.delete('filter_category');
+        currentUrl.searchParams.delete('filter_txn_type');
         currentUrl.searchParams.delete('filter_pm');
         currentUrl.searchParams.delete('filter_search');
         window.location.href = currentUrl.toString();

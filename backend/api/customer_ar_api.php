@@ -53,7 +53,9 @@ try {
             FROM customer_accounts_receivable car
             LEFT JOIN customers c ON c.id = car.customer_id
             LEFT JOIN merchandise_transactions mt ON (mt.id = car.transaction_db_id OR mt.transaction_id = car.transaction_id)
-            WHERE car.station_id = ? AND car.status != 'Voided'
+            WHERE car.station_id = ? 
+              AND car.status != 'Voided'
+              AND (mt.payment_method IS NULL OR LOWER(TRIM(mt.payment_method)) IN ('credit account', 'credit', 'ar', 'account receivable'))
             ORDER BY car.created_at DESC
         ");
         $stmt->execute([$station_id]);
@@ -91,7 +93,10 @@ try {
             FROM customer_accounts_receivable car
             LEFT JOIN customers c ON c.id = car.customer_id
             LEFT JOIN merchandise_transactions mt ON (mt.id = car.transaction_db_id OR mt.transaction_id = car.transaction_id)
-            WHERE car.customer_id = ? AND car.station_id = ? AND car.status != 'Voided'
+            WHERE car.customer_id = ? 
+              AND car.station_id = ? 
+              AND car.status != 'Voided'
+              AND (mt.payment_method IS NULL OR LOWER(TRIM(mt.payment_method)) IN ('credit account', 'credit', 'ar', 'account receivable'))
             ORDER BY car.created_at DESC
         ");
         $stmt->execute([$customer_id, $station_id]);

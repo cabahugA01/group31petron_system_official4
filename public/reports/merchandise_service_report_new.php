@@ -148,11 +148,15 @@ function fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end
             $q = $pdo->prepare("
                 SELECT 
                     CASE
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%card%' AND LOWER(COALESCE(payment_method,'')) NOT LIKE '%fleet%' THEN 'Card'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(payment_method,'')) LIKE '%maya%' THEN 'GCash'
+                        WHEN LOWER(COALESCE(payment_method,'')) IN ('gcash') THEN 'GCash'
+                        WHEN LOWER(COALESCE(payment_method,'')) IN ('maya','paymaya') THEN 'Maya'
+                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet Card'
+                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%credit card%' THEN 'Credit Card'
+                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%debit%' THEN 'Debit Card'
+                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fuel%' THEN 'Petron E-Fuel'
+                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%credit account%' OR LOWER(COALESCE(payment_method,'')) IN ('credit') THEN 'Credit Account'
                         WHEN LOWER(COALESCE(payment_method,'')) LIKE '%cash%' OR COALESCE(payment_method,'') = '' THEN 'Cash'
-                        ELSE 'Charge Account'
+                        ELSE COALESCE(NULLIF(payment_method,''), 'Cash')
                     END AS payment_method,
                     COUNT(*) AS transactions,
                     SUM(COALESCE(total_amount, 0)) AS amount
@@ -169,11 +173,15 @@ function fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end
             $q = $pdo->prepare("
                 SELECT 
                     CASE
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%card%' AND LOWER(COALESCE(payment_method,'')) NOT LIKE '%fleet%' THEN 'Card'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(payment_method,'')) LIKE '%maya%' THEN 'GCash'
+                        WHEN LOWER(COALESCE(payment_method,'')) IN ('gcash') THEN 'GCash'
+                        WHEN LOWER(COALESCE(payment_method,'')) IN ('maya','paymaya') THEN 'Maya'
+                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet Card'
+                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%credit card%' THEN 'Credit Card'
+                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%debit%' THEN 'Debit Card'
+                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fuel%' THEN 'Petron E-Fuel'
+                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%credit account%' OR LOWER(COALESCE(payment_method,'')) IN ('credit') THEN 'Credit Account'
                         WHEN LOWER(COALESCE(payment_method,'')) LIKE '%cash%' OR COALESCE(payment_method,'') = '' THEN 'Cash'
-                        ELSE 'Charge Account'
+                        ELSE COALESCE(NULLIF(payment_method,''), 'Cash')
                     END AS payment_method,
                     COUNT(*) AS transactions,
                     SUM(COALESCE(total_amount, 0)) AS amount
@@ -190,11 +198,15 @@ function fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end
             $q = $pdo->prepare("
                 SELECT 
                     CASE
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%card%' AND LOWER(COALESCE(payment_method,'')) NOT LIKE '%fleet%' THEN 'Card'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(payment_method,'')) LIKE '%maya%' THEN 'GCash'
+                        WHEN LOWER(COALESCE(payment_method,'')) IN ('gcash') THEN 'GCash'
+                        WHEN LOWER(COALESCE(payment_method,'')) IN ('maya','paymaya') THEN 'Maya'
+                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet Card'
+                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%credit card%' THEN 'Credit Card'
+                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%debit%' THEN 'Debit Card'
+                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fuel%' THEN 'Petron E-Fuel'
+                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%credit account%' OR LOWER(COALESCE(payment_method,'')) IN ('credit') THEN 'Credit Account'
                         WHEN LOWER(COALESCE(payment_method,'')) LIKE '%cash%' OR COALESCE(payment_method,'') = '' THEN 'Cash'
-                        ELSE 'Charge Account'
+                        ELSE COALESCE(NULLIF(payment_method,''), 'Cash')
                     END AS payment_method,
                     COUNT(*) AS transactions,
                     SUM(COALESCE(total_cost, 0)) AS amount

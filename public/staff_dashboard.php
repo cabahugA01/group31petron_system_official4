@@ -599,57 +599,56 @@ $mt_active_queue_condition = "({$mt_queue_status_expr} IN ({$open_service_status
 // 1. Today's Transactions
 $fuel_count = 0; $merch_count = 0; $jo_count = 0;
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND DATE({$fuel_dt_expr}) BETWEEN ? AND ?");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND DATE({$fuel_dt_expr}) BETWEEN ? AND ? AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected')");
     $stmt->execute([$station_id, $date_from, $date_to]);
     $fuel_count = (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
+
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ? AND DATE({$merch_dt_expr}) BETWEEN ? AND ?");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ? AND DATE({$merch_dt_expr}) BETWEEN ? AND ? AND LOWER(COALESCE(validation_status, '')) NOT IN ('voided','rejected')");
     $stmt->execute([$station_id, $date_from, $date_to]);
     $merch_count = (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
+
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND DATE({$job_dt_expr}) BETWEEN ? AND ?");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND DATE({$job_dt_expr}) BETWEEN ? AND ? AND LOWER(COALESCE(status, '')) NOT IN ('voided','cancelled')");
     $stmt->execute([$station_id, $date_from, $date_to]);
     $jo_count = (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
 $todays_transactions = $fuel_count + $merch_count + $jo_count;
 
-// 2. Today's Sales
+// 2. Today's Sales Breakdown
 $fuel_sales = 0.0; $merch_sales = 0.0; $service_sales = 0.0;
 try {
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE({$fuel_dt_expr}) BETWEEN ? AND ?");
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total_amount),0) FROM fuel_transactions WHERE station_id=? AND DATE({$fuel_dt_expr}) BETWEEN ? AND ? AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected')");
     $stmt->execute([$station_id, $date_from, $date_to]);
     $fuel_sales = (float)$stmt->fetchColumn();
 } catch (Exception $e) {}
 
+// Pure Merchandise Sales (excluding Job Orders / Services)
 try {
-    if ($mt_service_where !== '0=1') {
-        $stmt = $pdo->prepare("SELECT COALESCE(SUM(mt.total_amount),0) FROM merchandise_transactions mt WHERE mt.station_id=? AND DATE({$merch_dt_expr_mt}) BETWEEN ? AND ? AND NOT ({$mt_service_where})");
-    } else {
-        $stmt = $pdo->prepare("SELECT COALESCE(SUM(mt.total_amount),0) FROM merchandise_transactions mt WHERE mt.station_id=? AND DATE({$merch_dt_expr_mt}) BETWEEN ? AND ?");
-    }
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(mt.total_amount),0) FROM merchandise_transactions mt WHERE mt.station_id=? AND DATE({$merch_dt_expr_mt}) BETWEEN ? AND ? AND LOWER(COALESCE(mt.transaction_type,'merchandise')) NOT IN ('job_order','service','combined') AND NULLIF(TRIM(COALESCE(mt.job_order_service,'')),'') IS NULL AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('voided','rejected')");
     $stmt->execute([$station_id, $date_from, $date_to]);
     $merch_sales = (float)$stmt->fetchColumn();
 } catch (Exception $e) {}
 
+// Native Job Orders Service Sales
 try {
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, 0)),0) FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ? AND status IN ('Completed','Verified','finalized','Released')");
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, 0)),0) FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ? AND LOWER(COALESCE(status,'')) NOT IN ('voided','cancelled')");
     $stmt->execute([$station_id, $date_from, $date_to]);
     $service_sales += (float)$stmt->fetchColumn();
 } catch (Exception $e) {}
 
-if ($mt_service_where !== '0=1') {
-    try {
-        $stmt = $pdo->prepare("SELECT COALESCE(SUM(mt.total_amount),0) FROM merchandise_transactions mt WHERE mt.station_id=? AND DATE({$merch_dt_expr_mt}) BETWEEN ? AND ? AND {$mt_service_where} AND (mt.job_order_db_id IS NULL OR mt.job_order_db_id NOT IN (SELECT id FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ?))");
-        $stmt->execute([$station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
-        $service_sales += (float)$stmt->fetchColumn();
-    } catch (Exception $e) {}
-}
+// Service / Job Order Sales recorded in Merchandise Transactions
+try {
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(mt.total_amount),0) FROM merchandise_transactions mt WHERE mt.station_id=? AND DATE({$merch_dt_expr_mt}) BETWEEN ? AND ? AND (LOWER(COALESCE(mt.transaction_type,'')) IN ('job_order','service','combined') OR NULLIF(TRIM(COALESCE(mt.job_order_service,'')),'') IS NOT NULL) AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('voided','rejected')");
+    $stmt->execute([$station_id, $date_from, $date_to]);
+    $service_sales += (float)$stmt->fetchColumn();
+} catch (Exception $e) {}
 
 $todays_sales = $fuel_sales + $merch_sales + $service_sales;
 
-// 2b. Additional requested Staff Dashboard Metrics: Completed Job Orders
+// 2b. Completed Job Orders Metrics
 $completed_jo_today_count = 0;
 try {
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ? AND LOWER(TRIM(COALESCE(status, ''))) IN ('completed','verified','released','finalized')");
@@ -657,13 +656,11 @@ try {
     $completed_jo_today_count += (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
 
-if ($mt_service_where !== '0=1') {
-    try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions mt WHERE mt.station_id=? AND DATE({$merch_dt_expr_mt}) BETWEEN ? AND ? AND {$mt_service_where} AND (LOWER(TRIM(COALESCE(mt.workflow_status,''))) IN ('completed','verified','released','finalized') OR LOWER(TRIM(COALESCE(mt.validation_status,''))) IN ('official','validated','completed','verified') OR LOWER(TRIM(COALESCE(mt.payment_status,''))) IN ('paid','completed')) AND (mt.job_order_db_id IS NULL OR mt.job_order_db_id NOT IN (SELECT id FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ?))");
-        $stmt->execute([$station_id, $date_from, $date_to, $station_id, $date_from, $date_to]);
-        $completed_jo_today_count += (int)$stmt->fetchColumn();
-    } catch (Exception $e) {}
-}
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions mt WHERE mt.station_id=? AND DATE({$merch_dt_expr_mt}) BETWEEN ? AND ? AND (LOWER(COALESCE(mt.transaction_type,'')) IN ('job_order','service','combined') OR NULLIF(TRIM(COALESCE(mt.job_order_service,'')),'') IS NOT NULL) AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('voided','rejected')");
+    $stmt->execute([$station_id, $date_from, $date_to]);
+    $completed_jo_today_count += (int)$stmt->fetchColumn();
+} catch (Exception $e) {}
 
 // Payment Methods Breakdown Today
 $payment_methods_today_map = [
@@ -678,18 +675,19 @@ $payment_methods_today_map = [
 
 $normalize_pm_fn = function($raw) {
     $p = strtolower(trim((string)$raw));
-    if ($p === '' || str_contains($p, 'cash')) return 'Cash';
-    if (str_contains($p, 'debit')) return 'Debit Card';
-    if (str_contains($p, 'credit card') || str_contains($p, 'card') || str_contains($p, 'visa') || str_contains($p, 'mastercard')) return 'Credit Card';
+    if ($p === '') return 'Cash';
     if (str_contains($p, 'gcash')) return 'GCash';
     if (str_contains($p, 'maya') || str_contains($p, 'paymaya')) return 'Maya';
     if (str_contains($p, 'fleet') || str_contains($p, 'petron fleet')) return 'Petron Fleet Card';
+    if (str_contains($p, 'debit')) return 'Debit Card';
+    if (str_contains($p, 'credit card') || str_contains($p, 'visa') || str_contains($p, 'mastercard')) return 'Credit Card';
     if (str_contains($p, 'credit') || str_contains($p, 'account') || str_contains($p, 'suki') || str_contains($p, 'utang') || str_contains($p, 'receivable') || str_contains($p, 'ar')) return 'Credit Account';
+    if (str_contains($p, 'cash')) return 'Cash';
     return 'Cash';
 };
 
 try {
-    $stmt = $pdo->prepare("SELECT COALESCE(payment_method, 'Cash') AS pm, total_amount FROM fuel_transactions WHERE station_id=? AND DATE({$fuel_dt_expr}) BETWEEN ? AND ?");
+    $stmt = $pdo->prepare("SELECT COALESCE(payment_method, 'Cash') AS pm, total_amount FROM fuel_transactions WHERE station_id=? AND DATE({$fuel_dt_expr}) BETWEEN ? AND ? AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected')");
     $stmt->execute([$station_id, $date_from, $date_to]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $cat = $normalize_pm_fn($r['pm']);
@@ -698,7 +696,7 @@ try {
 } catch (Exception $e) {}
 
 try {
-    $stmt = $pdo->prepare("SELECT COALESCE(payment_method, 'Cash') AS pm, total_amount FROM merchandise_transactions WHERE station_id=? AND DATE({$merch_dt_expr}) BETWEEN ? AND ?");
+    $stmt = $pdo->prepare("SELECT COALESCE(payment_method, 'Cash') AS pm, total_amount FROM merchandise_transactions WHERE station_id=? AND DATE({$merch_dt_expr}) BETWEEN ? AND ? AND LOWER(COALESCE(validation_status, '')) NOT IN ('voided','rejected')");
     $stmt->execute([$station_id, $date_from, $date_to]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $cat = $normalize_pm_fn($r['pm']);
@@ -707,7 +705,7 @@ try {
 } catch (Exception $e) {}
 
 try {
-    $stmt = $pdo->prepare("SELECT COALESCE(payment_mode, 'Cash') AS pm, total_cost FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ?");
+    $stmt = $pdo->prepare("SELECT COALESCE(payment_method, 'Cash') AS pm, COALESCE(total_cost, estimated_cost, 0) AS total_cost FROM job_orders WHERE station_id=? AND DATE({$job_dt_expr}) BETWEEN ? AND ? AND LOWER(COALESCE(status, '')) NOT IN ('voided','cancelled')");
     $stmt->execute([$station_id, $date_from, $date_to]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $cat = $normalize_pm_fn($r['pm']);
@@ -2766,8 +2764,13 @@ include __DIR__ . '/../partials/header.php';
 (function () {
     'use strict';
 
-    // Base URL for live_sync AJAX endpoint on this page
-    const LIVE_SYNC_PAGE_URL = window.location.pathname + '?live_sync=1';
+    // Base URL for live_sync AJAX endpoint on this page (preserves active date filters)
+    function getLiveSyncUrl() {
+        const url = new URL(window.location.href);
+        url.searchParams.set('live_sync', '1');
+        url.searchParams.set('_', String(Date.now()));
+        return url.toString();
+    }
 
     let _lastVersion = <?= json_encode($dashboard_version ?? '') ?>;
     let _inFlight    = false;
@@ -2798,7 +2801,7 @@ include __DIR__ . '/../partials/header.php';
         try {
             const ctrl = new AbortController();
             const tid  = setTimeout(() => ctrl.abort(), 6000);
-            const res  = await fetch(LIVE_SYNC_PAGE_URL, {
+            const res  = await fetch(getLiveSyncUrl(), {
                 signal: ctrl.signal,
                 credentials: 'same-origin',
                 cache: 'no-store',

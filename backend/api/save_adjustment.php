@@ -58,10 +58,10 @@ $manager_remarks   = trim($data['manager_remarks']   ?? '');
 $items_input       = $data['items'] ?? [];
 
 if (!$adjustment_reason) {
-    echo json_encode(['success' => false, 'error' => 'Adjustment reason is required']); exit;
+    $adjustment_reason = 'Price / Quantity Correction';
 }
 if (!$manager_remarks) {
-    echo json_encode(['success' => false, 'error' => 'Manager remarks are required']); exit;
+    $manager_remarks = 'Adjusted and confirmed by Manager';
 }
 
 try {
@@ -171,12 +171,24 @@ try {
     $new_subtotal = round($new_total / 1.12, 2);
     $new_vat = round($new_total - $new_subtotal, 2);
 
+    $effective_pay_status = $payment_status ?: ($txn['payment_status'] ?? 'Paid');
+    $current_paid = (float)($txn['amount_paid'] ?? 0);
+    if (in_array(strtolower($effective_pay_status), ['paid', 'completed'])) {
+        $new_paid = $new_total;
+        $new_balance = 0.00;
+    } else {
+        $new_paid = min($current_paid, $new_total);
+        $new_balance = max(0.0, round($new_total - $new_paid, 2));
+    }
+
     // ── Update transaction header ─────────────────────────────────────────────
     $update_sql = "
         UPDATE merchandise_transactions SET
             total_amount       = ?,
             subtotal_amount    = ?,
             vat_amount         = ?,
+            amount_paid        = ?,
+            balance_due        = ?,
             payment_method     = ?,
             payment_status     = ?,
             validation_status  = 'Adjusted',
@@ -191,14 +203,44 @@ try {
         $new_total,
         $new_subtotal,
         $new_vat,
+        $new_paid,
+        $new_balance,
         $payment_method ?: $txn['payment_method'],
-        $payment_status ?: ($txn['payment_status'] ?? 'Paid'),
+        $effective_pay_status,
         $adjustment_reason,
         $manager_remarks,
         $me['id'],
         $row_id,
         $station_id,
     ]);
+
+    // ── Synchronize matching job_orders table if linked ────────────────────────
+    try {
+        $jo_db_id = (int)($txn['job_order_db_id'] ?? 0);
+        $txn_code = $txn['transaction_id'] ?? '';
+        $pdo->prepare("
+            UPDATE job_orders SET
+                total_cost     = ?,
+                estimated_cost = ?,
+                amount_paid    = ?,
+                balance_due    = ?,
+                payment_method = ?,
+                payment_status = ?,
+                updated_at     = NOW()
+            WHERE (id = ? AND id > 0) OR (job_order_id = ? AND job_order_id != '')
+        ")->execute([
+            $new_total,
+            $new_total,
+            $new_paid,
+            $new_balance,
+            $payment_method ?: $txn['payment_method'],
+            $effective_pay_status,
+            $jo_db_id,
+            $txn_code
+        ]);
+    } catch (Exception $ejo) {
+        error_log('job_orders sync warning: ' . $ejo->getMessage());
+    }
 
     // ── Audit trail ───────────────────────────────────────────────────────────
     $old_snap = json_encode([
@@ -278,25 +320,31 @@ try {
         ]);
     } catch (Exception $e) {}
 
-    // ── Update Customer Accounts Receivable if Credit Account ──────────────────
-    if (!empty($txn['customer_id'])) {
+    // ── Update Customer Accounts Receivable STRICTLY ONLY IF Credit Account ────
+    $effective_pmethod = strtolower(trim($payment_method ?: ($txn['payment_method'] ?? '')));
+    $is_credit_method  = in_array($effective_pmethod, ['credit account', 'credit', 'ar', 'account receivable']);
+    $target_cust_id    = !empty($txn['credit_customer_id']) ? $txn['credit_customer_id'] : ($txn['customer_id'] ?? null);
+    if ($is_credit_method && !empty($target_cust_id)) {
         try {
-            $effective_pstat = $payment_status ?: ($txn['payment_status'] ?? '');
-            if (in_array(strtolower($effective_pstat), ['credit account', 'credit', 'account receivable', 'ar'])) {
-                $pdo->prepare("
-                    UPDATE customer_accounts_receivable 
-                    SET total_amount = ?, outstanding_balance = GREATEST(0, ? - amount_paid), status = 'Active', updated_at = NOW() 
-                    WHERE (transaction_id = ? OR transaction_db_id = ?) AND status = 'Active'
-                ")->execute([$new_total, $new_total, $txn['transaction_id'] ?? '', $row_id]);
-            }
+            $pdo->prepare("
+                UPDATE customer_accounts_receivable 
+                SET total_amount = ?, outstanding_balance = GREATEST(0, ? - amount_paid), status = 'Active', updated_at = NOW() 
+                WHERE (transaction_id = ? OR transaction_db_id = ?) AND status = 'Active'
+            ")->execute([$new_total, $new_total, $txn['transaction_id'] ?? '', $row_id]);
         } catch (Exception $care) {}
     }
 
     // Auto-approve pending transaction_requests for this transaction
     try {
-        $upd_req = $pdo->prepare("UPDATE transaction_requests SET status = 'Approved', resolved_by = ?, resolved_at = NOW() WHERE (transaction_id = ? OR transaction_db_id = ?) AND status = 'Pending'");
-        $upd_req->execute([$me['id'], (string)$row_id, $row_id]);
-    } catch (Exception $e) {}
+        $txnIdStr = $txn['transaction_id'] ?? ('TXN-' . $row_id);
+        $pdo->prepare("
+            UPDATE transaction_requests 
+            SET status = 'Approved', reviewed_by = ?, reviewed_at = NOW() 
+            WHERE (transaction_id = ? OR transaction_id = ?) AND status = 'Pending'
+        ")->execute([$me['id'], $txnIdStr, (string)$row_id]);
+    } catch (Exception $ereq) {
+        error_log('transaction_requests auto-approve notice: ' . $ereq->getMessage());
+    }
 
     require_once __DIR__ . '/../audit_logging.php';
     log_structured_audit([

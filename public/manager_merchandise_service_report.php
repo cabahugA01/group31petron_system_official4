@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * DAILY MERCHANDISE & SERVICE SALES REPORT - Complete Implementation
  * Standalone page with 6 comprehensive sections
@@ -407,10 +407,6 @@ require_once __DIR__ . '/../partials/header.php';
                     <span class="summary-label">Labor Income</span>
                     <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift1']['labor_income'] ?? 0, 2) ?></span>
                 </div>
-                <div class="summary-item">
-                    <span class="summary-label">Parts Sales</span>
-                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift1']['parts_sales'] ?? 0, 2) ?></span>
-                </div>
                 <div class="summary-item summary-total">
                     <span class="summary-label">Grand Total</span>
                     <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift1']['grand_total'] ?? 0, 2) ?></span>
@@ -427,10 +423,6 @@ require_once __DIR__ . '/../partials/header.php';
                 <div class="summary-item">
                     <span class="summary-label">Labor Income</span>
                     <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift2']['labor_income'] ?? 0, 2) ?></span>
-                </div>
-                <div class="summary-item">
-                    <span class="summary-label">Parts Sales</span>
-                    <span class="summary-value">₱<?= number_format($reportData['shift_summary']['shift2']['parts_sales'] ?? 0, 2) ?></span>
                 </div>
                 <div class="summary-item summary-total">
                     <span class="summary-label">Grand Total</span>

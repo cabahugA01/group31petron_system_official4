@@ -1246,21 +1246,21 @@ try {
     <div class="vt-table-wrapper">
     <table class="vt-table" style="table-layout:fixed;width:100%;">
         <colgroup>
-            <col style="width:7.5%;"><!-- OR NO. -->
-            <col style="width:8.5%;"><!-- TXN ID -->
-            <col style="width:7%;"><!-- CUSTOMER -->
-            <col style="width:7.5%;"><!-- TYPE -->
+            <col style="width:7%;"><!-- OR NO. -->
+            <col style="width:8%;"><!-- TXN ID -->
+            <col style="width:6.5%;"><!-- CUSTOMER -->
+            <col style="width:7%;"><!-- TYPE -->
             <col style="width:10%;"><!-- PRODUCTS -->
-            <col style="width:8%;"><!-- SERVICE TYPE -->
+            <col style="width:7.5%;"><!-- SERVICE TYPE -->
             <col style="width:4%;"><!-- SVC FEE -->
             <col style="width:4%;"><!-- LABOR FEE -->
-            <col style="width:4.5%;"><!-- PLATE NO. -->
+            <col style="width:4%;"><!-- PLATE NO. -->
             <col style="width:4.5%;"><!-- TOTAL -->
             <col style="width:5%;"><!-- PAYMENT -->
             <col style="width:3.5%;"><!-- SHIFT -->
             <col style="width:5%;"><!-- STAFF -->
-            <col style="width:7.5%;"><!-- STATUS -->
-            <col style="width:7.5%;"><!-- DATE & TIME -->
+            <col style="width:9.5%;"><!-- STATUS -->
+            <col style="width:6.5%;"><!-- DATE & TIME -->
             <col style="width:8%;"><!-- ACTIONS -->
         </colgroup>
         <thead>
@@ -1269,10 +1269,10 @@ try {
                 <th style="white-space:nowrap;">TXN ID</th>
                 <th style="white-space:nowrap;">CUSTOMER</th>
                 <th style="white-space:nowrap;">TYPE</th>
-                <th>PRODUCTS</th>
-                <th>SERVICE TYPE</th>
+                <th style="white-space:nowrap;">PRODUCTS</th>
+                <th style="white-space:nowrap;">SERVICE TYPE</th>
                 <th style="text-align:right;white-space:nowrap;">SVC FEE</th>
-                <th style="text-align:right;white-space:nowrap;">LABOR FEE</th>
+                <th style="text-align:right;white-space:nowrap;">LABOR</th>
                 <th style="text-align:center;white-space:nowrap;">PLATE NO.</th>
                 <th style="text-align:right;white-space:nowrap;">TOTAL</th>
                 <th style="white-space:nowrap;">PAYMENT</th>
@@ -1484,7 +1484,7 @@ try {
                     <!-- Staff Encoder column -->
                     <td style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#475569;" title="<?php echo htmlspecialchars($r['staff_name']); ?>"><?php echo htmlspecialchars($r['staff_name']); ?></td>
                     <!-- Status column with badge -->
-                    <td style="text-align:center;white-space:nowrap;">
+                    <td style="text-align:center;white-space:nowrap;overflow:hidden;padding:4px 2px;">
                         <?php
                         $src_key = $r['_source'] . '_' . $r['row_id'];
                         $txn_key = $r['_source'] . '_' . $r['txn_id'];
@@ -1493,17 +1493,17 @@ try {
                         $vst = strtolower(trim($r['validation_status'] ?? 'completed'));
                         $wst = strtolower(trim($r['workflow_status'] ?? ''));
                         
-                        $has_adj_req  = ($pending_req && ($pending_req['request_type'] ?? '') === 'Adjustment');
-                        $has_void_req = ($pending_req && ($pending_req['request_type'] ?? '') === 'Void');
+                        $has_adj_req  = ($pending_req && ($pending_req['request_type'] ?? '') === 'Adjustment' && $vst !== 'adjusted' && $vst !== 'voided');
+                        $has_void_req = ($pending_req && ($pending_req['request_type'] ?? '') === 'Void' && $vst !== 'voided');
                         
-                        if ($has_void_req) {
-                            echo '<span class="badge badge-red" style="white-space:nowrap;"><i class="fas fa-clock"></i> Void Requested</span>';
-                        } elseif ($has_adj_req) {
-                            echo '<span class="badge badge-orange" style="white-space:nowrap;"><i class="fas fa-clock"></i> Adjustment Requested</span>';
-                        } elseif ($vst === 'voided') {
-                            echo '<span class="badge badge-red" style="white-space:nowrap;"><i class="fas fa-ban"></i> Voided</span>';
+                        if ($vst === 'voided') {
+                            echo '<span class="badge badge-red" style="white-space:nowrap;font-size:10.5px;padding:3px 6px;display:inline-block;vertical-align:middle;"><i class="fas fa-ban"></i> Voided</span>';
                         } elseif ($vst === 'adjusted') {
-                            echo '<span class="badge badge-purple" style="white-space:nowrap;"><i class="fas fa-check-circle"></i> Adjusted</span>';
+                            echo '<span class="badge badge-purple" style="white-space:nowrap;font-size:10.5px;padding:3px 6px;display:inline-block;vertical-align:middle;"><i class="fas fa-check-circle"></i> Adjusted</span>';
+                        } elseif ($has_void_req) {
+                            echo '<span class="badge badge-red" style="white-space:nowrap;font-size:10.5px;padding:3px 5px;display:inline-block;max-width:100%;text-overflow:ellipsis;overflow:hidden;vertical-align:middle;" title="Void Requested"><i class="fas fa-clock"></i> Void Requested</span>';
+                        } elseif ($has_adj_req) {
+                            echo '<span class="badge badge-orange" style="white-space:nowrap;font-size:10.5px;padding:3px 5px;display:inline-block;max-width:100%;text-overflow:ellipsis;overflow:hidden;vertical-align:middle;" title="Adjustment Requested"><i class="fas fa-clock"></i> Adjustment Requested</span>';
                         } elseif ($wst === 'in_progress' || $wst === 'in progress') {
                             echo '<span class="badge badge-blue" style="white-space:nowrap;"><i class="fas fa-spinner"></i> In Progress</span>';
                         } elseif ($wst === 'released') {
@@ -1718,51 +1718,6 @@ try {
           
         </div>
 
-        <!-- Inventory and Sales Impact Preview Row -->
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
-          <!-- Inventory Impact -->
-          <div>
-            <div style="font-size:11px;font-weight:800;color:#16a34a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">
-              <i class="fas fa-cubes"></i> Inventory Impact
-            </div>
-            <div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:8px;padding:12px;min-height:90px;display:flex;flex-direction:column;justify-content:space-between;">
-              <div>
-                <div style="font-weight:700;color:#15803d;font-size:11px;margin-bottom:4px;">Inventory To Restore:</div>
-                <div id="voidInventoryImpactList" style="display:flex;flex-direction:column;gap:3px;color:#166534;font-size:11px;font-weight:600;">
-                  <!-- âœ” Product Name (+Qty) -->
-                </div>
-              </div>
-              <div style="font-size:10px;color:#15803d;margin-top:6px;font-style:italic;">
-                These quantities will automatically return to inventory after voiding.
-              </div>
-            </div>
-          </div>
-          
-          <!-- Sales Impact -->
-          <div>
-            <div style="font-size:11px;font-weight:800;color:#ea580c;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">
-              <i class="fas fa-chart-bar"></i> Sales Impact
-            </div>
-            <div style="border:1px solid #fed7aa;background:#fff7ed;border-radius:8px;padding:12px;min-height:90px;display:flex;flex-direction:column;justify-content:space-between;">
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                <div>
-                  <span style="display:block;font-size:10px;font-weight:700;color:#c2410c;">Current Sale</span>
-                  <strong id="voidSalesCurrent" style="font-size:13px;color:#0f172a;">₱0.00</strong>
-                </div>
-                <div>
-                  <span style="display:block;font-size:10px;font-weight:700;color:#c2410c;">After Void</span>
-                  <strong id="voidSalesAfter" style="color:#dc2626;font-size:13px;">-₱0.00</strong>
-                </div>
-              </div>
-              <div style="font-size:10px;color:#9a3412;margin-top:4px;font-weight:600;display:flex;flex-direction:column;gap:2px;">
-                <div><i class="fas fa-check" style="color:#ea580c;margin-right:4px;"></i>Sales Report: <span id="voidSalesDiff">-₱0.00</span></div>
-                <div><i class="fas fa-check" style="color:#ea580c;margin-right:4px;"></i>Payment Report Updated</div>
-                <div><i class="fas fa-check" style="color:#ea580c;margin-right:4px;"></i>Customer Purchase History Updated</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Void Details & Manager Verification -->
         <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:14px; margin-bottom:16px;">
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
@@ -1794,15 +1749,12 @@ try {
           
           <!-- Manager Auth -->
           <div style="padding:10px; background:#fff; border:1px solid #e2e8f0; border-radius:6px;">
-            <div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:6px;"><i class="fas fa-key" style="color:#2563eb;margin-right:4px;"></i>Manager Authentication (Recommended)</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-              <div>
-                <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:3px;">Confirm Manager Password</label>
-                <input type="password" id="voidAuthPassword" oninput="validateVoidForm()" placeholder="Password..." style="width:100%;height:28px;padding:0 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;box-sizing:border-box;">
-              </div>
-              <div>
-                <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:3px;">Manager PIN</label>
-                <input type="password" id="voidAuthPin" maxlength="6" oninput="validateVoidForm()" placeholder="PIN..." style="width:100%;height:28px;padding:0 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;box-sizing:border-box;">
+            <div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:6px;"><i class="fas fa-lock" style="color:#2563eb;margin-right:4px;"></i>Manager Authentication <span style="color:#dc2626;">*</span></div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:3px;">Confirm Manager Password <span style="color:#dc2626;">*</span></label>
+              <div style="position:relative;width:100%;">
+                <input type="password" id="voidAuthPassword" oninput="validateVoidForm()" placeholder="Enter manager password..." style="width:100%;height:34px;padding:0 36px 0 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;box-sizing:border-box;">
+                <i class="fas fa-eye" id="toggleVoidPasswordIcon" onclick="toggleVoidPasswordVisibility()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#64748b;font-size:14px;padding:4px;z-index:2;" title="Show/Hide Password"></i>
               </div>
             </div>
           </div>
@@ -1816,15 +1768,15 @@ try {
           </label>
           <label style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#334155;cursor:pointer;user-select:none;">
             <input type="checkbox" class="void-checklist" onchange="validateVoidForm()" style="margin-top:2px;">
-            <span>I verified the inventory restoration.</span>
+            <span>I verified the transaction details for voiding.</span>
           </label>
           <label style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#334155;cursor:pointer;user-select:none;">
             <input type="checkbox" class="void-checklist" onchange="validateVoidForm()" style="margin-top:2px;">
-            <span>I understand sales reports will be recalculated.</span>
+            <span>I understand sales reports will be recalculated automatically.</span>
           </label>
           <label style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#334155;cursor:pointer;user-select:none;">
             <input type="checkbox" class="void-checklist" onchange="validateVoidForm()" style="margin-top:2px;">
-            <span>I understand customer history will be updated.</span>
+            <span>I understand customer history will be updated automatically.</span>
           </label>
           <label style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#334155;cursor:pointer;user-select:none;">
             <input type="checkbox" class="void-checklist" onchange="validateVoidForm()" style="margin-top:2px;">
@@ -1837,8 +1789,7 @@ try {
       
       <div class="vt-modal-footer" style="padding:12px 20px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:8px;">
         <button type="button" class="vt-btn vt-btn-reset" onclick="closeVoidModal()">Cancel</button>
-        <button type="button" class="vt-btn" onclick="previewVoidImpact()" style="border-color:#ea580c;color:#ea580c;height:36px;padding:0 14px;border-radius:7px;font-size:13px;font-weight:700;"><i class="fas fa-chart-line"></i> Preview Impact</button>
-        <button type="button" id="confirmVoidBtnNew" onclick="submitVoidNew()" disabled style="background:#dc2626;color:#fff;border:none;height:36px;padding:0 20px;border-radius:7px;font-size:13px;font-weight:700;cursor:not-allowed;opacity:0.6;display:inline-flex;align-items:center;gap:6px;">
+        <button type="button" id="confirmVoidBtnNew" onclick="submitVoidNew()" style="background:#dc2626;color:#fff;border:none;height:38px;padding:0 22px;border-radius:7px;font-size:13.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(220,38,38,0.25);">
           <i class="fas fa-ban"></i> Confirm Void
         </button>
       </div>
@@ -2489,6 +2440,97 @@ function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, 
             }
             _adjItems = data.items || [];
             const fmtDate = txnDate ? new Date(txnDate).toLocaleString('en-PH') : '—';
+            const adjReq = data.adjustment_request;
+            const esc = function(str) { return str ? String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : ''; };
+            let reqNoticeHtml = '';
+
+            if (adjReq) {
+                const reqDate = adjReq.requested_at ? new Date(adjReq.requested_at).toLocaleString('en-PH') : '';
+                reqNoticeHtml = `
+                <div style="margin-bottom:16px;padding:14px;background:#f0f9ff;border:1.5px solid #93c5fd;border-radius:10px;font-size:12.5px;color:#1e3a8a;">
+                  <div style="font-weight:800;font-size:13px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;color:#1d4ed8;border-bottom:1px solid #bfdbfe;padding-bottom:6px;">
+                    <span><i class="fas fa-edit" style="margin-right:6px;"></i> STAFF ADJUSTMENT REQUEST DETAILS</span>
+                    <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;">Status: ${esc(adjReq.status || 'Pending')}</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;">
+                    ${adjReq.requested_by_name ? `<div><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Requested By Staff</span><strong>${esc(adjReq.requested_by_name)}</strong></div>` : ''}
+                    ${reqDate ? `<div><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Request Date & Time</span><span>${reqDate}</span></div>` : ''}
+                    ${adjReq.correction_field ? `<div><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Field To Correct</span><strong style="color:#002F70">${esc(adjReq.correction_field)}</strong></div>` : ''}
+                    ${adjReq.current_value ? `<div><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Current Value</span><span style="color:#ef4444;font-weight:600">${esc(adjReq.current_value)}</span></div>` : ''}
+                    ${adjReq.requested_value ? `<div style="grid-column:span 2;"><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Requested Correct Value</span><strong style="color:#16a34a;font-size:13px;background:#dcfce7;padding:2px 8px;border-radius:4px;display:inline-block;margin-top:2px;">${esc(adjReq.requested_value)}</strong></div>` : ''}
+                    ${adjReq.request_reason ? `<div style="grid-column:span 2;"><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Staff Reason for Adjustment</span><strong style="color:#1e293b">${esc(adjReq.request_reason)}</strong></div>` : ''}
+                    ${adjReq.remarks ? `<div style="grid-column:span 2;"><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Staff Remarks</span><span style="color:#334155">${esc(adjReq.remarks)}</span></div>` : ''}
+                  </div>
+                </div>`;
+            }
+
+            // ── Auto-reflect staff's requested price / quantity ───────────────
+            let targetAdjustIdx = -1;
+            let targetNewPrice  = null;
+            let targetNewQty    = null;
+
+            if (adjReq && adjReq.requested_value) {
+                const reqValClean = String(adjReq.requested_value).trim();
+                const parsedNum   = parseFloat(reqValClean.replace(/[^0-9.]/g, ''));
+
+                if (!isNaN(parsedNum)) {
+                    const fieldLower  = String(adjReq.correction_field || '').toLowerCase();
+                    const reasonLower = String(adjReq.request_reason || '').toLowerCase();
+
+                    if (fieldLower.includes('quantity') || fieldLower.includes('qty')) {
+                        targetNewQty = parseInt(parsedNum, 10) || 1;
+                        targetAdjustIdx = 0;
+                    } else if (fieldLower.includes('labor')) {
+                        _adjItems.forEach((item, idx) => {
+                            const nameLower = (item.product_name || '').toLowerCase();
+                            if (nameLower.includes('labor') || nameLower.includes('service')) {
+                                targetAdjustIdx = idx;
+                            }
+                        });
+                        if (targetAdjustIdx === -1 && _adjItems.length > 0) {
+                            targetAdjustIdx = _adjItems.length - 1;
+                        }
+                        targetNewPrice = parsedNum;
+                    } else if (fieldLower.includes('service')) {
+                        _adjItems.forEach((item, idx) => {
+                            if (item.item_type === 'service') {
+                                targetAdjustIdx = idx;
+                            }
+                        });
+                        if (targetAdjustIdx === -1 && _adjItems.length > 0) targetAdjustIdx = 0;
+                        targetNewPrice = parsedNum;
+                    } else {
+                        let found = false;
+                        const curValNum = parseFloat(String(adjReq.current_value || '').replace(/[^0-9.]/g, ''));
+                        _adjItems.forEach((item, idx) => {
+                            if (!found && !isNaN(curValNum) && (parseFloat(item.unit_price) === curValNum || parseFloat(item.subtotal) === curValNum)) {
+                                targetAdjustIdx = idx;
+                                targetNewPrice = parsedNum;
+                                found = true;
+                            }
+                        });
+                        if (!found && _adjItems.length > 0) {
+                            targetAdjustIdx = 0;
+                            targetNewPrice = parsedNum;
+                        }
+                    }
+                }
+            }
+
+            const initialReason = (adjReq && adjReq.request_reason) ? adjReq.request_reason : 'Price / Quantity Correction';
+
+            const activePayMethod = (function(pm) {
+                if (!pm) return 'Cash';
+                pm = String(pm).trim();
+                if (pm === 'Credit' || pm === 'Credit Account' || pm === 'Account Receivable') return 'Credit Account';
+                if (pm === 'Fleet Card' || pm === 'Petron Fleet Card') return 'Petron Fleet Card';
+                if (pm === 'Card' || pm === 'Credit Card') return 'Credit Card';
+                if (pm === 'Debit Card') return 'Debit Card';
+                return pm;
+            })(payMethod);
+
+            const validPayMethods = ['Cash', 'Credit Card', 'Debit Card', 'GCash', 'Maya', 'Petron Fleet Card', 'Credit Account'];
+
             let html = `
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;margin-bottom:16px;padding:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:13px;">
               <div><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Transaction ID</span><strong style="font-family:monospace">${txnId}</strong></div>
@@ -2497,6 +2539,7 @@ function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, 
               <div><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Date</span>${fmtDate}</div>
               <div><span style="color:#64748b;font-size:11px;font-weight:700;display:block">Staff Encoder</span>${staffName}</div>
             </div>
+            ${reqNoticeHtml}
             <div style="margin-bottom:14px;">
               <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">
                 <i class="fas fa-edit"></i> Edit Items
@@ -2516,6 +2559,17 @@ function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, 
             } else {
                 _adjItems.forEach((item, idx) => {
                     const isSvc = item.item_type === 'service';
+                    const isLabor = (item.product_name || '').toLowerCase().includes('labor');
+                    let itemQty = parseInt(item.quantity) || 1;
+                    let itemPrice = parseFloat(item.unit_price) || 0;
+
+                    if (idx === targetAdjustIdx) {
+                        if (targetNewQty !== null) itemQty = targetNewQty;
+                        if (targetNewPrice !== null) itemPrice = targetNewPrice;
+                    }
+
+                    const itemSub = itemQty * itemPrice;
+
                     html += `
                     <tr style="border-bottom:1px solid #f1f5f9;">
                       <td style="padding:8px 10px;font-weight:600">${item.product_name}</td>
@@ -2525,19 +2579,24 @@ function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, 
                         </span>
                       </td>
                       <td style="padding:8px 10px;text-align:center;">
-                        <input type="number" min="0" step="0.01"
-                          id="adj_qty_${idx}" value="${parseFloat(item.quantity)}"
-                          onchange="recalcAdjRow(${idx})"
-                          style="width:70px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:5px;text-align:center;font-size:12px;">
+                        ${isLabor ? `
+                          <span style="color:#64748b;font-weight:700;">—</span>
+                          <input type="hidden" id="adj_qty_${idx}" value="1">
+                        ` : `
+                          <input type="number" min="1" step="1"
+                            id="adj_qty_${idx}" value="${itemQty}"
+                            oninput="recalcAdjRow(${idx})" onchange="recalcAdjRow(${idx})"
+                            style="width:70px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:5px;text-align:center;font-size:12px;${idx === targetAdjustIdx && targetNewQty !== null ? 'background:#dcfce7;border-color:#86efac;font-weight:700;' : ''}">
+                        `}
                       </td>
                       <td style="padding:8px 10px;text-align:right;">
                         <input type="number" min="0" step="0.01"
-                          id="adj_price_${idx}" value="${parseFloat(item.unit_price)}"
+                          id="adj_price_${idx}" value="${itemPrice}"
                           onchange="recalcAdjRow(${idx})"
-                          style="width:90px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:5px;text-align:right;font-size:12px;">
+                          style="width:90px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:5px;text-align:right;font-size:12px;${idx === targetAdjustIdx && targetNewPrice !== null ? 'background:#dcfce7;border-color:#86efac;font-weight:700;' : ''}">
                       </td>
                       <td style="padding:8px 10px;text-align:right;font-weight:700;color:#002F70" id="adj_sub_${idx}">
-                        ₱${parseFloat(item.subtotal).toFixed(2)}
+                        ₱${itemSub.toFixed(2)}
                       </td>
                     </tr>`;
                 });
@@ -2555,8 +2614,8 @@ function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, 
               <div>
                 <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Payment Method</label>
                 <select id="adjPayMethod" style="width:100%;height:36px;padding:0 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;background:#fff">
-                  ${['Cash','GCash','Maya','Bank Transfer','Credit','Card','E-Wallet','Petron E-Fuel','Fleet Card'].map(m =>
-                    `<option value="${m}" ${m===payMethod?'selected':''}>${m}</option>`).join('')}
+                  ${validPayMethods.map(m =>
+                    `<option value="${m}" ${m===activePayMethod?'selected':''}>${m}</option>`).join('')}
                 </select>
               </div>
               <div>
@@ -2569,14 +2628,27 @@ function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, 
             </div>
             <div style="margin-bottom:12px;">
               <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Adjustment Reason <span style="color:#dc2626">*</span></label>
-              <textarea id="adjReason" rows="2" placeholder="Why is this adjustment being made?" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+              <textarea id="adjReason" rows="2" placeholder="Why is this adjustment being made?" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;">${esc(initialReason)}</textarea>
             </div>
             <div>
               <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Manager Remarks <span style="color:#dc2626">*</span></label>
-              <textarea id="adjManagerRemarks" rows="2" placeholder="Manager's notes on this adjustment..." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+              <textarea id="adjManagerRemarks" rows="2" placeholder="Manager's notes on this adjustment..." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;">Adjusted and approved by Manager</textarea>
             </div>`;
 
             document.getElementById('adjustModalBody').innerHTML = html;
+
+            // Update button to Approve Adjustment when staff requested adjustment
+            const saveBtn = document.getElementById('saveAdjustBtn');
+            if (saveBtn) {
+                if (adjReq) {
+                    saveBtn.style.background = '#16a34a';
+                    saveBtn.innerHTML = '<i class="fas fa-check-circle"></i> Approve Adjustment';
+                } else {
+                    saveBtn.style.background = '#d97706';
+                    saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Adjustment';
+                }
+            }
+
             recalcAdjTotal();
         })
         .catch(() => {
@@ -2612,10 +2684,10 @@ function closeAdjustModal() {
 }
 
 function submitAdjustment() {
-    const reason  = document.getElementById('adjReason')?.value.trim();
-    const remarks = document.getElementById('adjManagerRemarks')?.value.trim();
-    if (!reason)  { alert('Please enter the Adjustment Reason.'); return; }
-    if (!remarks) { alert('Please enter Manager Remarks.'); return; }
+    const reason  = document.getElementById('adjReason')?.value.trim() || 'Price / Quantity Correction';
+    const remarks = document.getElementById('adjManagerRemarks')?.value.trim() || 'Adjusted and confirmed by Manager';
+    if (!reason)  { showToast('Please enter the Adjustment Reason.', 'error'); document.getElementById('adjReason')?.focus(); return; }
+    if (!remarks) { showToast('Please enter Manager Remarks.', 'error'); document.getElementById('adjManagerRemarks')?.focus(); return; }
 
     const btn = document.getElementById('saveAdjustBtn');
     btn.disabled = true;
@@ -2623,7 +2695,7 @@ function submitAdjustment() {
 
     const itemsPayload = (_adjItems || []).map((item, idx) => ({
         item_id   : item.id,
-        quantity  : parseFloat(document.getElementById('adj_qty_'   + idx)?.value || item.quantity),
+        quantity  : parseInt(document.getElementById('adj_qty_'   + idx)?.value || item.quantity, 10),
         unit_price: parseFloat(document.getElementById('adj_price_' + idx)?.value || item.unit_price),
     }));
 
@@ -2645,31 +2717,18 @@ function submitAdjustment() {
         btn.innerHTML = '<i class="fas fa-save"></i> Save Adjustment';
         if (data.success) {
             closeAdjustModal();
-            // Show success banner at top of page
-            let banner = document.getElementById('adjSuccessBanner');
-            if (!banner) {
-                banner = document.createElement('div');
-                banner.id = 'adjSuccessBanner';
-                banner.style.cssText = 'background:#d4edda;color:#155724;border:1px solid #c3e6cb;border-radius:8px;padding:12px 18px;margin-bottom:14px;display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;';
-                const stockPage = document.querySelector('.stock-page');
-                if (stockPage) stockPage.insertBefore(banner, stockPage.firstChild);
-                else document.body.insertBefore(banner, document.body.firstChild);
-            }
-            banner.innerHTML = '<i class="fas fa-check-circle" style="font-size:16px;"></i> Transaction adjusted successfully. Old total: &#8369;' + parseFloat(data.old_total||0).toFixed(2) + ' &rarr; New total: &#8369;' + parseFloat(data.new_total||0).toFixed(2);
-            banner.style.display = 'flex';
-            setTimeout(() => location.reload(), 2200);
+            const oldTot = parseFloat(data.old_total || 0).toFixed(2);
+            const newTot = parseFloat(data.new_total || 0).toFixed(2);
+            showToast('✔ Transaction adjusted successfully! ₱' + oldTot + ' → ₱' + newTot, 'success');
+            setTimeout(() => location.reload(), 1400);
         } else {
-            alert('Error: ' + (data.error || 'Adjustment failed. Please try again.'));
+            showToast('❌ ' + (data.error || 'Adjustment failed. Please try again.'), 'error');
         }
     })
-    .catch(() => {
+    .catch(err => {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-save"></i> Save Adjustment';
-        if (window.showPetronFlash) {
-            window.showPetronFlash('Connection error. Please try again.', 'error');
-        } else {
-            alert('Connection error. Please try again.');
-        }
+        showToast('❌ Connection error. Please try again.', 'error');
     });
 }
 
@@ -2742,7 +2801,7 @@ function openVoidModal(rowId, txnId, customer, source) {
     document.getElementById('voidReasonOtherContainer').style.display = 'none';
     document.getElementById('voidManagerRemarksNew').value = '';
     document.getElementById('voidAuthPassword').value = '';
-    document.getElementById('voidAuthPin').value = '';
+    if (document.getElementById('voidAuthPin')) document.getElementById('voidAuthPin').value = '';
     
     document.querySelectorAll('.void-checklist').forEach(cb => cb.checked = false);
     
@@ -2770,10 +2829,10 @@ function openVoidModal(rowId, txnId, customer, source) {
     document.getElementById('voidInfoTotalAmount').innerText = 'Loading...';
     
     document.getElementById('voidItemsContainer').innerHTML = '<div style="text-align:center;padding:20px;color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading items...</div>';
-    document.getElementById('voidInventoryImpactList').innerHTML = '<div style="color:#64748b;">Loading...</div>';
-    document.getElementById('voidSalesCurrent').innerText = '₱0.00';
-    document.getElementById('voidSalesAfter').innerText = '₱0.00';
-    document.getElementById('voidSalesDiff').innerText = '-₱0.00';
+    const elInv = document.getElementById('voidInventoryImpactList'); if (elInv) elInv.innerHTML = '<div style="color:#64748b;">Loading...</div>';
+    const elCur = document.getElementById('voidSalesCurrent'); if (elCur) elCur.innerText = '₱0.00';
+    const elAft = document.getElementById('voidSalesAfter'); if (elAft) elAft.innerText = '₱0.00';
+    const elDif = document.getElementById('voidSalesDiff'); if (elDif) elDif.innerText = '-₱0.00';
     
     document.getElementById('voidModal').classList.add('active');
     
@@ -2784,7 +2843,7 @@ function openVoidModal(rowId, txnId, customer, source) {
     ])
     .then(([detailsRes, itemsRes]) => {
         if (!detailsRes.success || !itemsRes.items) {
-            alert('Error loading transaction details.');
+            showToast('Error loading transaction details.', 'error');
             return;
         }
         
@@ -2882,19 +2941,17 @@ function openVoidModal(rowId, txnId, customer, source) {
         } else {
             invHtml = '<div style="color:#94a3b8;">No inventory items to restore.</div>';
         }
-        document.getElementById('voidInventoryImpactList').innerHTML = invHtml;
-        
-        // Sales Impact fields
-        document.getElementById('voidSalesCurrent').innerText = '₱' + grandTotal.toFixed(2);
-        document.getElementById('voidSalesAfter').innerText = '₱0.00';
-        document.getElementById('voidSalesDiff').innerText = '-₱' + grandTotal.toFixed(2);
+        if (elInv) elInv.innerHTML = invHtml;
+        if (elCur) elCur.innerText = '₱' + grandTotal.toFixed(2);
+        if (elAft) elAft.innerText = '₱0.00';
+        if (elDif) elDif.innerText = '-₱' + grandTotal.toFixed(2);
         
         validateVoidForm();
     })
     .catch(err => {
         console.error(err);
         document.getElementById('voidItemsContainer').innerHTML = '<div style="color:#dc2626;">Error loading details.</div>';
-        document.getElementById('voidInventoryImpactList').innerHTML = '<div style="color:#dc2626;">Error.</div>';
+        if (elInv) elInv.innerHTML = '<div style="color:#dc2626;">Error.</div>';
     });
 }
 
@@ -2916,37 +2973,50 @@ function toggleVoidOtherReason() {
     validateVoidForm();
 }
 
+function toggleVoidPasswordVisibility() {
+    const pwdInput = document.getElementById('voidAuthPassword');
+    const icon = document.getElementById('toggleVoidPasswordIcon');
+    if (!pwdInput) return;
+    if (pwdInput.type === 'password') {
+        pwdInput.type = 'text';
+        if (icon) {
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+        }
+    } else {
+        pwdInput.type = 'password';
+        if (icon) {
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
+        }
+    }
+}
+
 function validateVoidForm() {
-    const reasonSelect = document.getElementById('voidReasonSelect').value;
-    const reasonOther = document.getElementById('voidReasonOther').value.trim();
-    const remarks = document.getElementById('voidManagerRemarksNew').value.trim();
-    const password = document.getElementById('voidAuthPassword').value.trim();
-    const pin = document.getElementById('voidAuthPin').value.trim();
-    
-    // Checkboxes
-    let checklistChecked = true;
-    document.querySelectorAll('.void-checklist').forEach(cb => {
-        if (!cb.checked) checklistChecked = false;
-    });
+    const reasonSelect = document.getElementById('voidReasonSelect')?.value || '';
+    const reasonOther  = document.getElementById('voidReasonOther')?.value.trim() || '';
+    const remarks      = document.getElementById('voidManagerRemarksNew')?.value.trim() || '';
+    const password     = document.getElementById('voidAuthPassword')?.value.trim() || '';
     
     let isReasonValid = (reasonSelect !== '');
     if (reasonSelect === 'Other') {
         isReasonValid = (reasonOther !== '');
     }
     
-    // Either Password OR PIN must be filled
-    const isAuthValid = (password !== '' || pin !== '');
+    const isAuthValid = (password !== '');
+    const confirmBtn  = document.getElementById('confirmVoidBtnNew');
     
-    const confirmBtn = document.getElementById('confirmVoidBtnNew');
     if (confirmBtn) {
-        if (isReasonValid && remarks !== '' && isAuthValid && checklistChecked) {
+        if (isReasonValid && remarks !== '' && isAuthValid) {
             confirmBtn.disabled = false;
             confirmBtn.style.opacity = '1';
             confirmBtn.style.cursor = 'pointer';
+            confirmBtn.style.background = '#dc2626';
         } else {
             confirmBtn.disabled = true;
             confirmBtn.style.opacity = '0.6';
             confirmBtn.style.cursor = 'not-allowed';
+            confirmBtn.style.background = '#94a3b8';
         }
     }
 }
@@ -2964,17 +3034,32 @@ function previewVoidImpact() {
 }
 
 function submitVoidNew() {
-    const reasonSelect = document.getElementById('voidReasonSelect').value;
-    const reasonOther = document.getElementById('voidReasonOther').value.trim();
-    const remarks = document.getElementById('voidManagerRemarksNew').value.trim();
-    const password = document.getElementById('voidAuthPassword').value.trim();
-    const pin = document.getElementById('voidAuthPin').value.trim();
+    const reasonSelect = document.getElementById('voidReasonSelect')?.value || '';
+    const reasonOther  = document.getElementById('voidReasonOther')?.value.trim() || '';
+    const remarks      = document.getElementById('voidManagerRemarksNew')?.value.trim() || '';
+    const password     = document.getElementById('voidAuthPassword')?.value.trim() || '';
     
     const finalReason = (reasonSelect === 'Other') ? reasonOther : reasonSelect;
     
+    if (!finalReason) {
+        showToast('Please select a Void Reason.', 'error');
+        document.getElementById('voidReasonSelect')?.focus();
+        return;
+    }
+    if (!remarks) {
+        showToast('Please enter Manager Remarks.', 'error');
+        document.getElementById('voidManagerRemarksNew')?.focus();
+        return;
+    }
+    if (!password) {
+        showToast('Please enter Manager Password to confirm voiding.', 'error');
+        document.getElementById('voidAuthPassword')?.focus();
+        return;
+    }
+    
     const confirmBtn = document.getElementById('confirmVoidBtnNew');
     confirmBtn.disabled = true;
-    confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Voiding...';
+    confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing Void...';
     
     fetch('../backend/api/void_transaction_manager.php', {
         method : 'POST',
@@ -2984,31 +3069,45 @@ function submitVoidNew() {
             source          : _voidSource,
             void_reason     : finalReason,
             manager_remarks : remarks,
-            password        : password,
-            pin             : pin
+            password        : password
         }),
     })
-    .then(r => r.json())
+    .then(async res => {
+        const rawText = await res.text();
+        let data;
+        try {
+            data = JSON.parse(rawText);
+        } catch (err) {
+            const match = rawText.match(/\{[\s\S]*\}/);
+            if (match) {
+                try { data = JSON.parse(match[0]); } catch (e) { throw new Error(rawText.replace(/<[^>]*>/g, '').trim()); }
+            } else {
+                throw new Error(rawText.replace(/<[^>]*>/g, '').trim());
+            }
+        }
+        return data;
+    })
     .then(data => {
         confirmBtn.disabled = false;
         confirmBtn.innerHTML = '<i class="fas fa-ban"></i> Confirm Void';
         
         if (data.success) {
-            // Populate Success View
-            document.getElementById('voidSuccessTxnId').innerText = document.getElementById('voidInfoTxnId').innerText;
+            const txnIdStr = document.getElementById('voidInfoTxnId')?.innerText || _voidRowId;
+            closeVoidModal();
+            showToast('✔ Transaction ' + txnIdStr + ' successfully voided! Inventory restored.', 'success');
             
-            // Switch views
-            document.getElementById('voidModalMainContent').style.display = 'none';
-            document.getElementById('voidModalSuccessContent').style.display = 'flex';
+            setTimeout(() => {
+                location.reload();
+            }, 1200);
         } else {
-            alert('Error: ' + (data.error || 'Failed to void transaction.'));
+            showToast('❌ ' + (data.error || 'Failed to void transaction.'), 'error');
         }
     })
     .catch(err => {
         console.error(err);
         confirmBtn.disabled = false;
         confirmBtn.innerHTML = '<i class="fas fa-ban"></i> Confirm Void';
-        alert('Connection error. Please try again.');
+        showToast('❌ ' + (err.message || 'Error processing request.'), 'error');
     });
 }
 
@@ -3017,26 +3116,57 @@ function closeVoidModalReload() {
     location.reload();
 }
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ TOAST â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-function showToast(type, message) {
+/* ── TOAST (Right-side Banner) ─────────────────────────────────────────── */
+function showToast(a, b) {
+    let type = 'success';
+    let msg = '';
+    if (a === 'success' || a === 'error' || a === 'warning' || a === 'info') {
+        type = a;
+        msg = b || '';
+    } else if (b === 'success' || b === 'error' || b === 'warning' || b === 'info') {
+        type = b;
+        msg = a || '';
+    } else {
+        msg = a || b || '';
+    }
+
     if (window.showPetronFlash) {
-        window.showPetronFlash(message, type === 'success' ? 'success' : 'error');
+        window.showPetronFlash(msg, type === 'success' ? 'success' : 'error', 4500);
         return;
     }
-    let toast = document.getElementById('mgr_toast');
-    if (!toast) {
-        toast = document.createElement('div');
-        toast.id = 'mgr_toast';
-        toast.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:99999;padding:14px 20px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.2);max-width:420px;transition:opacity .3s;';
-        document.body.appendChild(toast);
-    }
-    toast.style.background = type === 'success' ? '#f0fdf4' : '#fef2f2';
-    toast.style.color      = type === 'success' ? '#166534' : '#991b1b';
-    toast.style.border     = type === 'success' ? '1px solid #bbf7d0' : '1px solid #fecaca';
-    toast.style.opacity    = '1';
-    toast.innerHTML        = message;
-    clearTimeout(toast._timer);
-    toast._timer = setTimeout(() => { toast.style.opacity = '0'; }, 4000);
+
+    const colors = {
+        success: { bg: '#f0fdf4', color: '#166534', border: '#86efac', icon: 'fa-check-circle', iconColor: '#16a34a' },
+        error:   { bg: '#fef2f2', color: '#991b1b', border: '#fecaca', icon: 'fa-times-circle',  iconColor: '#dc2626' },
+        warning: { bg: '#fffbeb', color: '#92400e', border: '#fde68a', icon: 'fa-exclamation-triangle', iconColor: '#d97706' },
+        info:    { bg: '#eff6ff', color: '#1e40af', border: '#bfdbfe', icon: 'fa-info-circle',   iconColor: '#2563eb' },
+    };
+    const c = colors[type] || colors.success;
+
+    const old = document.getElementById('mgr_right_toast');
+    if (old) old.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'mgr_right_toast';
+    toast.style.cssText = `position:fixed;top:84px;right:22px;left:auto;z-index:999999;` +
+        `background:${c.bg};color:${c.color};border:1.5px solid ${c.border};` +
+        `padding:12px 18px;border-radius:10px;font-weight:700;` +
+        `box-shadow:0 12px 30px rgba(0,0,0,.15);transition:opacity .35s ease, transform .25s ease;` +
+        `font-size:13.5px;display:flex;align-items:center;gap:10px;max-width:440px;width:auto;opacity:0;transform:translateY(-10px);`;
+    toast.innerHTML = `<i class="fas ${c.icon}" style="color:${c.iconColor};font-size:16px;flex-shrink:0;"></i><span style="flex:1;">${msg}</span>` +
+        `<button onclick="this.parentElement.remove()" style="margin-left:8px;background:none;border:none;cursor:pointer;color:${c.color};font-size:18px;line-height:1;padding:0 2px;opacity:0.8;">×</button>`;
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateY(0)';
+    });
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-10px)';
+            setTimeout(() => toast.remove(), 350);
+        }
+    }, 4500);
 }
 
 function exportTable(format) {

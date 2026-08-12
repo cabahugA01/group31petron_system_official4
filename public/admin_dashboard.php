@@ -187,24 +187,11 @@ function adm_bytes($bytes): string
 
 function adm_merch_bucket(string $category, string $product): string
 {
-    $text = strtolower(trim($category . ' ' . $product));
-    if (str_contains($text, 'engine oil') || (str_contains($text, 'engine') && str_contains($text, 'oil'))) {
-        return 'Engine Oil';
+    $catClean = trim($category);
+    if (!empty($catClean)) {
+        return $catClean;
     }
-    if (str_contains($text, 'drink') || str_contains($text, 'beverage') || str_contains($text, 'water') || str_contains($text, 'soda')) {
-        return 'Drinks';
-    }
-    if (str_contains($text, 'snack') || str_contains($text, 'chips') || str_contains($text, 'biscuit') || str_contains($text, 'food')) {
-        return 'Snacks';
-    }
-    if (str_contains($text, 'accessor') || str_contains($text, 'filter') || str_contains($text, 'car care')) {
-        return 'Accessories';
-    }
-    if (str_contains($text, 'lub') || str_contains($text, 'grease') || str_contains($text, 'oil')) {
-        return 'Lubricants';
-    }
-
-    return 'Accessories';
+    return 'Merchandise';
 }
 
 function adm_merge_by_ref(array $rows): array
@@ -704,7 +691,9 @@ foreach ($fuel_rules as [$condition, $condition_params]) {
         : 0.0;
 }
 
-$merch_category_labels = ['Lubricants', 'Drinks', 'Snacks', 'Accessories', 'Engine Oil'];
+$merch_category_labels = adm_table_exists($pdo, 'product_categories')
+    ? array_column(adm_rows($pdo, "SELECT name FROM product_categories WHERE LOWER(name) <> 'fuel products' ORDER BY name ASC"), 'name')
+    : ['Car Accessories', 'Drinks/Food', 'Filters', 'Merchandise', 'Oils/Lubes/Grease', 'Others', 'Services', 'Snacks', 'VIC Filters'];
 $merch_sales_by_category = array_fill_keys($merch_category_labels, 0.0);
 if (adm_table_exists($pdo, 'merchandise_transaction_items') && adm_table_exists($pdo, 'merchandise_transactions')) {
     $category_rows = adm_rows(
@@ -2645,7 +2634,12 @@ document.addEventListener('DOMContentLoaded', function () {
 <script>
 (function () {
     'use strict';
-    const LIVE_URL = window.location.pathname + '?live_sync=1';
+    function getLiveSyncUrl() {
+        const url = new URL(window.location.href);
+        url.searchParams.set('live_sync', '1');
+        url.searchParams.set('_', String(Date.now()));
+        return url.toString();
+    }
     let _inFlight = false;
     let _lastMetrics = {};
 
@@ -2669,7 +2663,7 @@ document.addEventListener('DOMContentLoaded', function () {
         try {
             const ctrl = new AbortController();
             const tid = setTimeout(() => ctrl.abort(), 6000);
-            const res = await fetch(LIVE_URL, { signal: ctrl.signal, credentials: 'same-origin', cache: 'no-store', headers: { 'Accept': 'application/json' } });
+            const res = await fetch(getLiveSyncUrl(), { signal: ctrl.signal, credentials: 'same-origin', cache: 'no-store', headers: { 'Accept': 'application/json' } });
             clearTimeout(tid);
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const data = await res.json();

@@ -5883,3 +5883,212 @@ require_once __DIR__ . '/rbac_menu.php';
         });
     });
     </script>
+
+<!-- SYSTEM-WIDE TOAST & BROWSER ALERT OVERRIDE ENGINE -->
+<style id="globalToastSystemStyles">
+.global-toast-stack {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    z-index: 9999999 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    pointer-events: none !important;
+    max-width: 420px !important;
+    width: calc(100vw - 40px) !important;
+}
+.global-toast {
+    pointer-events: auto !important;
+    min-width: 280px !important;
+    background: #16a34a !important;
+    color: #ffffff !important;
+    padding: 13px 42px 13px 16px !important;
+    border-radius: 8px !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22) !important;
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    position: relative !important;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+    line-height: 1.4 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    animation: globalToastIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    transition: opacity 0.3s ease, transform 0.3s ease !important;
+}
+.global-toast.error, .global-toast.danger {
+    background: #dc2626 !important;
+}
+.global-toast.warning {
+    background: #d97706 !important;
+}
+.global-toast.info {
+    background: #0284c7 !important;
+}
+.global-toast-close {
+    position: absolute !important;
+    top: 50% !important;
+    right: 12px !important;
+    transform: translateY(-50%) !important;
+    background: none !important;
+    border: none !important;
+    color: #ffffff !important;
+    font-size: 20px !important;
+    line-height: 1 !important;
+    cursor: pointer !important;
+    opacity: 0.85 !important;
+    padding: 4px !important;
+}
+.global-toast-close:hover {
+    opacity: 1 !important;
+}
+@keyframes globalToastIn {
+    from { transform: translateX(120%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+</style>
+
+<div class="global-toast-stack" id="globalToastStack"></div>
+
+<script id="globalToastSystemScript">
+(function() {
+    // ── Global Toast Notification Generator ─────────────────────────────────────
+    window.showGlobalToast = function(msg, type = 'success') {
+        if (!msg) return;
+        let stack = document.getElementById('globalToastStack');
+        if (!stack) {
+            stack = document.createElement('div');
+            stack.id = 'globalToastStack';
+            stack.className = 'global-toast-stack';
+            document.body.appendChild(stack);
+        }
+        
+        const typeKey = String(type || 'success').toLowerCase();
+        let iconHtml = '<i class="fas fa-check-circle" style="font-size:16px;"></i>';
+        if (typeKey === 'error' || typeKey === 'danger') {
+            iconHtml = '<i class="fas fa-exclamation-circle" style="font-size:16px;"></i>';
+        } else if (typeKey === 'warning') {
+            iconHtml = '<i class="fas fa-exclamation-triangle" style="font-size:16px;"></i>';
+        } else if (typeKey === 'info') {
+            iconHtml = '<i class="fas fa-info-circle" style="font-size:16px;"></i>';
+        }
+
+        const toast = document.createElement('div');
+        toast.className = 'global-toast ' + typeKey;
+        toast.innerHTML = `${iconHtml}<span>${msg}</span><button type="button" class="global-toast-close" onclick="this.parentElement.remove()">&times;</button>`;
+        stack.appendChild(toast);
+
+        setTimeout(() => {
+            if (toast.parentElement) {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(20px)';
+                setTimeout(() => toast.remove(), 300);
+            }
+        }, 4000);
+    };
+
+    // ── SYSTEM-WIDE OVERRIDE OF NATIVE BROWSER ALERT & CONFIRM ─────────────────
+    // Replaces browser "localhost says" dialogs with smooth top-right toast banners
+    window.alert = function(msg) {
+        if (msg === undefined || msg === null) return;
+        const text = String(msg);
+        const isError = /error|failed|invalid|cannot|unable|wrong|denied|required|warning/i.test(text);
+        window.showGlobalToast(text, isError ? 'error' : 'success');
+    };
+
+    window.confirm = function(msg) {
+        // Intercept native confirm calls system-wide so no "localhost says" popups appear
+        return true;
+    };
+
+    // ── AUTOMATIC ODOMETER READING (COMMAS + KM SUFFIX) ──────────────────────
+    window.formatOdometerInput = function(input) {
+        if (!input) return;
+        let val = input.value || '';
+        let rawDigits = val.replace(/[^0-9]/g, '');
+        if (!rawDigits) {
+            input.value = '';
+            return;
+        }
+        if (rawDigits.length > 8) rawDigits = rawDigits.slice(0, 8);
+        let num = parseInt(rawDigits, 10);
+        let formatted = num.toLocaleString('en-US') + ' km';
+        input.value = formatted;
+
+        let targetPos = (num.toLocaleString('en-US')).length;
+        try {
+            if (input.setSelectionRange && document.activeElement === input) {
+                input.setSelectionRange(targetPos, targetPos);
+            }
+        } catch(e) {}
+    };
+
+    // ── AUTOMATIC ENGINE NUMBER (UPPERCASE + HYPHENS/DASHES) ─────────────────
+    window.formatEngineNumberInput = function(input) {
+        if (!input) return;
+        let val = (input.value || '').toUpperCase();
+        val = val.replace(/[^A-Z0-9-]/g, '');
+        
+        // Auto-insert dashes if user types without dashes (e.g. 1NZFE1234567 -> 1NZ-FE-1234567)
+        let clean = val.replace(/-/g, '');
+        if (clean.length > 0 && !val.includes('-')) {
+            if (clean.length > 5) {
+                val = clean.slice(0, 3) + '-' + clean.slice(3, 5) + '-' + clean.slice(5);
+            } else if (clean.length > 3) {
+                val = clean.slice(0, 3) + '-' + clean.slice(3);
+            }
+        }
+        
+        val = val.replace(/-+/g, '-');
+        input.value = val;
+
+        if (typeof checkVehicleSecurityWarning === 'function') {
+            checkVehicleSecurityWarning();
+        }
+    };
+
+
+    // ── AUTOMATIC PESO FORMATTING (COMMAS + 2 DECIMAL PLACES) ───────────────
+    window.formatPesoInput = function(input) {
+        if (!input) return;
+        let val = input.value || '';
+        // Strip everything except digits and dot
+        let raw = val.replace(/[^0-9.]/g, '');
+        // Allow only one decimal point
+        let parts = raw.split('.');
+        if (parts.length > 2) raw = parts[0] + '.' + parts.slice(1).join('');
+        // Limit to 2 decimal places while typing (only if decimal entered)
+        if (raw.includes('.')) {
+            let [intPart, decPart] = raw.split('.');
+            if (decPart.length > 2) decPart = decPart.slice(0, 2);
+            // Format integer part with commas
+            let formatted = parseInt(intPart || '0', 10).toLocaleString('en-US');
+            input.value = formatted + '.' + decPart;
+        } else {
+            if (raw === '' || raw === '0') {
+                input.value = raw;
+                return;
+            }
+            let formatted = parseInt(raw, 10).toLocaleString('en-US');
+            input.value = formatted;
+        }
+    };
+
+    // Global listener to auto-format odometer, engine number, and peso fields system-wide
+    document.addEventListener('input', function(e) {
+        const t = e.target;
+        if (!t) return;
+        if (t.id === 'joOdometer' || (t.classList && t.classList.contains('v-odometer')) || t.name === 'odometer') {
+            window.formatOdometerInput(t);
+        }
+        if (t.id === 'joEngineNumber' || (t.classList && t.classList.contains('v-engine')) || t.name === 'engine_number' || t.name === 'engine_no') {
+            window.formatEngineNumberInput(t);
+        }
+        if (t.classList && t.classList.contains('peso-input')) {
+            window.formatPesoInput(t);
+        }
+    });
+})();
+</script>
+

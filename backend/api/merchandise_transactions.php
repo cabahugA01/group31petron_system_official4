@@ -399,47 +399,53 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         return;
     }
 
-    $selected_customer_id = (int)($data['customer_id'] ?? 0);
-    if ($selected_customer_id <= 0) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Please select an approved customer before saving the transaction.']);
-        return;
-    }
 
-    try {
-        $nameExpr = customer_display_name_expr($pdo, 'c');
-        $firstExpr = customer_first_name_expr($pdo, 'c');
-        $lastExpr = customer_last_name_expr($pdo, 'c');
-        $statusExpr = customer_status_expr($pdo, 'c');
-        $stmt = $pdo->prepare("
-            SELECT
-                c.id,
-                {$nameExpr} AS display_name,
-                {$firstExpr} AS first_name,
-                {$lastExpr} AS last_name
-            FROM customers c
-            WHERE c.id = ?
-              AND c.station_id = ?
-              AND LOWER({$statusExpr}) = 'active'
-            LIMIT 1
-        ");
-        $stmt->execute([$selected_customer_id, $station_id]);
-        $selectedCustomer = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$selectedCustomer) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Selected customer was not found or is inactive.']);
+    $selected_customer_id = (int)($data['customer_id'] ?? 0);
+
+    if ($selected_customer_id > 0) {
+        // Verify the customer exists and is active
+        try {
+            $nameExpr = customer_display_name_expr($pdo, 'c');
+            $firstExpr = customer_first_name_expr($pdo, 'c');
+            $lastExpr = customer_last_name_expr($pdo, 'c');
+            $statusExpr = customer_status_expr($pdo, 'c');
+            $stmt = $pdo->prepare("
+                SELECT
+                    c.id,
+                    {$nameExpr} AS display_name,
+                    {$firstExpr} AS first_name,
+                    {$lastExpr} AS last_name
+                FROM customers c
+                WHERE c.id = ?
+                  AND c.station_id = ?
+                  AND LOWER({$statusExpr}) = 'active'
+                LIMIT 1
+            ");
+            $stmt->execute([$selected_customer_id, $station_id]);
+            $selectedCustomer = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$selectedCustomer) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Selected customer was not found or is inactive.']);
+                return;
+            }
+
+            $data['customer_id'] = (int)$selectedCustomer['id'];
+            $data['customer_name'] = $selectedCustomer['display_name'] ?: $data['customer_name'];
+            $data['customer_first_name'] = $selectedCustomer['first_name'] ?: ($data['customer_first_name'] ?? null);
+            $data['customer_last_name'] = $selectedCustomer['last_name'] ?: ($data['customer_last_name'] ?? null);
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Unable to validate selected customer: ' . $e->getMessage()]);
             return;
         }
-
-        $data['customer_id'] = (int)$selectedCustomer['id'];
-        $data['customer_name'] = $selectedCustomer['display_name'] ?: $data['customer_name'];
-        $data['customer_first_name'] = $selectedCustomer['first_name'] ?: ($data['customer_first_name'] ?? null);
-        $data['customer_last_name'] = $selectedCustomer['last_name'] ?: ($data['customer_last_name'] ?? null);
-    } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(['error' => 'Unable to validate selected customer: ' . $e->getMessage()]);
-        return;
+    } else {
+        // Walk-in transaction — no customer account required
+        $data['customer_id'] = null;
+        $data['customer_name'] = 'Walk-in Customer';
+        $data['customer_first_name'] = null;
+        $data['customer_last_name'] = null;
     }
+
 
     // ── Safe schema migration: run DDL BEFORE opening a transaction ──────────
     // ALTER TABLE causes an implicit commit in MySQL, which would break any
@@ -493,6 +499,12 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         'job_order_description'      => 'TEXT NULL',
         'job_order_vehicle_plate'    => 'VARCHAR(20) NULL',
         'job_order_vehicle_type'     => 'VARCHAR(50) NULL',
+        'job_order_vehicle_brand'    => 'VARCHAR(100) NULL',
+        'job_order_vehicle_model'    => 'VARCHAR(100) NULL',
+        'job_order_year_model'       => 'VARCHAR(20) NULL',
+        'job_order_engine_number'    => 'VARCHAR(100) NULL',
+        'job_order_chassis_number'   => 'VARCHAR(100) NULL',
+        'job_order_estimated_duration' => 'INT NULL',
         'job_order_mechanic_id'      => 'INT NULL',
         'job_order_mechanic_name'    => 'VARCHAR(255) NULL',
         'job_order_contact'          => 'VARCHAR(50) NULL',
@@ -652,7 +664,10 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
                     return;
                 }
                 $available = floatval($cust['credit_limit']) - floatval($cust['balance']);
-                if ($total_amount > $available) {
+                // Only enforce credit limit if one is actually set (> 0)
+                // If credit_limit = 0 or NULL, treat as unlimited — all registered customers can use credit
+                $credit_limit_set = floatval($cust['credit_limit']) > 0;
+                if ($credit_limit_set && $total_amount > $available) {
                     http_response_code(400);
                     echo json_encode([
                         'error' => 'Insufficient credit limit. Grand total is ₱' . number_format($total_amount, 2)
@@ -872,6 +887,12 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             'job_order_description'      => !empty($data['job_order_description'])   ? $data['job_order_description']      : null,
             'job_order_vehicle_plate'    => !empty($data['job_order_vehicle_plate']) ? $data['job_order_vehicle_plate']    : null,
             'job_order_vehicle_type'     => !empty($data['job_order_vehicle_type'])  ? $data['job_order_vehicle_type']     : null,
+            'job_order_vehicle_brand'    => !empty($data['job_order_vehicle_brand']) ? $data['job_order_vehicle_brand']    : null,
+            'job_order_vehicle_model'    => !empty($data['job_order_vehicle_model']) ? $data['job_order_vehicle_model']    : null,
+            'job_order_year_model'       => !empty($data['job_order_year_model'])    ? $data['job_order_year_model']       : null,
+            'job_order_engine_number'    => !empty($data['job_order_engine_number']) ? $data['job_order_engine_number']    : null,
+            'job_order_chassis_number'   => !empty($data['job_order_chassis_number'])? $data['job_order_chassis_number']   : null,
+            'job_order_estimated_duration' => isset($data['job_order_estimated_duration']) && $data['job_order_estimated_duration'] ? (int)$data['job_order_estimated_duration'] : null,
             'job_order_mechanic_id'      => !empty($data['job_order_mechanic_id'])   ? (int)$data['job_order_mechanic_id'] : null,
             'job_order_mechanic_name'    => !empty($data['job_order_mechanic_name']) ? $data['job_order_mechanic_name']    : null,
             'job_order_contact'          => !empty($data['job_order_contact'])       ? $data['job_order_contact']          : null,
@@ -1088,7 +1109,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
                 ->execute([$merch_transaction_id, $station_id]);
         }
 
-        if (!empty($data['credit_customer_id'])) {
+        if ($is_credit_account && !empty($data['credit_customer_id'])) {
             $pdo->prepare("UPDATE customers SET balance = balance + ? WHERE id = ? AND station_id = ?")
                 ->execute([$total_amount, $data['credit_customer_id'], $station_id]);
 
@@ -1114,6 +1135,90 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
                 ]);
             } catch (Exception $ccError) {
                 error_log("Credit transaction log warning: " . $ccError->getMessage());
+            }
+
+            try {
+                $or_no = 'OR-' . date('Y') . '-' . str_pad($merch_transaction_id ?? 0, 6, '0', STR_PAD_LEFT);
+                $pdo->prepare("
+                    INSERT INTO customer_accounts_receivable
+                    (customer_id, transaction_id, transaction_db_id, or_number, total_amount, amount_paid, outstanding_balance, status, station_id, created_at)
+                    VALUES (?, ?, ?, ?, ?, 0, ?, 'Active', ?, NOW())
+                ")->execute([$data['credit_customer_id'], $transaction_id, $merch_transaction_id, $or_no, $total_amount, $total_amount, $station_id]);
+            } catch (Exception $are) {
+                error_log("AR record creation error: " . $are->getMessage());
+            }
+        }
+
+        // ── Loyalty Points Transaction & Customer Account Update ──────────────
+        $loyaltyProgram = $data['loyalty_type'] ?? 'No Loyalty';
+        if ($loyaltyProgram !== 'No Loyalty' || !empty($data['loyalty_card_no'])) {
+            try {
+                require_once __DIR__ . '/../loyalty_schema_fix.php';
+                loyalty_ensure_tables($pdo);
+
+                // Fetch loyalty program rules
+                $progStmt = $pdo->query("SELECT * FROM loyalty_programs WHERE status = 'active' ORDER BY id ASC LIMIT 1");
+                $prog = $progStmt->fetch(PDO::FETCH_ASSOC);
+                $ptsPerAmount = floatval($prog['points_per_amount'] ?? 100.00) ?: 100.00;
+
+                $eligible_total = floatval($total_amount);
+                $ptsEarned = isset($data['loyalty_points_earned']) ? intval($data['loyalty_points_earned']) : intval(floor($eligible_total / $ptsPerAmount));
+                $ptsRedeemed = isset($data['loyalty_points_redeemed']) ? intval($data['loyalty_points_redeemed']) : 0;
+
+                // Match target customer
+                $targetCustomerId = intval($data['credit_customer_id'] ?? $data['customer_id'] ?? 0);
+                $cardNo = trim($data['loyalty_card_no'] ?? '');
+
+                if ($targetCustomerId <= 0 && $cardNo !== '') {
+                    $cFind = $pdo->prepare("SELECT id FROM customers WHERE customer_id = ? OR id_number = ? LIMIT 1");
+                    $cFind->execute([$cardNo, $cardNo]);
+                    $targetCustomerId = intval($cFind->fetchColumn());
+                }
+                if ($targetCustomerId <= 0 && !empty($data['customer_name']) && $data['customer_name'] !== 'Walk-in') {
+                    $cFind2 = $pdo->prepare("SELECT id FROM customers WHERE LOWER(name) = LOWER(?) OR LOWER(CONCAT_WS(' ', first_name, last_name)) = LOWER(?) LIMIT 1");
+                    $cFind2->execute([$data['customer_name'], $data['customer_name']]);
+                    $targetCustomerId = intval($cFind2->fetchColumn());
+                }
+
+                if ($targetCustomerId > 0) {
+                    $acc = get_or_create_loyalty_account($pdo, $targetCustomerId, $cardNo);
+                    $accId = (int)$acc['id'];
+                    $currBalance = (int)($acc['points_balance'] ?? 0);
+
+                    // Validate redeem: cap if exceeds current balance
+                    if ($ptsRedeemed > $currBalance) {
+                        $ptsRedeemed = $currBalance;
+                    }
+
+                    $newBalance = max(0, $currBalance + $ptsEarned - $ptsRedeemed);
+                    $txnTypeLabel = (strpos(strtolower($resolved_transaction_type), 'job') !== false) ? 'Job Order' : 'Merchandise';
+
+                    $lTxn = $pdo->prepare("
+                        INSERT INTO loyalty_transactions (
+                            loyalty_account_id, customer_id, reference_id, transaction_type,
+                            points_earned, points_redeemed, points_balance_after, created_by, created_at, remarks
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+                    ");
+                    $lTxn->execute([
+                        $accId,
+                        $targetCustomerId,
+                        $transaction_id,
+                        $txnTypeLabel,
+                        $ptsEarned,
+                        $ptsRedeemed,
+                        $newBalance,
+                        $me['id'] ?? null,
+                        "POS Transaction - Ref: " . $transaction_id
+                    ]);
+
+                    // Update loyalty_accounts & customers balance
+                    $pdo->prepare("UPDATE loyalty_accounts SET points_balance = ?, updated_at = NOW() WHERE id = ?")
+                        ->execute([$newBalance, $accId]);
+                    $pdo->prepare("UPDATE customers SET points = ? WHERE id = ?")
+                        ->execute([$newBalance, $targetCustomerId]);
+                }
+            } catch (Exception $lErr) {
+                error_log("Loyalty transaction processing warning: " . $lErr->getMessage());
             }
         }
 

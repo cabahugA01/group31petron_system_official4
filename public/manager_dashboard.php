@@ -259,20 +259,33 @@ $fuel_revenue = mgr_table_exists($pdo, 'fuel_transactions')
     : 0.0;
 
 $merch_revenue = mgr_table_exists($pdo, 'merchandise_transactions')
-    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND DATE({$merch_dt_expr}) BETWEEN ? AND ? {$merch_status_ok}", $date_range_params)
+    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND DATE({$merch_dt_expr}) BETWEEN ? AND ? AND LOWER(COALESCE(transaction_type,'merchandise')) NOT IN ('job_order','service','combined') AND NULLIF(TRIM(COALESCE(job_order_service,'')),'') IS NULL {$merch_status_ok}", $date_range_params)
     : 0.0;
 
-$service_revenue = mgr_table_exists($pdo, 'job_orders')
-    ? (float) mgr_value(
+$service_revenue = 0.0;
+if (mgr_table_exists($pdo, 'job_orders')) {
+    $service_revenue += (float) mgr_value(
         $pdo,
         "SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, actual_labor_cost + actual_parts_cost, 0)), 0)
          FROM job_orders
          WHERE {$station_sql}
            AND DATE({$job_dt_expr}) BETWEEN ? AND ?
-           AND LOWER(COALESCE(status, '')) IN ('completed', 'verified', 'finalized', 'released')",
+           AND LOWER(COALESCE(status, '')) NOT IN ('voided', 'cancelled')",
         $date_range_params
-    )
-    : 0.0;
+    );
+}
+if (mgr_table_exists($pdo, 'merchandise_transactions')) {
+    $service_revenue += (float) mgr_value(
+        $pdo,
+        "SELECT COALESCE(SUM(total_amount), 0)
+         FROM merchandise_transactions
+         WHERE {$station_sql}
+           AND DATE({$merch_dt_expr}) BETWEEN ? AND ?
+           AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order', 'service', 'combined') OR NULLIF(TRIM(COALESCE(job_order_service, '')), '') IS NOT NULL)
+           {$merch_status_ok}",
+        $date_range_params
+    );
+}
 
 $total_revenue = $fuel_revenue + $merch_revenue + $service_revenue;
 

@@ -82,14 +82,18 @@ foreach ([
 }
 unset($_col_fix, $_ce);
 
-// Fetch Loyalty Points per Peso configuration setting
-$points_per_peso = 0.01;
+// Fetch Loyalty Program settings
+require_once __DIR__ . '/../backend/loyalty_schema_fix.php';
+loyalty_ensure_tables($pdo);
+
+$points_per_amount = 100.00;
+$redemption_value  = 1.00;
 try {
-    $stmt = $pdo->prepare("SELECT config_value FROM module_configs WHERE config_key = 'points_per_peso' LIMIT 1");
-    $stmt->execute();
-    $val = $stmt->fetchColumn();
-    if ($val !== false && is_numeric($val)) {
-        $points_per_peso = (float)$val;
+    $progStmt = $pdo->query("SELECT * FROM loyalty_programs WHERE status = 'active' ORDER BY id ASC LIMIT 1");
+    $prog = $progStmt->fetch(PDO::FETCH_ASSOC);
+    if ($prog) {
+        $points_per_amount = floatval($prog['points_per_amount'] ?? 100.00) ?: 100.00;
+        $redemption_value  = floatval($prog['redemption_value'] ?? 1.00) ?: 1.00;
     }
 } catch (Exception $e) {}
 
@@ -224,6 +228,7 @@ try {
     $customerBalanceExpr = customer_balance_expr($pdo, 'c');
     $customerPointsExpr = customer_expr_col($pdo, 'c', 'points', '0');
     $customerIdNumberExpr = customer_expr_col($pdo, 'c', 'id_number', "''");
+    $customerLoyaltyCardExpr = customer_expr_col($pdo, 'c', 'loyalty_card_no', "''");
 
     // Fetch customers with vehicle information for the search feature
     $stmt = $pdo->prepare("
@@ -238,6 +243,7 @@ try {
             {$customerPointsExpr} AS points,
             {$customerIdExpr} AS customer_id,
             {$customerIdNumberExpr} AS id_number,
+            {$customerLoyaltyCardExpr} AS loyalty_card_no,
             {$customerVehicleTypeExpr} AS vehicle_type,
             {$customerMakeExpr} AS vehicle_brand,
             {$customerModelExpr} AS vehicle_model,
@@ -1564,6 +1570,12 @@ if ($section === 'merchandise') {
                                 u.username, 'Unassigned')                AS mechanic_name,
                        COALESCE(NULLIF(TRIM(CONCAT(COALESCE(cb.first_name,''),' ',COALESCE(cb.last_name,''))),''),
                                 cb.username, 'Staff')                    AS created_by_name,
+                       COALESCE(c_jo.contact_number, c_jo.phone, '')      AS contact_number,
+                       COALESCE(c_jo.vehicle_make, c_jo.vehicle_brand, '') AS vehicle_brand,
+                       COALESCE(c_jo.vehicle_model, '')                  AS vehicle_model,
+                       COALESCE(jo.year_model, '')                               AS year_model,
+                       COALESCE(jo.engine_number, c_jo.engine_number, '')         AS engine_number,
+                       COALESCE(jo.chassis_number, c_jo.chassis_number, '')       AS chassis_number,
                        'job_orders' AS _source,
                        'job_order'  AS transaction_type,
                        $jo_col_due_date    AS due_date,
@@ -1571,6 +1583,14 @@ if ($section === 'merchandise') {
                 FROM job_orders jo
                 LEFT JOIN users u  ON u.id = jo.assigned_mechanic_id
                 LEFT JOIN users cb ON cb.id = jo.created_by
+                LEFT JOIN customers c_jo ON (
+                    c_jo.station_id = jo.station_id AND (
+                        (jo.customer_id IS NOT NULL AND c_jo.id = jo.customer_id)
+                        OR (jo.vehicle_plate != '' AND REPLACE(LOWER(TRIM(c_jo.vehicle_plate)),'‑','-') = REPLACE(LOWER(TRIM(jo.vehicle_plate)),'‑','-'))
+                        OR (jo.customer_name != '' AND LOWER(TRIM(c_jo.name)) = LOWER(TRIM(jo.customer_name)))
+                        OR (jo.customer_name != '' AND LOWER(TRIM(CONCAT_WS(' ', c_jo.first_name, c_jo.last_name))) = LOWER(TRIM(jo.customer_name)))
+                    )
+                )
                 WHERE jo.station_id = ?
                 ORDER BY jo.created_at DESC
             ");
@@ -1586,7 +1606,10 @@ if ($section === 'merchandise') {
                 $_jr['inventory_deducted'] = 0; // job_orders uses required_parts JSON, handled below
             }
             unset($_jr);
-        } catch (Exception $e) { $jo_rows = []; }
+        } catch (Exception $e) {
+            error_log('staff_transactions_hub JO query error: ' . $e->getMessage());
+            $jo_rows = [];
+        }
 
         // Part 2: merchandise_transactions with job_order/combined type
         // Fetch new columns: staff_remarks, manager_notes, due_date, inventory_deducted
@@ -1603,19 +1626,25 @@ if ($section === 'merchandise') {
             $mt_col_due_date           = isset($mt_tracker_cols['due_date'])           ? 'mt.due_date'           : 'NULL';
             $mt_col_inventory_deducted = isset($mt_tracker_cols['inventory_deducted']) ? 'mt.inventory_deducted' : '0';
             $mt_col_est_duration       = isset($mt_tracker_cols['job_order_estimated_duration']) ? 'mt.job_order_estimated_duration' : 'NULL';
+            $mt_col_jo_veh_brand       = isset($mt_tracker_cols['job_order_vehicle_brand'])  ? 'mt.job_order_vehicle_brand'  : "''";
+            $mt_col_jo_veh_model       = isset($mt_tracker_cols['job_order_vehicle_model'])  ? 'mt.job_order_vehicle_model'  : "''";
+            $mt_col_jo_year_model      = isset($mt_tracker_cols['job_order_year_model'])      ? 'mt.job_order_year_model'      : "''";
+            $mt_col_jo_engine          = isset($mt_tracker_cols['job_order_engine_number'])   ? 'mt.job_order_engine_number'   : "''";
+            $mt_col_jo_chassis         = isset($mt_tracker_cols['job_order_chassis_number'])  ? 'mt.job_order_chassis_number'  : "''";
 
             $stmt2 = $pdo->prepare("
                 SELECT
                     mt.id,
                     mt.customer_name,
                     mt.transaction_type,
-                    COALESCE($mt_col_est_duration, 0) AS estimated_duration,
+                    COALESCE($mt_col_est_duration, jo_ref.estimated_duration, 0) AS estimated_duration,
                     COALESCE(
                         NULLIF(TRIM(mt.job_order_service), ''),
+                        jo_ref.service_type,
                         (SELECT GROUP_CONCAT(product_name SEPARATOR ', ') FROM merchandise_transaction_items WHERE transaction_id = mt.id AND (item_type = 'service' OR category LIKE '%Service%') AND category != 'Labor' AND product_name NOT LIKE '%Labor%'),
                         'Service'
                     ) AS service_type,
-                    '' AS service_description,
+                    COALESCE(jo_ref.service_description, '') AS service_description,
                     COALESCE(mt.workflow_status, mt.validation_status, 'Pending') AS status,
                     COALESCE(mt.validation_status, 'Pending') AS validation_status,
                     COALESCE(
@@ -1630,10 +1659,17 @@ if ($section === 'merchandise') {
                     (SELECT COALESCE(SUM(subtotal),0) FROM merchandise_transaction_items WHERE transaction_id = mt.id AND (category = 'Labor' OR product_name LIKE '%Labor%')) AS estimated_labor_cost,
                     mt.total_amount AS total_cost,
                     COALESCE($mt_col_staff_remarks, mt.remarks, '') AS notes,
-                    COALESCE(mt.job_order_vehicle_plate, '') AS vehicle_plate,
-                    COALESCE(mt.job_order_vehicle_type, '') AS vehicle_type,
+                    COALESCE(NULLIF(TRIM(mt.job_order_vehicle_plate),''), jo_ref.vehicle_plate, c.vehicle_plate, '') AS vehicle_plate,
+                    COALESCE(NULLIF(TRIM(mt.job_order_vehicle_type),''), jo_ref.vehicle_type, c.vehicle_type, '') AS vehicle_type,
+                    COALESCE(NULLIF(TRIM(mt.job_order_contact),''), c.contact_number, c.phone, '') AS contact_number,
+                    COALESCE(NULLIF(TRIM($mt_col_jo_veh_brand),''), c.vehicle_make, c.vehicle_brand, '') AS vehicle_brand,
+                    COALESCE(NULLIF(TRIM($mt_col_jo_veh_model),''), c.vehicle_model, '') AS vehicle_model,
+                    COALESCE(NULLIF(TRIM($mt_col_jo_year_model),''), '')                              AS year_model,
+                    COALESCE(NULLIF(TRIM($mt_col_jo_engine),''), jo_ref.engine_number, c.engine_number, '') AS engine_number,
+                    COALESCE(NULLIF(TRIM($mt_col_jo_chassis),''), jo_ref.chassis_number, c.chassis_number, '') AS chassis_number,
+                    '' AS or_number,
                     mt.created_at,
-                    COALESCE(mt.job_order_mechanic_name, '') AS mechanic_name,
+                    COALESCE(NULLIF(TRIM(mt.job_order_mechanic_name),''), COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u_mech.first_name,''),' ',COALESCE(u_mech.last_name,''))),''), u_mech.username, ''), '') AS mechanic_name,
                     COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
                              u.username, CONCAT('User #', mt.staff_id)) AS created_by_name,
                     mt.payment_method,
@@ -1641,9 +1677,9 @@ if ($section === 'merchandise') {
                     COALESCE(mt.amount_paid, 0)                    AS amount_paid,
                     COALESCE(mt.balance_due, mt.total_amount)      AS balance_due,
                     NULL AS assigned_mechanic_id,
-                    NULL AS customer_id,
+                    mt.credit_customer_id AS customer_id,
                     mt.id AS job_order_id,
-                    NULL AS job_order_number,
+                    COALESCE(jo_ref.job_order_id, NULL) AS job_order_number,
                     COALESCE(
                         NULLIF(
                             (SELECT GROUP_CONCAT(
@@ -1666,6 +1702,17 @@ if ($section === 'merchandise') {
                     $mt_col_inventory_deducted                        AS inventory_deducted
                 FROM merchandise_transactions mt
                 LEFT JOIN users u ON u.id = mt.staff_id
+                LEFT JOIN job_orders jo_ref ON jo_ref.id = mt.job_order_db_id
+                LEFT JOIN customers c ON (
+                    c.station_id = mt.station_id AND (
+                        (mt.credit_customer_id IS NOT NULL AND c.id = mt.credit_customer_id)
+                        OR (mt.customer_id IS NOT NULL AND c.id = mt.customer_id)
+                        OR (mt.job_order_vehicle_plate != '' AND REPLACE(LOWER(TRIM(c.vehicle_plate)),'‑','-') = REPLACE(LOWER(TRIM(mt.job_order_vehicle_plate)),'‑','-'))
+                        OR (mt.customer_name != '' AND LOWER(TRIM(c.name)) = LOWER(TRIM(mt.customer_name)))
+                        OR (mt.customer_name != '' AND LOWER(TRIM(CONCAT_WS(' ', c.first_name, c.last_name))) = LOWER(TRIM(mt.customer_name)))
+                    )
+                )
+                LEFT JOIN users u_mech ON u_mech.id = jo_ref.assigned_mechanic_id
                 WHERE mt.station_id = ?
                   AND mt.transaction_type IN ('job_order', 'combined')
                 ORDER BY mt.created_at DESC
@@ -3138,19 +3185,30 @@ input[list] {
     color: #94a3b8;
 }
 
-/* ── Flash messages ──────────────────────────────────────────── */
+/* ── Flash messages (floating top-right banner) ───────────────── */
 .flash {
+    position: fixed;
+    top: 84px;
+    right: 24px;
+    z-index: 99999;
     padding: 13px 18px;
-    border-radius: 9px;
-    margin-bottom: 18px;
-    font-size: 13px;
-    font-weight: 500;
+    border-radius: 10px;
+    font-size: 13.5px;
+    font-weight: 600;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1);
+    max-width: 440px;
+    min-width: 280px;
+    animation: flashSlideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.flash.success { background: #dcfce7; border: 1px solid #86efac; color: #166534; }
-.flash.error   { background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; }
+@keyframes flashSlideInRight {
+    from { opacity: 0; transform: translateX(40px) scale(0.95); }
+    to { opacity: 1; transform: translateX(0) scale(1); }
+}
+.flash.success { background: #dcfce7; border: 1.5px solid #86efac; color: #166534; }
+.flash.error   { background: #fee2e2; border: 1.5px solid #fca5a5; color: #991b1b; }
 
 /* ── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 1100px) {
@@ -3202,10 +3260,38 @@ input[list] {
 </style>
 
 <?php if ($flash_success): ?>
-<div class="flash success"><i class="fas fa-check-circle"></i> <?= htmlspecialchars($flash_success) ?></div>
+<div class="flash success" id="flashMsgBanner">
+    <i class="fas fa-check-circle" style="font-size:16px;flex-shrink:0;"></i>
+    <span style="flex:1;"><?= htmlspecialchars($flash_success) ?></span>
+</div>
+<script>
+setTimeout(function() {
+    const el = document.getElementById('flashMsgBanner');
+    if (el) {
+        el.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+        el.style.opacity = '0';
+        el.style.transform = 'translateX(40px)';
+        setTimeout(() => el.remove(), 400);
+    }
+}, 3000);
+</script>
 <?php endif; ?>
 <?php if ($flash_error): ?>
-<div class="flash error"><i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($flash_error) ?></div>
+<div class="flash error" id="flashErrMsgBanner">
+    <i class="fas fa-exclamation-circle" style="font-size:16px;flex-shrink:0;"></i>
+    <span style="flex:1;"><?= htmlspecialchars($flash_error) ?></span>
+</div>
+<script>
+setTimeout(function() {
+    const el = document.getElementById('flashErrMsgBanner');
+    if (el) {
+        el.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+        el.style.opacity = '0';
+        el.style.transform = 'translateX(40px)';
+        setTimeout(() => el.remove(), 400);
+    }
+}, 3000);
+</script>
 <?php endif; ?>
 
 <div class="txn-content">
@@ -4512,8 +4598,7 @@ input[list] {
                 `padding:12px 18px;border-radius:10px;font-weight:700;` +
                 `box-shadow:0 12px 30px rgba(0,0,0,.15);transition:opacity .35s ease, transform .25s ease;` +
                 `font-size:13.5px;display:flex;align-items:center;gap:10px;max-width:440px;width:auto;opacity:0;transform:translateY(-10px);`;
-            toast.innerHTML = `<i class="fas ${c.icon}" style="color:${c.iconColor};font-size:16px;flex-shrink:0;"></i><span style="flex:1;">${msg}</span>` +
-                `<button onclick="this.parentElement.remove()" style="margin-left:8px;background:none;border:none;cursor:pointer;color:${c.color};font-size:18px;line-height:1;padding:0 2px;opacity:0.8;">×</button>`;
+            toast.innerHTML = `<i class="fas ${c.icon}" style="color:${c.iconColor};font-size:16px;flex-shrink:0;"></i><span style="flex:1;">${msg}</span>`;
             document.body.appendChild(toast);
             requestAnimationFrame(() => {
                 toast.style.opacity = '1';
@@ -5117,7 +5202,8 @@ input[list] {
                                 <label>Odometer Reading</label>
                                 <input type="text" id="joOdometer" class="txn-input"
                                        placeholder="e.g. 35,000 km"
-                                       autocomplete="off">
+                                       autocomplete="off"
+                                       oninput="formatOdometerInput(this)">
                             </div>
                         </div>
 
@@ -5130,7 +5216,7 @@ input[list] {
                                        placeholder="e.g. 1NZ-FE-1234567"
                                        style="text-transform:uppercase;"
                                        autocomplete="off"
-                                       oninput="checkVehicleSecurityWarning()">
+                                       oninput="formatEngineNumberInput(this)">
                             </div>
                             <div class="txn-field">
                                 <label>Chassis Number (VIN) <span style="color:#dc2626;">*</span></label>
@@ -5311,10 +5397,10 @@ input[list] {
                                 </label>
                                 <div style="position:relative;">
                                     <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#374151;font-size:14px;">₱</span>
-                                    <input type="number" id="joLaborCharge" class="txn-input"
-                                           step="0.01" min="0" placeholder="0.00"
+                                    <input type="text" id="joLaborCharge" class="txn-input"
+                                           inputmode="decimal" placeholder="0.00"
                                            style="padding-left:26px;font-weight:700;"
-                                           oninput="onJoLaborChargeInput()">
+                                           oninput="formatPesoInput(this); onJoLaborChargeInput()">
                                 </div>
                             </div>
                         </div>
@@ -6445,36 +6531,41 @@ input[list] {
                         </div>
                     </div>
 
-                    <!-- Loyalty -->
+                    <!-- Loyalty Program Section -->
                     <div class="txn-field" style="margin-top:10px; margin-bottom:8px; border-top:1.5px solid #e2e8f0; padding-top:10px;">
-                        <label style="font-size:10px;font-weight:600;color:#475569;">Loyalty Program</label>
-                        <select id="loyaltyProgram" class="txn-select" style="font-size:12px;padding:7px 10px;" onchange="onLoyaltyChange()">
+                        <label style="font-size:10px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:0.5px;">Loyalty Program</label>
+                        <select id="loyaltyProgram" class="txn-select" style="font-size:12px;padding:7px 10px;margin-top:4px;" onchange="onLoyaltyChange()">
                             <option value="No Loyalty">No Loyalty</option>
                             <option value="Petron Rewards Card">Petron Rewards Card</option>
                         </select>
                     </div>
 
-                    <!-- Loyalty Fields -->
+                    <!-- Loyalty Fields (hidden by default, shown when Petron Rewards Card is selected) -->
                     <div id="loyaltyFields" style="display:none;margin-bottom:8px;">
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
                             <div class="txn-field">
-                                <label style="font-size:10px;font-weight:600;color:#475569;">Loyalty Card No. <span style="color:#dc2626;">*</span></label>
-                                <input type="text" id="loyaltyCardNo" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Card #">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Loyalty Card No.</label>
+                                <input type="text" id="loyaltyCardNo" class="txn-input" style="font-size:12px;padding:7px 10px;background:#f8fafc;font-weight:600;color:#1e293b;" readonly placeholder="Card #">
                             </div>
                             <div class="txn-field">
-                                <label style="font-size:10px;font-weight:600;color:#475569;">Points Balance</label>
-                                <input type="text" id="loyaltyPointsBalance" class="txn-input" style="font-size:12px;padding:7px 10px;background:#f8fafc;" readonly placeholder="0">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Current Points Balance</label>
+                                <input type="number" id="loyaltyPointsBalance" class="txn-input" style="font-size:12px;padding:7px 10px;background:#f8fafc;font-weight:700;color:#002F70;" readonly value="0">
                             </div>
                         </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
                             <div class="txn-field">
                                 <label style="font-size:10px;font-weight:600;color:#475569;">Points Earned</label>
-                                <input type="number" id="loyaltyPointsEarned" class="txn-input" style="font-size:12px;padding:7px 10px;" min="0" value="0">
+                                <input type="number" id="loyaltyPointsEarned" class="txn-input" style="font-size:12px;padding:7px 10px;background:#f0fdf4;font-weight:700;color:#16a34a;" readonly value="0">
                             </div>
                             <div class="txn-field">
-                                <label style="font-size:10px;font-weight:600;color:#475569;">Redeem Points (Opt)</label>
-                                <input type="number" id="loyaltyPointsRedeemed" class="txn-input" style="font-size:12px;padding:7px 10px;" min="0" value="0">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Redeem Points (Optional)</label>
+                                <input type="number" id="loyaltyPointsRedeemed" class="txn-input" style="font-size:12px;padding:7px 10px;" min="0" value="0" oninput="calcLoyaltyPoints()">
                             </div>
+                        </div>
+                        <div class="txn-field">
+                            <label style="font-size:10px;font-weight:600;color:#475569;">Points After Transaction</label>
+                            <input type="number" id="loyaltyPointsAfter" class="txn-input" style="font-size:12px;padding:7px 10px;background:#eff6ff;font-weight:700;color:#1d4ed8;" readonly value="0">
+                            <div id="loyaltyErrorMsg" style="font-size:10.5px;color:#dc2626;font-weight:600;margin-top:2px;display:none;"></div>
                         </div>
                     </div>
 
@@ -6947,42 +7038,98 @@ input[list] {
         // ── State ────────────────────────────────────────────────────────────
         let cart = [];
         let selectedProduct = null;
-        const pointsPerPeso = <?= (float)$points_per_peso ?>;
+        const pointsPerAmount = <?= (float)$points_per_amount ?>;
+        const redemptionValue  = <?= (float)$redemption_value ?>;
         const selectedCustomerIds = { jo: null, merch: null };
 
         function onLoyaltyChange() {
             const program = document.getElementById('loyaltyProgram')?.value || 'No Loyalty';
             const fieldsWrap = document.getElementById('loyaltyFields');
             const cardNoInput = document.getElementById('loyaltyCardNo');
+            const balanceInput = document.getElementById('loyaltyPointsBalance');
+
             if (fieldsWrap) {
-                if (program === 'Petron Rewards Card') {
+                if (program !== 'No Loyalty') {
                     fieldsWrap.style.display = 'block';
-                    if (cardNoInput) cardNoInput.required = true;
                     updateLoyaltyPointsEarned(getGrandTotal());
                 } else {
                     fieldsWrap.style.display = 'none';
-                    if (cardNoInput) {
-                        cardNoInput.required = false;
-                        cardNoInput.value = '';
-                    }
-                    const pointsBalance = document.getElementById('loyaltyPointsBalance');
+                    if (cardNoInput) cardNoInput.value = '';
+                    if (balanceInput) balanceInput.value = '0';
                     const pointsEarned = document.getElementById('loyaltyPointsEarned');
                     const pointsRedeemed = document.getElementById('loyaltyPointsRedeemed');
-                    if (pointsBalance) pointsBalance.value = '0';
+                    const pointsAfter = document.getElementById('loyaltyPointsAfter');
                     if (pointsEarned) pointsEarned.value = '0';
                     if (pointsRedeemed) pointsRedeemed.value = '0';
+                    if (pointsAfter) pointsAfter.value = '0';
+                    calcLoyaltyPoints();
                 }
             }
         }
 
         function updateLoyaltyPointsEarned(grand) {
             const program = document.getElementById('loyaltyProgram')?.value || 'No Loyalty';
-            if (program === 'Petron Rewards Card') {
-                const pointsEarnedInput = document.getElementById('loyaltyPointsEarned');
-                if (pointsEarnedInput) {
-                    pointsEarnedInput.value = Math.floor(grand * pointsPerPeso);
+            const pointsEarnedInput = document.getElementById('loyaltyPointsEarned');
+            if (program !== 'No Loyalty' && pointsEarnedInput) {
+                // Points Earned = Math.floor(eligibleTotal / pointsPerAmount)
+                const pts = Math.floor((grand || 0) / pointsPerAmount);
+                pointsEarnedInput.value = Math.max(0, pts);
+            } else if (pointsEarnedInput) {
+                pointsEarnedInput.value = 0;
+            }
+            calcLoyaltyPoints();
+        }
+
+        function calcLoyaltyPoints() {
+            const program = document.getElementById('loyaltyProgram')?.value || 'No Loyalty';
+            const balanceInput = document.getElementById('loyaltyPointsBalance');
+            const earnedInput = document.getElementById('loyaltyPointsEarned');
+            const redeemedInput = document.getElementById('loyaltyPointsRedeemed');
+            const afterInput = document.getElementById('loyaltyPointsAfter');
+            const errorEl = document.getElementById('loyaltyErrorMsg');
+
+            if (program === 'No Loyalty') {
+                if (afterInput) afterInput.value = 0;
+                if (errorEl) errorEl.style.display = 'none';
+                return;
+            }
+
+            const currentBalance = parseInt(balanceInput?.value || '0', 10) || 0;
+            const pointsEarned = parseInt(earnedInput?.value || '0', 10) || 0;
+            let pointsRedeemed = parseInt(redeemedInput?.value || '0', 10) || 0;
+            if (pointsRedeemed < 0) {
+                pointsRedeemed = 0;
+                if (redeemedInput) redeemedInput.value = 0;
+            }
+
+            let isValid = true;
+            if (pointsRedeemed > currentBalance) {
+                isValid = false;
+                if (errorEl) {
+                    errorEl.textContent = `Insufficient points. Available points: ${currentBalance}.`;
+                    errorEl.style.display = 'block';
+                }
+            } else {
+                if (errorEl) errorEl.style.display = 'none';
+            }
+
+            // Disable / Enable checkout / submit button
+            const submitBtn = document.querySelector('.cart-pay-btn') || document.getElementById('submitTxnBtn');
+            if (submitBtn) {
+                if (!isValid) {
+                    submitBtn.disabled = true;
+                    submitBtn.style.opacity = '0.5';
+                    submitBtn.style.cursor = 'not-allowed';
+                } else {
+                    submitBtn.disabled = false;
+                    submitBtn.style.opacity = '1';
+                    submitBtn.style.cursor = 'pointer';
                 }
             }
+
+            // Formula: New Points Balance = Previous Balance + Points Earned - Points Redeemed
+            const pointsAfter = currentBalance + pointsEarned - pointsRedeemed;
+            if (afterInput) afterInput.value = Math.max(0, pointsAfter);
         }
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -7381,12 +7528,44 @@ input[list] {
         }
 
         // ── Filter service types dropdown ─────────────────────────────────────
+        // ── Filter service types dropdown ─────────────────────────────────────
         function getSelectedServiceNames() {
-            const checked = document.querySelectorAll('.jo-svc-checkbox:checked');
-            return Array.from(checked).map(cb => cb.value);
+            return cart
+                .filter(i => i.item_type === 'service' && i.category !== 'Labor' && i.product_name !== 'Labor Charge')
+                .map(i => i.product_name);
+        }
+
+        function syncServiceCheckboxes() {
+            const selectedNames = getSelectedServiceNames();
+            document.querySelectorAll('.jo-svc-checkbox').forEach(cb => {
+                cb.checked = selectedNames.includes(cb.value);
+            });
         }
 
         function onServiceCheckboxChange(cb) {
+            const name = cb.value;
+            const isChecked = cb.checked;
+            const types = window.JO_SERVICE_TYPES || [];
+            const svc = types.find(s => s.name === name);
+            const price = (svc && parseFloat(svc.price) > 0) ? parseFloat(svc.price) : (parseFloat(cb.dataset.price) || 0);
+
+            if (isChecked) {
+                const existing = cart.find(i => i.item_type === 'service' && i.product_name === name);
+                if (!existing) {
+                    cart.push({
+                        item_type:    'service',
+                        product_name: name,
+                        category:     svc ? getServiceCategory(svc) : (cb.dataset.category || 'Service Fee'),
+                        size_variant: '',
+                        product_id:   null,
+                        quantity:     1,
+                        unit_price:   price,
+                    });
+                }
+            } else {
+                cart = cart.filter(i => !(i.item_type === 'service' && i.product_name === name));
+            }
+
             updateServiceSelectionState();
         }
 
@@ -7415,35 +7594,11 @@ input[list] {
             const types = window.JO_SERVICE_TYPES || [];
             let totalPrice = 0;
 
-            // Remove any service items in cart that are no longer selected (except Labor Charge)
-            cart = cart.filter(i => {
-                if (i.item_type === 'service' && i.category !== 'Labor' && i.product_name !== 'Labor Charge') {
-                    return selectedNames.includes(i.product_name);
-                }
-                return true;
-            });
-
-            // Add or update selected services in cart
             selectedNames.forEach(name => {
+                const item = cart.find(i => i.item_type === 'service' && i.product_name === name);
+                if (item) totalPrice += (item.unit_price * item.quantity);
+
                 const svc = types.find(s => s.name === name);
-                const price = svc && svc.price > 0 ? parseFloat(svc.price) : 0;
-                totalPrice += price;
-
-                const existing = cart.find(i => i.item_type === 'service' && i.product_name === name);
-                if (existing) {
-                    if (existing.unit_price <= 0 && price > 0) existing.unit_price = price;
-                } else {
-                    cart.push({
-                        item_type:    'service',
-                        product_name: name,
-                        category:     svc ? getServiceCategory(svc) : 'Service Fee',
-                        size_variant: '',
-                        product_id:   null,
-                        quantity:     1,
-                        unit_price:   price,
-                    });
-                }
-
                 if (svc && svc.key && selectedNames.length === 1) {
                     fetchServiceParts(svc.key);
                 }
@@ -7465,13 +7620,13 @@ input[list] {
                 syncServiceCategory('');
             }
 
+            syncServiceCheckboxes();
             renderCart();
             updateCheckoutBtn();
         }
 
         function removeServiceByName(name) {
-            const cb = document.querySelector(`.jo-svc-checkbox[value="${CSS.escape(name)}"]`);
-            if (cb) { cb.checked = false; }
+            cart = cart.filter(i => !(i.item_type === 'service' && i.product_name === name));
             updateServiceSelectionState();
         }
 
@@ -7552,8 +7707,29 @@ input[list] {
         // ── Select service type ───────────────────────────────────────────────
         function selectServiceType(serviceName) {
             const cb = document.querySelector(`.jo-svc-checkbox[value="${CSS.escape(serviceName)}"]`);
-            if (cb) { cb.checked = !cb.checked; }
-            updateServiceSelectionState();
+            if (cb) {
+                cb.checked = !cb.checked;
+                onServiceCheckboxChange(cb);
+            } else {
+                const selectedNames = getSelectedServiceNames();
+                if (selectedNames.includes(serviceName)) {
+                    cart = cart.filter(i => !(i.item_type === 'service' && i.product_name === serviceName));
+                } else {
+                    const types = window.JO_SERVICE_TYPES || [];
+                    const svc = types.find(s => s.name === serviceName);
+                    const price = svc && parseFloat(svc.price) > 0 ? parseFloat(svc.price) : 0;
+                    cart.push({
+                        item_type:    'service',
+                        product_name: serviceName,
+                        category:     svc ? getServiceCategory(svc) : 'Service Fee',
+                        size_variant: '',
+                        product_id:   null,
+                        quantity:     1,
+                        unit_price:   price,
+                    });
+                }
+                updateServiceSelectionState();
+            }
         }
         
         // ── HTML escape helper ────────────────────────────────────────────────
@@ -7636,26 +7812,32 @@ input[list] {
         //      — skips parts already in cart (merges quantity)
         async function applyJobOrderToCart() {
             const svcType   = (document.getElementById('joServiceTypeValue')?.value || '').trim();
-            const svcPrice  = parseFloat(document.getElementById('joServicePrice')?.value || 0);
-            const laborCharge = parseFloat(document.getElementById('joLaborCharge')?.value || 0);
+            const laborCharge = parseFloat((document.getElementById('joLaborCharge')?.value || '0').replace(/[^0-9.]/g, '')) || 0;
 
-            if (!svcType || svcPrice < 0) return; // caller already validated
+            if (!svcType) return; // caller already validated
 
-            // ── 1. Add / update service fee line item ─────────────────────────
-            const existingSvc = cart.find(i => i.item_type === 'service' && i.product_name === svcType);
-            if (existingSvc) {
-                existingSvc.unit_price = svcPrice;
-            } else {
-                cart.push({
-                    item_type:    'service',
-                    product_name: svcType,
-                    category:     'Service Fee',
-                    size_variant: '',
-                    product_id:   null,
-                    quantity:     1,
-                    unit_price:   svcPrice,
-                });
-            }
+            const selectedNames = svcType.split(', ').map(s => s.trim()).filter(Boolean);
+            const types = window.JO_SERVICE_TYPES || [];
+
+            // ── 1. Ensure each selected service is in cart individually ──────────
+            selectedNames.forEach(name => {
+                const svc = types.find(s => s.name === name);
+                const price = svc && parseFloat(svc.price) > 0 ? parseFloat(svc.price) : 0;
+                const existing = cart.find(i => i.item_type === 'service' && i.product_name === name);
+                if (existing) {
+                    if (existing.unit_price <= 0 && price > 0) existing.unit_price = price;
+                } else {
+                    cart.push({
+                        item_type:    'service',
+                        product_name: name,
+                        category:     svc ? getServiceCategory(svc) : 'Service Fee',
+                        size_variant: '',
+                        product_id:   null,
+                        quantity:     1,
+                        unit_price:   price,
+                    });
+                }
+            });
 
             // ── 1b. Add labor charge as separate line item (if > 0) ───────────
             if (laborCharge > 0) {
@@ -7726,11 +7908,11 @@ input[list] {
                 );
             } else if (parts.length > 0) {
                 showTxnAlert(
-                    `"${svcType}" + ${parts.filter(p => p.product_id && p.in_stock).length} part(s) added to cart.`,
+                    `"${selectedNames.join(', ')}" + ${parts.filter(p => p.product_id && p.in_stock).length} part(s) added to cart.`,
                     'success'
                 );
             } else {
-                showTxnAlert(`"${svcType}" added to cart (service fee only — no parts mapped).`, 'success');
+                showTxnAlert(`"${selectedNames.join(', ')}" added to cart.`, 'success');
             }
         }
 
@@ -7890,7 +8072,7 @@ input[list] {
         }
 
         function onJoLaborChargeInput() {
-            const laborCharge = parseFloat(document.getElementById('joLaborCharge')?.value || 0);
+            const laborCharge = parseFloat((document.getElementById('joLaborCharge')?.value || '0').replace(/[^0-9.]/g, '')) || 0;
             const laborLabel = 'Labor Charge';
             const existingLabor = cart.find(i => i.item_type === 'service' && (i.product_name === laborLabel || i.category === 'Labor'));
             if (laborCharge > 0) {
@@ -8313,13 +8495,24 @@ input[list] {
             if (vehicleModel) vehicleModel.value = customer.vehicle_model || '';
             if (vehiclePlate) vehiclePlate.value = customer.plate_number || '';
             
-            // Automatically fill loyalty fields if customer matches
+            // Auto-switch loyalty dropdown based on Customer Master Data
+            const loyaltyDropdown = document.getElementById('loyaltyProgram');
             const loyaltyCardNoInput = document.getElementById('loyaltyCardNo');
-            if (loyaltyCardNoInput) {
-                const cardVal = customer.customer_id || customer.id_number || '';
-                loyaltyCardNoInput.value = cardVal;
-                // Dispatch input event to trigger autocomplete
-                loyaltyCardNoInput.dispatchEvent(new Event('input'));
+            const loyaltyPointsBalanceEl = document.getElementById('loyaltyPointsBalance');
+            const hasLoyaltyCard = customer.loyalty_card_no && customer.loyalty_card_no.trim() !== '';
+
+            if (hasLoyaltyCard) {
+                // Customer has a card — switch to Petron Rewards Card, show fields, fill values
+                if (loyaltyDropdown) loyaltyDropdown.value = 'Petron Rewards Card';
+                if (loyaltyCardNoInput) loyaltyCardNoInput.value = customer.loyalty_card_no;
+                if (loyaltyPointsBalanceEl) loyaltyPointsBalanceEl.value = customer.points || 0;
+                onLoyaltyChange(); // shows loyaltyFields and recalculates points
+            } else {
+                // No card — keep No Loyalty, hide fields
+                if (loyaltyDropdown) loyaltyDropdown.value = 'No Loyalty';
+                if (loyaltyCardNoInput) loyaltyCardNoInput.value = '';
+                if (loyaltyPointsBalanceEl) loyaltyPointsBalanceEl.value = 0;
+                onLoyaltyChange(); // hides loyaltyFields
             }
 
             // Hide search results and clear search input
@@ -9128,7 +9321,7 @@ input[list] {
         }
 
         // ── Submit Job Order ─────────────────────────────────────────────────
-        function submitJobOrder() {
+        async function submitJobOrder() {
             const firstName = document.getElementById('joFirstName')?.value?.trim();
             const plate     = document.getElementById('joVehiclePlate')?.value?.trim();
             if (!firstName) {
@@ -9149,13 +9342,30 @@ input[list] {
                 showTxnAlert('Chassis Number (VIN) is required for vehicle security.', 'warning');
                 return;
             }
-            const serviceType = document.getElementById('joServiceType')?.value?.trim();
+            const serviceType = (document.getElementById('joServiceTypeValue')?.value || '').trim();
             if (!serviceType) {
                 showTxnAlert('Please select a service type before submitting the Job Order.', 'warning');
                 return;
             }
-            // Delegate to the existing cart-based flow
-            addServiceFromFormToCart();
+
+            // ── Check payment method before anything else ─────────────────────
+            const method = (document.getElementById('paymentMethod')?.value || '').trim();
+            if (!method) {
+                showTxnAlert('Please select a Payment Method before submitting the Job Order.', 'warning');
+                // Scroll payment method into view
+                const pmEl = document.getElementById('paymentMethod');
+                if (pmEl) pmEl.focus();
+                return;
+            }
+
+            // ── Ensure service is in cart ─────────────────────────────────────
+            const alreadyInCart = cart.some(i => i.item_type === 'service');
+            if (!alreadyInCart) {
+                await addServiceFromFormToCart();
+            }
+
+            // ── Directly finalize & submit (no separate checkout click needed) ─
+            await submitMerchTxn();
         }
 
         var _secCheckDebounce = null;
@@ -9598,8 +9808,10 @@ input[list] {
             if (cart.length === 0) return;
             if (!confirm('Clear all items from the cart?')) return;
             cart = [];
+            if (typeof updateServiceSelectionState === 'function') updateServiceSelectionState();
             renderCart();
             updateCheckoutBtn();
+            syncProductCheckboxes();
         }
 
         // ── Render cart ───────────────────────────────────────────────────────
@@ -9643,6 +9855,7 @@ input[list] {
             updateTotals(subtotal, vat, grand);
             // Keep product checkboxes in sync with cart
             if (typeof syncProductCheckboxes === 'function') syncProductCheckboxes();
+            if (typeof syncServiceCheckboxes === 'function') syncServiceCheckboxes();
         }
 
         function cartQty(idx, delta) {
@@ -9664,10 +9877,16 @@ input[list] {
         }
 
         function cartRemove(idx) {
+            const item = cart[idx];
             cart.splice(idx, 1);
-            renderCart();
-            updateCheckoutBtn();
-            syncProductCheckboxes();
+            if (item && item.item_type === 'service' && item.category !== 'Labor' && item.product_name !== 'Labor Charge') {
+                if (typeof updateServiceSelectionState === 'function') updateServiceSelectionState();
+            } else {
+                renderCart();
+                updateCheckoutBtn();
+                syncProductCheckboxes();
+                if (typeof syncServiceCheckboxes === 'function') syncServiceCheckboxes();
+            }
         }
 
         function updateTotals(subtotal, vat, grand) {
@@ -9901,18 +10120,12 @@ input[list] {
             const loyaltyPointsBalance = parseInt(document.getElementById('loyaltyPointsBalance')?.value || 0) || 0;
             const loyaltyPointsEarned = parseInt(document.getElementById('loyaltyPointsEarned')?.value || 0) || 0;
             const loyaltyPointsRedeemed = parseInt(document.getElementById('loyaltyPointsRedeemed')?.value || 0) || 0;
+            const hasLoyaltyCard = loyaltyProgram !== 'No Loyalty' && loyaltyCardNo !== '';
 
-            if (loyaltyProgram === 'Petron Rewards Card') {
-                if (!loyaltyCardNo) {
-                    showTxnAlert('Please enter the Loyalty Card Number.', 'warning');
-                    document.getElementById('loyaltyCardNo')?.focus();
-                    return;
-                }
-                if (loyaltyPointsRedeemed > loyaltyPointsBalance) {
-                    showTxnAlert(`Cannot redeem more points than current balance (${loyaltyPointsBalance} pts).`, 'warning');
-                    document.getElementById('loyaltyPointsRedeemed')?.focus();
-                    return;
-                }
+            if (loyaltyProgram !== 'No Loyalty' && loyaltyPointsRedeemed > loyaltyPointsBalance) {
+                showTxnAlert(`Cannot redeem more points than current balance (${loyaltyPointsBalance} pts).`, 'warning');
+                document.getElementById('loyaltyPointsRedeemed')?.focus();
+                return;
             }
 
             // ── JO data ───────────────────────────────────────────────────────
@@ -9930,6 +10143,11 @@ input[list] {
                     job_order_description:        (document.getElementById('joNotes')?.value || '').trim(),
                     job_order_vehicle_plate:      (document.getElementById('joVehiclePlate')?.value || '').trim().toUpperCase(),
                     job_order_vehicle_type:       (document.getElementById('joVehicleType')?.value || '').trim(),
+                    job_order_vehicle_brand:      (document.getElementById('joVehicleBrand')?.value || '').trim(),
+                    job_order_vehicle_model:      (document.getElementById('joVehicleModel')?.value || '').trim(),
+                    job_order_year_model:         (document.getElementById('joYearModel')?.value || '').trim(),
+                    job_order_engine_number:      (document.getElementById('joEngineNumber')?.value || '').trim(),
+                    job_order_chassis_number:     (document.getElementById('joChassisNumber')?.value || '').trim(),
                     job_order_mechanic_id:        parseInt(mechanicId) || null,
                     job_order_mechanic_name:      (document.getElementById('joMechanicName')?.value || '').trim(),
                     job_order_contact:            (document.getElementById('joContactNumber')?.value || '').trim(),
@@ -9994,10 +10212,10 @@ input[list] {
                 credit_due_date:       isCredit ? (document.getElementById('creditDueDate')?.value || null) : null,
                 
                 // Loyalty fields
-                loyalty_type:            loyaltyProgram,
-                loyalty_card_no:         loyaltyProgram === 'Petron Rewards Card' ? loyaltyCardNo : null,
-                loyalty_points_earned:   loyaltyProgram === 'Petron Rewards Card' ? loyaltyPointsEarned : null,
-                loyalty_points_redeemed: loyaltyProgram === 'Petron Rewards Card' ? loyaltyPointsRedeemed : null,
+                loyalty_type:            loyaltyProgram !== 'No Loyalty' ? loyaltyProgram : null,
+                loyalty_card_no:         hasLoyaltyCard ? loyaltyCardNo : null,
+                loyalty_points_earned:   hasLoyaltyCard ? loyaltyPointsEarned : null,
+                loyalty_points_redeemed: hasLoyaltyCard ? loyaltyPointsRedeemed : null,
 
                 items: cart.map(i => ({
                     item_type:    i.item_type,
@@ -10024,9 +10242,35 @@ input[list] {
                 const data = await res.json();
 
                 if (data.success) {
-                    // Print receipt using popup-immune iframe
-                    printMerchandiseReceipt(data.transaction_id);
-                    // Reset everything
+                    // If job order (has service), show banner with print link + redirect to tracker
+                    if (hasService) {
+                        const txnId = data.transaction_id;
+                        // Show success banner with a separate print link — no auto-print
+                        const old = document.getElementById('txnAlertBanner');
+                        if (old) old.remove();
+                        const div = document.createElement('div');
+                        div.id = 'txnAlertBanner';
+                        div.style.cssText = `position:fixed;top:84px;right:22px;left:auto;z-index:999999;
+                            background:#f0fdf4;border:1.5px solid #86efac;color:#166534;
+                            padding:12px 18px;border-radius:10px;font-size:13.5px;font-weight:700;
+                            display:flex;align-items:center;gap:10px;box-shadow:0 12px 30px rgba(0,0,0,.15);
+                            max-width:480px;width:auto;`;
+                        div.innerHTML = `<i class="fas fa-check-circle" style="font-size:16px;flex-shrink:0;"></i>
+                            <span style="flex:1;">Job Order successfully submitted!
+                            <a href="javascript:void(0)" onclick="printMerchandiseReceipt(${txnId})"
+                               style="color:#15803d;text-decoration:underline;font-weight:800;margin-left:6px;">
+                               <i class="fas fa-print" style="margin-right:3px;"></i>Print Receipt
+                            </a></span>`;
+                        document.body.appendChild(div);
+                        setTimeout(function() { if (div.parentElement) div.remove(); }, 5000);
+                        // Redirect to tracker
+                        setTimeout(function() {
+                            window.location.href = 'staff_transactions_hub.php?section=merchandise&active_tab=tracker';
+                        }, 1800);
+                        return;
+                    }
+
+                    // Reset everything (merchandise-only)
                     cart = [];
                     renderCart();
                     updateCheckoutBtn();
@@ -10068,6 +10312,8 @@ input[list] {
                     const pmSel = document.getElementById('paymentMethod');
                     if (pmSel) pmSel.selectedIndex = 0;
                     onPaymentChange();
+                    // Auto-print receipt for merchandise-only transactions
+                    printMerchandiseReceipt(data.transaction_id);
                     showTxnAlert('Transaction submitted successfully! Receipt opened in a new tab.', 'success');
                 } else {
                     showTxnAlert('Error: ' + (data.error || 'Transaction failed.'), 'error');
@@ -10104,10 +10350,9 @@ input[list] {
                 padding:12px 18px;border-radius:10px;font-size:13.5px;font-weight:700;
                 display:flex;align-items:center;gap:10px;box-shadow:0 12px 30px rgba(0,0,0,.15);
                 max-width:440px;width:auto;`;
-            div.innerHTML = `<i class="fas ${icon}" style="font-size:16px;flex-shrink:0;"></i><span style="flex:1;">${escHtml(msg)}</span>
-                <button onclick="this.parentElement.remove()" style="margin-left:8px;background:none;border:none;cursor:pointer;color:${c.color};font-size:18px;line-height:1;padding:0 2px;opacity:0.8;">×</button>`;
+            div.innerHTML = `<i class="fas ${icon}" style="font-size:16px;flex-shrink:0;"></i><span style="flex:1;">${escHtml(msg)}</span>`;
             document.body.appendChild(div);
-            setTimeout(() => { if (div.parentElement) div.remove(); }, 4500);
+            setTimeout(() => { if (div.parentElement) div.remove(); }, 3000);
         }
 
         // ── Init ──────────────────────────────────────────────────────────────
@@ -10182,7 +10427,7 @@ input[list] {
                         <option value="pending">Pending Validation</option>
                         <option value="inprogress">In Progress</option>
                         <option value="completed">Completed</option>
-                        <option value="rejected">Rejected</option>
+                        <option value="released">Released</option>
                     </select>
                 </div>
 
@@ -10275,21 +10520,21 @@ input[list] {
                 <div style="width:100%;overflow-x:hidden !important;padding-bottom:12px;">
                 <table class="txn-table" id="joUnifiedTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse;">
                     <colgroup>
-                        <col style="width:5%;"><!-- JO # -->
-                        <col style="width:6%;"><!-- OR No. -->
-                        <col style="width:9%;"><!-- Customer -->
+                        <col style="width:4.5%;"><!-- JO # -->
+                        <col style="width:6.5%;"><!-- OR No. -->
+                        <col style="width:8.5%;"><!-- Customer -->
                         <col style="width:5.5%;"><!-- Plate No. -->
                         <col style="width:5%;"><!-- Vehicle -->
                         <col style="width:7%;"><!-- Service Type -->
-                        <col style="width:8%;"><!-- Assigned Mechanic -->
+                        <col style="width:7.5%;"><!-- Assigned Mechanic -->
                         <col style="width:5%;"><!-- Service Fee -->
                         <col style="width:5%;"><!-- Labor Fee -->
-                        <col style="width:6.5%;"><!-- JO Status -->
-                        <col style="width:6.5%;"><!-- Payment Status -->
-                        <col style="width:6%;"><!-- Payment Method -->
+                        <col style="width:8.5%;"><!-- JO Status -->
+                        <col style="width:5.5%;"><!-- Payment Status -->
+                        <col style="width:5.5%;"><!-- Payment Method -->
                         <col style="width:6.5%;"><!-- Est. Completion -->
                         <col style="width:6%;"><!-- Date Created -->
-                        <col style="width:13%;"><!-- Actions -->
+                        <col style="width:13.5%;"><!-- Actions -->
                     </colgroup>
                     <thead style="background:linear-gradient(135deg,#002F70 0%,#003d8f 100%);">
                         <tr>
@@ -10302,9 +10547,9 @@ input[list] {
                             <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Assigned Mechanic">Mechanic</th>
                             <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:right;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Service Fee">Svc Fee</th>
                             <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:right;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Labor Fee">Labor</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="JO Status">JO Status</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Payment Status">Pay Status</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Payment Method">Pay Method</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="JO Status">JO Status</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 4px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Payment Status">Pay Status</th>
+                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 4px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Payment Method">Pay Method</th>
                             <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Estimated Completion">Est. Done</th>
                             <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Date Created">Created</th>
                             <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Actions">Actions</th>
@@ -10387,8 +10632,9 @@ input[list] {
                             $jo_balance_display = max(0, $jo_total_for_bal - $jo_paid_for_bal);
 
                         // ── Separated remarks ────────────────────────────────────────────────
-                        $staff_remark   = trim($job['staff_remarks'] ?? $job['notes'] ?? '');
+                        $staff_remark   = trim($job['staff_remarks'] ?? $job['notes'] ?? $job['job_order_description'] ?? '');
                         $manager_remark = trim($job['manager_notes'] ?? $job['admin_remarks'] ?? '');
+                        $remarks        = !empty($staff_remark) ? $staff_remark : (!empty($manager_remark) ? $manager_remark : '');
 
                         // ── Shift Indicator ──────────────────────────────────────────────────
                         $shift_name_raw = trim($job['shift_name'] ?? $job['shift_period'] ?? '');
@@ -10489,23 +10735,25 @@ input[list] {
                         </td>
 
                         <!-- JO Status -->
-                        <td style="padding:8px 5px;vertical-align:middle;">
-                            <span style="display:inline-block;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap;
-                                         background:<?= $wf_bg ?>;color:<?= $wf_color ?>;border:1px solid <?= $wf_color ?>40;">
-                                <?= $wf_label ?>
+                        <td style="padding:8px 4px;vertical-align:middle;overflow:hidden;text-align:center;">
+                            <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;max-width:100%;box-sizing:border-box;text-overflow:ellipsis;overflow:hidden;
+                                         background:<?= $wf_bg ?>;color:<?= $wf_color ?>;border:1px solid <?= $wf_color ?>40;"
+                                  title="<?= htmlspecialchars($wf_label) ?>">
+                                <?= htmlspecialchars($wf_label) ?>
                             </span>
                         </td>
 
                         <!-- Payment Status -->
-                        <td style="padding:8px 5px;vertical-align:middle;">
-                            <span style="display:inline-block;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap;
-                                         background:<?= $pay_color ?>18;color:<?= $pay_color ?>;border:1px solid <?= $pay_color ?>40;">
-                                <?= $pay_label ?>
+                        <td style="padding:8px 4px;vertical-align:middle;overflow:hidden;text-align:center;">
+                            <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;max-width:100%;box-sizing:border-box;text-overflow:ellipsis;overflow:hidden;
+                                         background:<?= $pay_color ?>18;color:<?= $pay_color ?>;border:1px solid <?= $pay_color ?>40;"
+                                  title="<?= htmlspecialchars($pay_label) ?>">
+                                <?= htmlspecialchars($pay_label) ?>
                             </span>
                         </td>
 
                         <!-- Payment Method -->
-                        <td style="padding:8px 5px;vertical-align:middle;">
+                        <td style="padding:8px 4px;vertical-align:middle;text-align:center;overflow:hidden;">
                             <?php
                             $pay_method = trim($job['payment_method'] ?? 'Cash');
                             if (empty($pay_method)) $pay_method = 'Cash';
@@ -10516,7 +10764,8 @@ input[list] {
                             elseif (stripos($pay_method, 'Fleet') !== false || stripos($pay_method, 'Petron') !== false) { $pm_bg = '#fef3c7'; $pm_fg = '#b45309'; }
                             elseif (stripos($pay_method, 'Credit') !== false || stripos($pay_method, 'A/R') !== false) { $pm_bg = '#f3e8ff'; $pm_fg = '#6b21a8'; }
                             ?>
-                            <span style="display:inline-block;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600;background:<?= $pm_bg ?>;color:<?= $pm_fg ?>;white-space:nowrap;">
+                            <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;max-width:100%;box-sizing:border-box;text-overflow:ellipsis;overflow:hidden;background:<?= $pm_bg ?>;color:<?= $pm_fg ?>;border:1px solid <?= $pm_fg ?>30;"
+                                  title="<?= htmlspecialchars($pay_method) ?>">
                                 <?= htmlspecialchars($pay_method) ?>
                             </span>
                         </td>
@@ -10584,14 +10833,28 @@ input[list] {
                                 $labor_fee_val = (float)($job['actual_labor_cost'] ?? $job['estimated_labor_cost'] ?? 0);
                                 
                                 // Prepare JO data for modals (JSON-encoded)
+                                $jo_or_number = '';
+                                if (!empty($job['or_number'])) {
+                                    $jo_or_number = $job['or_number'];
+                                } elseif (!empty($job['created_at'])) {
+                                    $jo_or_number = 'OR-' . date('Y', strtotime($job['created_at'])) . '-' . str_pad($job['id'], 6, '0', STR_PAD_LEFT);
+                                }
                                 $jo_data = json_encode([
                                     'id' => (int)$job['id'],
                                     'jo_ref' => $job['job_order_id'] ?? ('#'.$job['id']),
-                                    'customer' => $job['customer_name'] ?? '—',
+                                    'or_number' => $jo_or_number,
+                                    'customer' => $job['customer_name'] ?? '',
+                                    'contact_number' => $job['contact_number'] ?? $job['customer_contact'] ?? '',
                                     'vehicle_plate' => $job['vehicle_plate'] ?? '',
                                     'vehicle_type' => $job['vehicle_type'] ?? '',
+                                    'vehicle_brand' => $job['vehicle_brand'] ?? $job['brand'] ?? '',
+                                    'vehicle_model' => $job['vehicle_model'] ?? $job['model'] ?? '',
+                                    'year_model' => $job['year_model'] ?? $job['vehicle_year'] ?? '',
+                                    'engine_number' => $job['engine_number'] ?? '',
+                                    'chassis_number' => $job['chassis_number'] ?? $job['vin'] ?? '',
+                                    'odometer' => $job['odometer'] ?? '',
                                     'service_type' => $job['service_type'] ?? '',
-                                    'service_description' => $job['service_description'] ?? '',
+                                    'service_description' => $job['service_description'] ?? $job['additional_notes'] ?? '',
                                     'parts' => $parts_display,
                                     'mechanic' => $job['mechanic_name'] ?? 'Unassigned',
                                     'workflow_status' => $wf_label,
@@ -10602,6 +10865,9 @@ input[list] {
                                     'paid' => $jo_paid,
                                     'balance' => $jo_balance,
                                     'remarks' => $remarks,
+                                    'staff_remarks' => $job['staff_remarks'] ?? $job['notes'] ?? $job['job_order_description'] ?? '',
+                                    'customer_complaint' => $job['customer_complaint'] ?? '',
+                                    'repair_recommendation' => $job['repair_recommendation'] ?? '',
                                     'created_at' => $job['created_at'],
                                     'source' => $job['_source'] ?? 'job_orders',
                                     'estimated_duration' => (int)($job['estimated_duration'] ?? 0)
@@ -10688,12 +10954,41 @@ input[list] {
                                     <?php endif; ?>
 
                                 <?php elseif ($wf_status === 'Released'): ?>
-                                    <!-- RELEASED Status: View, Reprint, Request Adjust, Request Void -->
+                                    <!-- RELEASED Status: View, Reprint (NO Request Adjust, NO Request Void) -->
                                     <button type="button"
                                             onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
                                             class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-print"></i> Reprint
                                     </button>
+
+                                <?php elseif ($wf_status === 'Completed'): ?>
+                                    <!-- COMPLETED Status: View, Reprint, Mark Paid/Settle, Release Vehicle, Request Adjust, Request Void -->
+                                    <button type="button"
+                                            onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                        <i class="fas fa-print"></i> Reprint
+                                    </button>
+
+                                    <?php if ($pay_status !== 'Paid'): ?>
+                                        <button type="button"
+                                                onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
+                                                class="txn-btn success" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                            <i class="fas fa-money-bill-wave"></i>
+                                            <?= in_array($pay_status, ['Partially Paid','Partial Payment','Partial']) ? 'Settle Balance' : 'Mark Paid' ?>
+                                        </button>
+                                    <?php endif; ?>
+
+                                    <!-- RELEASE VEHICLE BUTTON -->
+                                    <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="margin:0;width:100%;" onsubmit="return confirm('Are you sure you want to mark this Job Order as Released to customer?');">
+                                        <input type="hidden" name="jo_action" value="release_job_order">
+                                        <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
+                                        <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
+                                        <button type="submit" 
+                                                class="txn-btn primary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;background:#002F70;color:#fff;border:none;">
+                                            <i class="fas fa-car-side"></i> Release Vehicle
+                                        </button>
+                                    </form>
+
                                     <button type="button"
                                             data-jo-id="<?= (int)$job['id'] ?>"
                                             data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
@@ -10725,69 +11020,8 @@ input[list] {
                                         <i class="fas fa-ban"></i> Request Void
                                     </button>
 
-                                <?php elseif ($wf_status === 'Completed'): ?>
-                                    <!-- COMPLETED Status: View, Reprint, Request Adjust, Request Void (+ Release/Settle) -->
-                                    <button type="button"
-                                            onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
-                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
-                                        <i class="fas fa-print"></i> Reprint
-                                    </button>
-
-                                    <?php if ($pay_status !== 'Paid'): ?>
-                                        <button type="button"
-                                                onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
-                                                class="txn-btn success" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
-                                            <i class="fas fa-money-bill-wave"></i>
-                                            <?= in_array($pay_status, ['Partially Paid','Partial Payment','Partial']) ? 'Settle Balance' : 'Mark Paid' ?>
-                                        </button>
-                                    <?php endif; ?>
-
-                                    <!-- RELEASE VEHICLE BUTTON -->
-                                    <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="margin:0;width:100%;" onsubmit="return confirm('Are you sure you want to mark this Job Order as Released to customer?');">
-                                        <input type="hidden" name="jo_action" value="release_job_order">
-                                        <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
-                                        <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
-                                        <button type="submit" 
-                                                class="txn-btn primary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;background:#002F70;color:#fff;border:none;">
-                                            <i class="fas fa-car-side"></i> Release Vehicle
-                                        </button>
-                                    </form>
-
-                                    <div style="display:flex;gap:3px;width:100%;">
-                                        <button type="button"
-                                                data-jo-id="<?= (int)$job['id'] ?>"
-                                                data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
-                                                data-jo-ref="<?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>"
-                                                data-jo-customer="<?= htmlspecialchars($job['customer_name'] ?? '—') ?>"
-                                                data-jo-status="<?= htmlspecialchars($wf_label) ?>"
-                                                data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
-                                                data-jo-paymethod="<?= htmlspecialchars($pay_method) ?>"
-                                                data-jo-total="<?= (float)$jo_total ?>"
-                                                data-jo-labor="<?= (float)$labor_fee_val ?>"
-                                                data-jo-paid="<?= (float)$jo_paid ?>"
-                                                data-jo-service="<?= htmlspecialchars($job['service_type'] ?? '') ?>"
-                                                data-jo-plate="<?= htmlspecialchars($job['vehicle_plate'] ?? '') ?>"
-                                                data-jo-vtype="<?= htmlspecialchars($job['vehicle_type'] ?? '') ?>"
-                                                data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
-                                                onclick="return openRequestAdjustModal(event, this);"
-                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
-                                            <i class="fas fa-sliders-h"></i> Request Adjust
-                                        </button>
-                                        <button type="button"
-                                                data-jo-id="<?= (int)$job['id'] ?>"
-                                                data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
-                                                data-jo-ref="<?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>"
-                                                data-jo-customer="<?= htmlspecialchars($job['customer_name'] ?? '—') ?>"
-                                                data-jo-status="<?= htmlspecialchars($wf_label) ?>"
-                                                data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
-                                                onclick="return openRequestVoidModal(event, this);"
-                                                class="txn-btn danger" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;background:#dc2626;color:#fff;border:none;cursor:pointer;">
-                                            <i class="fas fa-ban"></i> Request Void
-                                        </button>
-                                    </div>
-
                                 <?php elseif ($wf_status === 'In Progress'): ?>
-                                    <!-- IN PROGRESS Status: View only + Active progress execution (NO Request Adjust/Void!) -->
+                                    <!-- IN PROGRESS Status: View, Complete, Request Adjust, Request Void -->
                                     <?php if ($pay_status === 'Paid'): ?>
                                         <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="margin:0;width:100%;">
                                             <input type="hidden" name="jo_action" value="set_completed">
@@ -10806,6 +11040,37 @@ input[list] {
                                         </button>
                                     <?php endif; ?>
 
+                                    <button type="button"
+                                            data-jo-id="<?= (int)$job['id'] ?>"
+                                            data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
+                                            data-jo-ref="<?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>"
+                                            data-jo-customer="<?= htmlspecialchars($job['customer_name'] ?? '—') ?>"
+                                            data-jo-status="<?= htmlspecialchars($wf_label) ?>"
+                                            data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
+                                            data-jo-paymethod="<?= htmlspecialchars($pay_method) ?>"
+                                            data-jo-total="<?= (float)$jo_total ?>"
+                                            data-jo-labor="<?= (float)$labor_fee_val ?>"
+                                            data-jo-paid="<?= (float)$jo_paid ?>"
+                                            data-jo-service="<?= htmlspecialchars($job['service_type'] ?? '') ?>"
+                                            data-jo-plate="<?= htmlspecialchars($job['vehicle_plate'] ?? '') ?>"
+                                            data-jo-vtype="<?= htmlspecialchars($job['vehicle_type'] ?? '') ?>"
+                                            data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
+                                            onclick="return openRequestAdjustModal(event, this);"
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                        <i class="fas fa-sliders-h"></i> Request Adjust
+                                    </button>
+                                    <button type="button"
+                                            data-jo-id="<?= (int)$job['id'] ?>"
+                                            data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
+                                            data-jo-ref="<?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>"
+                                            data-jo-customer="<?= htmlspecialchars($job['customer_name'] ?? '—') ?>"
+                                            data-jo-status="<?= htmlspecialchars($wf_label) ?>"
+                                            data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
+                                            onclick="return openRequestVoidModal(event, this);"
+                                            class="txn-btn danger" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;background:#dc2626;color:#fff;border:none;cursor:pointer;">
+                                        <i class="fas fa-ban"></i> Request Void
+                                    </button>
+
                                 <?php else: ?>
                                     <!-- Pending / Approved / Other initial states -->
                                     <?php if ($wf_status !== 'In Progress' && $val_status !== 'Pending Validation'): ?>
@@ -10819,6 +11084,37 @@ input[list] {
                                             </button>
                                         </form>
                                     <?php endif; ?>
+
+                                    <button type="button"
+                                            data-jo-id="<?= (int)$job['id'] ?>"
+                                            data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
+                                            data-jo-ref="<?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>"
+                                            data-jo-customer="<?= htmlspecialchars($job['customer_name'] ?? '—') ?>"
+                                            data-jo-status="<?= htmlspecialchars($wf_label) ?>"
+                                            data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
+                                            data-jo-paymethod="<?= htmlspecialchars($pay_method) ?>"
+                                            data-jo-total="<?= (float)$jo_total ?>"
+                                            data-jo-labor="<?= (float)$labor_fee_val ?>"
+                                            data-jo-paid="<?= (float)$jo_paid ?>"
+                                            data-jo-service="<?= htmlspecialchars($job['service_type'] ?? '') ?>"
+                                            data-jo-plate="<?= htmlspecialchars($job['vehicle_plate'] ?? '') ?>"
+                                            data-jo-vtype="<?= htmlspecialchars($job['vehicle_type'] ?? '') ?>"
+                                            data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
+                                            onclick="return openRequestAdjustModal(event, this);"
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                        <i class="fas fa-sliders-h"></i> Request Adjust
+                                    </button>
+                                    <button type="button"
+                                            data-jo-id="<?= (int)$job['id'] ?>"
+                                            data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
+                                            data-jo-ref="<?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>"
+                                            data-jo-customer="<?= htmlspecialchars($job['customer_name'] ?? '—') ?>"
+                                            data-jo-status="<?= htmlspecialchars($wf_label) ?>"
+                                            data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
+                                            onclick="return openRequestVoidModal(event, this);"
+                                            class="txn-btn danger" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;background:#dc2626;color:#fff;border:none;cursor:pointer;">
+                                        <i class="fas fa-ban"></i> Request Void
+                                    </button>
                                 <?php endif; ?>
                             </div>
                         </td>
@@ -11363,16 +11659,36 @@ input[list] {
                   <span id="viewJORef2" style="font-size:13px;color:#002F70;font-weight:700;">—</span>
                 </div>
                 <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Transaction ID:</span>
-                  <span id="viewJOTxnId" style="font-size:12px;color:#475569;font-family:monospace;">—</span>
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">OR Number:</span>
+                  <span id="viewJOOrNo" style="font-size:12px;color:#475569;font-family:monospace;">—</span>
                 </div>
                 <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
                   <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Customer:</span>
                   <span id="viewJOCustomer" style="font-size:13px;color:#1e293b;font-weight:600;">—</span>
                 </div>
                 <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Contact:</span>
+                  <span id="viewJOContact" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
                   <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Vehicle:</span>
                   <span id="viewJOVehicle" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Brand / Model:</span>
+                  <span id="viewJOBrandModel" style="font-size:13px;color:#475569;font-weight:600;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Year Model:</span>
+                  <span id="viewJOYearModel" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Engine No.:</span>
+                  <span id="viewJOEngineNo" style="font-size:13px;color:#475569;font-family:monospace;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Chassis No.:</span>
+                  <span id="viewJOChassisNo" style="font-size:13px;color:#475569;font-family:monospace;">—</span>
                 </div>
                 <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
                   <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Mechanic:</span>
@@ -11407,6 +11723,16 @@ input[list] {
                   <span id="viewJOParts" style="font-size:13px;color:#475569;">—</span>
                 </div>
               </div>
+              <!-- Remarks -->
+              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-comment-alt" style="margin-right:6px;"></i>Remarks
+              </div>
+              <div style="display:grid;gap:10px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Notes:</span>
+                  <span id="viewJORemarks" style="font-size:13px;color:#475569;word-break:break-word;">—</span>
+                </div>
+              </div>
               <!-- Payment -->
               <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
                 <i class="fas fa-credit-card" style="margin-right:6px;"></i>Payment
@@ -11419,6 +11745,10 @@ input[list] {
                 <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
                   <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Status:</span>
                   <span id="viewJOPayment" style="font-size:11px;font-weight:700;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Method:</span>
+                  <span id="viewJOPayMethod" style="font-size:12px;color:#475569;font-weight:600;">—</span>
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;padding-top:4px;">
                   <span style="font-size:12px;color:#64748b;font-weight:600;">Total Cost:</span>
@@ -11435,12 +11765,12 @@ input[list] {
               </div>
             </div>
             <div style="padding:16px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-shrink:0;">
-              <button onclick="closeViewJobOrderModal()" style="padding:0 22px !important;height:38px !important;background:#ffffff !important;color:#64748b !important;
-                      border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;
-                      display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all 0.15s !important;min-width:100px !important;"
-                      onmouseover="this.style.background='#f1f5f9'"
-                      onmouseout="this.style.background='#ffffff'">
-                Close
+              <button onclick="closeViewJobOrderModal()" style="padding:0 24px !important;height:40px !important;background:#003d7a !important;color:#ffffff !important;
+                      border:none !important;border-radius:8px !important;font-size:14px !important;font-weight:800 !important;cursor:pointer !important;
+                      display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all 0.15s !important;min-width:110px !important;box-shadow:0 2px 6px rgba(0,61,122,.3) !important;"
+                      onmouseover="this.style.background='#002855'"
+                      onmouseout="this.style.background='#003d7a'">
+                <i class="fas fa-times" style="margin-right:6px;color:#ffffff !important;"></i> Close
               </button>
             </div>
           </div>
@@ -11901,31 +12231,61 @@ input[list] {
                 var m = document.getElementById(id);
                 if (m) m.style.display = 'none';
             });
-            var fmt = function(n){ return '₱' + parseFloat(n).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+            var fmt = function(n){ return '₱' + parseFloat(n || 0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+            var val = function(v, fallback) { return (v && v !== '' && v !== '0' && v !== 0) ? v : (fallback || '—'); };
+            var setText = function(id, text) {
+                var el = document.getElementById(id);
+                if (el) el.textContent = text;
+            };
 
             _currentViewJORef    = joData.jo_ref || '';
             _currentViewJOSource = joData.source || 'job_orders';
 
-            document.getElementById('viewJORef').textContent  = joData.jo_ref || '—';
-            document.getElementById('viewJORef2').textContent = joData.jo_ref || '—';
-            document.getElementById('viewJOTxnId').textContent = joData.jo_ref || '—';
-            document.getElementById('viewJOCustomer').textContent = joData.customer || '—';
-            document.getElementById('viewJOVehicle').textContent = (joData.vehicle_plate || '') +
-                (joData.vehicle_type ? ' (' + joData.vehicle_type + ')' : '') || '—';
-            document.getElementById('viewJOService').textContent  = joData.service_type || '—';
-            document.getElementById('viewJOParts').textContent    = joData.parts || '—';
-            document.getElementById('viewJOMechanic').textContent = joData.mechanic || 'Unassigned';
-            document.getElementById('viewJODuration').textContent = joData.estimated_duration ? joData.estimated_duration + ' mins' : '—';
-            document.getElementById('viewJOWorkflow').textContent = joData.workflow_status || '—';
-            document.getElementById('viewJOPayment').textContent  = joData.payment_status || '—';
-            document.getElementById('viewJOTotal').textContent   = fmt(joData.total || 0);
-            document.getElementById('viewJOPaid').textContent    = fmt(joData.paid || 0);
-            document.getElementById('viewJOBalance').textContent = fmt(joData.balance || 0);
-            document.getElementById('viewJOCreated').textContent = joData.created_at
-                ? new Date(joData.created_at).toLocaleString('en-PH', {dateStyle:'medium', timeStyle:'short'})
-                : '—';
+            setText('viewJORef', val(joData.jo_ref));
+            setText('viewJORef2', val(joData.jo_ref));
+            setText('viewJOTxnId', val(joData.jo_ref));
+            setText('viewJOCustomer', val(joData.customer));
 
-            document.getElementById('viewJobOrderModal').style.display = 'flex';
+            // Build vehicle display: plate + type + brand/model/year
+            var vParts = [];
+            if (joData.vehicle_plate) vParts.push(joData.vehicle_plate);
+            if (joData.vehicle_type) vParts.push('(' + joData.vehicle_type + ')');
+            setText('viewJOVehicle', vParts.length ? vParts.join(' ') : '—');
+
+            var brandModelParts = [];
+            var vb = val(joData.vehicle_brand, '');
+            var vm = val(joData.vehicle_model, '');
+            if (vb && vb !== '—' && vb !== '0') brandModelParts.push(vb);
+            if (vm && vm !== '—' && vm !== '0') brandModelParts.push(vm);
+            setText('viewJOBrandModel', brandModelParts.length ? brandModelParts.join(' ') : '—');
+            setText('viewJOVehicleBrand', vb);
+            setText('viewJOVehicleModel', vm);
+
+            setText('viewJOYearModel', val(joData.year_model));
+            setText('viewJOEngineNo', val(joData.engine_number));
+            setText('viewJOChassisNo', val(joData.chassis_number));
+            setText('viewJOContact', val(joData.contact_number));
+            setText('viewJOOrNo', val(joData.or_number));
+
+            setText('viewJOService', val(joData.service_type));
+            setText('viewJOParts', val(joData.parts));
+            setText('viewJOMechanic', val(joData.mechanic, 'Unassigned'));
+            setText('viewJODuration', joData.estimated_duration ? joData.estimated_duration + ' mins' : '—');
+            setText('viewJOWorkflow', val(joData.workflow_status));
+            setText('viewJOPayment', val(joData.payment_status));
+            setText('viewJOPayMethod', val(joData.payment_method, 'Cash'));
+
+            setText('viewJOTotal', fmt(joData.total || 0));
+            setText('viewJOPaid', fmt(joData.paid || 0));
+            setText('viewJOBalance', fmt(joData.balance || 0));
+            setText('viewJOCreated', joData.created_at
+                ? new Date(joData.created_at).toLocaleString('en-PH', {dateStyle:'medium', timeStyle:'short'})
+                : '—');
+
+            setText('viewJORemarks', val(joData.remarks));
+
+            var modal = document.getElementById('viewJobOrderModal');
+            if (modal) modal.style.display = 'flex';
         }
 
         function printJobOrderReceiptFromModal() {
