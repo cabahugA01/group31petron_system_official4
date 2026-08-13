@@ -3350,7 +3350,7 @@ setTimeout(function() {
 
         window.handleMeterKeydown = function(e, input) {
             var key = e.key;
-            if (key !== 'Enter' && key !== 'ArrowDown' && key !== 'ArrowUp' && key !== 'ArrowRight' && key !== 'ArrowLeft') {
+            if (key !== 'Enter' && key !== 'ArrowDown' && key !== 'ArrowUp') {
                 return;
             }
 
@@ -3358,7 +3358,7 @@ setTimeout(function() {
             var m = currentId.match(/^(beginning|ending|cal)_(.+)$/);
             if (!m) return;
 
-            var inputType = m[1];
+            var inputType = m[1]; // 'beginning', 'ending', or 'cal'
             var ftId = m[2];
 
             var rows = Array.from(document.querySelectorAll('tr[id^="fuelRow_"]'));
@@ -3367,104 +3367,63 @@ setTimeout(function() {
 
             var targetInput = null;
 
-            if (key === 'Enter') {
+            if (key === 'Enter' || key === 'ArrowDown') {
                 e.preventDefault();
                 if (typeof window.formatOnBlur === 'function') window.formatOnBlur(input);
+                if (typeof window.updateFuelCalc === 'function') window.updateFuelCalc(ftId);
 
-                // 1. If in Beginning:
-                if (inputType === 'beginning') {
-                    var endEl = document.getElementById('ending_' + ftId);
-                    if (endEl && !endEl.readOnly && endEl.offsetParent !== null && (!endEl.value || endEl.value === '0.00' || endEl.value.trim() === '')) {
-                        targetInput = endEl;
-                    } else {
-                        if (currentRowIdx !== -1 && currentRowIdx < rows.length - 1) {
-                            var nextRow = rows[currentRowIdx + 1];
-                            var nextFtId = (nextRow.id || '').replace('fuelRow_', '');
-                            var nextBeg = document.getElementById('beginning_' + nextFtId);
-                            if (nextBeg && !nextBeg.readOnly && nextBeg.offsetParent !== null) {
-                                targetInput = nextBeg;
+                // Move VERTICALLY DOWN in the SAME column
+                if (currentRowIdx !== -1) {
+                    for (var i = currentRowIdx + 1; i < rows.length; i++) {
+                        var nextFtId = (rows[i].id || '').replace('fuelRow_', '');
+                        var candidate = document.getElementById(inputType + '_' + nextFtId);
+                        if (candidate && !candidate.readOnly && candidate.offsetParent !== null) {
+                            targetInput = candidate;
+                            break;
+                        }
+                    }
+                }
+
+                // If at the end of the column on Enter, wrap to next column's first editable input
+                if (!targetInput && key === 'Enter') {
+                    var nextType = (inputType === 'beginning') ? 'ending' : ((inputType === 'ending') ? 'cal' : null);
+                    if (nextType) {
+                        for (var j = 0; j < rows.length; j++) {
+                            var wrapFtId = (rows[j].id || '').replace('fuelRow_', '');
+                            var wrapCandidate = document.getElementById(nextType + '_' + wrapFtId);
+                            if (wrapCandidate && !wrapCandidate.readOnly && wrapCandidate.offsetParent !== null) {
+                                targetInput = wrapCandidate;
+                                break;
                             }
                         }
                     }
                 }
-
-                // 2. If in Ending:
-                if (!targetInput && inputType === 'ending') {
-                    if (currentRowIdx !== -1 && currentRowIdx < rows.length - 1) {
-                        var nextRow = rows[currentRowIdx + 1];
-                        var nextFtId = (nextRow.id || '').replace('fuelRow_', '');
-                        var nextBeg = document.getElementById('beginning_' + nextFtId);
-                        var nextEnd = document.getElementById('ending_' + nextFtId);
-
-                        if (nextBeg && !nextBeg.readOnly && nextBeg.offsetParent !== null && (!nextBeg.value || nextBeg.value.trim() === '')) {
-                            targetInput = nextBeg;
-                        } else if (nextEnd && !nextEnd.readOnly && nextEnd.offsetParent !== null) {
-                            targetInput = nextEnd;
-                        }
-                    }
-                }
-
-                // 3. If in Cal:
-                if (!targetInput && inputType === 'cal') {
-                    if (currentRowIdx !== -1 && currentRowIdx < rows.length - 1) {
-                        var nextRow = rows[currentRowIdx + 1];
-                        var nextFtId = (nextRow.id || '').replace('fuelRow_', '');
-                        var nextCal = document.getElementById('cal_' + nextFtId);
-                        if (nextCal && !nextCal.readOnly && nextCal.offsetParent !== null) {
-                            targetInput = nextCal;
-                        }
-                    }
-                }
-
-                // Fallback: next editable input in DOM
-                if (!targetInput) {
-                    var allInputs = Array.from(document.querySelectorAll('input[id^="beginning_"]:not([readonly]), input[id^="ending_"]:not([readonly]), input[id^="cal_"]:not([readonly])'));
-                    var idx = allInputs.indexOf(input);
-                    if (idx !== -1 && idx < allInputs.length - 1) {
-                        targetInput = allInputs[idx + 1];
-                    }
-                }
-            } else if (key === 'ArrowDown') {
-                e.preventDefault();
-                if (currentRowIdx !== -1 && currentRowIdx < rows.length - 1) {
-                    var nextRow = rows[currentRowIdx + 1];
-                    var nextFtId = (nextRow.id || '').replace('fuelRow_', '');
-                    var sameColInput = document.getElementById(inputType + '_' + nextFtId);
-                    if (sameColInput && !sameColInput.readOnly && sameColInput.offsetParent !== null) {
-                        targetInput = sameColInput;
-                    }
-                }
             } else if (key === 'ArrowUp') {
                 e.preventDefault();
+                if (typeof window.formatOnBlur === 'function') window.formatOnBlur(input);
+                if (typeof window.updateFuelCalc === 'function') window.updateFuelCalc(ftId);
+
+                // Move VERTICALLY UP in the SAME column
                 if (currentRowIdx > 0) {
-                    var prevRow = rows[currentRowIdx - 1];
-                    var prevFtId = (prevRow.id || '').replace('fuelRow_', '');
-                    var sameColInput = document.getElementById(inputType + '_' + prevFtId);
-                    if (sameColInput && !sameColInput.readOnly && sameColInput.offsetParent !== null) {
-                        targetInput = sameColInput;
+                    for (var k = currentRowIdx - 1; k >= 0; k--) {
+                        var prevFtId = (rows[k].id || '').replace('fuelRow_', '');
+                        var candidateUp = document.getElementById(inputType + '_' + prevFtId);
+                        if (candidateUp && !candidateUp.readOnly && candidateUp.offsetParent !== null) {
+                            targetInput = candidateUp;
+                            break;
+                        }
                     }
-                }
-            } else if (key === 'ArrowRight') {
-                if (inputType === 'beginning') {
-                    var endEl = document.getElementById('ending_' + ftId);
-                    if (endEl && !endEl.readOnly && endEl.offsetParent !== null) targetInput = endEl;
-                } else if (inputType === 'ending') {
-                    var calEl = document.getElementById('cal_' + ftId);
-                    if (calEl && !calEl.readOnly && calEl.offsetParent !== null) targetInput = calEl;
-                }
-            } else if (key === 'ArrowLeft') {
-                if (inputType === 'cal') {
-                    var endEl = document.getElementById('ending_' + ftId);
-                    if (endEl && !endEl.readOnly && endEl.offsetParent !== null) targetInput = endEl;
-                } else if (inputType === 'ending') {
-                    var begEl = document.getElementById('beginning_' + ftId);
-                    if (begEl && !begEl.readOnly && begEl.offsetParent !== null) targetInput = begEl;
                 }
             }
 
             if (targetInput) {
                 targetInput.focus();
-                if (targetInput.select) targetInput.select();
+                if (typeof targetInput.select === 'function') {
+                    targetInput.select();
+                }
+                if (typeof targetInput.scrollIntoView === 'function') {
+                    targetInput.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
             }
         };
 
@@ -3903,6 +3862,8 @@ setTimeout(function() {
                                        autocomplete="off"
                                        oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
                                        onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')"
+                                       onkeydown="handleMeterKeydown(event, this)"
+                                       onfocus="this.select()"
                                        title="First shift / No previous record: Enter beginning meter reading manually."
                                        data-pump="<?= htmlspecialchars($display_name) ?>">
                             <?php endif; ?>
@@ -3921,6 +3882,7 @@ setTimeout(function() {
                                    oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
                                    onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')"
                                    onkeydown="handleMeterKeydown(event, this)"
+                                   onfocus="this.select()"
                                    title="Required: Enter the Ending meter reading">
                         </td>
 
@@ -3938,6 +3900,7 @@ setTimeout(function() {
                                    oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
                                    onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')"
                                    onkeydown="handleMeterKeydown(event, this)"
+                                   onfocus="this.select()"
                                    min="0">
                         </td>
 

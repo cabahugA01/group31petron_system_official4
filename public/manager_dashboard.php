@@ -465,38 +465,70 @@ for ($h = 0; $h <= 23; $h++) {
 
 $fuel_products = [];
 $fuel_sales_data = [];
+$ugt_mgr_chart = [
+    'UGT #1 (DIESEL 1)'       => 0.0,
+    'UGT #2 (DIESEL 2)'       => 0.0,
+    'UGT #3 (TURBO DIESEL)'   => 0.0,
+    'UGT #4 (XCS PLUS)'       => 0.0,
+    'UGT #5 (XTRA ADVANCE 1)' => 0.0,
+    'UGT #6 (XTRA ADVANCE 2)' => 0.0,
+    'UGT #7 (KEROSENE)'       => 0.0,
+];
+
 if (mgr_table_exists($pdo, 'fuel_transactions')) {
     $fuel_sales_rows = mgr_rows(
         $pdo,
-        "SELECT COALESCE(NULLIF(TRIM(fuel_type), ''), 'Unspecified') AS label,
-                COALESCE(SUM(liters_sold), 0) AS total_liters
-         FROM fuel_transactions
-         WHERE {$station_sql}
-           AND DATE({$fuel_dt_expr}) BETWEEN ? AND ?
-           {$fuel_status_ok}
-         GROUP BY label
-         ORDER BY total_liters DESC, label ASC",
-        array_merge($station_params, [$date_from, $date_to])
+        "SELECT 
+            COALESCE(NULLIF(fp.pump_number, ''), ft.fuel_type) AS pump_name,
+            ft.fuel_type,
+            COALESCE(ft.liters_sold, 0) AS total_liters
+        FROM fuel_transactions ft
+        LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
+        INNER JOIN (
+            SELECT MAX(id) AS max_id
+            FROM fuel_transactions
+            WHERE station_id = ? AND (DATE(transaction_date) BETWEEN ? AND ? OR (transaction_date IS NULL AND DATE(created_at) BETWEEN ? AND ?))
+              AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+            GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
+        ) latest ON ft.id = latest.max_id",
+        array_merge($station_params, [$date_from, $date_to, $date_from, $date_to])
     );
     foreach ($fuel_sales_rows as $row) {
-        $fuel_products[] = (string) ($row['label'] ?? 'Unspecified');
-        $fuel_sales_data[] = (float) ($row['total_liters'] ?? 0);
+        $pName  = strtoupper(trim($row['pump_name'] ?: $row['fuel_type']));
+        $ftype  = strtolower(trim($row['fuel_type']));
+        $liters = (float)$row['total_liters'];
+
+        if (strpos($pName, 'DIESEL 1') !== false) {
+            $ugt_mgr_chart['UGT #1 (DIESEL 1)'] += $liters;
+        } elseif (strpos($pName, 'DIESEL 2') !== false) {
+            $ugt_mgr_chart['UGT #2 (DIESEL 2)'] += $liters;
+        } elseif (strpos($pName, 'TURBO') !== false) {
+            $ugt_mgr_chart['UGT #3 (TURBO DIESEL)'] += $liters;
+        } elseif (strpos($pName, 'XCS') !== false) {
+            $ugt_mgr_chart['UGT #4 (XCS PLUS)'] += $liters;
+        } elseif (strpos($pName, 'XTRA UNL 1') !== false || strpos($pName, 'XTRA AD 1') !== false || strpos($pName, 'ADVANCE 1') !== false) {
+            $ugt_mgr_chart['UGT #5 (XTRA ADVANCE 1)'] += $liters;
+        } elseif (strpos($pName, 'XTRA UNL 2') !== false || strpos($pName, 'XTRA AD 2') !== false || strpos($pName, 'ADVANCE 2') !== false) {
+            $ugt_mgr_chart['UGT #6 (XTRA ADVANCE 2)'] += $liters;
+        } elseif (strpos($pName, 'KERO') !== false) {
+            $ugt_mgr_chart['UGT #7 (KEROSENE)'] += $liters;
+        } else {
+            if (strpos($ftype, 'turbo') !== false) {
+                $ugt_mgr_chart['UGT #3 (TURBO DIESEL)'] += $liters;
+            } elseif (strpos($ftype, 'diesel') !== false) {
+                $ugt_mgr_chart['UGT #1 (DIESEL 1)'] += $liters;
+            } elseif (strpos($ftype, 'xcs') !== false) {
+                $ugt_mgr_chart['UGT #4 (XCS PLUS)'] += $liters;
+            } elseif (strpos($ftype, 'xtra') !== false || strpos($ftype, 'advance') !== false) {
+                $ugt_mgr_chart['UGT #5 (XTRA ADVANCE 1)'] += $liters;
+            } elseif (strpos($ftype, 'kero') !== false) {
+                $ugt_mgr_chart['UGT #7 (KEROSENE)'] += $liters;
+            }
+        }
     }
 }
-if (!$fuel_products && mgr_table_exists($pdo, 'fuel_inventory')) {
-    $fuel_inventory_labels = mgr_rows(
-        $pdo,
-        "SELECT COALESCE(NULLIF(TRIM(fuel_type), ''), CONCAT('Fuel #', id)) AS label
-         FROM fuel_inventory
-         WHERE {$station_sql}
-         ORDER BY fuel_type",
-        $station_params
-    );
-    foreach ($fuel_inventory_labels as $row) {
-        $fuel_products[] = (string) ($row['label'] ?? 'Fuel');
-        $fuel_sales_data[] = 0.0;
-    }
-}
+$fuel_products   = array_keys($ugt_mgr_chart);
+$fuel_sales_data = array_values($ugt_mgr_chart);
 
 $merch_sales_data = [];
 $merch_categories = [];

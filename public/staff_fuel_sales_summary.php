@@ -1461,25 +1461,51 @@ if ($ar_shift_summary['total'] <= 0 && table_exists($pdo, 'accounts_receivable')
 }
 
 // ============================================================
-// TANK LITERS SUMMARY
+// TANK LITERS SUMMARY (EXACTLY 7 UGT TANKS MATCHING CLOSING FORM)
 // ============================================================
-try {
-    // Tank liters summary follows the same per-transaction rows as the meter table.
-    $tankNo = 1;
-    foreach ($meter_readings as $reading) {
-        $fuel = staff_report_fuel_display_name($reading['fuel_type'] ?? '');
-        $liters = (float)($reading['liters_sold'] ?? 0);
-        $tank_sales[] = [
-            'tank_name' => trim((string)($reading['pump_name'] ?? '')) !== '' ? $reading['pump_name'] : 'Tank ' . $tankNo,
-            'fuel_type' => $fuel,
-            'total_dispensed' => $liters,
-            'total_liters' => $liters,
-            'tank_capacity' => 0,
-            'utilization' => 0,
-        ];
-        $tankNo++;
+$tank_ugt_summary = [
+    'UGT #1 (DIESEL 1)'       => 0.0,
+    'UGT #2 (DIESEL 2)'       => 0.0,
+    'UGT #3 (TURBO DIESEL)'   => 0.0,
+    'UGT #4 (XCS PLUS)'       => 0.0,
+    'UGT #5 (XTRA ADVANCE 1)' => 0.0,
+    'UGT #6 (XTRA ADVANCE 2)' => 0.0,
+    'UGT #7 (KEROSENE)'       => 0.0,
+];
+
+foreach ($meter_readings as $reading) {
+    $pName  = strtoupper(trim($reading['pump_name'] ?? $reading['fuel_type'] ?? ''));
+    $ftype  = strtolower(trim($reading['fuel_type'] ?? ''));
+    $liters = (float)($reading['liters_sold'] ?? 0);
+
+    if (strpos($pName, 'DIESEL 1') !== false) {
+        $tank_ugt_summary['UGT #1 (DIESEL 1)'] += $liters;
+    } elseif (strpos($pName, 'DIESEL 2') !== false) {
+        $tank_ugt_summary['UGT #2 (DIESEL 2)'] += $liters;
+    } elseif (strpos($pName, 'TURBO') !== false) {
+        $tank_ugt_summary['UGT #3 (TURBO DIESEL)'] += $liters;
+    } elseif (strpos($pName, 'XCS') !== false) {
+        $tank_ugt_summary['UGT #4 (XCS PLUS)'] += $liters;
+    } elseif (strpos($pName, 'XTRA UNL 1') !== false || strpos($pName, 'XTRA AD 1') !== false || strpos($pName, 'ADVANCE 1') !== false) {
+        $tank_ugt_summary['UGT #5 (XTRA ADVANCE 1)'] += $liters;
+    } elseif (strpos($pName, 'XTRA UNL 2') !== false || strpos($pName, 'XTRA AD 2') !== false || strpos($pName, 'ADVANCE 2') !== false) {
+        $tank_ugt_summary['UGT #6 (XTRA ADVANCE 2)'] += $liters;
+    } elseif (strpos($pName, 'KERO') !== false) {
+        $tank_ugt_summary['UGT #7 (KEROSENE)'] += $liters;
+    } else {
+        if (strpos($ftype, 'turbo') !== false) {
+            $tank_ugt_summary['UGT #3 (TURBO DIESEL)'] += $liters;
+        } elseif (strpos($ftype, 'diesel') !== false) {
+            $tank_ugt_summary['UGT #1 (DIESEL 1)'] += $liters;
+        } elseif (strpos($ftype, 'xcs') !== false) {
+            $tank_ugt_summary['UGT #4 (XCS PLUS)'] += $liters;
+        } elseif (strpos($ftype, 'xtra') !== false || strpos($ftype, 'advance') !== false) {
+            $tank_ugt_summary['UGT #5 (XTRA ADVANCE 1)'] += $liters;
+        } elseif (strpos($ftype, 'kero') !== false) {
+            $tank_ugt_summary['UGT #7 (KEROSENE)'] += $liters;
+        }
     }
-} catch (Exception $e) {}
+}
 
 // ============================================================
 // MERCHANDISE + SERVICE REPORT ROWS
@@ -2313,23 +2339,17 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     // TANK LITERS SUMMARY
     echo '<h2>TANK LITERS SUMMARY</h2>';
     echo '<table border="1" cellpadding="5" cellspacing="0">';
-    echo '<thead><tr><th>Tank</th><th>Fuel Type</th><th>Liters</th></tr></thead>';
+    echo '<thead><tr><th>Tank / Pump Name</th><th>Liters Sold</th></tr></thead>';
     echo '<tbody>';
-    if (count($tank_sales) > 0) {
-        $total_tank_liters = 0;
-        foreach ($tank_sales as $tank) {
-            $liters = (float)($tank['total_liters'] ?? $tank['total_dispensed'] ?? 0);
-            $total_tank_liters += $liters;
-            echo '<tr>';
-            echo '<td class="font-bold">' . htmlspecialchars($tank['tank_name'] ?? 'Tank') . '</td>';
-            echo '<td>' . htmlspecialchars($tank['fuel_type'] ?? '') . '</td>';
-            echo '<td class="text-right">' . number_format($liters, 2) . ' L</td>';
-            echo '</tr>';
-        }
-        echo '<tr class="font-bold"><td colspan="2" class="text-right">TOTAL TANK LITERS</td><td class="text-right">' . number_format($total_tank_liters, 2) . ' L</td></tr>';
-    } else {
-        echo '<tr><td colspan="3" style="text-align: center; padding: 20px;">No tank liters data available.</td></tr>';
+    $total_tank_liters = 0;
+    foreach ($tank_ugt_summary as $t_name => $t_liters) {
+        $total_tank_liters += $t_liters;
+        echo '<tr>';
+        echo '<td class="font-bold">' . htmlspecialchars($t_name) . '</td>';
+        echo '<td class="text-right">' . number_format($t_liters, 2) . ' L</td>';
+        echo '</tr>';
     }
+    echo '<tr class="font-bold"><td class="text-right">TOTAL TANK LITERS</td><td class="text-right">' . number_format($total_tank_liters, 2) . ' L</td></tr>';
     echo '</tbody>';
     echo '</table>';
     echo '<br/>';
@@ -2770,18 +2790,16 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
                     <table class="summary-table">
                         <?php
                         $print_tank_liters = 0;
-                        foreach ($tank_sales as $tank):
-                            $liters = (float)($tank['total_liters'] ?? $tank['total_dispensed'] ?? 0);
-                            $print_tank_liters += $liters;
+                        foreach ($tank_ugt_summary as $t_name => $t_liters):
+                            $print_tank_liters += $t_liters;
                         ?>
                         <tr>
-                            <td class="label"><?= htmlspecialchars($tank['tank_name'] ?? 'Tank') ?></td>
-                            <td><?= htmlspecialchars($tank['fuel_type'] ?? '') ?></td>
-                            <td class="value"><?= number_format($liters, 2) ?> L</td>
+                            <td class="label"><?= htmlspecialchars($t_name) ?></td>
+                            <td class="value"><?= number_format($t_liters, 2) ?> L</td>
                         </tr>
                         <?php endforeach; ?>
                         <tr style="font-weight: bold;">
-                            <td colspan="2" class="label">TOTAL TANK LITERS</td>
+                            <td class="label">TOTAL TANK LITERS</td>
                             <td class="value"><?= number_format($print_tank_liters, 2) ?> L</td>
                         </tr>
                     </table>
@@ -3296,11 +3314,11 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         font-weight: 700;
     }
     
-    /* â”€â”€ Print styles — matched to PO invoice (print_supplier_invoice.php) â”€â”€ */
+    /* ── Print styles — matched to PO invoice (print_supplier_invoice.php) ── */
     @media print {
         @page {
-            size: A4 portrait;
-            margin: 10mm 12mm;
+            size: letter portrait;
+            margin: 8mm 6mm 4mm 6mm;
         }
 
         * {
@@ -3318,7 +3336,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             overflow: visible !important;
             height: auto !important;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
-            font-size: 11px !important;
+            font-size: 8px !important;
             color: #333 !important;
         }
 
@@ -3339,7 +3357,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             display: none !important;
         }
 
-        /* â”€â”€ Print container â”€â”€ */
+        /* ── Print container ── */
         .sfss-print-only {
             display: block !important;
             position: static !important;
@@ -3349,8 +3367,10 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             padding: 0 !important;
             background: #fff !important;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
-            font-size: 11px !important;
+            font-size: 8px !important;
             color: #333 !important;
+            page-break-after: avoid !important;
+            page-break-inside: avoid !important;
         }
 
         .sfss-print-only *, .sfss-print-only *::before, .sfss-print-only *::after {
@@ -3374,36 +3394,36 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             font-size: 0 !important; margin: 0 !important; padding: 0 !important;
         }
 
-        /* â”€â”€ Header — same as PO â”€â”€ */
+        /* ── Header — same as PO ── */
         .sfss-print-only .header {
             text-align: center !important;
             border-bottom: none !important;
-            padding: 0 !important;
-            margin: 0 0 6px 0 !important;
+            padding-top: 6px !important;
+            margin: 2px 0 4px 0 !important;
         }
         .sfss-print-only .header h1 {
             display: block !important;
-            font-size: 14px !important;
-            line-height: 1.2 !important;
+            font-size: 12px !important;
+            line-height: 1.1 !important;
             font-weight: 700 !important;
             color: #000 !important;
-            margin: 0 0 2px 0 !important;
+            margin: 0 0 1px 0 !important;
         }
         .sfss-print-only .header p {
             display: block !important;
-            font-size: 10px !important;
+            font-size: 8.5px !important;
             color: #333 !important;
-            margin: 1px 0 !important;
+            margin: 0 !important;
         }
 
-        /* â”€â”€ Section titles â”€â”€ */
+        /* ── Section titles ── */
         .sfss-print-only .section-title {
             display: block !important;
-            font-size: 10px !important;
-            line-height: 1.2 !important;
+            font-size: 8.5px !important;
+            line-height: 1.1 !important;
             font-weight: 700 !important;
-            margin: 6px 0 2px 0 !important;
-            padding: 3px 6px !important;
+            margin: 2px 0 1px 0 !important;
+            padding: 1px 3px !important;
             border: none !important;
             border-bottom: 1px solid #000 !important;
             background: #fff !important;
@@ -3412,17 +3432,20 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             text-transform: uppercase !important;
         }
 
-        /* â”€â”€ Tables — same as PO items-table â”€â”€ */
+        /* ── Tables — compact layout to fit bond paper ── */
         .sfss-print-only .table-container {
             overflow: visible !important;
             width: 100% !important;
-            margin: 0 0 5px 0 !important;
+            margin: 0 0 2px 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            background: transparent !important;
         }
         .sfss-print-only table {
             width: 100% !important;
             border-collapse: collapse !important;
-            font-size: 10px !important;
-            line-height: 1.3 !important;
+            font-size: 8px !important;
+            line-height: 1.1 !important;
             margin: 0 !important;
         }
         .sfss-print-only thead { display: table-header-group !important; }
@@ -3430,9 +3453,9 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         .sfss-print-only tr { display: table-row !important; page-break-inside: avoid !important; }
         .sfss-print-only th {
             display: table-cell !important;
-            font-size: 10px !important;
-            line-height: 1.3 !important;
-            padding: 5px 7px !important;
+            font-size: 8px !important;
+            line-height: 1.1 !important;
+            padding: 2px 3px !important;
             border: 1px solid #000 !important;
             background: #002F6C !important;
             color: #fff !important;
@@ -3441,11 +3464,11 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         }
         .sfss-print-only td {
             display: table-cell !important;
-            font-size: 10px !important;
-            line-height: 1.3 !important;
-            padding: 4px 7px !important;
-            border-bottom: 1px solid #e2e8f0 !important;
-            vertical-align: top !important;
+            font-size: 8px !important;
+            line-height: 1.1 !important;
+            padding: 1.5px 3px !important;
+            border-bottom: 1px solid #cbd5e1 !important;
+            vertical-align: middle !important;
             color: #0f172a !important;
         }
 
@@ -3477,16 +3500,34 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         .sfss-print-only table { display: table !important; height: auto !important; }
         .sfss-print-only table tr { display: table-row !important; }
         .sfss-print-only table td { display: table-cell !important; }
+        /* Hide all footer lines, fixed footers, and bottom borders on print */
+        footer, .fixed-footer, .footer-sidebar-area, .footer-content, .afto-footer {
+            display: none !important;
+            visibility: hidden !important;
+            border: none !important;
+            border-top: none !important;
+            border-bottom: none !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
         /* Show signature only on print */
         .print-only-signature { display: none !important; }
-        .sfss-print-only .print-only-signature { display: table !important; }
+        .sfss-print-only .print-only-signature {
+            display: table !important;
+            margin-top: 55px !important;
+            page-break-before: avoid !important;
+            page-break-inside: avoid !important;
+            border: none !important;
+        }
 
         /* Grand total row emphasis */
         .sfss-print-only .grand-total td,
         .sfss-print-only tr.grand-total td {
             font-weight: 700 !important;
             border-top: 2px solid #000 !important;
-            font-size: 11px !important;
+            font-size: 9.5px !important;
         }
         .pagination-wrapper,
         .client-side-pagination,
@@ -3758,27 +3799,21 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                     <table style="width:100%; border-collapse:collapse; font-size:12px;">
                         <thead>
                             <tr style="background:#002F6C; color:#fff;">
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Tank</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Remaining Liters</th>
+                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Tank / Pump Name</th>
+                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Liters Sold (L)</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php 
                             $tot_tank_liters = 0;
-                            if (!empty($tank_inventory_summary)): 
-                                foreach ($tank_inventory_summary as $t_inv):
-                                    $rem_l = (float)$t_inv['current_level'];
-                                    $tot_tank_liters += $rem_l;
+                            foreach ($tank_ugt_summary as $t_name => $t_liters):
+                                $tot_tank_liters += $t_liters;
                             ?>
                                 <tr>
-                                    <td style="padding:7px 10px; border:1px solid #ddd; font-weight:700;"><?= htmlspecialchars($t_inv['fuel_type']) ?></td>
-                                    <td style="padding:7px 10px; border:1px solid #ddd; text-align:right; font-weight:700; color:#002F6C;"><?= number_format($rem_l, 2) ?> L</td>
+                                    <td style="padding:7px 10px; border:1px solid #ddd; font-weight:700;"><?= htmlspecialchars($t_name) ?></td>
+                                    <td style="padding:7px 10px; border:1px solid #ddd; text-align:right; font-weight:700; color:#15803d;"><?= number_format($t_liters, 2) ?> L</td>
                                 </tr>
-                            <?php endforeach; else: ?>
-                                <tr>
-                                    <td colspan="2" style="text-align:center; padding:15px; color:#6b7280; font-style:italic;">No tank inventory records available.</td>
-                                </tr>
-                            <?php endif; ?>
+                            <?php endforeach; ?>
                             <tr style="font-weight:800; background:#e8f0fe; border-top:2px solid #002F6C;">
                                 <td style="padding:8px 10px; border:1px solid #002F6C; text-transform:uppercase;">TOTAL TANK LITERS</td>
                                 <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C; font-size:13px;"><?= number_format($tot_tank_liters, 2) ?> L</td>
@@ -3788,27 +3823,38 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 </div>
 
                 <!-- 5. Fuel Sales Closing Summary -->
+                <?php
+                $show_shift_mode = 'all'; // 'shift1', 'shift2', or 'all'
+                if (!$is_manager_or_admin) {
+                    if ($user_current_shift === 'shift1') {
+                        $show_shift_mode = 'shift1';
+                    } elseif ($user_current_shift === 'shift2') {
+                        $show_shift_mode = 'shift2';
+                    }
+                }
+                if (!empty($_GET['shift'])) {
+                    $s_param = strtolower(trim($_GET['shift']));
+                    if (strpos($s_param, '1') !== false || strpos($s_param, 'first') !== false) {
+                        $show_shift_mode = 'shift1';
+                    } elseif (strpos($s_param, '2') !== false || strpos($s_param, 'second') !== false) {
+                        $show_shift_mode = 'shift2';
+                    }
+                }
+
+                $c_cash1 = (float)($closing_record['cash_shift1'] ?? 0);
+                $c_cash2 = (float)($closing_record['cash_shift2'] ?? 0);
+                $c_ar1   = (float)($closing_record['ar_shift1'] ?? 0);
+                $c_ar2   = (float)($closing_record['ar_shift2'] ?? 0);
+                $c_fuel  = (float)($closing_record['total_fuel_sales'] ?? $total_fuel_sales_amount);
+
+                $disp_tot_cash  = ($show_shift_mode === 'shift1') ? $c_cash1 : (($show_shift_mode === 'shift2') ? $c_cash2 : ($c_cash1 + $c_cash2));
+                $disp_tot_ar    = ($show_shift_mode === 'shift1') ? $c_ar1 : (($show_shift_mode === 'shift2') ? $c_ar2 : ($c_ar1 + $c_ar2));
+                $disp_ar_deduct = $disp_tot_ar;
+                $disp_net_cash  = max(0, $c_fuel - $disp_ar_deduct);
+                $disp_bank_cash = $disp_tot_cash > 0 ? $disp_tot_cash : $disp_net_cash;
+                ?>
                 <div class="section-title" style="margin-top:24px;">FUEL SALES CLOSING SUMMARY</div>
                 <div class="table-container mb-4" style="background:#ffffff; padding:14px; border:1px solid #cbd5e1; border-radius:8px;">
-                    <!-- Shop / Store Sales -->
-                    <h4 style="font-size:13px; font-weight:700; color:#002F6C; margin:0 0 8px 0; text-transform:uppercase;"><i class="fas fa-store me-1"></i> Shop / Store Sales Income</h4>
-                    <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:16px;">
-                        <thead>
-                            <tr style="background:#f1f5f9; color:#334155;">
-                                <th style="padding:6px 10px; border:1px solid #cbd5e1; text-align:left;">Field</th>
-                                <th style="padding:6px 10px; border:1px solid #cbd5e1; text-align:right;">Value</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">OLG Sales</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['olg_sales'] ?? 0), 2) ?></td></tr>
-                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">TBA Sales</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['tba_sales'] ?? 0), 2) ?></td></tr>
-                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">Service Income</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['service_income'] ?? 0), 2) ?></td></tr>
-                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">Other Sales</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['other_sales'] ?? 0), 2) ?></td></tr>
-                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">A/R Collected</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['ar_collected'] ?? 0), 2) ?></td></tr>
-                            <tr style="font-weight:700; background:#f8fafc;"><td style="padding:6px 10px; border:1px solid #cbd5e1;">Total Store Sales Income</td><td style="padding:6px 10px; border:1px solid #cbd5e1; text-align:right; color:#002F6C;">₱<?= number_format((float)($closing_record['total_store_sales'] ?? 0), 2) ?></td></tr>
-                        </tbody>
-                    </table>
-
                     <!-- Cash Summary & A/R Summary (Side-by-Side) -->
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
                         <div>
@@ -3821,9 +3867,13 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td style="padding:6px 10px; border:1px solid #ddd;">Shift 1</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['cash_shift1'] ?? 0), 2) ?></td></tr>
-                                    <tr><td style="padding:6px 10px; border:1px solid #ddd;">Shift 2</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['cash_shift2'] ?? 0), 2) ?></td></tr>
-                                    <tr style="font-weight:700; background:#f8fafc;"><td style="padding:6px 10px; border:1px solid #cbd5e1;">Total Cash</td><td style="padding:6px 10px; border:1px solid #cbd5e1; text-align:right; color:#002F6C;">₱<?= number_format((float)($closing_record['total_cash'] ?? 0), 2) ?></td></tr>
+                                    <?php if ($show_shift_mode === 'all' || $show_shift_mode === 'shift1'): ?>
+                                    <tr><td style="padding:6px 10px; border:1px solid #ddd;">Shift 1</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format($c_cash1, 2) ?></td></tr>
+                                    <?php endif; ?>
+                                    <?php if ($show_shift_mode === 'all' || $show_shift_mode === 'shift2'): ?>
+                                    <tr><td style="padding:6px 10px; border:1px solid #ddd;">Shift 2</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format($c_cash2, 2) ?></td></tr>
+                                    <?php endif; ?>
+                                    <tr style="font-weight:700; background:#f8fafc;"><td style="padding:6px 10px; border:1px solid #cbd5e1;">Total Cash</td><td style="padding:6px 10px; border:1px solid #cbd5e1; text-align:right; color:#002F6C;">₱<?= number_format($disp_tot_cash, 2) ?></td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -3838,9 +3888,13 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td style="padding:6px 10px; border:1px solid #ddd;">Shift 1</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['ar_shift1'] ?? 0), 2) ?></td></tr>
-                                    <tr><td style="padding:6px 10px; border:1px solid #ddd;">Shift 2</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['ar_shift2'] ?? 0), 2) ?></td></tr>
-                                    <tr style="font-weight:700; background:#f8fafc;"><td style="padding:6px 10px; border:1px solid #cbd5e1;">Total A/R</td><td style="padding:6px 10px; border:1px solid #cbd5e1; text-align:right; color:#002F6C;">₱<?= number_format((float)($closing_record['total_ar'] ?? 0), 2) ?></td></tr>
+                                    <?php if ($show_shift_mode === 'all' || $show_shift_mode === 'shift1'): ?>
+                                    <tr><td style="padding:6px 10px; border:1px solid #ddd;">Shift 1</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format($c_ar1, 2) ?></td></tr>
+                                    <?php endif; ?>
+                                    <?php if ($show_shift_mode === 'all' || $show_shift_mode === 'shift2'): ?>
+                                    <tr><td style="padding:6px 10px; border:1px solid #ddd;">Shift 2</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format($c_ar2, 2) ?></td></tr>
+                                    <?php endif; ?>
+                                    <tr style="font-weight:700; background:#f8fafc;"><td style="padding:6px 10px; border:1px solid #cbd5e1;">Total A/R</td><td style="padding:6px 10px; border:1px solid #cbd5e1; text-align:right; color:#002F6C;">₱<?= number_format($disp_tot_ar, 2) ?></td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -3856,27 +3910,30 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                             </tr>
                         </thead>
                         <tbody>
-                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">Fuel Sales</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['total_fuel_sales'] ?? $total_fuel_sales_amount), 2) ?></td></tr>
-                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">Store Sales</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($closing_record['total_store_sales'] ?? 0), 2) ?></td></tr>
-                            <tr style="font-weight:700;"><td style="padding:6px 10px; border:1px solid #ddd;">Gross Sales</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right; color:#002F6C;">₱<?= number_format((float)($closing_record['gross_sales'] ?? $total_fuel_sales_amount), 2) ?></td></tr>
-                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">Less A/R</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right; color:#dc2626;">- ₱<?= number_format((float)($closing_record['total_ar'] ?? 0), 2) ?></td></tr>
-                            <tr style="font-weight:700; background:#f0fdf4;"><td style="padding:6px 10px; border:1px solid #bbf7d0;">Expected Cash</td><td style="padding:6px 10px; border:1px solid #bbf7d0; text-align:right; color:#15803d;">₱<?= number_format((float)($closing_record['expected_cash'] ?? $total_fuel_sales_amount), 2) ?></td></tr>
-                            <tr style="font-weight:800; background:#e0f2fe;"><td style="padding:8px 10px; border:1px solid #7dd3fc; font-size:13px; color:#0369a1;">Total Cash in Bank</td><td style="padding:8px 10px; border:1px solid #7dd3fc; text-align:right; font-size:14px; color:#0369a1;">₱<?= number_format((float)($closing_record['total_cash_bank'] ?? $closing_record['expected_cash'] ?? $total_fuel_sales_amount), 2) ?></td></tr>
+                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">TOTAL FUEL AMOUNT SALES</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right; font-weight:700; color:#002F6C;">₱<?= number_format($c_fuel, 2) ?></td></tr>
+                            <?php if ($show_shift_mode === 'all' || $show_shift_mode === 'shift1'): ?>
+                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">LESS: A/R SHIFT 1</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right; color:#dc2626;">- ₱<?= number_format($c_ar1, 2) ?></td></tr>
+                            <?php endif; ?>
+                            <?php if ($show_shift_mode === 'all' || $show_shift_mode === 'shift2'): ?>
+                            <tr><td style="padding:6px 10px; border:1px solid #ddd;">LESS: A/R SHIFT 2</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right; color:#dc2626;">- ₱<?= number_format($c_ar2, 2) ?></td></tr>
+                            <?php endif; ?>
+                            <tr style="font-weight:700; background:#f0fdf4;"><td style="padding:6px 10px; border:1px solid #bbf7d0; color:#15803d;">NET CASH / REMAINING AMOUNT</td><td style="padding:6px 10px; border:1px solid #bbf7d0; text-align:right; color:#15803d;">₱<?= number_format($disp_net_cash, 2) ?></td></tr>
+                            <tr style="font-weight:800; background:#e0f2fe;"><td style="padding:8px 10px; border:1px solid #7dd3fc; font-size:13px; color:#0369a1;">TOTAL CASH IN BANK</td><td style="padding:8px 10px; border:1px solid #7dd3fc; text-align:right; font-size:14px; color:#0369a1;">₱<?= number_format($disp_bank_cash, 2) ?></td></tr>
                         </tbody>
                     </table>
                 </div>
 
 
                 <!-- PREPARED BY SIGNATURE -->
-                <table class="print-only-signature" style="width:100%; margin-top:25px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+                <table class="print-only-signature" style="width:100%; margin-top:55px; page-break-before:avoid; page-break-inside:avoid; border:none; border-collapse:collapse;">
                     <tr>
                         <td style="border:none;"></td>
-                        <td style="border:none; width:220px; text-align:center;">
-                            <div style="font-size:10px; font-weight:700; color:#333; margin-bottom:25px;">PREPARED BY:</div>
-                            <div style="border-top:1px solid #000; padding-top:4px; font-weight:700; font-size:11px; color:#000;">
+                        <td style="border:none; width:200px; text-align:center;">
+                            <div style="font-size:9.5px; font-weight:700; color:#333; margin-bottom:10px;">PREPARED BY:</div>
+                            <div style="border-top:1px solid #000; padding-top:2px; font-weight:700; font-size:10px; color:#000;">
                                 <?= htmlspecialchars($cashier_name) ?>
                             </div>
-                            <div style="font-size:9.5px; color:#555; margin-top:2px;">Staff</div>
+                            <div style="font-size:9px; color:#555; margin-top:1px;">Staff</div>
                         </td>
                     </tr>
                 </table>

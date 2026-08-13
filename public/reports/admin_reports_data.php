@@ -102,6 +102,14 @@ if (!function_exists('getAdminReportData')) {
                     $extra_where .= " AND ft.pump_id = :filter_pump_id ";
                     $extra_params['filter_pump_id'] = (int)$filters['pump_id'];
                 }
+                if (!empty($filters['shift'])) {
+                    $shift_val = strtolower(trim($filters['shift']));
+                    if (strpos($shift_val, '1') !== false || strpos($shift_val, 'first') !== false) {
+                        $extra_where .= " AND (LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%first%' OR LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%shift 1%' OR ft.shift_id = 1 OR COALESCE(ft.shift_period, ft.shift_name, '') = '1') ";
+                    } elseif (strpos($shift_val, '2') !== false || strpos($shift_val, 'second') !== false) {
+                        $extra_where .= " AND (LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%second%' OR LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%shift 2%' OR ft.shift_id = 2 OR COALESCE(ft.shift_period, ft.shift_name, '') = '2') ";
+                    }
+                }
                 $base_params = array_merge(['date_from' => $date_from, 'date_to' => $date_to], $st_params, $extra_params);
 
                 // Map pump_ids to clean UGT-01, UGT-02, ... labels
@@ -123,24 +131,30 @@ if (!function_exists('getAdminReportData')) {
                 }
                 $data['pump_list'] = $pump_list;
 
-                // 1. UGT DAILY SALES TABLE — one row per pump per day
+                // 1. UGT DAILY SALES TABLE — deduplicated latest reading per pump per day
                 $stmt = $pdo->prepare(
                     "SELECT ft.pump_id,
                             ft.fuel_type as raw_fuel_type,
                             {$sql_norm} as clean_fuel_type,
-                            DATE(ft.transaction_date) as report_date,
-                            MIN(ft.previous_reading) as beginning_reading,
-                            MAX(ft.present_reading)  as ending_reading,
-                            SUM(COALESCE(ft.calibration, 0)) as total_calibration,
-                            SUM(COALESCE(ft.liters_sold, 0)) as net_volume_sold,
-                            MAX(ft.price_per_liter) as price_per_liter,
-                            SUM(COALESCE(ft.total_amount, 0)) as total_fuel_sales,
-                            COUNT(ft.id) as shift_count
+                            DATE(COALESCE(ft.transaction_date, ft.created_at)) as report_date,
+                            COALESCE(ft.previous_reading, 0) as beginning_reading,
+                            COALESCE(ft.present_reading, 0)  as ending_reading,
+                            COALESCE(ft.calibration, 0) as total_calibration,
+                            COALESCE(ft.liters_sold, 0) as net_volume_sold,
+                            COALESCE(ft.price_per_liter, 0) as price_per_liter,
+                            COALESCE(ft.total_amount, 0) as total_fuel_sales,
+                            1 as shift_count
                      FROM fuel_transactions ft
                      LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
-                     WHERE DATE(ft.transaction_date) BETWEEN :date_from AND :date_to
-                       {$st_clause('ft')} {$extra_where}
-                     GROUP BY ft.pump_id, ft.fuel_type, DATE(ft.transaction_date)
+                     INNER JOIN (
+                         SELECT MAX(id) AS max_id
+                         FROM fuel_transactions
+                         WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
+                           {$st_clause('fuel_transactions')}
+                           AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+                         GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
+                     ) latest ON ft.id = latest.max_id
+                     WHERE 1=1 {$extra_where}
                      ORDER BY ft.fuel_type ASC, ft.pump_id ASC"
                 );
                 $stmt->execute($base_params);
@@ -164,8 +178,15 @@ if (!function_exists('getAdminReportData')) {
                         SELECT ft.pump_id, ft.liters_sold, ft.price_per_liter, ft.total_amount,
                                {$sql_norm} as norm_fuel_type
                         FROM fuel_transactions ft
-                        WHERE DATE(ft.transaction_date) BETWEEN :date_from AND :date_to
-                          {$st_clause('ft')} {$extra_where}
+                        INNER JOIN (
+                            SELECT MAX(id) AS max_id
+                            FROM fuel_transactions
+                            WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
+                              {$st_clause('fuel_transactions')}
+                              AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+                            GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
+                        ) latest ON ft.id = latest.max_id
+                        WHERE 1=1 {$extra_where}
                     ) cat
                     GROUP BY cat.norm_fuel_type
                     ORDER BY total_sales DESC"
@@ -182,8 +203,15 @@ if (!function_exists('getAdminReportData')) {
                             SUM(COALESCE(ft.liters_sold, 0)) as total_volume_sold,
                             SUM(COALESCE(ft.total_amount, 0)) as total_fuel_sales
                      FROM fuel_transactions ft
-                     WHERE DATE(ft.transaction_date) BETWEEN :date_from AND :date_to
-                       {$st_clause('ft')} {$extra_where}"
+                     INNER JOIN (
+                         SELECT MAX(id) AS max_id
+                         FROM fuel_transactions
+                         WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
+                           {$st_clause('fuel_transactions')}
+                           AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+                         GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
+                     ) latest ON ft.id = latest.max_id
+                     WHERE 1=1 {$extra_where}"
                 );
                 $stmt3->execute($base_params);
                 $data['reconciliation'] = $stmt3->fetch(PDO::FETCH_ASSOC);
@@ -199,8 +227,15 @@ if (!function_exists('getAdminReportData')) {
                         SELECT ft.liters_sold, ft.price_per_liter, ft.total_amount,
                                {$sql_norm} as norm_fuel_type
                         FROM fuel_transactions ft
-                        WHERE DATE(ft.transaction_date) BETWEEN :date_from AND :date_to
-                          {$st_clause('ft')} {$extra_where}
+                        INNER JOIN (
+                            SELECT MAX(id) AS max_id
+                            FROM fuel_transactions
+                            WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
+                              {$st_clause('fuel_transactions')}
+                              AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+                            GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
+                        ) latest ON ft.id = latest.max_id
+                        WHERE 1=1 {$extra_where}
                     ) cat
                     GROUP BY cat.norm_fuel_type
                     ORDER BY cat.norm_fuel_type ASC"
@@ -236,6 +271,52 @@ if (!function_exists('getAdminReportData')) {
                     $data['ugt_summary'] = [];
                 }
 
+                // Compute 7 UGT Tanks Liters Sold Summary (matching Staff Report & Fuel Closing)
+                $tank_ugt_summary = [
+                    'UGT #1 (DIESEL 1)'       => 0.0,
+                    'UGT #2 (DIESEL 2)'       => 0.0,
+                    'UGT #3 (TURBO DIESEL)'   => 0.0,
+                    'UGT #4 (XCS PLUS)'       => 0.0,
+                    'UGT #5 (XTRA ADVANCE 1)' => 0.0,
+                    'UGT #6 (XTRA ADVANCE 2)' => 0.0,
+                    'UGT #7 (KEROSENE)'       => 0.0,
+                ];
+
+                foreach ($raw_ugt as $r) {
+                    $pName  = strtoupper(trim(($r['raw_fuel_type'] ?? '') ?: ($r['clean_fuel_type'] ?? '')));
+                    $ftype  = strtolower(trim($r['clean_fuel_type'] ?? ''));
+                    $liters = (float)($r['net_volume_sold'] ?? 0);
+
+                    if (strpos($pName, 'DIESEL 1') !== false) {
+                        $tank_ugt_summary['UGT #1 (DIESEL 1)'] += $liters;
+                    } elseif (strpos($pName, 'DIESEL 2') !== false) {
+                        $tank_ugt_summary['UGT #2 (DIESEL 2)'] += $liters;
+                    } elseif (strpos($pName, 'TURBO') !== false) {
+                        $tank_ugt_summary['UGT #3 (TURBO DIESEL)'] += $liters;
+                    } elseif (strpos($pName, 'XCS') !== false) {
+                        $tank_ugt_summary['UGT #4 (XCS PLUS)'] += $liters;
+                    } elseif (strpos($pName, 'XTRA UNL 1') !== false || strpos($pName, 'XTRA AD 1') !== false || strpos($pName, 'ADVANCE 1') !== false) {
+                        $tank_ugt_summary['UGT #5 (XTRA ADVANCE 1)'] += $liters;
+                    } elseif (strpos($pName, 'XTRA UNL 2') !== false || strpos($pName, 'XTRA AD 2') !== false || strpos($pName, 'ADVANCE 2') !== false) {
+                        $tank_ugt_summary['UGT #6 (XTRA ADVANCE 2)'] += $liters;
+                    } elseif (strpos($pName, 'KERO') !== false) {
+                        $tank_ugt_summary['UGT #7 (KEROSENE)'] += $liters;
+                    } else {
+                        if (strpos($ftype, 'turbo') !== false) {
+                            $tank_ugt_summary['UGT #3 (TURBO DIESEL)'] += $liters;
+                        } elseif (strpos($ftype, 'diesel') !== false) {
+                            $tank_ugt_summary['UGT #1 (DIESEL 1)'] += $liters;
+                        } elseif (strpos($ftype, 'xcs') !== false) {
+                            $tank_ugt_summary['UGT #4 (XCS PLUS)'] += $liters;
+                        } elseif (strpos($ftype, 'xtra') !== false || strpos($ftype, 'advance') !== false) {
+                            $tank_ugt_summary['UGT #5 (XTRA ADVANCE 1)'] += $liters;
+                        } elseif (strpos($ftype, 'kero') !== false) {
+                            $tank_ugt_summary['UGT #7 (KEROSENE)'] += $liters;
+                        }
+                    }
+                }
+                $data['tank_ugt_summary'] = $tank_ugt_summary;
+
                 // 6. TANK LITER SUMMARY (Remaining Liters)
                 try {
                     $stmt_tank = $pdo->prepare(
@@ -258,6 +339,15 @@ if (!function_exists('getAdminReportData')) {
 
                 // 7. FUEL SALES CLOSING SUMMARY
                 try {
+                    $close_where = "";
+                    if (!empty($filters['shift'])) {
+                        $shift_val = trim($filters['shift']);
+                        if (strpos($shift_val, '1') !== false) {
+                            $close_where .= " AND (fsc.shift LIKE '%Shift 1%' OR fsc.shift = '1') ";
+                        } elseif (strpos($shift_val, '2') !== false) {
+                            $close_where .= " AND (fsc.shift LIKE '%Shift 2%' OR fsc.shift = '2') ";
+                        }
+                    }
                     $stmt_close = $pdo->prepare(
                         "SELECT 
                             SUM(COALESCE(fsc.total_fuel_sales, 0)) as total_fuel_sales,
@@ -274,12 +364,65 @@ if (!function_exists('getAdminReportData')) {
                             SUM(COALESCE(fsc.total_cash_bank, 0)) as total_cash_bank
                          FROM fuel_sales_closing fsc
                          WHERE fsc.report_date BETWEEN :date_from AND :date_to
-                           {$st_clause('fsc')}"
+                           {$st_clause('fsc')} {$close_where}"
                     );
                     $stmt_close->execute(['date_from' => $date_from, 'date_to' => $date_to] + $st_params);
                     $data['closing_summary'] = $stmt_close->fetch(PDO::FETCH_ASSOC) ?: [];
                 } catch (Exception $e) {
                     $data['closing_summary'] = [];
+                }
+
+                // Shift Breakdown for Manager Daily Summary
+                try {
+                    $stmt_s1 = $pdo->prepare(
+                        "SELECT 
+                            SUM(COALESCE(ft.liters_sold, 0)) as liters,
+                            SUM(COALESCE(ft.total_amount, 0)) as sales
+                         FROM fuel_transactions ft
+                         INNER JOIN (
+                             SELECT MAX(id) AS max_id
+                             FROM fuel_transactions
+                             WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
+                               {$st_clause('fuel_transactions')}
+                               AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+                             GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at)), COALESCE(shift_period, shift_name, shift_id)
+                         ) latest ON ft.id = latest.max_id
+                         WHERE (LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%first%' OR LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%shift 1%' OR ft.shift_id = 1 OR COALESCE(ft.shift_period, ft.shift_name, '') = '1')"
+                    );
+                    $stmt_s1->execute(['date_from' => $date_from, 'date_to' => $date_to] + $st_params);
+                    $s1_data = $stmt_s1->fetch(PDO::FETCH_ASSOC) ?: [];
+
+                    $stmt_s2 = $pdo->prepare(
+                        "SELECT 
+                            SUM(COALESCE(ft.liters_sold, 0)) as liters,
+                            SUM(COALESCE(ft.total_amount, 0)) as sales
+                         FROM fuel_transactions ft
+                         INNER JOIN (
+                             SELECT MAX(id) AS max_id
+                             FROM fuel_transactions
+                             WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
+                               {$st_clause('fuel_transactions')}
+                               AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+                             GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at)), COALESCE(shift_period, shift_name, shift_id)
+                         ) latest ON ft.id = latest.max_id
+                         WHERE (LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%second%' OR LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%shift 2%' OR ft.shift_id = 2 OR COALESCE(ft.shift_period, ft.shift_name, '') = '2')"
+                    );
+                    $stmt_s2->execute(['date_from' => $date_from, 'date_to' => $date_to] + $st_params);
+                    $s2_data = $stmt_s2->fetch(PDO::FETCH_ASSOC) ?: [];
+
+                    $cs = $data['closing_summary'] ?? [];
+                    $data['shift_breakdown'] = [
+                        's1_liters' => (float)($s1_data['liters'] ?? 0),
+                        's1_sales'  => (float)($s1_data['sales'] ?? 0),
+                        's1_cash'   => (float)($cs['cash_shift1'] ?? 0),
+                        's1_ar'     => (float)($cs['ar_shift1'] ?? 0),
+                        's2_liters' => (float)($s2_data['liters'] ?? 0),
+                        's2_sales'  => (float)($s2_data['sales'] ?? 0),
+                        's2_cash'   => (float)($cs['cash_shift2'] ?? 0),
+                        's2_ar'     => (float)($cs['ar_shift2'] ?? 0),
+                    ];
+                } catch (Exception $e) {
+                    $data['shift_breakdown'] = [];
                 }
 
                 // 8. FUEL ADJUSTMENT SUMMARY

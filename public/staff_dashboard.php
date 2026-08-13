@@ -906,40 +906,71 @@ foreach ($hourly_map as $h => $count) {
     $hourly_chart_data[] = $count;
 }
 
-// Chart 2: Fuel Sales by Product (Bar Chart)
-$raw_fuel_sales = dashboard_fetch_all($pdo, "
-    SELECT fuel_type, COALESCE(SUM(liters_sold), 0) AS total_liters
-    FROM fuel_transactions
-    WHERE station_id = ? AND DATE({$fuel_dt_expr}) BETWEEN ? AND ?
-    GROUP BY fuel_type
-", [$station_id, $date_from, $date_to]);
-$fuel_labels_from_inventory = dashboard_fetch_all($pdo, "
-    SELECT fuel_type
-    FROM fuel_inventory
-    WHERE station_id = ?
-    GROUP BY fuel_type
-    ORDER BY fuel_type
-", [$station_id]);
+// Chart 2: Fuel Sales by Product (Liters) — Exactly 7 UGT Underground Tanks
+$ugt_tank_chart = [
+    'UGT #1 (DIESEL 1)'       => 0.0,
+    'UGT #2 (DIESEL 2)'       => 0.0,
+    'UGT #3 (TURBO DIESEL)'   => 0.0,
+    'UGT #4 (XCS PLUS)'       => 0.0,
+    'UGT #5 (XTRA ADVANCE 1)' => 0.0,
+    'UGT #6 (XTRA ADVANCE 2)' => 0.0,
+    'UGT #7 (KEROSENE)'       => 0.0,
+];
 
-$canonical_fuels = [];
-foreach ($fuel_labels_from_inventory as $row) {
-    $label = trim((string)($row['fuel_type'] ?? ''));
-    if ($label !== '') {
-        $canonical_fuels[$label] = 0.0;
+try {
+    $raw_fuel_sales = dashboard_fetch_all($pdo, "
+        SELECT 
+            COALESCE(NULLIF(fp.pump_number, ''), ft.fuel_type) AS pump_name,
+            ft.fuel_type,
+            COALESCE(ft.liters_sold, 0) AS total_liters
+        FROM fuel_transactions ft
+        LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
+        INNER JOIN (
+            SELECT MAX(id) AS max_id
+            FROM fuel_transactions
+            WHERE station_id = ? AND (DATE(transaction_date) BETWEEN ? AND ? OR (transaction_date IS NULL AND DATE(created_at) BETWEEN ? AND ?))
+              AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+            GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
+        ) latest ON ft.id = latest.max_id
+    ", [$station_id, $date_from, $date_to, $date_from, $date_to]);
+
+    foreach ($raw_fuel_sales as $row) {
+        $pName  = strtoupper(trim($row['pump_name'] ?: $row['fuel_type']));
+        $ftype  = strtolower(trim($row['fuel_type']));
+        $liters = (float)$row['total_liters'];
+
+        if (strpos($pName, 'DIESEL 1') !== false) {
+            $ugt_tank_chart['UGT #1 (DIESEL 1)'] += $liters;
+        } elseif (strpos($pName, 'DIESEL 2') !== false) {
+            $ugt_tank_chart['UGT #2 (DIESEL 2)'] += $liters;
+        } elseif (strpos($pName, 'TURBO') !== false) {
+            $ugt_tank_chart['UGT #3 (TURBO DIESEL)'] += $liters;
+        } elseif (strpos($pName, 'XCS') !== false) {
+            $ugt_tank_chart['UGT #4 (XCS PLUS)'] += $liters;
+        } elseif (strpos($pName, 'XTRA UNL 1') !== false || strpos($pName, 'XTRA AD 1') !== false || strpos($pName, 'ADVANCE 1') !== false) {
+            $ugt_tank_chart['UGT #5 (XTRA ADVANCE 1)'] += $liters;
+        } elseif (strpos($pName, 'XTRA UNL 2') !== false || strpos($pName, 'XTRA AD 2') !== false || strpos($pName, 'ADVANCE 2') !== false) {
+            $ugt_tank_chart['UGT #6 (XTRA ADVANCE 2)'] += $liters;
+        } elseif (strpos($pName, 'KERO') !== false) {
+            $ugt_tank_chart['UGT #7 (KEROSENE)'] += $liters;
+        } else {
+            if (strpos($ftype, 'turbo') !== false) {
+                $ugt_tank_chart['UGT #3 (TURBO DIESEL)'] += $liters;
+            } elseif (strpos($ftype, 'diesel') !== false) {
+                $ugt_tank_chart['UGT #1 (DIESEL 1)'] += $liters;
+            } elseif (strpos($ftype, 'xcs') !== false) {
+                $ugt_tank_chart['UGT #4 (XCS PLUS)'] += $liters;
+            } elseif (strpos($ftype, 'xtra') !== false || strpos($ftype, 'advance') !== false) {
+                $ugt_tank_chart['UGT #5 (XTRA ADVANCE 1)'] += $liters;
+            } elseif (strpos($ftype, 'kero') !== false) {
+                $ugt_tank_chart['UGT #7 (KEROSENE)'] += $liters;
+            }
+        }
     }
-}
-foreach ($raw_fuel_sales as $row) {
-    $label = trim((string)($row['fuel_type'] ?? ''));
-    if ($label === '') {
-        $label = 'Unspecified';
-    }
-    if (!array_key_exists($label, $canonical_fuels)) {
-        $canonical_fuels[$label] = 0.0;
-    }
-    $canonical_fuels[$label] += (float)$row['total_liters'];
-}
-$fuel_chart_labels = array_keys($canonical_fuels);
-$fuel_chart_data = array_values($canonical_fuels);
+} catch (Exception $e) {}
+
+$fuel_chart_labels = array_keys($ugt_tank_chart);
+$fuel_chart_data   = array_values($ugt_tank_chart);
 
 // Chart 3: Merchandise Sales by Category (Bar Chart) — DB-driven, real categories
 $merch_chart_labels = [];

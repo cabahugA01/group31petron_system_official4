@@ -633,12 +633,7 @@ html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !impor
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-top: 1px solid #f1f5f9; flex-wrap: wrap; gap: 12px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <label style="font-size: 12px; color: #64748b; font-weight: 600;">Rows per page:</label>
-                    <select id="rowsPerPage" style="padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; cursor: pointer;">
-                        <option value="10">10</option>
-                        <option value="25" selected>25</option>
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                    </select>
+                    
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <span id="pageInfo" style="font-size: 12px; color: #64748b; font-weight: 600;">Page 1 of 1</span>

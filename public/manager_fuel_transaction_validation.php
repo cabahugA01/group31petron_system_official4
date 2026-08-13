@@ -810,10 +810,63 @@ input[type="checkbox"]:indeterminate {
 .details-label { font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: bold; }
 .details-value { font-size: 12px; color: #1e293b; font-weight: 600; margin-top: 2px; }
 
-/* Page buttons */
-.page-btn { padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; color: #64748b; font-size: 12px; cursor: pointer; transition: all .15s; }
-.page-btn:hover:not(:disabled) { background: #f1f5f9; border-color: #cbd5e1; color: #1e293b; }
-.page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Clean White Footer Pagination Bar */
+.afto-footer {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 14px 20px !important;
+    background: #ffffff !important;
+    border-top: 1px solid #e2e8f0 !important;
+    border-bottom-left-radius: 12px !important;
+    border-bottom-right-radius: 12px !important;
+    font-size: 13px !important;
+    color: #334155 !important;
+    gap: 12px !important;
+    flex-wrap: wrap !important;
+    margin-bottom: 30px !important;
+}
+
+.afto-footer select#rowsPerPage {
+    padding: 6px 12px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    outline: none !important;
+}
+
+.afto-footer #pageInfo {
+    font-weight: 600 !important;
+    color: #334155 !important;
+}
+
+.page-btn {
+    padding: 6px 14px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    background: #ffffff !important;
+    color: #334155 !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+}
+
+.page-btn:hover:not(:disabled) {
+    background: #f1f5f9 !important;
+    border-color: #94a3b8 !important;
+    color: #0f172a !important;
+}
+
+.page-btn:disabled {
+    opacity: 0.4 !important;
+    cursor: not-allowed !important;
+    background: #f8fafc !important;
+}
 </style>
 
 <div class="mftv-wrap">
@@ -1035,6 +1088,19 @@ input[type="checkbox"]:indeterminate {
                     <?php endif; ?>
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Pagination Footer Bar -->
+            <div class="afto-footer">
+                <div id="pageInfo" style="font-weight:600; color:#334155;">Showing entries</div>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <button type="button" id="prevPage" class="page-btn">
+                        <i class="fas fa-chevron-left me-1"></i> Previous
+                    </button>
+                    <button type="button" id="nextPage" class="page-btn">
+                        Next <i class="fas fa-chevron-right ms-1"></i>
+                    </button>
+                </div>
             </div>
     </div>
 </div>
@@ -1402,7 +1468,7 @@ window.onclick = function(event) {
 }
 
 // Client-side pagination logic
-(function() {
+function initManagerPagination() {
     const tableBody = document.querySelector('.afto-tbl tbody');
     if (!tableBody) return;
 
@@ -1410,31 +1476,30 @@ window.onclick = function(event) {
     let currentPage = 1;
     let rowsPerPage = 25;
 
-    const rowsSelect = document.getElementById('rowsPerPage');
     const pageInfo = document.getElementById('pageInfo');
     const prevBtn = document.getElementById('prevPage');
     const nextBtn = document.getElementById('nextPage');
 
     function updateTable() {
-        const totalPages = Math.ceil(allRows.length / rowsPerPage) || 1;
+        const validRows = allRows.filter(r => !r.querySelector('.afto-empty'));
+        const totalRows = validRows.length;
+        const totalPages = Math.ceil(totalRows / rowsPerPage) || 1;
         if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
+
         const start = (currentPage - 1) * rowsPerPage;
-        const end = start + rowsPerPage;
+        const end = Math.min(start + rowsPerPage, totalRows);
 
         allRows.forEach(row => row.style.display = 'none');
-        allRows.slice(start, end).forEach(row => row.style.display = '');
+        validRows.slice(start, end).forEach(row => row.style.display = '');
 
-        pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
-        prevBtn.disabled = currentPage === 1;
-        nextBtn.disabled = currentPage === totalPages;
-    }
-
-    if (rowsSelect) {
-        rowsSelect.addEventListener('change', function() {
-            rowsPerPage = parseInt(this.value);
-            currentPage = 1;
-            updateTable();
-        });
+        if (pageInfo) {
+            pageInfo.textContent = totalRows === 0 
+                ? 'Showing 0 entries' 
+                : `Showing ${start + 1}–${end} of ${totalRows} entries` + (totalPages > 1 ? ` (Page ${currentPage} of ${totalPages})` : '');
+        }
+        if (prevBtn) prevBtn.disabled = (currentPage === 1);
+        if (nextBtn) nextBtn.disabled = (currentPage === totalPages);
     }
 
     if (prevBtn) {
@@ -1442,24 +1507,33 @@ window.onclick = function(event) {
             if (currentPage > 1) {
                 currentPage--;
                 updateTable();
-                document.querySelector('.afto-table-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                const card = document.querySelector('.afto-table-card');
+                if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
         });
     }
 
     if (nextBtn) {
         nextBtn.addEventListener('click', function() {
-            const totalPages = Math.ceil(allRows.length / rowsPerPage) || 1;
+            const validRows = allRows.filter(r => !r.querySelector('.afto-empty'));
+            const totalPages = Math.ceil(validRows.length / rowsPerPage) || 1;
             if (currentPage < totalPages) {
                 currentPage++;
                 updateTable();
-                document.querySelector('.afto-table-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                const card = document.querySelector('.afto-table-card');
+                if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
         });
     }
 
     updateTable();
-})();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initManagerPagination);
+} else {
+    initManagerPagination();
+}
 
 // Export Helper
 function mftvExport(format) {

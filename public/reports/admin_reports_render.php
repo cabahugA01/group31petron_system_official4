@@ -23,7 +23,9 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                 $fuel_summary     = $report_data['fuel_summary']     ?? [];
                 $recon            = $report_data['reconciliation']   ?? [];
                 $tank_summary     = $report_data['tank_summary']     ?? [];
+                $tank_ugt_summary = $report_data['tank_ugt_summary'] ?? [];
                 $closing_summary  = $report_data['closing_summary']  ?? [];
+                $shift_breakdown  = $report_data['shift_breakdown']  ?? [];
                 $variance         = $report_data['variance']         ?? [];
                 $fuel_adjustments = $report_data['fuel_adjustments']  ?? [];
                 ?>
@@ -95,186 +97,98 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                 </div>
 
                 <!-- =====================================================
-                     SECTION 2: UGT SALES SUMMARY (PER PUMP SUMMARY)
+                     SECTION 2: FUEL SALES SUMMARY
                      ===================================================== -->
-                <div class="rpt-section-heading"><i class="fas fa-gas-pump"></i> UGT Sales Summary (Per Pump)</div>
-                <div class="table-responsive mb-4">
-                    <table class="rpt-table align-middle">
-                        <thead>
-                            <tr>
-                                <th style="text-align:left;">UGT / Pump No.</th>
-                                <th style="text-align:left;">Fuel Type</th>
-                                <th style="text-align:right;">Total Volume Sold (L)</th>
-                                <th style="text-align:right;">Selling Price/L</th>
-                                <th style="text-align:right;">Total Sales</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php 
-                            $ugt_sum_vol = 0; $ugt_sum_total = 0;
-                            foreach ($ugt_summary as $us):
-                                $us_vol   = (float)($us['total_volume'] ?? 0);
-                                $us_total = (float)($us['total_sales'] ?? 0);
-                                $ugt_sum_vol   += $us_vol;
-                                $ugt_sum_total += $us_total;
-                            ?>
-                            <tr>
-                                <td style="text-align:left;"><strong><?= htmlspecialchars($us['ugt_no']) ?></strong></td>
-                                <td style="text-align:left;"><?= htmlspecialchars($us['fuel_type']) ?></td>
-                                <td style="text-align:right;" class="fw-bold"><?= number_format($us_vol, 2) ?> L</td>
-                                <td style="text-align:right;">₱<?= number_format((float)($us['avg_price'] ?? 0), 2) ?></td>
-                                <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format($us_total, 2) ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                            <?php if (empty($ugt_summary)): ?>
-                            <tr><td colspan="5" class="text-center py-3 text-muted">No UGT pump summary data for this period.</td></tr>
-                            <?php endif; ?>
-                        </tbody>
-                        <tfoot>
-                            <tr>
-                                <td colspan="2" style="text-align:left;" class="fw-bold">TOTAL UGT SALES</td>
-                                <td style="text-align:right;" class="fw-bold"><?= number_format($ugt_sum_vol, 2) ?> L</td>
-                                <td></td>
-                                <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format($ugt_sum_total, 2) ?></td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-
-                <!-- =====================================================
-                     SECTION 3: FUEL SALES SUMMARY (PER FUEL TYPE)
-                     ===================================================== -->
-                <div class="rpt-section-heading"><i class="fas fa-chart-bar"></i> Fuel Sales Summary (Per Fuel Type)</div>
+                <div class="rpt-section-heading"><i class="fas fa-chart-bar"></i> Fuel Sales Summary</div>
                 <div class="table-responsive mb-4">
                     <table class="rpt-table align-middle">
                         <thead>
                             <tr>
                                 <th style="text-align:left;">Fuel Type</th>
-                                <th style="text-align:center;">No. of UGTs</th>
-                                <th style="text-align:right;">Total Volume Sold (L)</th>
-                                <th style="text-align:right;">Selling Price/L</th>
-                                <th style="text-align:right;">Total Sales</th>
+                                <th style="text-align:right;">Liters Sold</th>
+                                <th style="text-align:right;">Fuel Sales</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php 
-                            $sum_ugts = 0; $sum_vol = 0; $sum_total = 0; 
+                            $sum_vol = 0; $sum_total = 0; 
                             foreach ($fuel_summary as $s): 
-                                $sum_ugts  += (int)$s['ugt_count'];
                                 $sum_vol   += (float)$s['total_volume'];
                                 $sum_total += (float)$s['total_sales']; 
                             ?>
                             <tr>
                                 <td style="text-align:left;"><strong><?= htmlspecialchars($s['fuel_type']) ?></strong></td>
-                                <td style="text-align:center;"><?= (int)$s['ugt_count'] ?></td>
-                                <td style="text-align:right;"><?= number_format((float)$s['total_volume'], 2) ?> L</td>
-                                <td style="text-align:right;">₱<?= number_format((float)$s['avg_price'], 2) ?></td>
-                                <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format((float)$s['total_sales'], 2) ?></td>
+                                <td style="text-align:right;" class="fw-bold text-success"><?= number_format((float)$s['total_volume'], 2) ?> L</td>
+                                <td style="text-align:right;" class="fw-bold text-primary">₱<?= number_format((float)$s['total_sales'], 2) ?></td>
                             </tr>
                             <?php endforeach; ?>
                             <?php if (empty($fuel_summary)): ?>
-                            <tr><td colspan="5" class="text-center py-3 text-muted">No fuel summary data for this period.</td></tr>
+                            <tr><td colspan="3" class="text-center py-3 text-muted">No fuel sales summary records available for this period.</td></tr>
                             <?php endif; ?>
                         </tbody>
                         <tfoot>
-                            <tr>
-                                <td style="text-align:left;" class="fw-bold">TOTAL FUEL SALES</td>
-                                <td style="text-align:center;" class="fw-bold"><?= $sum_ugts ?></td>
-                                <td style="text-align:right;" class="fw-bold"><?= number_format($sum_vol, 2) ?> L</td>
-                                <td></td>
-                                <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format($sum_total, 2) ?></td>
+                            <tr style="font-weight:800; background:#e8f0fe;">
+                                <td style="text-align:left; text-transform:uppercase;">TOTAL FUEL SALES SUMMARY</td>
+                                <td style="text-align:right;" class="fw-bold text-success"><?= number_format($sum_vol, 2) ?> L</td>
+                                <td style="text-align:right;" class="fw-bold text-primary">₱<?= number_format($sum_total, 2) ?></td>
                             </tr>
                         </tfoot>
                     </table>
                 </div>
 
                 <!-- =====================================================
-                     SECTION 4: VOLUME & AMOUNT SUMMARY
+                     SECTION 3: VOLUME & AMOUNT SUMMARY
                      ===================================================== -->
                 <div class="rpt-section-heading"><i class="fas fa-calculator"></i> Volume & Amount Summary</div>
                 <div class="table-responsive mb-4">
                     <table class="rpt-table align-middle" style="max-width:650px;">
                         <thead>
                             <tr>
-                                <th style="text-align:left;">Description</th>
+                                <th style="text-align:left;">Summary</th>
                                 <th style="text-align:right;">Value</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php
-                            $rr = [
-                                'Total Volume Sold'       => number_format((float)($recon['total_volume_sold'] ?? 0), 2) . ' L',
-                                'Total Fuel Sales'        => '₱' . number_format((float)($recon['total_fuel_sales'] ?? 0), 2),
-                                'Total UGTs Monitored'    => number_format((int)($recon['total_ugts'] ?? 0)),
-                                'Total Beginning Reading'  => number_format((float)($recon['total_beginning'] ?? 0), 2),
-                                'Total Ending Reading'     => number_format((float)($recon['total_ending'] ?? 0), 2),
-                                'Total Calibration'       => number_format((float)($recon['total_calibration'] ?? 0), 2) . ' L',
-                            ];
-                            foreach ($rr as $desc => $val):
-                            ?>
                             <tr>
-                                <td style="width:60%;font-weight:600;color:#334155;text-align:left;"><?= $desc ?></td>
-                                <td style="font-weight:700;text-align:right;color:<?= str_contains($desc,'Sales') ? '#16a34a' : '#00264D' ?>;"><?= $val ?></td>
+                                <td style="width:60%;font-weight:700;color:#334155;text-align:left;">Total Liters Sold</td>
+                                <td style="font-weight:700;text-align:right;color:#15803d;font-size:13px;"><?= number_format((float)($recon['total_volume_sold'] ?? $sum_vol), 2) ?> L</td>
                             </tr>
-                            <?php endforeach; ?>
+                            <tr style="background:#f8fafc;">
+                                <td style="width:60%;font-weight:700;color:#334155;text-align:left;">Total Fuel Sales</td>
+                                <td style="font-weight:800;text-align:right;color:#002F6C;font-size:14px;">₱<?= number_format((float)($recon['total_fuel_sales'] ?? $sum_total), 2) ?></td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
 
                 <!-- =====================================================
-                     SECTION 5: TANK LITER SUMMARY (REMAINING LITERS)
+                     SECTION 5: TANK LITERS SUMMARY
                      ===================================================== -->
-                <div class="rpt-section-heading"><i class="fas fa-oil-can"></i> Tank Liter Summary (Remaining Liters)</div>
+                <div class="rpt-section-heading"><i class="fas fa-oil-can"></i> Tank Liters Summary</div>
                 <div class="table-responsive mb-4">
-                    <table class="rpt-table align-middle">
+                    <table class="rpt-table align-middle" style="max-width:750px;">
                         <thead>
                             <tr>
-                                <th style="text-align:left;">Tank / UGT No.</th>
-                                <th style="text-align:left;">Fuel Type</th>
-                                <th style="text-align:right;">Current Tank Level (L)</th>
-                                <th style="text-align:right;">Tank Capacity (L)</th>
-                                <th style="text-align:center;">Available Level %</th>
-                                <th style="text-align:center;">Status</th>
+                                <th style="text-align:left;">Tank / Pump Name</th>
+                                <th style="text-align:right;">Liters Sold (L)</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php
-                            $tot_lvl = 0; $tot_cap = 0;
-                            foreach ($tank_summary as $tk):
-                                $lvl = (float)($tk['current_level'] ?? 0);
-                                $cap = (float)($tk['capacity'] ?? 0);
-                                $pct = ($cap > 0) ? min(100, round(($lvl / $cap) * 100, 1)) : 0;
-                                $tot_lvl += $lvl;
-                                $tot_cap += $cap;
-                                $st_badge = ($pct < 20) ? 'bg-danger' : (($pct < 40) ? 'bg-warning text-dark' : 'bg-success');
+                            $tot_tank_liters = 0;
+                            foreach ($tank_ugt_summary as $t_name => $t_liters):
+                                $tot_tank_liters += (float)$t_liters;
                             ?>
                             <tr>
-                                <td style="text-align:left;"><strong><?= htmlspecialchars($tk['ugt_no']) ?></strong></td>
-                                <td style="text-align:left;"><?= htmlspecialchars($tk['fuel_type']) ?></td>
-                                <td style="text-align:right;" class="fw-bold"><?= number_format($lvl, 2) ?> L</td>
-                                <td style="text-align:right;"><?= number_format($cap, 2) ?> L</td>
-                                <td style="text-align:center;">
-                                    <div class="progress" style="height:16px; min-width:100px; display:inline-flex; vertical-align:middle;">
-                                        <div class="progress-bar <?= $st_badge ?>" role="progressbar" style="width: <?= $pct ?>%; font-size:10px; font-weight:bold;">
-                                            <?= $pct ?>%
-                                        </div>
-                                    </div>
-                                </td>
-                                <td style="text-align:center;">
-                                    <span class="badge <?= $st_badge ?>"><?= htmlspecialchars(ucfirst($tk['status'] ?? 'Active')) ?></span>
-                                </td>
+                                <td style="text-align:left; font-weight:700;"><?= htmlspecialchars($t_name) ?></td>
+                                <td style="text-align:right;" class="fw-bold text-success"><?= number_format((float)$t_liters, 2) ?> L</td>
                             </tr>
                             <?php endforeach; ?>
-                            <?php if (empty($tank_summary)): ?>
-                            <tr><td colspan="6" class="text-center py-3 text-muted">No tank inventory records available.</td></tr>
-                            <?php endif; ?>
                         </tbody>
                         <tfoot>
-                            <tr>
-                                <td colspan="2" style="text-align:left;" class="fw-bold">TOTAL TANK CAPACITY & STOCK</td>
-                                <td style="text-align:right;" class="fw-bold"><?= number_format($tot_lvl, 2) ?> L</td>
-                                <td style="text-align:right;" class="fw-bold"><?= number_format($tot_cap, 2) ?> L</td>
-                                <td colspan="2"></td>
+                            <tr style="font-weight:800; background:#e8f0fe;">
+                                <td style="text-align:left;">TOTAL TANK LITERS</td>
+                                <td style="text-align:right;" class="fw-bold text-primary"><?= number_format($tot_tank_liters, 2) ?> L</td>
                             </tr>
                         </tfoot>
                     </table>
@@ -284,71 +198,123 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                      SECTION 6: FUEL SALES CLOSING SUMMARY
                      ===================================================== -->
                 <div class="rpt-section-heading"><i class="fas fa-cash-register"></i> Fuel Sales Closing Summary</div>
-                <div class="table-responsive mb-4">
-                    <table class="rpt-table align-middle" style="max-width:750px;">
+                <div class="mb-4" style="background:#ffffff; padding:14px; border:1px solid #cbd5e1; border-radius:8px;">
+                    <?php
+                    $c_fuel    = (float)($closing_summary['total_fuel_sales'] ?? $overall_summary['total_fuel_sales'] ?? 0);
+                    $c_cash1   = (float)($closing_summary['cash_shift1'] ?? 0);
+                    $c_cash2   = (float)($closing_summary['cash_shift2'] ?? 0);
+                    $c_totcash = (float)($closing_summary['total_cash'] ?? 0);
+                    $c_ar1     = (float)($closing_summary['ar_shift1'] ?? 0);
+                    $c_ar2     = (float)($closing_summary['ar_shift2'] ?? 0);
+                    $c_totar   = (float)($closing_summary['total_ar'] ?? 0);
+                    $c_net     = (float)($closing_summary['net_sales'] ?? ($c_fuel - $c_ar1 - $c_ar2));
+                    $c_bank    = (float)($closing_summary['total_cash_bank'] ?? $c_totcash);
+                    ?>
+                    <!-- Cash Summary & A/R Summary (Side-by-Side) -->
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+                        <div>
+                            <h4 style="font-size:13px; font-weight:700; color:#002F6C; margin:0 0 6px 0; text-transform:uppercase;"><i class="fas fa-money-bill-wave me-1"></i> Cash Summary</h4>
+                            <table class="rpt-table align-middle" style="width:100%;">
+                                <thead>
+                                    <tr style="background:#f1f5f9; color:#334155;">
+                                        <th style="padding:6px 10px; text-align:left;">Shift</th>
+                                        <th style="padding:6px 10px; text-align:right;">Amount (₱)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td style="padding:6px 10px;">Shift 1</td><td style="padding:6px 10px; text-align:right;">₱<?= number_format($c_cash1, 2) ?></td></tr>
+                                    <tr><td style="padding:6px 10px;">Shift 2</td><td style="padding:6px 10px; text-align:right;">₱<?= number_format($c_cash2, 2) ?></td></tr>
+                                    <tr style="font-weight:700; background:#f8fafc;"><td>Total Cash</td><td style="text-align:right; color:#002F6C;" class="fw-bold text-success">₱<?= number_format($c_totcash, 2) ?></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div>
+                            <h4 style="font-size:13px; font-weight:700; color:#002F6C; margin:0 0 6px 0; text-transform:uppercase;"><i class="fas fa-file-invoice-dollar me-1"></i> Accounts Receivable Summary</h4>
+                            <table class="rpt-table align-middle" style="width:100%;">
+                                <thead>
+                                    <tr style="background:#f1f5f9; color:#334155;">
+                                        <th style="padding:6px 10px; text-align:left;">Shift</th>
+                                        <th style="padding:6px 10px; text-align:right;">Amount (₱)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td style="padding:6px 10px;">Shift 1</td><td style="padding:6px 10px; text-align:right;">₱<?= number_format($c_ar1, 2) ?></td></tr>
+                                    <tr><td style="padding:6px 10px;">Shift 2</td><td style="padding:6px 10px; text-align:right;">₱<?= number_format($c_ar2, 2) ?></td></tr>
+                                    <tr style="font-weight:700; background:#f8fafc;"><td>Total A/R</td><td style="text-align:right; color:#002F6C;" class="fw-bold text-primary">₱<?= number_format($c_totar, 2) ?></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Overall Summary -->
+                    <h4 style="font-size:13px; font-weight:700; color:#002F6C; margin:10px 0 6px 0; text-transform:uppercase;"><i class="fas fa-calculator me-1"></i> Overall Financial Summary</h4>
+                    <table class="rpt-table align-middle" style="width:100%;">
                         <thead>
-                            <tr>
-                                <th style="text-align:left;">Category</th>
-                                <th style="text-align:left;">Breakdown / Item</th>
-                                <th style="text-align:right;">Amount (₱)</th>
+                            <tr style="background:#f1f5f9; color:#334155;">
+                                <th style="padding:6px 10px; text-align:left;">Field</th>
+                                <th style="padding:6px 10px; text-align:right;">Value (₱)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td style="padding:6px 10px; font-weight:700;">TOTAL FUEL AMOUNT SALES</td><td style="padding:6px 10px; text-align:right; font-weight:700; color:#002F6C;">₱<?= number_format($c_fuel, 2) ?></td></tr>
+                            <tr><td style="padding:6px 10px;">LESS: A/R SHIFT 1</td><td style="padding:6px 10px; text-align:right;" class="text-danger">- ₱<?= number_format($c_ar1, 2) ?></td></tr>
+                            <tr><td style="padding:6px 10px;">LESS: A/R SHIFT 2</td><td style="padding:6px 10px; text-align:right;" class="text-danger">- ₱<?= number_format($c_ar2, 2) ?></td></tr>
+                            <tr style="font-weight:700; background:#f0fdf4;"><td style="padding:6px 10px; color:#15803d;">NET CASH / REMAINING AMOUNT</td><td style="padding:6px 10px; text-align:right;" class="fw-bold text-success">₱<?= number_format($c_net, 2) ?></td></tr>
+                            <tr style="font-weight:800; background:#e0f2fe;"><td style="padding:8px 10px; font-size:13px; color:#0369a1;">TOTAL CASH IN BANK</td><td style="padding:8px 10px; text-align:right; font-size:14px;" class="fw-bold text-primary">₱<?= number_format($c_bank, 2) ?></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- =====================================================
+                     SECTION 6: DAILY FUEL SALES SUMMARY (MANAGER SUMMARY)
+                     ===================================================== -->
+                <div class="rpt-section-heading"><i class="fas fa-calendar-check"></i> Daily Fuel Sales Summary (Per Shift Breakdown)</div>
+                <div class="table-responsive mb-4">
+                    <table class="rpt-table align-middle">
+                        <thead>
+                            <tr style="background:#002F6C; color:#fff;">
+                                <th style="text-align:left;">Metric</th>
+                                <th style="text-align:right;">Shift 1 Only</th>
+                                <th style="text-align:right;">Shift 2 Only</th>
+                                <th style="text-align:right;">Total (Shift 1 + Shift 2)</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php
-                            $c_shop    = (float)($closing_summary['shop_sales'] ?? 0);
-                            $c_cash1   = (float)($closing_summary['cash_shift1'] ?? 0);
-                            $c_cash2   = (float)($closing_summary['cash_shift2'] ?? 0);
-                            $c_totcash = (float)($closing_summary['total_cash'] ?? 0);
-                            $c_ar1     = (float)($closing_summary['ar_shift1'] ?? 0);
-                            $c_ar2     = (float)($closing_summary['ar_shift2'] ?? 0);
-                            $c_totar   = (float)($closing_summary['total_ar'] ?? 0);
-                            $c_gross   = (float)($closing_summary['gross_sales'] ?? 0);
-                            $c_expcash = (float)($closing_summary['expected_cash'] ?? 0);
-                            $c_bank    = (float)($closing_summary['total_cash_bank'] ?? 0);
+                            $sb1_liters = (float)($shift_breakdown['s1_liters'] ?? 0);
+                            $sb1_sales  = (float)($shift_breakdown['s1_sales'] ?? 0);
+                            $sb1_cash   = (float)($shift_breakdown['s1_cash'] ?? $c_cash1);
+                            $sb1_ar     = (float)($shift_breakdown['s1_ar'] ?? $c_ar1);
+
+                            $sb2_liters = (float)($shift_breakdown['s2_liters'] ?? 0);
+                            $sb2_sales  = (float)($shift_breakdown['s2_sales'] ?? 0);
+                            $sb2_cash   = (float)($shift_breakdown['s2_cash'] ?? $c_cash2);
+                            $sb2_ar     = (float)($shift_breakdown['s2_ar'] ?? $c_ar2);
                             ?>
                             <tr>
-                                <td style="font-weight:700; color:#00264D;">Shop Sales</td>
-                                <td>Merchandise / Store Income</td>
-                                <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format($c_shop, 2) ?></td>
+                                <td style="text-align:left; font-weight:700;">Total Liters Sold</td>
+                                <td style="text-align:right;" class="fw-bold"><?= number_format($sb1_liters, 2) ?> L</td>
+                                <td style="text-align:right;" class="fw-bold"><?= number_format($sb2_liters, 2) ?> L</td>
+                                <td style="text-align:right;" class="fw-bold text-success"><?= number_format($sb1_liters + $sb2_liters, 2) ?> L</td>
                             </tr>
                             <tr>
-                                <td rowspan="3" style="font-weight:700; color:#00264D; vertical-align:top;">Cash Summary</td>
-                                <td>Cash Shift 1</td>
-                                <td style="text-align:right;">₱<?= number_format($c_cash1, 2) ?></td>
+                                <td style="text-align:left; font-weight:700;">Fuel Sales Amount</td>
+                                <td style="text-align:right;" class="fw-bold">₱<?= number_format($sb1_sales, 2) ?></td>
+                                <td style="text-align:right;" class="fw-bold">₱<?= number_format($sb2_sales, 2) ?></td>
+                                <td style="text-align:right;" class="fw-bold text-primary">₱<?= number_format($sb1_sales + $sb2_sales, 2) ?></td>
                             </tr>
                             <tr>
-                                <td>Cash Shift 2</td>
-                                <td style="text-align:right;">₱<?= number_format($c_cash2, 2) ?></td>
-                            </tr>
-                            <tr style="background:#f8fafc;">
-                                <td style="font-weight:700;">Total Cash Collected</td>
-                                <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format($c_totcash, 2) ?></td>
+                                <td style="text-align:left; font-weight:700;">Cash Collected</td>
+                                <td style="text-align:right;">₱<?= number_format($sb1_cash, 2) ?></td>
+                                <td style="text-align:right;">₱<?= number_format($sb2_cash, 2) ?></td>
+                                <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format($sb1_cash + $sb2_cash, 2) ?></td>
                             </tr>
                             <tr>
-                                <td rowspan="3" style="font-weight:700; color:#00264D; vertical-align:top;">A/R Summary</td>
-                                <td>Accounts Receivable Shift 1</td>
-                                <td style="text-align:right;">₱<?= number_format($c_ar1, 2) ?></td>
-                            </tr>
-                            <tr>
-                                <td>Accounts Receivable Shift 2</td>
-                                <td style="text-align:right;">₱<?= number_format($c_ar2, 2) ?></td>
-                            </tr>
-                            <tr style="background:#f8fafc;">
-                                <td style="font-weight:700;">Total Accounts Receivable</td>
-                                <td style="text-align:right;" class="fw-bold text-primary">₱<?= number_format($c_totar, 2) ?></td>
-                            </tr>
-                            <tr style="background:#eff6ff;">
-                                <td rowspan="3" style="font-weight:800; color:#00264D; vertical-align:top;">Overall Summary</td>
-                                <td style="font-weight:700;">Gross Sales (Fuel + Shop)</td>
-                                <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format($c_gross, 2) ?></td>
-                            </tr>
-                            <tr style="background:#eff6ff;">
-                                <td style="font-weight:700;">Expected Cash Total</td>
-                                <td style="text-align:right;" class="fw-bold">₱<?= number_format($c_expcash, 2) ?></td>
-                            </tr>
-                            <tr style="background:#eff6ff;">
-                                <td style="font-weight:700;">Total Cash & Bank Deposit</td>
-                                <td style="text-align:right;" class="fw-bold text-success">₱<?= number_format($c_bank, 2) ?></td>
+                                <td style="text-align:left; font-weight:700;">Accounts Receivable (A/R)</td>
+                                <td style="text-align:right;">₱<?= number_format($sb1_ar, 2) ?></td>
+                                <td style="text-align:right;">₱<?= number_format($sb2_ar, 2) ?></td>
+                                <td style="text-align:right;" class="fw-bold text-primary">₱<?= number_format($sb1_ar + $sb2_ar, 2) ?></td>
                             </tr>
                         </tbody>
                     </table>

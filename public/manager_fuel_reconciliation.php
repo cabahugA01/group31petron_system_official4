@@ -655,13 +655,7 @@ html, body {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid #e2e8f0;flex-wrap:wrap;gap:12px;">
             <div style="display:flex;align-items:center;gap:8px;">
                 <label style="font-size:13px;color:#64748b;font-weight:600;">Rows per page:</label>
-                <select id="rowsPerPage" onchange="changeRowsPerPage(this.value)"
-                        style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;cursor:pointer;">
-                    <option value="10" <?= $rows_per_page == 10 ? 'selected' : '' ?>>10</option>
-                    <option value="25" <?= $rows_per_page == 25 ? 'selected' : '' ?>>25</option>
-                    <option value="50" <?= $rows_per_page == 50 ? 'selected' : '' ?>>50</option>
-                    <option value="100" <?= $rows_per_page == 100 ? 'selected' : '' ?>>100</option>
-                </select>
+                
                 <span style="font-size:13px;color:#64748b;">
                     Showing <?= number_format($offset + 1) ?> to <?= number_format(min($offset + $rows_per_page, $total_records)) ?> of <?= number_format($total_records) ?> entries
                 </span>

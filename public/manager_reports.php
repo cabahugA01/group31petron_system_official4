@@ -152,6 +152,7 @@ $active_filters = [];
 if ($active_tab === 'fuel_sales') {
     if (!empty($_GET['filter_fuel_type'])) $active_filters['fuel_type'] = $_GET['filter_fuel_type'];
     if (!empty($_GET['filter_pump_id']))   $active_filters['pump_id']   = (int)$_GET['filter_pump_id'];
+    if (!empty($_GET['filter_shift']))     $active_filters['shift']     = $_GET['filter_shift'];
 } elseif ($active_tab === 'daily_merch_service') {
     if (!empty($_GET['filter_pm']))     $active_filters['payment_method']  = $_GET['filter_pm'];
     if (!empty($_GET['filter_ttype']))  $active_filters['transaction_type'] = $_GET['filter_ttype'];
@@ -570,6 +571,14 @@ require_once __DIR__ . '/../partials/header.php';
                         <?php endforeach; ?>
                     </select>
                     <?php endif; ?>
+
+                    <?php $sel_shift = htmlspecialchars($active_filters['shift'] ?? ''); ?>
+                    <label class="ms-1"><i class="fas fa-clock me-1"></i> Shift</label>
+                    <select name="filter_shift" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
+                        <option value="">All Shifts</option>
+                        <option value="Shift 1" <?= ($sel_shift === 'Shift 1') ? 'selected' : '' ?>>Shift 1</option>
+                        <option value="Shift 2" <?= ($sel_shift === 'Shift 2') ? 'selected' : '' ?>>Shift 2</option>
+                    </select>
 
                 <?php elseif ($active_tab === 'daily_merch_service'): ?>
                     <?php
