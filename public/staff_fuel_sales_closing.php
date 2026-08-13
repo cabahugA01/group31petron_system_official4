@@ -22,35 +22,53 @@ $page_id     = 'fuel';
 include __DIR__ . '/../partials/header.php';
 ?>
 
-<div class="main-content" style="padding: 20px 0 !important;">
+<div class="main-content" style="padding: 0 !important;">
     <style>
+        main.main {
+            padding: 8px 20px 65px 20px !important;
+        }
         .closing-container {
             max-width: 1200px;
             margin: 0 auto;
+            padding-bottom: 20px !important;
         }
-        .closing-header {
-            background: linear-gradient(135deg, #002F70 0%, #001A40 100%);
-            color: white;
-            padding: 20px 24px;
-            border-radius: 12px;
-            margin-bottom: 24px;
+        .txn-section-header {
             display: flex;
+            align-items: flex-start;
             justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 4px 12px rgba(0,47,112,0.15);
+            margin-bottom: 22px;
+            gap: 16px;
+            flex-wrap: wrap;
         }
-        .closing-header h1 {
-            font-size: 22px;
-            font-weight: 800;
-            margin: 0 0 6px 0;
+        .txn-section-title h1 {
+            font-size: 22px !important;
+            font-weight: 700 !important;
+            color: #002F70 !important;
+            margin: 0 0 4px 0 !important;
             display: flex;
             align-items: center;
             gap: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
-        .closing-header p {
+        .txn-section-title p {
             margin: 0;
             font-size: 13px;
-            opacity: 0.85;
+            color: #666666 !important;
+            font-weight: 400;
+        }
+        .btn-cancel-header {
+            background: #ffffff !important;
+            color: #002F70 !important;
+            border: 1.5px solid #cbd5e1 !important;
+            font-weight: 700 !important;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+            transition: all 0.2s ease !important;
+        }
+        .btn-cancel-header:hover {
+            background: #f1f5f9 !important;
+            border-color: #002F70 !important;
+            color: #002F70 !important;
         }
         .closing-grid {
             display: grid;
@@ -157,10 +175,11 @@ include __DIR__ . '/../partials/header.php';
             align-items: center;
             gap: 12px;
             margin-top: 24px;
-            padding: 16px 20px;
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
+            margin-bottom: 20px;
+            padding: 0;
+            background: transparent;
+            border: none;
+            box-shadow: none;
         }
         .btn-closing {
             padding: 10px 20px;
@@ -203,13 +222,15 @@ include __DIR__ . '/../partials/header.php';
 
     <div class="closing-container">
         <!-- Header -->
-        <div class="closing-header">
-            <div>
-                <h1><i class="fas fa-file-invoice-dollar"></i> STEP 2 — Fuel Sales Closing</h1>
-                <p>Financial Reconciliation for Date: <strong><?= htmlspecialchars($report_date) ?></strong> | Shift: <strong><?= htmlspecialchars($shift) ?></strong></p>
+        <div class="txn-section-header">
+            <div class="txn-section-title">
+                <div>
+                    <h1>FUEL SALES CLOSING</h1>
+                    <p>Shift: <strong style="color:#0f172a;"><?= htmlspecialchars($shift) ?></strong></p>
+                </div>
             </div>
             <div>
-                <a href="staff_transactions_hub.php?section=fuel" class="btn-closing btn-cancel">
+                <a href="staff_transactions_hub.php?section=fuel" class="btn-closing btn-cancel-header">
                     <i class="fas fa-arrow-left"></i> Back to Meter Readings
                 </a>
             </div>
@@ -220,10 +241,10 @@ include __DIR__ . '/../partials/header.php';
             <input type="hidden" name="shift" value="<?= htmlspecialchars($shift) ?>">
 
             <div class="closing-grid">
-                <!-- A. Fuel Summary (Read-Only) -->
+                <!-- Fuel Summary (Read-Only) -->
                 <div class="closing-card">
                     <div class="closing-card-header">
-                        <i class="fas fa-gas-pump"></i> A. Fuel Summary
+                        <i class="fas fa-gas-pump"></i> Fuel Summary
                         <span class="badge-tag">Auto-Computed</span>
                     </div>
                     <div class="form-row-custom">
@@ -256,10 +277,10 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
 
-                <!-- B. Shop / Store Sales Income -->
+                <!-- Shop / Store Sales Income -->
                 <div class="closing-card">
                     <div class="closing-card-header">
-                        <i class="fas fa-store"></i> B. Shop / Store Sales Income
+                        <i class="fas fa-store"></i> Shop / Store Sales Income
                         <span class="badge-tag" style="background:#fef3c7; color:#b45309;">Manual + Auto</span>
                     </div>
                     <div class="form-row-custom">
@@ -288,10 +309,10 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
 
-                <!-- C. Cash Summary -->
+                <!-- Cash Summary -->
                 <div class="closing-card">
                     <div class="closing-card-header">
-                        <i class="fas fa-money-bill-wave"></i> C. Cash Summary
+                        <i class="fas fa-money-bill-wave"></i> Cash Summary
                         <span class="badge-tag" style="background:#fef3c7; color:#b45309;">Manual Input</span>
                     </div>
                     <div class="form-row-custom">
@@ -308,10 +329,10 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
 
-                <!-- D. Accounts Receivable Summary -->
+                <!-- Accounts Receivable Summary -->
                 <div class="closing-card">
                     <div class="closing-card-header">
-                        <i class="fas fa-file-invoice"></i> D. Accounts Receivable Summary
+                        <i class="fas fa-file-invoice"></i> Accounts Receivable Summary
                         <span class="badge-tag" style="background:#fef3c7; color:#b45309;">Manual Input</span>
                     </div>
                     <div class="form-row-custom">
@@ -328,10 +349,10 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
 
-                <!-- E. Overall Summary -->
+                <!-- Overall Summary -->
                 <div class="closing-card overall-highlight">
                     <div class="closing-card-header">
-                        <i class="fas fa-calculator"></i> E. Overall Summary
+                        <i class="fas fa-calculator"></i> Overall Summary
                         <span class="badge-tag" style="background:#dcfce7; color:#15803d;">Auto-Computed</span>
                     </div>
                     <div class="form-row-custom">
@@ -344,10 +365,10 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
 
-                <!-- F. Total Cash in Bank -->
+                <!-- Total Cash in Bank -->
                 <div class="closing-card overall-highlight">
                     <div class="closing-card-header">
-                        <i class="fas fa-university"></i> F. Total Cash in Bank
+                        <i class="fas fa-university"></i> Total Cash in Bank
                         <span class="badge-tag">Reconciliation</span>
                     </div>
                     <div class="form-row-custom total-row" style="margin-top:0;">
@@ -362,11 +383,8 @@ include __DIR__ . '/../partials/header.php';
                 <a href="staff_transactions_hub.php?section=fuel" class="btn-closing btn-cancel">
                     <i class="fas fa-times"></i> Cancel
                 </a>
-                <button type="button" onclick="saveClosingData(false)" class="btn-closing btn-save">
+                <button type="button" onclick="saveClosingData()" class="btn-closing btn-save">
                     <i class="fas fa-save"></i> Save Closing
-                </button>
-                <button type="button" onclick="saveClosingData(true)" class="btn-closing btn-report">
-                    <i class="fas fa-print"></i> Generate Fuel Sales Report
                 </button>
             </div>
         </form>
@@ -458,7 +476,7 @@ document.getElementById('total_cash_bank').addEventListener('input', function() 
     this.dataset.userEdited = 'true';
 });
 
-async function saveClosingData(generateReport = false) {
+async function saveClosingData() {
     const form = document.getElementById('fuelClosingForm');
     const formData = new FormData(form);
     formData.append('action', 'save_closing');
@@ -471,12 +489,7 @@ async function saveClosingData(generateReport = false) {
         const result = await response.json();
 
         if (result.success) {
-            alert('Fuel Sales Closing saved successfully!');
-            if (generateReport) {
-                window.location.href = `staff_fuel_sales_report.php?date=${encodeURIComponent(result.report_date)}`;
-            } else {
-                window.location.href = 'staff_transactions_hub.php?section=fuel';
-            }
+            window.location.href = 'staff_transactions_hub.php?section=fuel&closing_saved=1';
         } else {
             alert('Error: ' + (result.message || 'Failed to save closing.'));
         }

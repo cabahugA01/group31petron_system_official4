@@ -1125,26 +1125,71 @@ if (count($meter_readings) == 0 && $has_fuel_transactions) {
                     COALESCE(ft.calibration, 0) AS calibration,
                     COALESCE(ft.shift_period, 'Shift 1') AS shift_period,
                     COALESCE(ft.status, 'Completed') AS status,
-                    ft.transaction_date AS encoded_at,
+                    COALESCE(ft.transaction_date, ft.created_at) AS encoded_at,
                     ft.transaction_id,
                     COALESCE(ft.price_per_liter, 0) AS unit_price,
                     COALESCE(ft.total_amount, 0) AS amount
             FROM fuel_transactions ft
             LEFT JOIN fuel_pumps fp ON fp.id = ft.pump_id AND fp.station_id = ft.station_id
-            WHERE ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ?
+            WHERE (ft.station_id = ? OR ? = 0) 
+              AND (
+                  DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN ? AND ?
+                  OR DATE(ft.created_at) BETWEEN ? AND ?
+              )
               AND LOWER(COALESCE(ft.status, '')) NOT IN ('voided','rejected','cancelled','canceled')
-            ORDER BY ft.transaction_date, ft.id";
+            ORDER BY COALESCE(ft.transaction_date, ft.created_at), ft.id";
         
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$station_id, $date_from, $date_to]);
+        $stmt->execute([$station_id, $station_id, $date_from, $date_to, $date_from, $date_to]);
         $meter_readings = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
     } catch (Exception $e) {}
 }
 
+// Fallback: If no transactions/readings recorded yet, build rows from fuel_pumps + fuel_types master data
+if (empty($meter_readings) && $has_fuel_pumps) {
+    try {
+        $shift_label = ($user_current_shift === 'shift2') ? 'Shift 2' : 'Shift 1';
+        // Group by fuel_type_id to deduplicate (one row per fuel type, not per nozzle)
+        $p_sql = "
+            SELECT 
+                MIN(fp.id) AS id,
+                MIN(fp.id) AS pump_id,
+                ft.name AS pump_name,
+                ft.name AS fuel_type,
+                0.00 AS beginning_reading,
+                0.00 AS ending_reading,
+                0.00 AS liters_sold,
+                0.00 AS calibration,
+                ? AS shift_period,
+                'Active' AS status,
+                NOW() AS encoded_at,
+                COALESCE(ft.price_per_liter, 0) AS unit_price,
+                0.00 AS amount
+            FROM fuel_pumps fp
+            INNER JOIN fuel_types ft ON fp.fuel_type_id = ft.id
+            WHERE fp.station_id = ? AND fp.status = 'Active'
+            GROUP BY fp.fuel_type_id, ft.name
+            ORDER BY ft.name ASC
+        ";
+        $p_stmt = $pdo->prepare($p_sql);
+        $p_stmt->execute([$shift_label, $station_id]);
+        $default_pumps = $p_stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!empty($default_pumps)) {
+            $meter_readings = $default_pumps;
+        }
+    } catch (Exception $e) {
+        error_log("Fuel pumps fallback error: " . $e->getMessage());
+    }
+}
+
 foreach ($meter_readings as &$reading) {
     $reading['raw_fuel_type'] = $reading['fuel_type'] ?? '';
     $reading['fuel_type'] = staff_report_fuel_display_name($reading['fuel_type'] ?? '');
+    // Ensure shift_period is set so build_24h doesn't filter it out
+    if (empty($reading['shift_period'])) {
+        $reading['shift_period'] = ($user_current_shift === 'shift2') ? 'Shift 2' : 'Shift 1';
+    }
 }
 unset($reading);
 $meter_readings = staff_report_build_24h_meter_readings($meter_readings, $current_fuel_prices);
@@ -1166,14 +1211,18 @@ if ($has_fuel_transactions) {
                     ft.total_amount,
                     ft.payment_method,
                     ft.shift_period AS shift,
-                    ft.transaction_date AS created_at
+                    COALESCE(ft.transaction_date, ft.created_at) AS created_at
             FROM fuel_transactions ft
-            WHERE ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ?
+            WHERE (ft.station_id = ? OR ? = 0)
+              AND (
+                  DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN ? AND ?
+                  OR DATE(ft.created_at) BETWEEN ? AND ?
+              )
               AND LOWER(COALESCE(ft.status, '')) NOT IN ('voided','rejected','cancelled','canceled')
-            ORDER BY ft.transaction_date, ft.id";
+            ORDER BY COALESCE(ft.transaction_date, ft.created_at), ft.id";
         
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$station_id, $date_from, $date_to]);
+        $stmt->execute([$station_id, $station_id, $date_from, $date_to, $date_from, $date_to]);
         $fuel_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         if (!$is_manager_or_admin && !empty($user_current_shift)) {
             $fuel_transactions = array_filter($fuel_transactions, function($trans) use ($user_current_shift) {

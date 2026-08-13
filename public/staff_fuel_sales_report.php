@@ -17,11 +17,15 @@ $station_id  = (int)($_SESSION['station_id'] ?? 1);
 $report_date = $_GET['date'] ?? date('Y-m-d');
 
 // Fetch Station Info
-$stmt_st = $pdo->prepare("SELECT station_name, address FROM station_profiles WHERE id = ?");
-$stmt_st->execute([$station_id]);
-$station = $stmt_st->fetch(PDO::FETCH_ASSOC);
+try {
+    $stmt_st = $pdo->prepare("SELECT name AS station_name, COALESCE(address, location, 'Vamenta Blvd., Carmen, City Of Cagayan De Oro , Misamis Oriental') AS address FROM stations WHERE id = ?");
+    $stmt_st->execute([$station_id]);
+    $station = $stmt_st->fetch(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $station = [];
+}
 $station_name = $station['station_name'] ?? 'Petron Station';
-$station_addr = $station['address'] ?? 'Cagayan De Oro City';
+$station_addr = $station['address'] ?? 'Vamenta Blvd., Carmen, City Of Cagayan De Oro , Misamis Oriental';
 
 // Fetch Saved Closing Data
 $stmt_cl = $pdo->prepare("SELECT * FROM fuel_sales_closing WHERE station_id = ? AND report_date = ? ORDER BY id DESC LIMIT 1");
@@ -50,10 +54,14 @@ $stmt_tanks->execute([$station_id]);
 $tanks = $stmt_tanks->fetchAll(PDO::FETCH_ASSOC);
 
 $encoder_id = $closing['encoded_by'] ?? $_SESSION['user_id'];
-$stmt_user = $pdo->prepare("SELECT full_name, role FROM users WHERE id = ?");
-$stmt_user->execute([$encoder_id]);
-$encoder = $stmt_user->fetch(PDO::FETCH_ASSOC);
-$encoder_name = $encoder['full_name'] ?? $_SESSION['full_name'] ?? 'Staff User';
+try {
+    $stmt_user = $pdo->prepare("SELECT CONCAT_WS(' ', first_name, last_name) AS full_name, role FROM users WHERE id = ?");
+    $stmt_user->execute([$encoder_id]);
+    $encoder = $stmt_user->fetch(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $encoder = [];
+}
+$encoder_name = trim($encoder['full_name'] ?? '') ?: ($_SESSION['full_name'] ?? $_SESSION['username'] ?? 'Staff User');
 
 ?>
 <!DOCTYPE html>

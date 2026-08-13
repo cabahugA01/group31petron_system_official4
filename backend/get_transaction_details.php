@@ -66,20 +66,32 @@ try {
                 mt.job_order_service,
                 mt.job_order_vehicle_plate,
                 mt.job_order_vehicle_type,
-                COALESCE(mt.job_order_vehicle_brand, '') AS job_order_vehicle_brand,
-                COALESCE(mt.job_order_vehicle_model, '') AS job_order_vehicle_model,
-                COALESCE(mt.job_order_year_model, '') AS job_order_year_model,
-                COALESCE(mt.job_order_engine_number, '') AS job_order_engine_number,
-                COALESCE(mt.job_order_chassis_number, '') AS job_order_chassis_number,
+                COALESCE(NULLIF(TRIM(mt.job_order_vehicle_brand),''), cv.brand, c.vehicle_make, c.vehicle_brand, '') AS job_order_vehicle_brand,
+                COALESCE(NULLIF(TRIM(mt.job_order_vehicle_model),''), cv.model, c.vehicle_model, '') AS job_order_vehicle_model,
+                COALESCE(NULLIF(TRIM(mt.job_order_year_model),''), cv.year_model, '') AS job_order_year_model,
+                COALESCE(NULLIF(TRIM(mt.job_order_engine_number),''), cv.engine_no, c.engine_number, '') AS job_order_engine_number,
+                COALESCE(NULLIF(TRIM(mt.job_order_chassis_number),''), cv.chassis_no, c.chassis_number, '') AS job_order_chassis_number,
                 COALESCE(mt.job_order_estimated_duration, 0) AS job_order_estimated_duration,
-                COALESCE(mt.job_order_contact, '') AS job_order_contact,
+                COALESCE(NULLIF(TRIM(mt.job_order_contact),''), c.contact_number, c.phone, '') AS job_order_contact,
                 mt.job_order_mechanic_name,
-                mt.job_order_description,
+                COALESCE(NULLIF(TRIM(mt.job_order_description),''), mt.staff_remarks, mt.remarks, '') AS job_order_description,
                 COALESCE(NULLIF(CONCAT(u_staff.first_name,' ',u_staff.last_name),' '), u_staff.username, 'Unknown') AS staff_name,
                 COALESCE(NULLIF(CONCAT(u_validated.first_name,' ',u_validated.last_name),' '), u_validated.username, 'N/A') AS validated_by_name
             FROM merchandise_transactions mt
             LEFT JOIN users u_staff ON u_staff.id = mt.staff_id
             LEFT JOIN users u_validated ON u_validated.id = mt.validated_by
+            LEFT JOIN customers c ON (
+                c.station_id = mt.station_id AND (
+                    (mt.credit_customer_id IS NOT NULL AND c.id = mt.credit_customer_id)
+                    OR (mt.customer_id IS NOT NULL AND c.id = mt.customer_id)
+                    OR (mt.job_order_vehicle_plate != '' AND REPLACE(LOWER(TRIM(c.vehicle_plate)),'‑','-') = REPLACE(LOWER(TRIM(mt.job_order_vehicle_plate)),'‑','-'))
+                    OR (mt.customer_name != '' AND LOWER(TRIM(c.name)) = LOWER(TRIM(mt.customer_name)))
+                )
+            )
+            LEFT JOIN customer_vehicles cv ON (
+                (c.id IS NOT NULL AND cv.customer_id = c.id)
+                OR (mt.job_order_vehicle_plate != '' AND REPLACE(LOWER(TRIM(cv.plate_number)),'‑','-') = REPLACE(LOWER(TRIM(mt.job_order_vehicle_plate)),'‑','-'))
+            )
             WHERE mt.id = ?
         ");
         $stmt->execute([$id]);

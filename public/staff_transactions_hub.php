@@ -1570,10 +1570,6 @@ if ($section === 'merchandise') {
                                 u.username, 'Unassigned')                AS mechanic_name,
                        COALESCE(NULLIF(TRIM(CONCAT(COALESCE(cb.first_name,''),' ',COALESCE(cb.last_name,''))),''),
                                 cb.username, 'Staff')                    AS created_by_name,
-                       COALESCE(c_jo.contact_number, c_jo.phone, '')      AS contact_number,
-                       COALESCE(c_jo.vehicle_make, c_jo.vehicle_brand, '') AS vehicle_brand,
-                       COALESCE(c_jo.vehicle_model, '')                  AS vehicle_model,
-                       COALESCE(jo.year_model, '')                               AS year_model,
                        COALESCE(jo.engine_number, c_jo.engine_number, '')         AS engine_number,
                        COALESCE(jo.chassis_number, c_jo.chassis_number, '')       AS chassis_number,
                        'job_orders' AS _source,
@@ -1662,11 +1658,11 @@ if ($section === 'merchandise') {
                     COALESCE(NULLIF(TRIM(mt.job_order_vehicle_plate),''), jo_ref.vehicle_plate, c.vehicle_plate, '') AS vehicle_plate,
                     COALESCE(NULLIF(TRIM(mt.job_order_vehicle_type),''), jo_ref.vehicle_type, c.vehicle_type, '') AS vehicle_type,
                     COALESCE(NULLIF(TRIM(mt.job_order_contact),''), c.contact_number, c.phone, '') AS contact_number,
-                    COALESCE(NULLIF(TRIM($mt_col_jo_veh_brand),''), c.vehicle_make, c.vehicle_brand, '') AS vehicle_brand,
-                    COALESCE(NULLIF(TRIM($mt_col_jo_veh_model),''), c.vehicle_model, '') AS vehicle_model,
-                    COALESCE(NULLIF(TRIM($mt_col_jo_year_model),''), '')                              AS year_model,
-                    COALESCE(NULLIF(TRIM($mt_col_jo_engine),''), jo_ref.engine_number, c.engine_number, '') AS engine_number,
-                    COALESCE(NULLIF(TRIM($mt_col_jo_chassis),''), jo_ref.chassis_number, c.chassis_number, '') AS chassis_number,
+                    COALESCE(NULLIF(TRIM($mt_col_jo_veh_brand),''), cv.brand, c.vehicle_make, c.vehicle_brand, '') AS vehicle_brand,
+                    COALESCE(NULLIF(TRIM($mt_col_jo_veh_model),''), cv.model, c.vehicle_model, '') AS vehicle_model,
+                    COALESCE(NULLIF(TRIM($mt_col_jo_year_model),''), cv.year_model, '')              AS year_model,
+                    COALESCE(NULLIF(TRIM($mt_col_jo_engine),''), cv.engine_no, jo_ref.engine_number, c.engine_number, '') AS engine_number,
+                    COALESCE(NULLIF(TRIM($mt_col_jo_chassis),''), cv.chassis_no, jo_ref.chassis_number, c.chassis_number, '') AS chassis_number,
                     '' AS or_number,
                     mt.created_at,
                     COALESCE(NULLIF(TRIM(mt.job_order_mechanic_name),''), COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u_mech.first_name,''),' ',COALESCE(u_mech.last_name,''))),''), u_mech.username, ''), '') AS mechanic_name,
@@ -1711,6 +1707,10 @@ if ($section === 'merchandise') {
                         OR (mt.customer_name != '' AND LOWER(TRIM(c.name)) = LOWER(TRIM(mt.customer_name)))
                         OR (mt.customer_name != '' AND LOWER(TRIM(CONCAT_WS(' ', c.first_name, c.last_name))) = LOWER(TRIM(mt.customer_name)))
                     )
+                )
+                LEFT JOIN customer_vehicles cv ON (
+                    (c.id IS NOT NULL AND cv.customer_id = c.id)
+                    OR (mt.job_order_vehicle_plate != '' AND REPLACE(LOWER(TRIM(cv.plate_number)),'‑','-') = REPLACE(LOWER(TRIM(mt.job_order_vehicle_plate)),'‑','-'))
                 )
                 LEFT JOIN users u_mech ON u_mech.id = jo_ref.assigned_mechanic_id
                 WHERE mt.station_id = ?
@@ -3310,6 +3310,186 @@ setTimeout(function() {
         }
         ?>
 
+        <script>
+        window.formatOnInput = function(input) {
+            if (!input) return;
+            var raw = input.value;
+            if (raw.indexOf('.') === -1 && raw.lastIndexOf(',') !== -1 && (raw.length - raw.lastIndexOf(',')) <= 4) {
+                var lastIdx = raw.lastIndexOf(',');
+                raw = raw.substring(0, lastIdx) + '.' + raw.substring(lastIdx + 1);
+            }
+            var val = raw.replace(/[^\d.]/g, '');
+            var parts = val.split('.');
+            if (parts.length > 2) parts = [parts[0], parts.slice(1).join('')];
+            var intPart = parts[0] ? parseInt(parts[0], 10).toLocaleString('en-US') : '';
+            input.value = parts.length > 1 ? intPart + '.' + parts[1].substring(0, 3) : intPart;
+        };
+
+        window.formatOnBlur = function(input) {
+            if (!input) return;
+            let val = input.value.replace(/,/g, '').trim();
+            if (val.startsWith('.')) {
+                if (val.length > 3 && !val.includes('.', 1)) {
+                    val = val.substring(1);
+                } else {
+                    val = '0' + val;
+                }
+            }
+            let num = parseFloat(val);
+            if (!isNaN(num)) {
+                let dec = 2;
+                let parts = val.split('.');
+                if (parts.length > 1 && parts[1].length > 2) dec = Math.min(parts[1].length, 3);
+                input.value = num.toLocaleString('en-US', {minimumFractionDigits: dec, maximumFractionDigits: 3});
+            } else if (input.id && input.id.indexOf('cal_') === 0) {
+                input.value = '0.00';
+            } else {
+                input.value = '';
+            }
+        };
+
+        window.handleMeterKeydown = function(e, input) {
+            var key = e.key;
+            if (key !== 'Enter' && key !== 'ArrowDown' && key !== 'ArrowUp' && key !== 'ArrowRight' && key !== 'ArrowLeft') {
+                return;
+            }
+
+            var currentId = input.id || '';
+            var m = currentId.match(/^(beginning|ending|cal)_(.+)$/);
+            if (!m) return;
+
+            var inputType = m[1];
+            var ftId = m[2];
+
+            var rows = Array.from(document.querySelectorAll('tr[id^="fuelRow_"]'));
+            var currentRow = input.closest('tr');
+            var currentRowIdx = rows.indexOf(currentRow);
+
+            var targetInput = null;
+
+            if (key === 'Enter') {
+                e.preventDefault();
+                if (typeof window.formatOnBlur === 'function') window.formatOnBlur(input);
+
+                // 1. If in Beginning:
+                if (inputType === 'beginning') {
+                    var endEl = document.getElementById('ending_' + ftId);
+                    if (endEl && !endEl.readOnly && endEl.offsetParent !== null && (!endEl.value || endEl.value === '0.00' || endEl.value.trim() === '')) {
+                        targetInput = endEl;
+                    } else {
+                        if (currentRowIdx !== -1 && currentRowIdx < rows.length - 1) {
+                            var nextRow = rows[currentRowIdx + 1];
+                            var nextFtId = (nextRow.id || '').replace('fuelRow_', '');
+                            var nextBeg = document.getElementById('beginning_' + nextFtId);
+                            if (nextBeg && !nextBeg.readOnly && nextBeg.offsetParent !== null) {
+                                targetInput = nextBeg;
+                            }
+                        }
+                    }
+                }
+
+                // 2. If in Ending:
+                if (!targetInput && inputType === 'ending') {
+                    if (currentRowIdx !== -1 && currentRowIdx < rows.length - 1) {
+                        var nextRow = rows[currentRowIdx + 1];
+                        var nextFtId = (nextRow.id || '').replace('fuelRow_', '');
+                        var nextBeg = document.getElementById('beginning_' + nextFtId);
+                        var nextEnd = document.getElementById('ending_' + nextFtId);
+
+                        if (nextBeg && !nextBeg.readOnly && nextBeg.offsetParent !== null && (!nextBeg.value || nextBeg.value.trim() === '')) {
+                            targetInput = nextBeg;
+                        } else if (nextEnd && !nextEnd.readOnly && nextEnd.offsetParent !== null) {
+                            targetInput = nextEnd;
+                        }
+                    }
+                }
+
+                // 3. If in Cal:
+                if (!targetInput && inputType === 'cal') {
+                    if (currentRowIdx !== -1 && currentRowIdx < rows.length - 1) {
+                        var nextRow = rows[currentRowIdx + 1];
+                        var nextFtId = (nextRow.id || '').replace('fuelRow_', '');
+                        var nextCal = document.getElementById('cal_' + nextFtId);
+                        if (nextCal && !nextCal.readOnly && nextCal.offsetParent !== null) {
+                            targetInput = nextCal;
+                        }
+                    }
+                }
+
+                // Fallback: next editable input in DOM
+                if (!targetInput) {
+                    var allInputs = Array.from(document.querySelectorAll('input[id^="beginning_"]:not([readonly]), input[id^="ending_"]:not([readonly]), input[id^="cal_"]:not([readonly])'));
+                    var idx = allInputs.indexOf(input);
+                    if (idx !== -1 && idx < allInputs.length - 1) {
+                        targetInput = allInputs[idx + 1];
+                    }
+                }
+            } else if (key === 'ArrowDown') {
+                e.preventDefault();
+                if (currentRowIdx !== -1 && currentRowIdx < rows.length - 1) {
+                    var nextRow = rows[currentRowIdx + 1];
+                    var nextFtId = (nextRow.id || '').replace('fuelRow_', '');
+                    var sameColInput = document.getElementById(inputType + '_' + nextFtId);
+                    if (sameColInput && !sameColInput.readOnly && sameColInput.offsetParent !== null) {
+                        targetInput = sameColInput;
+                    }
+                }
+            } else if (key === 'ArrowUp') {
+                e.preventDefault();
+                if (currentRowIdx > 0) {
+                    var prevRow = rows[currentRowIdx - 1];
+                    var prevFtId = (prevRow.id || '').replace('fuelRow_', '');
+                    var sameColInput = document.getElementById(inputType + '_' + prevFtId);
+                    if (sameColInput && !sameColInput.readOnly && sameColInput.offsetParent !== null) {
+                        targetInput = sameColInput;
+                    }
+                }
+            } else if (key === 'ArrowRight') {
+                if (inputType === 'beginning') {
+                    var endEl = document.getElementById('ending_' + ftId);
+                    if (endEl && !endEl.readOnly && endEl.offsetParent !== null) targetInput = endEl;
+                } else if (inputType === 'ending') {
+                    var calEl = document.getElementById('cal_' + ftId);
+                    if (calEl && !calEl.readOnly && calEl.offsetParent !== null) targetInput = calEl;
+                }
+            } else if (key === 'ArrowLeft') {
+                if (inputType === 'cal') {
+                    var endEl = document.getElementById('ending_' + ftId);
+                    if (endEl && !endEl.readOnly && endEl.offsetParent !== null) targetInput = endEl;
+                } else if (inputType === 'ending') {
+                    var begEl = document.getElementById('beginning_' + ftId);
+                    if (begEl && !begEl.readOnly && begEl.offsetParent !== null) targetInput = begEl;
+                }
+            }
+
+            if (targetInput) {
+                targetInput.focus();
+                if (targetInput.select) targetInput.select();
+            }
+        };
+
+        window.switchFuelSubTab = function(tab) {
+            var isReadings = (tab === 'readings');
+            var encodeCard  = document.getElementById('encodeCard');
+            var todayCard   = document.getElementById('todayEntriesCard');
+            var encodeBtn   = document.getElementById('fuelSubTabBtn_encode');
+            var readingsBtn = document.getElementById('fuelSubTabBtn_readings');
+            if (encodeCard) encodeCard.style.display = isReadings ? 'none' : 'block';
+            if (todayCard)  todayCard.style.display  = isReadings ? 'block' : 'none';
+            if (encodeBtn)  encodeBtn.className  = 'txn-subtab-btn blue ' + (isReadings ? 'inactive' : 'active');
+            if (readingsBtn) readingsBtn.className = 'txn-subtab-btn blue ' + (isReadings ? 'active' : 'inactive');
+            if (isReadings && typeof refreshTodayEntries === 'function') refreshTodayEntries();
+            if (window.history && window.history.replaceState) {
+                var url = new URL(window.location.href);
+                if (isReadings) url.searchParams.set('fuel_tab', 'readings');
+                else url.searchParams.delete('fuel_tab');
+                window.history.replaceState(null, '', url);
+            }
+        };
+
+        window.updateFuelCalc = window.updateFuelCalc || function(ftId) {};
+        </script>
+
         <!-- ── Page Header ───────────────────────────────────────────── -->
         <div class="txn-section-header">
             <div class="txn-section-title">
@@ -3318,6 +3498,13 @@ setTimeout(function() {
                 </div>
             </div>
         </div>
+
+        <?php if (isset($_GET['closing_saved']) && $_GET['closing_saved'] == '1'): ?>
+        <div class="txn-info-banner green" style="background:#dcfce7; border:1px solid #86efac; color:#15803d; padding:12px 16px; border-radius:10px; margin-bottom:18px; display:flex; align-items:center; gap:10px; font-weight:600; font-size:13.5px;">
+            <i class="fas fa-check-circle" style="font-size:18px; color:#16a34a;"></i>
+            <div>Fuel Sales Closing saved successfully!</div>
+        </div>
+        <?php endif; ?>
 
         <?php if (empty($fuel_types)): ?>
         <div class="txn-info-banner amber">
@@ -3733,6 +3920,7 @@ setTimeout(function() {
                                    autocomplete="off"
                                    oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
                                    onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')"
+                                   onkeydown="handleMeterKeydown(event, this)"
                                    title="Required: Enter the Ending meter reading">
                         </td>
 
@@ -3749,6 +3937,7 @@ setTimeout(function() {
                                    title="Calibration correction (default 0.00). Cannot exceed Gross Volume."
                                    oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
                                    onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')"
+                                   onkeydown="handleMeterKeydown(event, this)"
                                    min="0">
                         </td>
 
@@ -3921,8 +4110,11 @@ setTimeout(function() {
                     });
 
                     /* Run initial calc for each row (for auto-fetched beginning values) */
-                    [].slice.call(allEnding).forEach(function(inp) {
-                        var m = inp.id.match(/^ending_(.+)$/);
+                    [].slice.call(allEnding).concat([].slice.call(allBeg)).forEach(function(inp) {
+                        if (typeof window.formatOnBlur === 'function' && inp.value && inp.value.trim() !== '') {
+                            window.formatOnBlur(inp);
+                        }
+                        var m = inp.id.match(/^(?:ending|beginning)_(.+)$/);
                         if (m) calcRow(m[1]);
                     });
                 }
@@ -4148,14 +4340,32 @@ setTimeout(function() {
         window.formatOnInput = formatOnInput;
 
         function formatOnBlur(input) {
+            if (!input) return;
             let val = input.value.replace(/,/g, '');
             let num = parseFloat(val);
             if (!isNaN(num)) {
-                input.value = num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                let dec = 2;
+                let parts = val.split('.');
+                if (parts.length > 1 && parts[1].length > 2) dec = Math.min(parts[1].length, 3);
+                input.value = num.toLocaleString('en-US', {minimumFractionDigits: dec, maximumFractionDigits: 3});
+            } else if (input.id && input.id.indexOf('cal_') === 0) {
+                input.value = '0.00';
             } else {
                 input.value = '';
             }
         }
+        window.formatOnBlur = formatOnBlur;
+
+        function formatAllFuelInputs() {
+            document.querySelectorAll('input[id^="beginning_"], input[id^="ending_"], input[id^="cal_"]').forEach(function(inp) {
+                if (inp && inp.value && inp.value.trim() !== '') {
+                    formatOnBlur(inp);
+                }
+            });
+        }
+        window.formatAllFuelInputs = formatAllFuelInputs;
+        document.addEventListener('DOMContentLoaded', formatAllFuelInputs);
+        window.addEventListener('load', formatAllFuelInputs);
 
         // ── AJAX submit per fuel row (Updated for tanker data) ──────────────────────────────────────────
         async function submitFuelCard(event, ftId) {
@@ -4611,18 +4821,6 @@ setTimeout(function() {
                     setTimeout(() => toast.remove(), 350);
                 }
             }, 4500);
-        }
-            toast.innerHTML = `<i class="fas ${c.icon}" style="color:${c.iconColor};margin-right:8px;"></i>${msg}`;
-            document.body.appendChild(toast);
-            // Animate in
-            requestAnimationFrame(() => {
-                toast.style.opacity = '1';
-                toast.style.transform = 'translateX(-50%) scale(1)';
-            });
-            setTimeout(() => {
-                toast.style.opacity = '0';
-                setTimeout(() => toast.remove(), 400);
-            }, type === 'error' ? 6000 : 3500);
         }
 
         // ── Custom confirm modal (replaces browser confirm()) ───────────────────
@@ -5714,9 +5912,6 @@ setTimeout(function() {
                                                     &nbsp;<span style="color:#ef4444;font-weight:700;">● Out of Stock</span>
                                                     <?php endif; ?>
                                                 </span>
-                                            </span>
-                                            <span style="font-size:11px;font-weight:700;color:#002F70;white-space:nowrap;">
-                                                ₱<?= number_format((float)$p['unit_price'], 2) ?>
                                             </span>
                                         </label>
                                         <?php endforeach; ?>
@@ -10864,13 +11059,13 @@ setTimeout(function() {
                                     'labor_fee' => $labor_fee_val,
                                     'paid' => $jo_paid,
                                     'balance' => $jo_balance,
-                                    'remarks' => $remarks,
+                                    'remarks' => !empty($remarks) ? $remarks : ($job['service_description'] ?? $job['additional_notes'] ?? ''),
                                     'staff_remarks' => $job['staff_remarks'] ?? $job['notes'] ?? $job['job_order_description'] ?? '',
                                     'customer_complaint' => $job['customer_complaint'] ?? '',
                                     'repair_recommendation' => $job['repair_recommendation'] ?? '',
                                     'created_at' => $job['created_at'],
                                     'source' => $job['_source'] ?? 'job_orders',
-                                    'estimated_duration' => (int)($job['estimated_duration'] ?? 0)
+                                    'estimated_duration' => (int)(($job['estimated_duration'] ?? 0) > 0 ? $job['estimated_duration'] : ($duration_mins ?? 0))
                                 ]);
                             ?>
                             <div style="display:flex;flex-direction:column;gap:3px;width:100%;">
@@ -12282,7 +12477,7 @@ setTimeout(function() {
                 ? new Date(joData.created_at).toLocaleString('en-PH', {dateStyle:'medium', timeStyle:'short'})
                 : '—');
 
-            setText('viewJORemarks', val(joData.remarks));
+            setText('viewJORemarks', val(joData.remarks || joData.staff_remarks || joData.service_description));
 
             var modal = document.getElementById('viewJobOrderModal');
             if (modal) modal.style.display = 'flex';

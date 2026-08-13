@@ -15,7 +15,21 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $user_id    = (int)$_SESSION['user_id'];
-$station_id = (int)($_SESSION['station_id'] ?? 1);
+$station_id = (int)($_SESSION['station_id'] ?? 0);
+
+if ($station_id <= 0 && $user_id > 0) {
+    try {
+        $st_stmt = $pdo->prepare("SELECT station_id FROM users WHERE id = ?");
+        $st_stmt->execute([$user_id]);
+        $st_val = $st_stmt->fetchColumn();
+        if ($st_val && (int)$st_val > 0) {
+            $station_id = (int)$st_val;
+            $_SESSION['station_id'] = $station_id;
+        }
+    } catch (Exception $e) {}
+}
+if ($station_id <= 0) $station_id = 1;
+
 $action     = $_REQUEST['action'] ?? '';
 
 if ($action === 'get_summary') {
