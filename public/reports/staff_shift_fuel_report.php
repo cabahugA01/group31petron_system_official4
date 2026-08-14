@@ -849,6 +849,24 @@ $page_id = 'reports';
                 </tbody>
             </table>
         </div>
+        
+        <!-- 6. Report Signature (Right Aligned, Single Line) -->
+        <?php 
+            $clean_cashier_display = trim($cashier_name ?? '');
+            if ($clean_cashier_display === '—' || $clean_cashier_display === '-' || $clean_cashier_display === 'N/A') {
+                $clean_cashier_display = '';
+            }
+        ?>
+        <div class="section" style="display:flex; justify-content:flex-end; margin-top:16px; border:none; background:transparent; page-break-inside:avoid;">
+            <div style="display:inline-flex; flex-direction:column; align-items:center; text-align:center; width:fit-content; padding:0;">
+                <div style="font-size:11px; font-weight:bold; color:#002F6C; margin-bottom:28px; align-self:flex-start;">PREPARED BY:</div>
+                <div style="border-top:1.5px solid #002F6C; width:100%; margin-bottom:4px;"></div>
+                <?php if ($clean_cashier_display !== ''): ?>
+                <div style="font-size:11px; font-weight:bold; text-transform:uppercase; white-space:nowrap;"><?= htmlspecialchars($clean_cashier_display) ?></div>
+                <?php endif; ?>
+                <div style="font-size:9px; color:#666; white-space:nowrap;">Signature over Printed Name</div>
+            </div>
+        </div>
     </div>
 </body>
 </html>

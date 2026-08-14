@@ -373,7 +373,7 @@ body .main,
 .qty-input{width:96px;text-align:right;}
 .price-input{width:120px;text-align:right;}
 .readonly-money{font-weight:800;color:#475569;}
-.detail-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;padding:14px 0 16px;border-top:2px solid #dbeafe;background:#f8fafc;z-index:5;}
+.detail-summary{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-top:14px;padding:14px 0 16px;border-top:2px solid #dbeafe;background:#f8fafc;z-index:5;}
 .summary-inline{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:#475569;}
 .summary-inline strong{color:#002F70;font-size:14px;}
 .approve-btn{flex:0 0 auto;justify-content:center;}
@@ -617,7 +617,7 @@ body .main,
                                     <?php endif; ?>
                                 </div>
 
-                                <div class="detail-summary">
+                                <div class="detail-summary" style="display:flex; justify-content:flex-end;">
                                     <button type="button" class="si-btn success approve-btn"
                                             onclick="approveStockIn('<?= si_h($active_type) ?>','<?= si_h($gid) ?>','<?= si_h($group['po_no']) ?>')">
                                         <i class="fas fa-check-circle"></i> Approve Stock-In

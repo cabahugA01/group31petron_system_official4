@@ -700,18 +700,36 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             CREATE TABLE IF NOT EXISTS merchandise_transaction_items (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 transaction_id INT NOT NULL,
-                product_id INT NOT NULL,
+                product_id INT NULL,
                 product_name VARCHAR(255) NOT NULL,
                 category VARCHAR(100) NOT NULL DEFAULT '',
                 size_variant VARCHAR(100) NULL,
                 quantity DECIMAL(10,2) NOT NULL,
                 unit_price DECIMAL(10,2) NOT NULL,
                 subtotal DECIMAL(10,2) NOT NULL,
+                item_type VARCHAR(20) NOT NULL DEFAULT 'merchandise',
                 INDEX idx_transaction (transaction_id),
                 INDEX idx_product (product_id)
             )
         ");
-    } catch (Exception $e) { /* table already exists — ignore */ }
+        $itemColCheck = $pdo->query("SHOW COLUMNS FROM merchandise_transaction_items LIKE 'item_type'")->rowCount();
+        if ($itemColCheck === 0) {
+            $pdo->exec("ALTER TABLE merchandise_transaction_items ADD COLUMN `item_type` VARCHAR(20) NOT NULL DEFAULT 'merchandise' AFTER subtotal");
+        }
+        $pidColRow = $pdo->query("SHOW COLUMNS FROM merchandise_transaction_items LIKE 'product_id'")->fetch(PDO::FETCH_ASSOC);
+        if ($pidColRow && strpos(strtolower($pidColRow['Type']), 'int') !== false && strtolower($pidColRow['Null']) === 'no') {
+            $pdo->exec("ALTER TABLE merchandise_transaction_items MODIFY COLUMN `product_id` INT NULL");
+        }
+    } catch (Exception $e) { error_log("Items table migration warning: " . $e->getMessage()); }
+
+    // Pre-run loyalty tables migration DDL outside transaction
+    $loyaltyProgram = $data['loyalty_type'] ?? 'No Loyalty';
+    if ($loyaltyProgram !== 'No Loyalty' || !empty($data['loyalty_card_no'])) {
+        try {
+            require_once __DIR__ . '/../loyalty_schema_fix.php';
+            loyalty_ensure_tables($pdo);
+        } catch (Exception $e) { error_log("Loyalty schema warning: " . $e->getMessage()); }
+    }
 
     // ── Stock availability validation (merchandise items only) ──────────────
     try {
@@ -934,20 +952,6 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         $merch_transaction_id = $pdo->lastInsertId();
 
         // Insert transaction items
-        // ── Ensure items table has item_type column ───────────────────────────
-        try {
-            $itemColCheck = $pdo->query("SHOW COLUMNS FROM merchandise_transaction_items LIKE 'item_type'")->rowCount();
-            if ($itemColCheck === 0) {
-                $pdo->exec("ALTER TABLE merchandise_transaction_items ADD COLUMN `item_type` VARCHAR(20) NOT NULL DEFAULT 'merchandise' AFTER subtotal");
-            }
-            // Also ensure product_id allows NULL (for service items)
-            $pidColRow = $pdo->query("SHOW COLUMNS FROM merchandise_transaction_items LIKE 'product_id'")->fetch(PDO::FETCH_ASSOC);
-            if ($pidColRow && strpos(strtolower($pidColRow['Type']), 'int') !== false && strtolower($pidColRow['Null']) === 'no') {
-                $pdo->exec("ALTER TABLE merchandise_transaction_items MODIFY COLUMN `product_id` INT NULL");
-            }
-        } catch (Exception $e) {
-            error_log("Items table migration warning: " . $e->getMessage());
-        }
 
         $itemColRows = $pdo->query("SHOW COLUMNS FROM merchandise_transaction_items")->fetchAll(PDO::FETCH_ASSOC);
         $itemCols = [];
@@ -1154,7 +1158,6 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         if ($loyaltyProgram !== 'No Loyalty' || !empty($data['loyalty_card_no'])) {
             try {
                 require_once __DIR__ . '/../loyalty_schema_fix.php';
-                loyalty_ensure_tables($pdo);
 
                 // Fetch loyalty program rules
                 $progStmt = $pdo->query("SELECT * FROM loyalty_programs WHERE status = 'active' ORDER BY id ASC LIMIT 1");
@@ -1222,7 +1225,9 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             }
         }
 
-        $pdo->commit();
+        if ($pdo->inTransaction()) {
+            $pdo->commit();
+        }
 
         // ── Post-commit: audit logging (outside transaction so DDL won't corrupt it) ──
         try {
@@ -1249,7 +1254,9 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         ]);
 
     } catch (Exception $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         throw new Exception('Error creating transaction: ' . $e->getMessage());
     }
 }
@@ -1439,7 +1446,9 @@ function validateTransaction($pdo, $station_id, $role, $me) {
             'payment_method' => $transaction['payment_method']
         ]);
         
-        $pdo->commit();
+        if ($pdo->inTransaction()) {
+            $pdo->commit();
+        }
         
         echo json_encode([
             'success' => true,
@@ -1514,7 +1523,9 @@ function rejectTransaction($pdo, $station_id, $role, $me) {
             'rejection_reason' => $reason
         ]);
         
-        $pdo->commit();
+        if ($pdo->inTransaction()) {
+            $pdo->commit();
+        }
         
         echo json_encode([
             'success' => true,
@@ -1675,7 +1686,9 @@ function adjustTransaction($pdo, $station_id, $role, $me) {
             }
         }
 
-        $pdo->commit();
+        if ($pdo->inTransaction()) {
+            $pdo->commit();
+        }
 
         // Post-commit: audit logging
         try {

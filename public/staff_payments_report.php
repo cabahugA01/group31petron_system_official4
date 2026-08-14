@@ -515,6 +515,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     .sfss-print-only .str-table th { font-size: 9px !important; padding: 4px 6px !important; background: #002F6C !important; color: #fff !important; }
     .sfss-print-only .str-table td { font-size: 9px !important; padding: 3px 6px !important; }
     .sfss-print-only .str-2col { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+    .sfss-print-only .str-signature-wrap { display: flex !important; justify-content: flex-end !important; page-break-inside: avoid !important; margin-top: 10px !important; padding: 0 !important; border: none !important; background: transparent !important; box-shadow: none !important; }
+    .sfss-print-only .str-sig-line { border-top: 1.5px solid #002F6C !important; width: 100% !important; margin-bottom: 3px !important; }
     .sfss-print-only, .sfss-print-only * { min-height: 0 !important; height: auto !important; }
     .sfss-print-only i, .sfss-print-only .fas, .sfss-print-only .far, .sfss-print-only [class*="fa-"] { display: none !important; }
 }
@@ -762,6 +764,30 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                         <tr class="str-total"><td>Total Merchandise Sales</td><td>₱<?= number_format($merch_sales_total, 2) ?></td></tr>
                     </tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- REPORT SIGNATURE: PREPARED BY ONLY (RIGHT-ALIGNED, SINGLE LINE) -->
+        <?php 
+            $clean_staff_display = trim($display_staff ?? '');
+            if ($clean_staff_display === '—' || $clean_staff_display === '-' || $clean_staff_display === 'N/A') {
+                $clean_staff_display = '';
+            }
+        ?>
+        <div class="str-signature-wrap" style="display:flex; justify-content:flex-end; margin-top:20px; padding:0 4px;">
+            <div style="display:inline-flex; flex-direction:column; align-items:center; text-align:center; width:fit-content; max-width:100%;">
+                <div style="font-size:11px; font-weight:800; color:#002F6C; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:28px; align-self:flex-start;">
+                    Prepared By:
+                </div>
+                <div class="str-sig-line" style="border-top:1.5px solid #002F6C; width:100%; margin-bottom:4px;"></div>
+                <?php if ($clean_staff_display !== ''): ?>
+                <div style="font-size:12px; font-weight:800; color:#1e293b; text-transform:uppercase; white-space:nowrap;">
+                    <?= htmlspecialchars($clean_staff_display) ?>
+                </div>
+                <?php endif; ?>
+                <div style="font-size:10px; color:#64748b; font-weight:600; margin-top:2px; white-space:nowrap;">
+                    Signature over Printed Name
+                </div>
             </div>
         </div>
 
