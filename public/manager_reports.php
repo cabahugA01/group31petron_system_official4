@@ -485,6 +485,10 @@ require_once __DIR__ . '/../partials/header.php';
     gap: 8px !important;
 }
 
+.mgr-signature-row, .str-signature-wrap {
+    display: none !important;
+}
+
 /* Print Styles — direct native in-page print (matching staff reports flow) */
 @media print {
     @page { size: A4 landscape; margin: 0.4in 0.5in; }
@@ -527,6 +531,10 @@ require_once __DIR__ . '/../partials/header.php';
     .sfss-print-only .rpt-summary-card  { border: 1px solid #cbd5e1 !important; border-radius: 4px !important; padding: 6px !important; background: #fff !important; text-align: center !important; min-width: 80px !important; }
     .sfss-print-only .rpt-summary-card .card-label { font-size: 7px !important; font-weight: 700 !important; text-transform: uppercase !important; color: #64748b !important; display: block !important; }
     .sfss-print-only .rpt-summary-card .card-value { font-size: 11px !important; font-weight: 800 !important; display: block !important; }
+
+    /* Signature rows display flex in print */
+    .mgr-signature-row, .sfss-print-only .mgr-signature-row { display: flex !important; justify-content: space-between !important; align-items: flex-end !important; page-break-inside: avoid !important; margin-top: 20px !important; padding: 10px 4px !important; width: 100% !important; }
+    .str-sig-line, .sfss-print-only .str-sig-line { border-top: 1.5px solid #002F6C !important; width: 100% !important; margin-bottom: 3px !important; }
 }
 </style>
 
@@ -1104,6 +1112,59 @@ require_once __DIR__ . '/../partials/header.php';
             </div>
 
             <?php renderAdminReportContent($active_cat, $active_tab, $report_data); ?>
+
+            <!-- MANAGER REPORT SIGNATURES (PREPARED BY, VERIFIED BY, APPROVED BY) -->
+            <?php
+                $mgr_staff_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
+                if (empty($mgr_staff_name) || in_array($mgr_staff_name, ['—', '-', 'N/A'], true)) {
+                    $mgr_staff_name = trim($me['name'] ?? $me['username'] ?? 'Station Manager');
+                }
+            ?>
+            <div class="mgr-signature-row" style="display:none; justify-content:space-between; align-items:flex-end; margin-top:30px; padding:10px 4px; page-break-inside:avoid; width:100%;">
+                <!-- 1. LEFT: PREPARED BY -->
+                <div style="display:inline-flex; flex-direction:column; align-items:center; text-align:center; width:fit-content;">
+                    <div style="font-size:11px; font-weight:800; color:#002F6C; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:28px; align-self:flex-start;">
+                        Prepared By:
+                    </div>
+                    <div class="str-sig-line" style="border-top:1.5px solid #002F6C; width:100%; margin-bottom:4px;"></div>
+                    <?php if ($mgr_staff_name !== ''): ?>
+                    <div style="font-size:11px; font-weight:800; color:#1e293b; text-transform:uppercase; white-space:nowrap;">
+                        <?= htmlspecialchars($mgr_staff_name) ?>
+                    </div>
+                    <?php endif; ?>
+                    <div style="font-size:9px; color:#64748b; font-weight:600; margin-top:2px; white-space:nowrap;">
+                        Signature over Printed Name
+                    </div>
+                </div>
+
+                <!-- 2. CENTER: VERIFIED BY -->
+                <div style="display:inline-flex; flex-direction:column; align-items:center; text-align:center; width:fit-content;">
+                    <div style="font-size:11px; font-weight:800; color:#002F6C; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:28px; align-self:flex-start;">
+                        Verified By:
+                    </div>
+                    <div class="str-sig-line" style="border-top:1.5px solid #002F6C; width:100%; margin-bottom:4px;"></div>
+                    <div style="font-size:11px; font-weight:800; color:#1e293b; text-transform:uppercase; white-space:nowrap;">
+                        Shift Supervisor
+                    </div>
+                    <div style="font-size:9px; color:#64748b; font-weight:600; margin-top:2px; white-space:nowrap;">
+                        Signature over Printed Name
+                    </div>
+                </div>
+
+                <!-- 3. RIGHT: APPROVED BY -->
+                <div style="display:inline-flex; flex-direction:column; align-items:center; text-align:center; width:fit-content;">
+                    <div style="font-size:11px; font-weight:800; color:#002F6C; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:28px; align-self:flex-start;">
+                        Approved By:
+                    </div>
+                    <div class="str-sig-line" style="border-top:1.5px solid #002F6C; width:100%; margin-bottom:4px;"></div>
+                    <div style="font-size:11px; font-weight:800; color:#1e293b; text-transform:uppercase; white-space:nowrap;">
+                        Station Manager
+                    </div>
+                    <div style="font-size:9px; color:#64748b; font-weight:600; margin-top:2px; white-space:nowrap;">
+                        Signature over Printed Name
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -1172,6 +1233,8 @@ function buildPrintHTML() {
         .rpt-summary-card .card-label { font-size: 7.5px; font-weight: 700; text-transform: uppercase; color: #64748b; display: block; margin-bottom: 3px; }
         .rpt-summary-card .card-value { font-size: 12px; font-weight: 800; display: block; }
         .no-print { display: none !important; }
+        .mgr-signature-row { display: flex !important; justify-content: space-between !important; align-items: flex-end !important; page-break-inside: avoid !important; margin-top: 25px !important; width: 100% !important; }
+        .str-sig-line { border-top: 1.5px solid #002F6C !important; width: 100% !important; margin-bottom: 3px !important; }
     `;
 
     return `<!DOCTYPE html>

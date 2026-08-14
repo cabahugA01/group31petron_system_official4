@@ -521,6 +521,8 @@ $page_id = 'reports';
         }
         
         @media print {
+    .str-signature-wrap, .sfss-print-only .str-signature-wrap, .sig-section-print { display: flex !important; justify-content: flex-end !important; page-break-inside: avoid !important; margin-top: 16px !important; padding: 0 !important; }
+    .sfss-print-only .section { display: block !important; }
             html {
                 overflow-x: hidden;
                 width: 100%;
@@ -853,17 +855,19 @@ $page_id = 'reports';
         <!-- 6. Report Signature (Right Aligned, Single Line) -->
         <?php 
             $clean_cashier_display = trim($cashier_name ?? '');
-            if ($clean_cashier_display === '—' || $clean_cashier_display === '-' || $clean_cashier_display === 'N/A') {
-                $clean_cashier_display = '';
+            if (empty($clean_cashier_display) || in_array($clean_cashier_display, ['—', '-', 'N/A'], true)) {
+                $me = current_user();
+                $clean_cashier_display = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
+                if (empty($clean_cashier_display)) {
+                    $clean_cashier_display = trim($me['name'] ?? $me['username'] ?? 'Staff / Cashier');
+                }
             }
         ?>
-        <div class="section" style="display:flex; justify-content:flex-end; margin-top:16px; border:none; background:transparent; page-break-inside:avoid;">
+        <div class="section sig-section-print" style="display:none; justify-content:flex-end; margin-top:16px; border:none; background:transparent; page-break-inside:avoid;">
             <div style="display:inline-flex; flex-direction:column; align-items:center; text-align:center; width:fit-content; padding:0;">
                 <div style="font-size:11px; font-weight:bold; color:#002F6C; margin-bottom:28px; align-self:flex-start;">PREPARED BY:</div>
                 <div style="border-top:1.5px solid #002F6C; width:100%; margin-bottom:4px;"></div>
-                <?php if ($clean_cashier_display !== ''): ?>
                 <div style="font-size:11px; font-weight:bold; text-transform:uppercase; white-space:nowrap;"><?= htmlspecialchars($clean_cashier_display) ?></div>
-                <?php endif; ?>
                 <div style="font-size:9px; color:#666; white-space:nowrap;">Signature over Printed Name</div>
             </div>
         </div>

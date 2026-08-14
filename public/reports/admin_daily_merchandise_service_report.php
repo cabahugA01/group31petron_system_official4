@@ -743,6 +743,62 @@ try {
         </table>
     </div>
 
+    <!-- ADMIN REPORT SIGNATURES (PREPARED BY, VERIFIED BY, APPROVED BY) -->
+    <?php
+        $adm_staff_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
+        if (empty($adm_staff_name)) {
+            $adm_staff_name = trim($me['name'] ?? $me['username'] ?? '');
+        }
+        if ($adm_staff_name === '—' || $adm_staff_name === '-' || $adm_staff_name === 'N/A') {
+            $adm_staff_name = '';
+        }
+    ?>
+    <div class="mgr-signature-row" style="display:none; justify-content:space-between; align-items:flex-end; margin-top:30px; padding:10px 4px; page-break-inside:avoid; width:100%;">
+        <!-- 1. LEFT: PREPARED BY -->
+        <div style="display:inline-flex; flex-direction:column; align-items:center; text-align:center; width:fit-content;">
+            <div style="font-size:11px; font-weight:800; color:#002F6C; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:28px; align-self:flex-start;">
+                Prepared By:
+            </div>
+            <div class="str-sig-line" style="border-top:1.5px solid #002F6C; width:100%; margin-bottom:4px;"></div>
+            <?php if ($adm_staff_name !== ''): ?>
+            <div style="font-size:11px; font-weight:800; color:#1e293b; text-transform:uppercase; white-space:nowrap;">
+                <?= htmlspecialchars($adm_staff_name) ?>
+            </div>
+            <?php endif; ?>
+            <div style="font-size:9px; color:#64748b; font-weight:600; margin-top:2px; white-space:nowrap;">
+                Signature over Printed Name
+            </div>
+        </div>
+
+        <!-- 2. CENTER: VERIFIED BY -->
+        <div style="display:inline-flex; flex-direction:column; align-items:center; text-align:center; width:fit-content;">
+            <div style="font-size:11px; font-weight:800; color:#002F6C; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:28px; align-self:flex-start;">
+                Verified By:
+            </div>
+            <div class="str-sig-line" style="border-top:1.5px solid #002F6C; width:100%; margin-bottom:4px;"></div>
+            <div style="font-size:11px; font-weight:800; color:#1e293b; text-transform:uppercase; white-space:nowrap;">
+                Shift Supervisor
+            </div>
+            <div style="font-size:9px; color:#64748b; font-weight:600; margin-top:2px; white-space:nowrap;">
+                Signature over Printed Name
+            </div>
+        </div>
+
+        <!-- 3. RIGHT: APPROVED BY -->
+        <div style="display:inline-flex; flex-direction:column; align-items:center; text-align:center; width:fit-content;">
+            <div style="font-size:11px; font-weight:800; color:#002F6C; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:28px; align-self:flex-start;">
+                Approved By:
+            </div>
+            <div class="str-sig-line" style="border-top:1.5px solid #002F6C; width:100%; margin-bottom:4px;"></div>
+            <div style="font-size:11px; font-weight:800; color:#1e293b; text-transform:uppercase; white-space:nowrap;">
+                Station Manager
+            </div>
+            <div style="font-size:9px; color:#64748b; font-weight:600; margin-top:2px; white-space:nowrap;">
+                Signature over Printed Name
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <style>
@@ -795,6 +851,8 @@ try {
 }
 
 @media print {
+    .mgr-signature-row, .sfss-print-only .mgr-signature-row { display: flex !important; justify-content: space-between !important; align-items: flex-end !important; page-break-inside: avoid !important; margin-top: 16px !important; padding: 0 !important; width: 100% !important; }
+    .str-sig-line { border-top: 1.5px solid #002F6C !important; width: 100% !important; margin-bottom: 3px !important; }
     .admin-merch-service-report {
         padding: 0;
     }

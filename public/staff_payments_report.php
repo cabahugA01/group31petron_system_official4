@@ -503,6 +503,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
 /* Print CSS */
 @media print {
+    .str-signature-wrap, .sfss-print-only .str-signature-wrap { display: flex !important; justify-content: flex-end !important; page-break-inside: avoid !important; margin-top: 16px !important; padding: 0 !important; }
+    .sfss-print-only .section { display: block !important; }
     @page { size: A4 portrait; margin: 10mm 12mm; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-shadow: none !important; }
     html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; height: auto !important; font-size: 10px !important; }
@@ -770,21 +772,23 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         <!-- REPORT SIGNATURE: PREPARED BY ONLY (RIGHT-ALIGNED, SINGLE LINE) -->
         <?php 
             $clean_staff_display = trim($display_staff ?? '');
-            if ($clean_staff_display === '—' || $clean_staff_display === '-' || $clean_staff_display === 'N/A') {
-                $clean_staff_display = '';
+            if (empty($clean_staff_display) || in_array($clean_staff_display, ['—', '-', 'N/A'], true)) {
+                $me = current_user();
+                $clean_staff_display = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
+                if (empty($clean_staff_display)) {
+                    $clean_staff_display = trim($me['name'] ?? $me['username'] ?? 'Staff / Cashier');
+                }
             }
         ?>
-        <div class="str-signature-wrap" style="display:flex; justify-content:flex-end; margin-top:20px; padding:0 4px;">
+        <div class="str-signature-wrap" style="display:none; justify-content:flex-end; margin-top:20px; padding:0 4px;">
             <div style="display:inline-flex; flex-direction:column; align-items:center; text-align:center; width:fit-content; max-width:100%;">
                 <div style="font-size:11px; font-weight:800; color:#002F6C; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:28px; align-self:flex-start;">
                     Prepared By:
                 </div>
                 <div class="str-sig-line" style="border-top:1.5px solid #002F6C; width:100%; margin-bottom:4px;"></div>
-                <?php if ($clean_staff_display !== ''): ?>
                 <div style="font-size:12px; font-weight:800; color:#1e293b; text-transform:uppercase; white-space:nowrap;">
                     <?= htmlspecialchars($clean_staff_display) ?>
                 </div>
-                <?php endif; ?>
                 <div style="font-size:10px; color:#64748b; font-weight:600; margin-top:2px; white-space:nowrap;">
                     Signature over Printed Name
                 </div>

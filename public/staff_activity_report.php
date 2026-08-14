@@ -440,6 +440,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 .act-table tr:hover { background: #f8fafc; }
 
 @media print {
+    .str-signature-wrap, .sfss-print-only .str-signature-wrap { display: flex !important; justify-content: flex-end !important; page-break-inside: avoid !important; margin-top: 16px !important; padding: 0 !important; }
+    .sfss-print-only .section { display: block !important; }
     @page { size: A4 portrait; margin: 10mm 12mm; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-shadow: none !important; }
     html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; height: auto !important; font-size: 10px !important; }
@@ -449,6 +451,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     .sfss-print-only { display: block !important; position: static !important; width: 100% !important; margin: 0 !important; padding: 0 !important; background: #fff !important; font-size: 10px !important; color: #333 !important; }
     .sfss-print-only .act-table th { font-size: 9px !important; padding: 5px 8px !important; background: #002F6C !important; color: #fff !important; }
     .sfss-print-only .act-table td { font-size: 9px !important; padding: 4px 8px !important; }
+    .sfss-print-only .str-signature-wrap { display: flex !important; justify-content: flex-end !important; page-break-inside: avoid !important; margin-top: 10px !important; padding: 0 !important; border: none !important; background: transparent !important; box-shadow: none !important; }
+    .sfss-print-only .str-sig-line { border-top: 1.5px solid #002F6C !important; width: 100% !important; margin-bottom: 3px !important; }
     .sfss-print-only, .sfss-print-only * { min-height: 0 !important; height: auto !important; }
 }
 </style>
@@ -624,6 +628,28 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                     <?php endif; ?>
                 </tbody>
             </table>
+
+            <!-- REPORT SIGNATURE: PREPARED BY ONLY (RIGHT-ALIGNED, SINGLE LINE, MATCHES TEXT WIDTH) -->
+            <?php 
+                $clean_staff_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
+                if (empty($clean_staff_name) || in_array($clean_staff_name, ['—', '-', 'N/A'], true)) {
+                    $clean_staff_name = trim($me['name'] ?? $me['username'] ?? 'Staff / Cashier');
+                }
+            ?>
+            <div class="str-signature-wrap" style="display:none; justify-content:flex-end; margin-top:20px; padding:0 4px;">
+                <div style="display:inline-flex; flex-direction:column; align-items:center; text-align:center; width:fit-content; max-width:100%;">
+                    <div style="font-size:11px; font-weight:800; color:#002F6C; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:28px; align-self:flex-start;">
+                        Prepared By:
+                    </div>
+                    <div class="str-sig-line" style="border-top:1.5px solid #002F6C; width:100%; margin-bottom:4px;"></div>
+                    <div style="font-size:12px; font-weight:800; color:#1e293b; text-transform:uppercase; white-space:nowrap;">
+                        <?= htmlspecialchars($clean_staff_name) ?>
+                    </div>
+                    <div style="font-size:10px; color:#64748b; font-weight:600; margin-top:2px; white-space:nowrap;">
+                        Signature over Printed Name
+                    </div>
+                </div>
+            </div>
 
         </div>
     </div>
