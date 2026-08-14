@@ -6,6 +6,7 @@ require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../config/email_config.php';
 require_once __DIR__ . '/../config/password_reset_whitelist.php';
+require_once __DIR__ . '/../includes/mailer.php';
 
 $message = '';
 $error = '';
@@ -15,82 +16,113 @@ header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
 
+// Ensure tokens table exists with attempts column
+ensurePasswordResetTokensTable($pdo);
+
 // EMAIL ONLY - No phone support
 $email = normalizePasswordResetEmail($_GET['email'] ?? $_POST['email'] ?? $_SESSION['reset_email'] ?? '');
 $email_failed = isset($_GET['email_failed']) && $_GET['email_failed'] === '1';
+$just_sent = isset($_GET['sent']) && $_GET['sent'] === '1';
+$just_resent = isset($_GET['resend_sent']) && $_GET['resend_sent'] === '1';
 
 // Store email in session for resend functionality
 if (!empty($email)) {
     $_SESSION['reset_email'] = $email;
 }
 
-// Handle RESEND OTP request
-if ($_SERVER['REQUEST_METHOD'] !== 'POST' && isset($_GET['resend']) && $_GET['resend'] === '1' && !empty($email)) {
+// Resend Cooldown configuration (45 seconds)
+$cooldown_duration = 45;
+$resend_session_key = 'last_resend_time_' . md5($email);
+$last_resend_time = $_SESSION[$resend_session_key] ?? 0;
+$time_since_last = time() - $last_resend_time;
+$resend_cooldown_remaining = max(0, $cooldown_duration - $time_since_last);
+
+// Fetch current active reset token info for expiration timer and attempt tracking
+$active_token = null;
+$seconds_left = 300; // Default 5 minutes
+
+if (!empty($email)) {
     try {
-        ensurePasswordResetTokensTable($pdo);
-        try { cleanPasswordResetEmails($pdo); } catch(Exception $ce) {}
+        $stmt_tok = $pdo->prepare("
+            SELECT prt.id, prt.token, prt.expires_at, prt.is_used, prt.attempts,
+                   TIMESTAMPDIFF(SECOND, NOW(), prt.expires_at) AS calc_seconds_left,
+                   (prt.expires_at > NOW()) AS is_valid_time
+            FROM password_reset_tokens prt
+            JOIN users u ON prt.user_id = u.id
+            WHERE LOWER(TRIM(REPLACE(REPLACE(u.email, CHAR(13), ''), CHAR(10), ''))) = LOWER(?)
+              AND prt.token_type = 'reset'
+            ORDER BY prt.id DESC
+            LIMIT 1
+        ");
+        $stmt_tok->execute([$email]);
+        $active_token = $stmt_tok->fetch(PDO::FETCH_ASSOC);
 
-        $user = findActivePasswordResetUserByEmail($pdo, $email);
-
-        if ($user) {
-            if (!filter_var($user['email'], FILTER_VALIDATE_EMAIL)) {
-                $error = "This account has an invalid registered email address. Please contact the administrator.";
-            } else {
-            // ============================================================
-            // EMAIL WHITELIST SECURITY CHECK (same as forgot_password.php)
-            // Only allow OTP resend for whitelisted email addresses
-            // Whitelist is managed in: config/password_reset_whitelist.php
-            // ============================================================
-            
-            // Check if user's email is in whitelist
-            if (!isEmailWhitelistedForPasswordReset($user['email'])) {
-                // Email not whitelisted - block OTP resend
-                $error = "Password reset is currently restricted. Please contact your system administrator.";
-                error_log("OTP resend blocked for non-whitelisted email: {$user['email']} (user_id={$user['user_id']})");
-            } else {
-                // Email is whitelisted - proceed with OTP resend
-                $otp_code = sprintf("%06d", random_int(100000, 999999));
-
-                // Delete old OTPs and insert new one
-                $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = ? AND token_type = 'reset'")->execute([$user['user_id']]);
-                $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, ip_address) VALUES (?, ?, 'reset', DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)")
-                    ->execute([$user['user_id'], $otp_code, $_SERVER['REMOTE_ADDR']]);
-
-                // Send new OTP via email with extended timeout
-                $resend_sent = false;
-                if (function_exists('sendPasswordResetOTP')) {
-                    @set_time_limit(20);
-                    $resend_sent = (bool) sendPasswordResetOTP($user['email'], $otp_code);
-                    if (!$resend_sent) {
-                        error_log("OTP resend email FAILED for user_id={$user['user_id']} email={$user['email']}");
-                    }
-                }
-
-                // Log resend attempt
-                try {
-                    $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'OTP Resend', ?, ?)")
-                        ->execute([$user['user_id'], "OTP resent to: {$email}", $_SERVER['REMOTE_ADDR']]);
-                } catch (Exception $e) {}
-
-                if ($resend_sent) {
-                    $email_failed = false;
-                    $success = "A new OTP has been sent to your email. Please check your inbox.";
-                } else {
-                    $email_failed = true;
-                    $error = "Could not send the email. Please check your connection and try again.";
-                }
-            }
-            }
-        } else {
-            $error = "Unable to resend OTP. Please start the password reset process again.";
+        if ($active_token) {
+            $seconds_left = min(300, max(0, (int)($active_token['calc_seconds_left'] ?? 300)));
         }
     } catch (Exception $e) {
-        error_log("OTP resend error: " . $e->getMessage());
-        $error = "System error. Please try again later.";
+        error_log("Token fetch error: " . $e->getMessage());
     }
 }
 
-// Handle OTP submission
+// Handle RESEND OTP request
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && isset($_GET['resend']) && $_GET['resend'] === '1' && !empty($email)) {
+    if ($resend_cooldown_remaining > 0) {
+        $error = "Please wait {$resend_cooldown_remaining} seconds before requesting a new OTP.";
+    } else {
+        try {
+            cleanPasswordResetEmails($pdo);
+            $user = findActivePasswordResetUserByEmail($pdo, $email);
+
+            if ($user) {
+                if (!filter_var($user['email'], FILTER_VALIDATE_EMAIL)) {
+                    $error = "This account has an invalid registered email address. Please contact the administrator.";
+                } elseif (!isEmailWhitelistedForPasswordReset($user['email'])) {
+                    $error = "Password reset is currently restricted. Please contact your system administrator.";
+                } else {
+                    $otp_code = sprintf('%06d', random_int(100000, 999999));
+                    $otp_hash = hash('sha256', $otp_code);
+
+                    // Invalidate previous OTP tokens for this user
+                    $pdo->prepare("UPDATE password_reset_tokens SET is_used = 1 WHERE user_id = ? AND token_type = 'reset'")->execute([$user['user_id']]);
+
+                    // Insert new hashed OTP with 5-minute expiration
+                    $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, attempts, ip_address) VALUES (?, ?, 'reset', DATE_ADD(NOW(), INTERVAL 5 MINUTE), 0, ?)")
+                        ->execute([$user['user_id'], $otp_hash, $_SERVER['REMOTE_ADDR']]);
+
+                    // Send via real SMTP only
+                    @set_time_limit(60);
+                    $resend_sent = sendOtpEmail($user['email'], $otp_code);
+                    unset($otp_code);
+
+                    // Set resend timestamp for rate-limiting cooldown
+                    $_SESSION[$resend_session_key] = time();
+
+                    // Log activity
+                    try {
+                        $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'OTP Resend', ?, ?)")
+                            ->execute([$user['user_id'], "OTP resent to: {$email} (Sent: " . ($resend_sent ? 'Yes' : 'No') . ")", $_SERVER['REMOTE_ADDR']]);
+                    } catch (Exception $e) {}
+
+                    if ($resend_sent) {
+                        header("Location: verify_otp.php?email=" . urlencode($email) . "&resend_sent=1");
+                        exit;
+                    } else {
+                        header("Location: verify_otp.php?email=" . urlencode($email) . "&email_failed=1");
+                        exit;
+                    }
+                }
+            } else {
+                $error = "Unable to resend OTP. Please start the password reset process again.";
+            }
+        } catch (Exception $e) {
+            error_log("OTP resend error: " . $e->getMessage());
+            $error = "System error. Please try again later.";
+        }
+    }
+}
+
+// Handle OTP Verification submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['otp'])) {
     $otp = trim($_POST['otp'] ?? '');
 
@@ -100,50 +132,95 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['otp'])) {
         $error = "Please enter a valid 6-digit OTP.";
     } else {
         try {
-            ensurePasswordResetTokensTable($pdo);
-            $uid_col = 'id';
+            if (empty($email)) {
+                $error = "Session expired or missing email. Please start over.";
+            } else {
+                // Hash the submitted OTP before comparing against stored hash
+                $submitted_hash = hash('sha256', $otp);
 
-            // Verify OTP via EMAIL only
-            if (!empty($email)) {
+                // Fetch the latest OTP token for this user
                 $stmt = $pdo->prepare("
-                    SELECT prt.user_id, prt.token, prt.is_used,
+                    SELECT prt.id, prt.user_id, prt.token, prt.is_used, prt.attempts, prt.expires_at,
                            (prt.expires_at > NOW()) AS is_valid_time,
                            u.username, TRIM(u.email) AS email
                     FROM   password_reset_tokens prt
-                    JOIN   users u ON prt.user_id = u.`{$uid_col}`
-                    WHERE  prt.token      = ?
-                      AND  prt.token_type = 'reset'
+                    JOIN   users u ON prt.user_id = u.id
+                    WHERE  prt.token_type = 'reset'
                       AND  LOWER(TRIM(u.status)) = 'active'
                       AND  LOWER(TRIM(REPLACE(REPLACE(u.email, CHAR(13), ''), CHAR(10), ''))) = LOWER(?)
                     ORDER BY prt.id DESC
                     LIMIT  1
                 ");
-                $stmt->execute([$otp, $email]);
+                $stmt->execute([$email]);
                 $token_data = $stmt->fetch(PDO::FETCH_ASSOC);
 
-                if ($token_data) {
-                    if (!$token_data['is_valid_time']) {
-                        $error = "OTP has expired. Please click 'Resend OTP' below.";
-                    } elseif ($token_data['is_used'] == 1) {
-                        $error = "OTP has already been used. Please request a new one.";
+                if (!$token_data) {
+                    $error = "Invalid OTP. Please check the code sent to your email and try again.";
+                    if (function_exists('log_auth_audit_trail')) {
+                        log_auth_audit_trail($pdo, null, $email, 'PASSWORD_RESET_OTP_FAILED', 'FAILED', "No matching OTP token found for: {$email}");
+                    }
+                } elseif ((int)$token_data['is_used'] === 1) {
+                    $error = "This OTP has already been used. Please request a new OTP.";
+                } elseif ((int)$token_data['attempts'] >= 5) {
+                    // Lock token after 5 failed attempts
+                    $pdo->prepare("UPDATE password_reset_tokens SET is_used = 1 WHERE id = ?")->execute([$token_data['id']]);
+                    if (function_exists('log_auth_audit_trail')) {
+                        log_auth_audit_trail($pdo, $token_data['user_id'], $email, 'PASSWORD_RESET_OTP_FAILED', 'LOCKED', "OTP locked after max failed attempts for: {$email}");
+                    }
+                    $error = "Too many failed verification attempts. Please request a new OTP.";
+                } elseif (!$token_data['is_valid_time']) {
+                    if (function_exists('log_auth_audit_trail')) {
+                        log_auth_audit_trail($pdo, $token_data['user_id'], $email, 'PASSWORD_RESET_OTP_FAILED', 'EXPIRED', "OTP expired for: {$email}");
+                    }
+                    $error = "OTP expired. Please request a new OTP.";
+                } elseif ($token_data['token'] !== $submitted_hash) {
+                    // Incorrect OTP code — increment attempt count in DB
+                    $pdo->prepare("UPDATE password_reset_tokens SET attempts = attempts + 1 WHERE id = ?")->execute([$token_data['id']]);
+                    $remaining_attempts = max(0, 5 - ((int)$token_data['attempts'] + 1));
+                    if (function_exists('log_auth_audit_trail')) {
+                        log_auth_audit_trail($pdo, $token_data['user_id'], $email, 'PASSWORD_RESET_OTP_FAILED', 'INVALID', "Invalid OTP entered for: {$email} ({$remaining_attempts} attempts remaining)");
+                    }
+                    if ($remaining_attempts > 0) {
+                        $error = "Invalid OTP. Please try again. ({$remaining_attempts} attempts remaining)";
                     } else {
-                        // Valid OTP! Redirect to reset password page
-                        // Clear session email after successful verification
-                        unset($_SESSION['reset_email']);
-                        header("Location: forgot_password_reset.php?token=" . urlencode($otp) . "&email=" . urlencode($email));
-                        exit;
+                        $pdo->prepare("UPDATE password_reset_tokens SET is_used = 1 WHERE id = ?")->execute([$token_data['id']]);
+                        $error = "Too many failed verification attempts. Please request a new OTP.";
                     }
                 } else {
-                    $error = "Invalid OTP. Please check the code and try again.";
+                    // SUCCESS: Valid OTP! Mark OTP token as verified & used
+                    $pdo->prepare("UPDATE password_reset_tokens SET is_used = 1, used_at = NOW() WHERE id = ?")->execute([$token_data['id']]);
+                    
+                    // Generate secure 64-char reset secret for password change page
+                    $reset_token = bin2hex(random_bytes(32));
+                    $reset_hash  = hash('sha256', $reset_token);
+
+                    // Insert password_change authorization token valid for 15 minutes
+                    $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, attempts, ip_address) VALUES (?, ?, 'password_change', DATE_ADD(NOW(), INTERVAL 15 MINUTE), 0, ?)")
+                        ->execute([$token_data['user_id'], $reset_hash, $_SERVER['REMOTE_ADDR']]);
+
+                    if (function_exists('log_auth_audit_trail')) {
+                        log_auth_audit_trail($pdo, $token_data['user_id'], $email, 'PASSWORD_RESET_OTP_VERIFIED', 'SUCCESS', "OTP verified successfully for: {$email}");
+                    }
+                    unset($_SESSION['reset_email']);
+                    
+                    header("Location: forgot_password_reset.php?token=" . urlencode($reset_token) . "&email=" . urlencode($email));
+                    exit;
                 }
-            } else {
-                $error = "Email is required for verification.";
             }
         } catch (Exception $e) {
             error_log("OTP validation error: " . $e->getMessage());
             $error = "System error. Please try again later.";
         }
     }
+}
+
+// Banner Message Assignment
+if ($just_sent && empty($error)) {
+    $success = "OTP sent successfully. Please check your email.";
+} elseif ($just_resent && empty($error)) {
+    $success = "A new OTP has been sent to your registered email address.";
+} elseif ($email_failed && empty($error)) {
+    $error = "We could not send the OTP to your email. Please try again.";
 }
 ?>
 <!DOCTYPE html>
@@ -372,7 +449,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['otp'])) {
             padding: 0 16px 0 46px;
             color: #ffffff;
             font-family: inherit;
-            font-size: 22px;
+            font-size: 20px;
             font-weight: 700;
             text-align: center;
             letter-spacing: 6px;
@@ -382,13 +459,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['otp'])) {
         .field-input::placeholder {
             color: rgba(200,220,255,.4);
             letter-spacing: normal;
-            font-size: 15px;
+            font-size: 14.5px;
             font-weight: 400;
         }
         .field-input:focus {
             background: rgba(255,255,255,.18);
             border-color: rgba(147,197,253,.8);
             box-shadow: 0 0 0 3px rgba(96,165,250,.20);
+        }
+        .field-input:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: rgba(0,0,0,.2);
         }
 
         .btn-login {
@@ -449,7 +531,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['otp'])) {
             transition: color .2s;
             text-shadow: 0 1px 4px rgba(0,0,0,.4);
         }
-        .login-footer a:hover { color: #93c5fd; }
+        .login-footer a:hover:not(.disabled) { color: #93c5fd; }
+        .login-footer a.disabled {
+            color: rgba(255,255,255,.3);
+            pointer-events: none;
+            cursor: not-allowed;
+        }
 
         .page-footer {
             margin-top: 28px;
@@ -480,30 +567,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['otp'])) {
             </div>
 
             <?php if ($error): ?>
-                <div class="alert-error">
+                <div class="alert-error" id="errorBanner">
                     <i class="fas fa-exclamation-circle"></i>
                     <span><?php echo htmlspecialchars($error); ?></span>
                 </div>
             <?php endif; ?>
 
             <?php if ($success): ?>
-                <div class="alert-success">
+                <div class="alert-success" id="successBanner">
                     <i class="fas fa-check-circle"></i>
                     <span><?php echo htmlspecialchars($success); ?></span>
-                </div>
-            <?php endif; ?>
-
-            <?php if (empty($error) && empty($success) && !empty($email) && !$email_failed): ?>
-                <div class="alert-info">
-                    <i class="fas fa-envelope"></i>
-                    <span>We sent a 6-digit OTP to <strong><?php echo htmlspecialchars($email); ?></strong>. Please check your inbox.</span>
-                </div>
-            <?php endif; ?>
-
-            <?php if ($email_failed): ?>
-                <div class="alert-error">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <span>Email delivery failed. Please click <strong>Resend OTP</strong> below.</span>
                 </div>
             <?php endif; ?>
 
@@ -511,19 +584,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['otp'])) {
                 OTP expires in <span id="countdown">05:00</span>
             </div>
 
-            <form method="POST" action="verify_otp.php?email=<?php echo urlencode($email); ?>">
+            <form method="POST" action="verify_otp.php?email=<?php echo urlencode($email); ?>" id="otpForm">
                 <input type="hidden" name="email" value="<?php echo htmlspecialchars($email); ?>">
                 <div class="form-group">
                     <label for="otp" class="field-label">Enter OTP</label>
                     <div class="input-wrap">
                         <i class="fas fa-key input-icon"></i>
                         <input type="text" name="otp" id="otp" class="field-input"
-                               placeholder="123456" maxlength="6" inputmode="numeric"
+                               placeholder="Enter 6-digit OTP" value="" maxlength="6" inputmode="numeric"
                                pattern="\d{6}" required autofocus autocomplete="one-time-code">
                     </div>
                 </div>
 
-                <button type="submit" class="btn-login" id="submitBtn">
+                <button type="submit" class="btn-login" id="submitBtn" disabled>
                     <i class="fas fa-check-circle"></i>
                     <span>Verify OTP</span>
                 </button>
@@ -531,8 +604,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['otp'])) {
 
             <div class="login-footer">
                 <?php if (!empty($email)): ?>
-                <a href="?resend=1&email=<?php echo urlencode($email); ?>">
-                    <i class="fas fa-redo"></i> Resend OTP
+                <a href="?resend=1&email=<?php echo urlencode($email); ?>" id="resendBtn" class="<?php echo ($resend_cooldown_remaining > 0) ? 'disabled' : ''; ?>">
+                    <i class="fas fa-redo"></i> <span id="resendText"><?php echo ($resend_cooldown_remaining > 0) ? "Resend OTP ({$resend_cooldown_remaining}s)" : "Resend OTP"; ?></span>
                 </a>
                 <?php endif; ?>
                 <a href="forgot_password.php">
@@ -550,30 +623,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['otp'])) {
 
 <script>
 (function() {
-    let seconds = 300;
+    let secondsLeft = <?php echo (int)$seconds_left; ?>;
     const el = document.getElementById('countdown');
-    const tick = setInterval(() => {
-        seconds--;
-        if (seconds <= 0) {
-            clearInterval(tick);
+    const submitBtn = document.getElementById('submitBtn');
+    const otpInput = document.getElementById('otp');
+    const timerWrap = document.getElementById('otpTimer');
+
+    function updateTimer() {
+        if (secondsLeft <= 0) {
             el.textContent = '00:00';
             el.style.color = '#f87171';
+            timerWrap.innerHTML = '<span style="color: #f87171; font-weight: 700;"><i class="fas fa-clock"></i> OTP expired. Please request a new OTP.</span>';
+            if (otpInput) otpInput.disabled = true;
+            if (submitBtn) submitBtn.disabled = true;
         } else {
-            const m = String(Math.floor(seconds / 60)).padStart(2, '0');
-            const s = String(seconds % 60).padStart(2, '0');
+            const m = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
+            const s = String(secondsLeft % 60).padStart(2, '0');
             el.textContent = m + ':' + s;
-            if (seconds <= 60) el.style.color = '#f87171';
+            if (secondsLeft <= 60) el.style.color = '#f87171';
         }
-    }, 1000);
+    }
+
+    updateTimer();
+
+    if (secondsLeft > 0) {
+        const tick = setInterval(() => {
+            secondsLeft--;
+            updateTimer();
+            if (secondsLeft <= 0) {
+                clearInterval(tick);
+            }
+        }, 1000);
+    }
 })();
 
-const otpInput = document.getElementById('otp');
-otpInput.addEventListener('input', () => {
-    otpInput.value = otpInput.value.replace(/\D/g, '').slice(0, 6);
-    if (otpInput.value.length === 6) {
-        otpInput.form.submit();
+// Resend Cooldown Counter
+(function() {
+    let cooldownLeft = <?php echo (int)$resend_cooldown_remaining; ?>;
+    const resendBtn = document.getElementById('resendBtn');
+    const resendText = document.getElementById('resendText');
+
+    if (cooldownLeft > 0 && resendBtn && resendText) {
+        const resendTick = setInterval(() => {
+            cooldownLeft--;
+            if (cooldownLeft <= 0) {
+                clearInterval(resendTick);
+                resendBtn.classList.remove('disabled');
+                resendText.textContent = "Resend OTP";
+            } else {
+                resendText.textContent = `Resend OTP (${cooldownLeft}s)`;
+            }
+        }, 1000);
     }
-});
+})();
+
+// Form input formatting & submit button state control
+const otpInput = document.getElementById('otp');
+const submitBtn = document.getElementById('submitBtn');
+
+if (otpInput && submitBtn) {
+    otpInput.value = ''; // Ensure blank initially
+    otpInput.addEventListener('input', () => {
+        otpInput.value = otpInput.value.replace(/\D/g, '').slice(0, 6);
+        if (otpInput.value.length === 6) {
+            submitBtn.disabled = false;
+        } else {
+            submitBtn.disabled = true;
+        }
+    });
+
+    const form = document.getElementById('otpForm');
+    if (form) {
+        form.addEventListener('submit', (e) => {
+            if (otpInput.value.length !== 6) {
+                e.preventDefault();
+                alert('Please enter a valid 6-digit OTP.');
+            }
+        });
+    }
+}
 </script>
 </body>
 </html>

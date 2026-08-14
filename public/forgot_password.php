@@ -7,6 +7,7 @@ require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../config/email_config.php';
 require_once __DIR__ . '/../config/password_reset_whitelist.php';
+require_once __DIR__ . '/../includes/mailer.php';
 
 $error = '';
 $success = '';
@@ -43,43 +44,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif (!filter_var($user['email'], FILTER_VALIDATE_EMAIL)) {
                     $error = "This account has an invalid registered email address. Please contact the administrator to update your profile.";
                 } else {
-                    // ============================================================
-                    // EMAIL WHITELIST SECURITY CHECK
-                    // Only allow password reset for whitelisted email addresses
-                    // Whitelist is managed in: config/password_reset_whitelist.php
-                    // ============================================================
-                    
-                    // Check if user's email is in whitelist
                     if (!isEmailWhitelistedForPasswordReset($user['email'])) {
-                        // Email not whitelisted - show generic message for security
                         $error = "Password reset is currently restricted. Please contact your system administrator for assistance.";
                         error_log("Password reset blocked for non-whitelisted email: {$user['email']} (user_id={$user['user_id']})");
                     } else {
-                        // Email is whitelisted - proceed with OTP generation
-                        // Generate OTP
-                        $otp_code = sprintf("%06d", random_int(100000, 999999));
+                        // Log: PASSWORD_RESET_REQUESTED
+                        if (function_exists('log_auth_audit_trail')) {
+                            log_auth_audit_trail($pdo, $user['user_id'], $user['email'], 'PASSWORD_RESET_REQUESTED', 'SUCCESS', "Password reset OTP requested for: {$user['email']}");
+                        }
 
-                        // Store OTP in DB and replace only old reset OTPs for this user
-                        $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = ? AND token_type = 'reset'")->execute([$user['user_id']]);
-                        $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, ip_address) VALUES (?, ?, 'reset', DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)")
-                            ->execute([$user['user_id'], $otp_code, $_SERVER['REMOTE_ADDR']]);
+                        // Generate cryptographically secure 6-digit OTP
+                        $otp_code  = sprintf('%06d', random_int(100000, 999999));
+                        // Store HASH only — never store plaintext OTP in database
+                        $otp_hash  = hash('sha256', $otp_code);
 
-                        // Send OTP email — give it enough time to complete SMTP handshake
-                        $email_sent = false;
-                        if (function_exists('sendPasswordResetOTP')) {
-                            @set_time_limit(60); // allow up to 60s for SMTP
-                            $email_sent = (bool) sendPasswordResetOTP($user['email'], $otp_code);
-                            if (!$email_sent) {
-                                error_log("Password reset OTP email FAILED for user_id={$user['user_id']} email={$user['email']}");
+                        // Invalidate all previous OTP tokens for this user
+                        $pdo->prepare("UPDATE password_reset_tokens SET is_used = 1 WHERE user_id = ? AND token_type = 'reset'")->execute([$user['user_id']]);
+
+                        // Insert new hashed OTP with 5-minute expiration
+                        $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, attempts, ip_address) VALUES (?, ?, 'reset', DATE_ADD(NOW(), INTERVAL 5 MINUTE), 0, ?)")
+                            ->execute([$user['user_id'], $otp_hash, $_SERVER['REMOTE_ADDR']]);
+
+                        // Attempt to send OTP via SMTP — no local fallback
+                        @set_time_limit(60);
+                        $email_sent = sendOtpEmail($user['email'], $otp_code);
+                        // $otp_code is no longer needed after this point — do NOT pass it to the view
+                        unset($otp_code);
+
+                        // Audit log
+                        if ($email_sent) {
+                            if (function_exists('log_auth_audit_trail')) {
+                                log_auth_audit_trail($pdo, $user['user_id'], $user['email'], 'PASSWORD_RESET_OTP_SENT', 'SUCCESS', "OTP email delivered to: {$user['email']}");
+                            }
+                        } else {
+                            error_log("[OTP] SMTP delivery failed for user_id={$user['user_id']} email={$user['email']}");
+                            if (function_exists('log_auth_audit_trail')) {
+                                log_auth_audit_trail($pdo, $user['user_id'], $user['email'], 'PASSWORD_RESET_OTP_SENT', 'FAILED', "SMTP delivery failed for: {$user['email']}");
                             }
                         }
 
-                        // Redirect to OTP verify page; pass email_failed hint for dev feedback
-                        $redirect = "verify_otp.php?email=" . urlencode($user['email']);
-                        if (!$email_sent) {
-                            $redirect .= "&email_failed=1";
+                        // Only redirect with sent=1 if SMTP actually succeeded
+                        if ($email_sent) {
+                            $redirect = 'verify_otp.php?email=' . urlencode($user['email']) . '&sent=1';
+                        } else {
+                            $redirect = 'verify_otp.php?email=' . urlencode($user['email']) . '&email_failed=1';
                         }
-                        header("Location: {$redirect}");
+                        header('Location: ' . $redirect);
                         exit;
                     }
                 }

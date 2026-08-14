@@ -121,6 +121,37 @@ function get_shift_sql_case($time_column) {
     END";
 }
 
+/**
+ * Log authentication audit trail events to audit_logs and activity_logs
+ * Event types: LOGIN_SUCCESS, LOGIN_FAILED, PASSWORD_RESET_REQUESTED, PASSWORD_RESET_OTP_SENT, PASSWORD_RESET_OTP_FAILED, PASSWORD_RESET_OTP_VERIFIED, PASSWORD_RESET_COMPLETED
+ */
+if (!function_exists('log_auth_audit_trail')) {
+function log_auth_audit_trail($pdo, $user_id, $email, $action, $status, $details = '') {
+    if (!$pdo) return;
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+    $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
+    $clean_email = trim((string)$email);
+
+    // 1. Log to activity_logs
+    try {
+        $tables = $pdo->query("SHOW TABLES LIKE 'activity_logs'")->fetchAll();
+        if (!empty($tables)) {
+            $stmt = $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$user_id ?: 0, "Auth: {$action}", ($details ?: "Action: {$action} Status: {$status} Target: {$clean_email}"), $ip]);
+        }
+    } catch (Exception $e) {}
+
+    // 2. Log to audit_logs
+    try {
+        $tables = $pdo->query("SHOW TABLES LIKE 'audit_logs'")->fetchAll();
+        if (!empty($tables)) {
+            $stmt = $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'authentication', ?, ?, 'users', ?, ?, ?, ?, NOW())");
+            $stmt->execute([$user_id ?: null, $action, ($details ?: "{$action} - Status: {$status} ({$clean_email})"), $user_id ?: 0, $status, $ip, $ua]);
+        }
+    } catch (Exception $e) {}
+}
+}
+
 // ── Module Configuration Helpers ─────────────────────────────
 // Maps module_key → page_id values that belong to that module.
 // Used by sidebar filtering and page-level gate checks.

@@ -18,7 +18,7 @@ header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
 
-// Get token and email from URL (email-only flow)
+// Get token and email from URL
 $token = trim($_GET['token'] ?? '');
 $email = normalizePasswordResetEmail($_GET['email'] ?? '');
 
@@ -26,28 +26,26 @@ if (empty($token) || empty($email)) {
     $error = "Invalid reset request. Please request a new password reset.";
 } else {
     try {
-        // ── Auto-detect actual column names ──────────────────────────
         $cols     = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC), 'Field');
         $uid_col  = 'id';
         $pass_col = in_array('password_hash', $cols) ? 'password_hash' : 'password_hash';
         ensurePasswordResetTokensTable($pdo);
 
-        // ── Email path: validate via password_reset_tokens table ─────
+        $token_hash = hash('sha256', $token);
         $stmt = $pdo->prepare("
-            SELECT prt.user_id, prt.token, prt.is_used, prt.used_at,
+            SELECT prt.id AS token_id, prt.user_id, prt.token, prt.is_used, prt.used_at,
                    (prt.expires_at > NOW()) AS is_valid_time,
-                   u.username, TRIM(u.email) AS email,
-                   NULL AS reset_id
+                   u.username, TRIM(u.email) AS email
             FROM   password_reset_tokens prt
             JOIN   users u ON prt.user_id = u.`{$uid_col}`
             WHERE  prt.token      = ?
               AND  LOWER(TRIM(REPLACE(REPLACE(u.email, CHAR(13), ''), CHAR(10), '')))  = LOWER(?)
-              AND  prt.token_type = 'reset'
+              AND  prt.token_type = 'password_change'
               AND  LOWER(TRIM(u.status)) = 'active'
             ORDER BY prt.id DESC
             LIMIT  1
         ");
-        $stmt->execute([$token, $email]);
+        $stmt->execute([$token_hash, $email]);
         $token_data = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$token_data) {
@@ -71,7 +69,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
     $password = $_POST['password_hash'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
     
-    // Strong password validation
     $password_errors = [];
     if (strlen($password) < 8) {
         $password_errors[] = "Password must be at least 8 characters long.";
@@ -90,36 +87,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
     }
     
     if ($password !== $confirm_password) {
-        $password_errors[] = "Passwords do not match.";
+        $password_errors = ["Passwords do not match."];
     }
     
     if (empty($password_errors)) {
         try {
             $pdo->beginTransaction();
 
-            // ── Update password_hash (new column name) ──────────────────
             $hashed = password_hash($password, PASSWORD_BCRYPT);
             $pdo->prepare("UPDATE users SET `{$pass_col}` = ? WHERE `{$uid_col}` = ?")
                 ->execute([$hashed, $user_data['user_id']]);
 
-            // ── Mark OTP / token as used ────────────────────────────────
-            $pdo->prepare("UPDATE password_reset_tokens SET is_used = 1, used_at = NOW() WHERE user_id = ? AND token = ? AND token_type = 'reset'")
-                ->execute([$user_data['user_id'], $token]);
+            // Invalidate the password change token and any remaining reset tokens for this user
+            $pdo->prepare("UPDATE password_reset_tokens SET is_used = 1, used_at = NOW() WHERE user_id = ?")
+                ->execute([$user_data['user_id']]);
 
-            // ── Audit log ───────────────────────────────────────────────
-            $pdo->prepare(
-                "INSERT INTO activity_logs (user_id, action, details, ip_address)
-                 VALUES (?, 'Password Reset', 'Password successfully reset', ?)"
-            )->execute([$user_data['user_id'], $_SERVER['REMOTE_ADDR']]);
+            if (function_exists('log_auth_audit_trail')) {
+                log_auth_audit_trail($pdo, $user_data['user_id'], $email, 'PASSWORD_RESET_COMPLETED', 'SUCCESS', 'Password reset completed successfully');
+            }
 
             $pdo->commit();
 
-            $message      = "Your password has been successfully reset. You can now login with your new password.";
+            $message      = "Password reset successful. You can now log in.";
             $message_type = "success";
             $token_valid  = false;
 
         } catch (PDOException $e) {
-            $pdo->rollBack();
+            if ($pdo->inTransaction()) $pdo->rollBack();
             error_log("Password reset error: " . $e->getMessage());
             $error = "System error. Please try again later.";
         }
@@ -133,7 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reset Password | Petron Management System</title>
+    <title>Create New Password | Petron Management System</title>
     <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -269,7 +263,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
             text-shadow: 0 1px 4px rgba(0,0,0,.5);
         }
 
-        .alert-error, .alert-success, .alert-info {
+        .alert-error, .alert-success {
             display: flex;
             align-items: center;
             gap: 10px;
@@ -288,11 +282,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
             background: rgba(16,185,129,.12);
             border: 1px solid rgba(16,185,129,.35);
             color: #6ee7b7;
-        }
-        .alert-info {
-            background: rgba(59,130,246,.12);
-            border: 1px solid rgba(59,130,246,.35);
-            color: #93c5fd;
         }
         @keyframes shake {
             0%,100% { transform: translateX(0); }
@@ -385,9 +374,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
             display: none !important; visibility: hidden; pointer-events: none;
         }
 
-        .strength-bar { height: 4px; border-radius: 2px; margin-top: 8px; transition: all .3s; background: rgba(255,255,255,.15); }
-        .strength-text { font-size: 11px; font-weight: 600; margin-top: 5px; }
-
         .btn-login {
             width: 100%;
             padding: 14px;
@@ -472,124 +458,104 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
     <div class="login-wrap">
         <div class="login-card">
             <div class="brand">
-                <img src="<?php echo '../' . get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0)); ?>" alt="Petron Logo" class="brand-logo">
+                <img src="<?php echo '../' . get_system_logo_url(isset($station_id) ? (int)$station_id : 0); ?>" alt="Petron Logo" class="brand-logo">
                 <span class="brand-tagline">Station Management System</span>
             </div>
+
+            <h2 style="font-size: 18px; font-weight: 700; text-align: center; margin-bottom: 20px; color: #ffffff;">CREATE NEW PASSWORD</h2>
 
             <?php if ($error): ?>
                 <div class="alert-error">
                     <i class="fas fa-exclamation-circle"></i>
                     <span><?php echo htmlspecialchars($error); ?></span>
                 </div>
+                <?php if (!$token_valid && empty($message)): ?>
+                <div style="margin-top: 18px;">
+                    <a href="login.php" class="btn-login" style="text-decoration:none;">
+                        <i class="fas fa-sign-in-alt"></i>
+                        <span>BACK TO LOGIN</span>
+                    </a>
+                </div>
+                <?php endif; ?>
             <?php endif; ?>
 
             <?php if ($message): ?>
-                <div class="alert-success">
-                    <i class="fas fa-check-circle"></i>
-                    <span><?php echo $message; ?></span>
+                <div class="alert-success" style="padding: 16px; font-size: 14px; margin-bottom: 20px;">
+                    <i class="fas fa-check-circle" style="font-size: 18px;"></i>
+                    <span><?php echo htmlspecialchars($message); ?></span>
+                </div>
+                <div style="margin-top: 10px;">
+                    <a href="login.php?reset_success=1" class="btn-login" style="text-decoration:none;">
+                        <i class="fas fa-sign-in-alt"></i>
+                        <span>PROCEED TO LOGIN</span>
+                    </a>
                 </div>
             <?php endif; ?>
 
-            <?php if ($token_valid): ?>
-                <div class="alert-info">
-                    <i class="fas fa-info-circle"></i>
-                    <span>Resetting for: <strong><?php echo htmlspecialchars($user_data['email'] ?? $user_data['username']); ?></strong></span>
+            <?php if ($token_valid && empty($message)): ?>
+            <form method="POST" action="">
+                <div class="form-group">
+                    <label for="password_hash" class="field-label">New Password</label>
+                    <div class="input-wrap">
+                        <i class="fas fa-lock input-icon"></i>
+                        <input type="password" name="password_hash" id="password_hash" class="field-input"
+                               placeholder="Enter new password" required autofocus minlength="8" autocomplete="new-password">
+                        <button type="button" class="pw-toggle" id="pwToggle1" aria-label="Show or hide password">
+                            <i class="fas fa-eye" id="pwIcon1"></i>
+                        </button>
+                    </div>
                 </div>
 
-                <form method="POST" action="" id="resetForm">
-                    <div class="form-group">
-                        <label for="password_hash" class="field-label">New Password</label>
-                        <div class="input-wrap">
-                            <i class="fas fa-lock input-icon"></i>
-                            <input type="password" name="password_hash" id="password_hash" class="field-input"
-                                   placeholder="Enter new password" required autofocus>
-                            <button type="button" class="pw-toggle" id="togglePw1">
-                                <i class="fas fa-eye"></i>
-                            </button>
-                        </div>
-                        <div class="strength-bar" id="strengthBar"></div>
-                        <div class="strength-text" id="strengthText"></div>
+                <div class="form-group">
+                    <label for="confirm_password" class="field-label">Confirm Password</label>
+                    <div class="input-wrap">
+                        <i class="fas fa-check-double input-icon"></i>
+                        <input type="password" name="confirm_password" id="confirm_password" class="field-input"
+                               placeholder="Confirm new password" required minlength="8" autocomplete="new-password">
+                        <button type="button" class="pw-toggle" id="pwToggle2" aria-label="Show or hide confirm password">
+                            <i class="fas fa-eye" id="pwIcon2"></i>
+                        </button>
                     </div>
+                </div>
 
-                    <div class="form-group">
-                        <label for="confirm_password" class="field-label">Confirm Password</label>
-                        <div class="input-wrap">
-                            <i class="fas fa-lock input-icon"></i>
-                            <input type="password" name="confirm_password" id="confirm_password" class="field-input"
-                                   placeholder="Confirm new password" required>
-                            <button type="button" class="pw-toggle" id="togglePw2">
-                                <i class="fas fa-eye"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <button type="submit" class="btn-login" id="submitBtn">
-                        <i class="fas fa-check-circle"></i>
-                        <span id="btnText">Reset Password</span>
-                    </button>
-                </form>
+                <button type="submit" class="btn-login">
+                    <i class="fas fa-save"></i>
+                    <span>RESET PASSWORD</span>
+                </button>
+            </form>
             <?php endif; ?>
 
+            <?php if ($token_valid && empty($message)): ?>
             <div class="login-footer">
                 <a href="login.php">
-                    <i class="fas fa-arrow-left"></i> Back to Login
+                    <i class="fas fa-sign-in-alt"></i> BACK TO LOGIN
                 </a>
-                <?php if (!$token_valid && !$message): ?>
-                <a href="forgot_password.php">
-                    <i class="fas fa-redo"></i> Request New Reset
-                </a>
-                <?php endif; ?>
             </div>
+            <?php endif; ?>
         </div>
         <div class="page-footer">
             &copy; <?php echo date('Y'); ?> Petron Station Management System. All Rights Reserved.
         </div>
     </div>
 
-<script>
-function setupToggle(btnId, inputId) {
-    const btn = document.getElementById(btnId);
-    const inp = document.getElementById(inputId);
-    if (!btn || !inp) return;
-    btn.addEventListener('click', () => {
-        const show = inp.type === 'password';
-        inp.type = show ? 'text' : 'password';
-        btn.querySelector('i').className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        function setupPasswordToggle(toggleBtnId, inputId, iconId) {
+            var btn = document.getElementById(toggleBtnId);
+            var input = document.getElementById(inputId);
+            var icon = document.getElementById(iconId);
+            if (btn && input && icon) {
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    var isText = input.type === 'text';
+                    input.type = isText ? 'password' : 'text';
+                    icon.className = isText ? 'fas fa-eye' : 'fas fa-eye-slash';
+                });
+            }
+        }
+        setupPasswordToggle('pwToggle1', 'password_hash', 'pwIcon1');
+        setupPasswordToggle('pwToggle2', 'confirm_password', 'pwIcon2');
     });
-}
-setupToggle('togglePw1', 'password_hash');
-setupToggle('togglePw2', 'confirm_password');
-
-const pwInput = document.getElementById('password_hash');
-const bar = document.getElementById('strengthBar');
-const txt = document.getElementById('strengthText');
-if (pwInput && bar && txt) {
-    pwInput.addEventListener('input', () => {
-        const v = pwInput.value;
-        let score = 0;
-        if (v.length >= 8) score++;
-        if (/[A-Z]/.test(v)) score++;
-        if (/[a-z]/.test(v)) score++;
-        if (/[0-9]/.test(v)) score++;
-        if (/[^A-Za-z0-9]/.test(v)) score++;
-        const colors = ['#6b7280','#ef4444','#f59e0b','#3b82f6','#10b981','#10b981'];
-        const labels = ['','Weak','Fair','Good','Strong','Very Strong'];
-        bar.style.background = colors[score] || '#6b7280';
-        bar.style.width = (score * 20) + '%';
-        txt.textContent = labels[score] || '';
-        txt.style.color = colors[score] || '#6b7280';
-    });
-}
-
-const resetForm = document.getElementById('resetForm');
-const submitBtn = document.getElementById('submitBtn');
-const btnText = document.getElementById('btnText');
-if (resetForm) {
-    resetForm.addEventListener('submit', () => {
-        if (submitBtn) submitBtn.disabled = true;
-        if (btnText) btnText.textContent = 'Resetting...';
-    });
-}
-</script>
+    </script>
 </body>
 </html>

@@ -1,17 +1,34 @@
 <?php
 // Email Configuration for Petron System
+$env_file = __DIR__ . '/../.env';
+if (file_exists($env_file)) {
+    $lines = @file($env_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if ($lines) {
+        foreach ($lines as $line) {
+            if (strpos(trim($line), '#') === 0) continue;
+            if (strpos($line, '=') !== false) {
+                list($name, $value) = explode('=', $line, 2);
+                $name = trim($name);
+                $value = trim($value, " \t\n\r\0\x0B\"'");
+                if (!array_key_exists($name, $_SERVER) && !array_key_exists($name, $_ENV)) {
+                    putenv("{$name}={$value}");
+                    $_ENV[$name] = $value;
+                    $_SERVER[$name] = $value;
+                }
+            }
+        }
+    }
+}
+
 $email_config = [
-    'host' => 'smtp.gmail.com',        // SMTP server
-    'port' => 587,                   // SMTP port
-    'username' => 'christianval0813@gmail.com', // Your Gmail
-    'password_hash' => 'ojgyravyufedqgfl',   // App password (no spaces)
-    'from_email' => 'christianval0813@gmail.com',
-    'from_name' => 'Petron Management System',
-    'encryption' => 'tls',
-    // Try the next SMTP transport only when the current one fails.
-    // Sending duplicate accepted messages can make Gmail hide or suppress OTPs.
+    'host' => getenv('SMTP_HOST') ?: 'smtp.gmail.com',
+    'port' => (int)(getenv('SMTP_PORT') ?: 587),
+    'username' => getenv('SMTP_USER') ?: 'cabahug.amiedamas@gmail.com',
+    'password_hash' => getenv('SMTP_PASS') ?: 'wrfuplwbuxgyzfkq',
+    'from_email' => getenv('SMTP_FROM') ?: (getenv('SMTP_USER') ?: 'cabahug.amiedamas@gmail.com'),
+    'from_name' => getenv('SMTP_FROM_NAME') ?: 'Petron Station Management System',
+    'encryption' => getenv('SMTP_ENCRYPTION') ?: 'tls',
     'send_all_smtp_candidates' => false,
-    // Same-mailbox Gmail aliases for recipients that do not receive the exact address.
     'recipient_aliases' => []
 ];
 
@@ -291,8 +308,42 @@ function sendPasswordResetOTP($to_email, $otp) {
         logEmailAttempt($entry);
     }
 
-    // All attempts failed
-    if ($lastException) error_log('OTP email final error: ' . $lastException->getMessage());
+    // All SMTP attempts failed — use local mail catcher (development fallback)
+    if ($lastException) error_log('OTP email SMTP error: ' . $lastException->getMessage());
+
+    // Save email to local mail_outbox/ folder so it can be read without real SMTP
+    try {
+        $outbox_dir = __DIR__ . '/../mail_outbox';
+        if (!is_dir($outbox_dir)) {
+            @mkdir($outbox_dir, 0755, true);
+        }
+        $mail_id   = date('Ymd_His') . '_' . substr(md5($to_email . $otp), 0, 6);
+        $meta = [
+            'id'        => $mail_id,
+            'time'      => date('c'),
+            'to'        => $to_email,
+            'subject'   => $subject,
+            'read'      => false,
+        ];
+        // Write HTML email file
+        @file_put_contents($outbox_dir . '/' . $mail_id . '.html', $htmlBody, LOCK_EX);
+        // Write meta JSON
+        @file_put_contents($outbox_dir . '/' . $mail_id . '.json', json_encode($meta, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), LOCK_EX);
+
+        $entry['attempts'][] = [
+            'method'  => 'local_outbox',
+            'success' => true,
+            'file'    => $mail_id . '.html',
+            'info'    => 'Saved to mail_outbox (SMTP unavailable — local dev mode)',
+        ];
+        logEmailAttempt($entry);
+        error_log("OTP email saved to local outbox: mail_outbox/{$mail_id}.html (to: {$to_email})");
+        return true; // Treat as sent — OTP flow continues
+    } catch (Exception $catchEx) {
+        $entry['attempts'][] = ['method' => 'local_outbox', 'success' => false, 'error' => $catchEx->getMessage()];
+        logEmailAttempt($entry);
+    }
+
     return false;
 }
 

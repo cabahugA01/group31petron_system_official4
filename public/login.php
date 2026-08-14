@@ -22,7 +22,7 @@ $system_name = "Petron Station & Service Center Management System";
 $current_year = date("Y");
 $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
 
-// 2. Generate Math CAPTCHA (regenerate on every load, preserved across POST failure)
+// 2. Generate Math CAPTCHA (always fresh on every page load)
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_SESSION['captcha_answer'])) {
     $captcha_a = random_int(1, 12);
     $captcha_b = random_int(1, 12);
@@ -32,6 +32,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_SESSION['captcha_answer'])
 $captcha_question = $_SESSION['captcha_question'] ?? '? + ?';
 
 $error = '';
+$success_msg = '';
+$login_success = false;
+$dashboard_url = '';
+
+// Check for password reset success
+if (isset($_GET['reset_success']) && $_GET['reset_success'] === '1') {
+    $success_msg = 'Password reset successful. Please log in with your new password.';
+}
 
 // Check for login error from auth/login.php
 if (isset($_SESSION['login_error'])) {
@@ -44,8 +52,8 @@ header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
 
-// 1. Check if already logged in
-if (isset($_SESSION['user'])) {
+// 1. Check if already logged in (only on GET requests)
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && isset($_SESSION['user'])) {
     $userRole = $_SESSION['user']['role'] ?? 'staff';
     $role = function_exists('role_key') ? role_key($userRole) : strtolower(trim($userRole));
     if ($role === 'superadmin') {
@@ -313,17 +321,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['current_shift_key']  = $auto_shift_key;
                 $_SESSION['current_shift_label'] = $auto_shift_name;
 
-                // RBAC Redirect Logic
+                // Determine dashboard URL based on role
                 if ($role === 'superadmin') {
-                    header("Location: super_admin_dashboard.php");
+                    $dashboard_url = 'super_admin_dashboard.php';
                 } elseif ($role === 'admin') {
-                    header("Location: admin_dashboard.php");
+                    $dashboard_url = 'admin_dashboard.php';
                 } elseif ($role === 'manager') {
-                    header("Location: manager_dashboard.php");
+                    $dashboard_url = 'manager_dashboard.php';
                 } else {
-                    header("Location: staff_dashboard.php");
+                    $dashboard_url = 'staff_dashboard.php';
                 }
-                exit;
+                // Regenerate session ID for security
+                session_regenerate_id(true);
+
+                // Set login success flag so login.php renders its natural page with Login Successfully
+                $login_success = true;
             } else {
                 // Audit Logging: Failed Attempt
                 try {
@@ -365,6 +377,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             error_log($e->getMessage());
             $error = "System error. Please try again later.";
         }
+    }
+
+    // Always regenerate a brand new CAPTCHA on every failed attempt
+    if (!$login_success) {
+        $captcha_a = random_int(1, 12);
+        $captcha_b = random_int(1, 12);
+        $_SESSION['captcha_answer'] = $captcha_a + $captcha_b;
+        $_SESSION['captcha_question'] = "{$captcha_a} + {$captcha_b}";
+        $captcha_question = $_SESSION['captcha_question'];
     }
 }
 ?>
@@ -563,12 +584,24 @@ $_asset_base = $_login_base . '/assets';
             color: #ff8080;
             animation: shake .35s ease;
         }
+        .alert-success {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(16,185,129,.15);
+            border: 1px solid rgba(16,185,129,.4);
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 22px;
+            font-size: 13px;
+            color: #6ee7b7;
+        }
         @keyframes shake {
             0%,100% { transform: translateX(0); }
             25%      { transform: translateX(-6px); }
             75%      { transform: translateX(6px); }
         }
-        .alert-error i { flex-shrink: 0; font-size: 15px; }
+        .alert-error i, .alert-success i { flex-shrink: 0; font-size: 15px; }
 
         .form-group { margin-bottom: 18px; }
 
@@ -945,6 +978,7 @@ $_asset_base = $_login_base . '/assets';
         .captcha-box {
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 10px;
             width: 100%;
             box-sizing: border-box;
@@ -953,8 +987,7 @@ $_asset_base = $_login_base . '/assets';
             display: flex;
             align-items: center;
             justify-content: center;
-            flex-shrink: 0;
-            width: auto;
+            flex: 1;
             min-width: 0;
             padding: 0 14px;
             height: 48px;
@@ -964,7 +997,7 @@ $_asset_base = $_login_base . '/assets';
             color: #93c5fd;
             font-size: 16px;
             font-weight: 800;
-            letter-spacing: 1px;
+            letter-spacing: 1.5px;
             white-space: nowrap;
             box-shadow: 0 0 12px rgba(59,130,246,.2) inset;
             user-select: none;
@@ -974,22 +1007,23 @@ $_asset_base = $_login_base . '/assets';
             font-size: 20px;
             font-weight: 700;
             flex-shrink: 0;
+            padding: 0 2px;
         }
         .captcha-input {
-            flex: 1;
-            min-width: 0;
+            width: 85px;
+            flex: 0 0 85px;
             height: 48px;
             background: rgba(0,0,0,.45);
             border: 1.5px solid rgba(255,255,255,.15);
             border-radius: 12px;
             box-shadow: 0 2px 6px rgba(0,0,0,.35) inset;
-            padding: 0 12px;
+            padding: 0 8px;
             color: #ffffff;
             font-family: inherit;
             font-size: 18px;
             font-weight: 700;
             text-align: center;
-            letter-spacing: 4px;
+            letter-spacing: 1px;
             outline: none;
             transition: border-color .25s, box-shadow .25s;
             box-sizing: border-box;
@@ -1135,11 +1169,35 @@ $_asset_base = $_login_base . '/assets';
             <span class="brand-tagline">Station Management System</span>
         </div>
 
+        <!-- Success Banner on Login -->
+        <?php if ($login_success): ?>
+        <div class="alert-success" role="alert" style="display:flex;align-items:center;justify-content:center;gap:10px;padding:16px 20px;font-size:15px;font-weight:700;margin: 24px 0 16px;">
+            <i class="fas fa-check-circle" style="font-size:18px;"></i>
+            <span>Login Successfully</span>
+        </div>
+        <p style="text-align:center;color:rgba(200,225,255,.85);font-size:13px;margin:16px 0 8px;">
+            <i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Redirecting to your dashboard…
+        </p>
+        <script>
+        setTimeout(function(){
+            window.location.href = <?= json_encode($dashboard_url) ?>;
+        }, 1100);
+        </script>
+        <?php else: ?>
+
         <!-- Error Banner -->
         <?php if ($error): ?>
         <div class="alert-error" role="alert">
             <i class="fas fa-exclamation-circle"></i>
             <span><?php echo htmlspecialchars($error); ?></span>
+        </div>
+        <?php endif; ?>
+
+        <!-- Success Banner -->
+        <?php if ($success_msg): ?>
+        <div class="alert-success" role="alert">
+            <i class="fas fa-check-circle"></i>
+            <span><?php echo htmlspecialchars($success_msg); ?></span>
         </div>
         <?php endif; ?>
 
@@ -1227,6 +1285,7 @@ $_asset_base = $_login_base . '/assets';
                 <i class="fas fa-key" style="margin-right:5px;font-size:11px;opacity:.7;"></i>Forgot Password?
             </a>
         </div>
+        <?php endif; ?>
         </div><!-- /.login-card -->
 
     <div class="page-footer"><?php echo $footer_text; ?></div>
@@ -1237,6 +1296,7 @@ $_asset_base = $_login_base . '/assets';
 <script>
 (function () {
     var form       = document.getElementById('loginForm');
+    if (!form) return;
     var accountId  = document.getElementById('accountId');
     var pwField    = document.getElementById('passwordField');
     var pwToggle   = document.getElementById('pwToggle');
@@ -1366,7 +1426,17 @@ $_asset_base = $_login_base . '/assets';
     form.addEventListener('submit', function (e) {
         submitBtn.disabled = true;
         spinner.style.display = 'block';
-        btnText.innerHTML = 'Authenticating\u2026';
+        btnText.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;font-size:13px;"></i>Signing in\u2026';
+    });
+
+    // If PHP returned an error (page reload), always reset the button
+    // so the user is never stuck on "Authenticating..."
+    window.addEventListener('pageshow', function () {
+        if (submitBtn.disabled) {
+            submitBtn.disabled = false;
+            if (spinner) spinner.style.display = 'none';
+            btnText.innerHTML = '<i class="fas fa-sign-in-alt" style="margin-right:6px;font-size:13px;"></i>Login';
+        }
     });
 }());
 </script>

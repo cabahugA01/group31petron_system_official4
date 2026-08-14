@@ -33,20 +33,29 @@ if (!function_exists('ensurePasswordResetTokensTable')) {
 function ensurePasswordResetTokensTable(PDO $pdo) {
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS `password_reset_tokens` (
-            `id`         INT(11)     NOT NULL AUTO_INCREMENT,
-            `user_id`    INT(11)     NOT NULL,
-            `token`      VARCHAR(10) NOT NULL,
-            `token_type` VARCHAR(20) NOT NULL DEFAULT 'reset',
-            `expires_at` DATETIME    NOT NULL,
-            `used_at`    DATETIME    DEFAULT NULL,
-            `ip_address` VARCHAR(45) DEFAULT NULL,
-            `is_used`    TINYINT(1)  NOT NULL DEFAULT 0,
-            `created_at` TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `id`         INT(11)      NOT NULL AUTO_INCREMENT,
+            `user_id`    INT(11)      NOT NULL,
+            `token`      VARCHAR(255) NOT NULL,
+            `token_type` VARCHAR(20)  NOT NULL DEFAULT 'reset',
+            `expires_at` DATETIME     NOT NULL,
+            `used_at`    DATETIME     DEFAULT NULL,
+            `ip_address` VARCHAR(45)  DEFAULT NULL,
+            `is_used`    TINYINT(1)   NOT NULL DEFAULT 0,
+            `attempts`   INT(11)      NOT NULL DEFAULT 0,
+            `created_at` TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (`id`),
             INDEX `idx_reset_user_type` (`user_id`, `token_type`, `is_used`),
             INDEX `idx_reset_token_type` (`token`, `token_type`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
+    try {
+        $cols = array_column($pdo->query("SHOW COLUMNS FROM `password_reset_tokens`")->fetchAll(PDO::FETCH_ASSOC), 'Field');
+        if (!in_array('attempts', $cols)) {
+            $pdo->exec("ALTER TABLE `password_reset_tokens` ADD COLUMN `attempts` INT(11) NOT NULL DEFAULT 0");
+        }
+        $pdo->exec("ALTER TABLE `password_reset_tokens` MODIFY COLUMN `token` VARCHAR(255) NOT NULL");
+        $pdo->exec("ALTER TABLE `password_reset_tokens` MODIFY COLUMN `token_type` VARCHAR(50) NOT NULL DEFAULT 'reset'");
+    } catch (Exception $e) {}
 }
 }
 

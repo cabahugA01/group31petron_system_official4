@@ -29,9 +29,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->prepare("UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?")
             ->execute([password_hash($new_password, PASSWORD_DEFAULT), $me['id']]);
 
-        try { log_activity($pdo, $me['id'], 'Change Password', 'User changed their own password'); } catch (Exception $e) {}
+        // Save successful change to Audit Trail
+        try {
+            $user_role_disp = ucfirst(strtolower($me['role'] ?? 'staff'));
+            $user_name_disp = $me['name'] ?? $me['username'] ?? "User #{$me['id']}";
+            $audit_detail   = "{$user_name_disp} ({$user_role_disp}) successfully changed account password";
 
-        $msg = 'Password changed successfully!';
+            // 1. Log to audit_logs
+            $tables = $pdo->query("SHOW TABLES LIKE 'audit_logs'")->fetchAll();
+            if (!empty($tables)) {
+                $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at)
+                               VALUES (?, 'authentication', 'Password Change', ?, 'users', ?, 'Success', ?, ?, NOW())")
+                    ->execute([
+                        $me['id'],
+                        $audit_detail,
+                        $me['id'],
+                        $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
+                        $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown'
+                    ]);
+            }
+
+            // 2. Log to activity_logs
+            $tables_act = $pdo->query("SHOW TABLES LIKE 'activity_logs'")->fetchAll();
+            if (!empty($tables_act)) {
+                $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, 'Password Change', ?, ?)")
+                    ->execute([$me['id'], $audit_detail, $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0']);
+            }
+        } catch (Exception $e) {}
+
+        $msg = 'Password changed successfully! Your account security has been updated.';
     } catch (Exception $e) {
         $error = $e->getMessage();
     }

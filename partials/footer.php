@@ -1126,6 +1126,53 @@
         });
     }
   </script>
+
+  <!-- ── GLOBAL LOGOUT CONFIRMATION MODAL ── -->
+  <div id="globalLogoutModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:999999;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px);">
+      <div style="background:#ffffff;border-radius:16px;max-width:400px;width:100%;padding:28px 24px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.35);animation:logoutPop 0.2s ease;">
+          <div style="width:60px;height:60px;border-radius:50%;background:#fee2e2;color:#dc2626;display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 16px;">
+              <i class="fas fa-sign-out-alt"></i>
+          </div>
+          <h3 style="margin:0 0 8px;font-size:18px;font-weight:800;color:#002244;">Log Out Confirmation</h3>
+          <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">Are you sure you want to log out?</p>
+          <div style="display:flex;gap:12px;justify-content:center;">
+              <button type="button" onclick="closeGlobalLogoutModal()" style="flex:1;padding:10px 16px;border:1px solid #cbd5e1;background:#f8fafc;color:#475569;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;transition:all 0.2s;">
+                  Cancel
+              </button>
+              <a href="<?= isset($public_base_url) ? htmlspecialchars($public_base_url . '/logout.php') : 'logout.php' ?>" style="flex:1;padding:10px 16px;border:none;background:#dc2626;color:#ffffff;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;">
+                  <i class="fas fa-sign-out-alt"></i> Logout
+              </a>
+          </div>
+      </div>
+  </div>
+
+  <style>
+  @keyframes logoutPop {
+      from { opacity: 0; transform: scale(0.92); }
+      to   { opacity: 1; transform: scale(1); }
+  }
+  </style>
+
+  <script>
+  function openGlobalLogoutModal() {
+      var m = document.getElementById('globalLogoutModal');
+      if (m) m.style.display = 'flex';
+  }
+  function closeGlobalLogoutModal() {
+      var m = document.getElementById('globalLogoutModal');
+      if (m) m.style.display = 'none';
+  }
+  // Close on backdrop click
+  document.addEventListener('DOMContentLoaded', function() {
+      var m = document.getElementById('globalLogoutModal');
+      if (m) {
+          m.addEventListener('click', function(e) {
+              if (e.target === this) closeGlobalLogoutModal();
+          });
+      }
+  });
+  </script>
+
   <script src="<?= isset($app_base_path) ? $app_base_path : '' ?>/assets/js/live_sync.js?v=<?= time() ?>"></script>
 </body>
 </html>
