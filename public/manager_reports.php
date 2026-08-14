@@ -1242,19 +1242,12 @@ function exportReport(type) {
 
     if (type === 'pdf') {
         const pdfBtn = document.querySelector('.rpt-btn-pdf');
+        const origHTML = pdfBtn ? pdfBtn.innerHTML : '';
         if (pdfBtn) {
-            const origHTML = pdfBtn.innerHTML;
-            pdfBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Opening PDF dialog...';
+            pdfBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating PDF...';
             pdfBtn.disabled  = true;
-            _doDirectNativePrint(function() {
-                pdfBtn.innerHTML = origHTML;
-                pdfBtn.disabled  = false;
-            });
-        } else {
-            _doDirectNativePrint();
         }
-        return;
-    }
+
         const headerElem = printableArea.querySelector('.rpt-header-title');
         let title = '';
         const metaLines = [];
@@ -1329,7 +1322,13 @@ function exportReport(type) {
         })
         .catch(err => {
             console.error('PDF download error:', err);
-            alert('Could not generate PDF file. Please try again.');
+            _doDirectNativePrint();
+        })
+        .finally(() => {
+            if (pdfBtn) {
+                pdfBtn.innerHTML = origHTML;
+                pdfBtn.disabled  = false;
+            }
         });
         return;
     }
@@ -1367,7 +1366,7 @@ function exportReport(type) {
                 const cols = r.querySelectorAll('th, td');
                 const rowData = [];
                 cols.forEach(c => rowData.push('"' + c.innerText.replace(/"/g, '""').trim() + '"'));
-                csv += rowData.join(',') + '\n';
+                if (rowData.length) csv += rowData.join(',') + '\n';
             });
             csv += '\n';
         });
@@ -1404,7 +1403,7 @@ function exportReport(type) {
                 const cols = r.querySelectorAll('th, td');
                 const rowData = [];
                 cols.forEach(c => rowData.push(c.innerText.trim()));
-                masterData.push(rowData);
+                if (rowData.length) masterData.push(rowData);
             });
             masterData.push([]);
         });

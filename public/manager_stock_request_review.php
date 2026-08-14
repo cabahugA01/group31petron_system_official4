@@ -1206,35 +1206,50 @@ body .main,
     flex-wrap: wrap;
 }
 .btn-forward {
-    background: #fff !important;
-    color: #002F6C !important;
+    background: #002F6C !important;
+    color: #ffffff !important;
     border: 1.5px solid #002F6C !important;
-    padding: 10px 22px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: flex-end;
-    gap: 8px;
-    transition: all 0.15s;
+    padding: 10px 22px !important;
+    height: 42px !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    transition: all 0.15s ease-in-out !important;
+    box-shadow: 0 2px 4px rgba(0, 47, 108, 0.15) !important;
 }
-.btn-forward:hover { background: #eff6ff !important; }
+.btn-forward:hover {
+    background: #001f4d !important;
+    border-color: #001f4d !important;
+    color: #ffffff !important;
+}
 .btn-return-req {
-    background: #fff !important;
+    background: #ffffff !important;
     color: #b91c1c !important;
     border: 1.5px solid #fca5a5 !important;
-    padding: 10px 22px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: flex-end;
-    gap: 8px;
-    transition: background 0.15s;
+    padding: 10px 22px !important;
+    height: 42px !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    transition: background 0.15s ease-in-out !important;
 }
-.btn-return-req:hover { background: #fee2e2 !important; }
+.btn-return-req:hover {
+    background: #fee2e2 !important;
+}
 .btn-cancel-inline {
     background: #fff !important;
     color: #475569 !important;
@@ -1508,9 +1523,14 @@ body .main,
                                             <tbody>
                                                 <?php foreach ($group['items'] as $item):
                                                     $item_sku = $item['item_sku'] ?: '—';
-                                                    $curr_stock = number_format((float)($item['current_stock'] ?? 0), 2);
-                                                    $reorder_lvl = number_format((float)($item['reorder_level'] ?? 0), 2);
                                                     $item_unit = $item['unit'] ?: 'pcs';
+                                                    $curr_stock_val = (float)($item['current_stock'] ?? 0);
+                                                    $reorder_lvl_val = (float)($item['reorder_level'] ?? 0);
+                                                    $clean_unit = strtolower(trim((string)$item_unit));
+                                                    $is_discrete = in_array($clean_unit, ['pcs', 'pc', 'piece', 'pieces', 'box', 'boxes', 'bottle', 'bottles', 'can', 'cans', 'unit', 'units', 'pack', 'packs', 'set', 'sets', 'tube', 'tubes', 'bag', 'bags', 'container', 'containers', 'pouch', 'pouches'], true) || floor($curr_stock_val) == $curr_stock_val;
+                                                    $is_reorder_discrete = in_array($clean_unit, ['pcs', 'pc', 'piece', 'pieces', 'box', 'boxes', 'bottle', 'bottles', 'can', 'cans', 'unit', 'units', 'pack', 'packs', 'set', 'sets', 'tube', 'tubes', 'bag', 'bags', 'container', 'containers', 'pouch', 'pouches'], true) || floor($reorder_lvl_val) == $reorder_lvl_val;
+                                                    $curr_stock = $is_discrete ? number_format($curr_stock_val, 0) : number_format($curr_stock_val, 2);
+                                                    $reorder_lvl = $is_reorder_discrete ? number_format($reorder_lvl_val, 0) : number_format($reorder_lvl_val, 2);
                                                     $prod_id = $item['product_id'] ?: $item['id'];
                                                     $formatted_prod_id = 'P' . str_pad($prod_id, 4, '0', STR_PAD_LEFT);
                                                     $sr_id = $item['id'];
@@ -1528,7 +1548,7 @@ body .main,
                                                     <td style="padding: 10px 12px; text-align: center; font-weight: 600; color: <?= $is_below ? '#dc2626' : '#16a34a' ?>;"><?= $curr_stock ?></td>
                                                     <td style="padding: 10px 12px; text-align: center; color: #dc2626; font-weight: 600;"><?= $reorder_lvl ?></td>
                                                     <td style="padding: 10px 12px; text-align: center;">
-                                                        <input type="number" name="quantities[<?= $prod_id ?>]" min="1" step="1" placeholder="0"
+                                                        <input type="number" name="quantities[<?= $prod_id ?>]" min="1" step="1" placeholder="0" value=""
                                                             class="merch-qty-input" data-key="<?= $safe_key ?>"
                                                             style="width: 80px; padding: 5px 8px; border: 1.5px solid #93c5fd; border-radius: 6px; text-align: center; font-weight: 700; font-family: inherit;"
                                                             oninput="updateMerchSummary('<?= $safe_key ?>')">
@@ -1769,7 +1789,7 @@ body .main,
                                                         </td>
                                                         <td style="padding: 11px 12px; text-align: center; color: #dc2626; font-weight: 700;"><?= $reorder_lvl ?> L</td>
                                                         <td style="padding: 11px 12px; text-align: center;">
-                                                            <input type="number" name="fuel_quantities[<?= $prod_id ?>]" min="1" step="any" placeholder="0"
+                                                            <input type="number" name="fuel_quantities[<?= $prod_id ?>]" min="1" step="any" placeholder="0" value=""
                                                                 class="fuel-qty-input" data-key="<?= $safe_key ?>"
                                                                 style="width: 110px; padding: 6px 8px; border: 1.5px solid #cbd5e1; border-radius: 6px; text-align: center; font-weight: 700; font-family: inherit; font-size: 13px;"
                                                                 oninput="updateFuelSummary('<?= $safe_key ?>')"
@@ -1801,7 +1821,7 @@ body .main,
                                             <button type="button" class="btn-return-req" onclick="openReturnPrModal('<?= htmlspecialchars($group['pr_number'], ENT_QUOTES) ?>', 'fuel', '<?= $item_ids_str ?>')">
                                                 <i class="fas fa-undo"></i> Return Request
                                             </button>
-                                            <button type="submit" class="btn-forward" style="color: #002F6C !important; border-color: #002F6C !important; padding: 0 22px !important;">
+                                            <button type="submit" class="btn-forward">
                                                 <i class="fas fa-file-invoice"></i> Generate Purchase Order
                                             </button>
                                         </div>
@@ -2191,43 +2211,67 @@ function formatMoney(value) {
 }
 
 function updateMerchSummary(key) {
-    var form = document.getElementById('form_' + key);
-    if (!form) return;
-    var qtyInputs = form.querySelectorAll('.merch-qty-input');
-    var totalQty = 0;
+    var container = document.getElementById('form_' + key) || document.querySelector('[data-pr-key="' + key + '"]') || document;
+    var rows = container.querySelectorAll('tbody tr');
     var grandTotal = 0;
+    var totalQty = 0;
 
-    qtyInputs.forEach(function(input) {
-        var qty = parseFloat(input.value) || 0;
-        var cost = parseFloat(input.dataset.unitCost) || 0;
+    rows.forEach(function(tr) {
+        var qtyInput = tr.querySelector('.merch-qty-input');
+        var costInput = tr.querySelector('.merch-cost-input');
+        if (!qtyInput && !costInput) return;
+
+        var qty = parseFloat(qtyInput ? qtyInput.value : 0) || 0;
+        var cost = parseFloat(costInput ? costInput.value : 0) || 0;
         var rowTotal = qty * cost;
-        totalQty += qty;
         grandTotal += rowTotal;
-        var rowTotalEl = document.getElementById('total_' + input.dataset.itemId);
-        if (rowTotalEl) {
-            rowTotalEl.textContent = formatMoney(rowTotal);
-        }
+        totalQty += qty;
     });
 
-    var countEl = document.getElementById('summary_count_' + key);
-    var totalEl = document.getElementById('summary_total_' + key);
-    if (countEl) countEl.textContent = totalQty;
-    if (totalEl) totalEl.textContent = formatMoney(grandTotal);
+    var totalEl = document.getElementById('merch_total_' + key) || document.getElementById('summary_total_' + key);
+    if (totalEl) {
+        totalEl.textContent = 'PHP ' + grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
 }
 
 function updateFuelSummary(key) {
-    var form = document.getElementById('form_' + key);
-    if (!form) return;
-    var litersInput = form.querySelector('.fuel-liters-input');
-    var liters = parseFloat(litersInput ? litersInput.value : 0) || 0;
-    var cost = parseFloat(litersInput ? litersInput.dataset.costPerLiter : 0) || 0;
-    var total = liters * cost;
+    var container = document.getElementById('form_' + key) || document.querySelector('[data-pr-key="' + key + '"]') || document;
+    var rows = container.querySelectorAll('tbody tr');
+    var grandTotal = 0;
 
-    var calcEl = document.getElementById('calc_total_' + key);
-    var summaryEl = document.getElementById('summary_total_' + key);
-    if (calcEl) calcEl.textContent = formatMoney(total);
-    if (summaryEl) summaryEl.textContent = formatMoney(total);
+    rows.forEach(function(tr) {
+        var qtyInput = tr.querySelector('.fuel-qty-input');
+        var costInput = tr.querySelector('.fuel-cost-input');
+        if (!qtyInput && !costInput) return;
+
+        var liters = parseFloat(qtyInput ? qtyInput.value : 0) || 0;
+        var cost = parseFloat(costInput ? costInput.value : 0) || 0;
+        var rowTotal = liters * cost;
+        grandTotal += rowTotal;
+    });
+
+    var totalEl = document.getElementById('fuel_total_' + key) || document.getElementById('summary_total_' + key);
+    if (totalEl) {
+        totalEl.textContent = 'PHP ' + grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
 }
+
+// Automatically calculate grand totals when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    var keys = new Set();
+    document.querySelectorAll('.merch-qty-input, .merch-cost-input').forEach(function(el) {
+        var k = el.getAttribute('data-key');
+        if (k) keys.add(k);
+    });
+    keys.forEach(function(k) { updateMerchSummary(k); });
+
+    var fkeys = new Set();
+    document.querySelectorAll('.fuel-qty-input, .fuel-cost-input').forEach(function(el) {
+        var k = el.getAttribute('data-key');
+        if (k) fkeys.add(k);
+    });
+    fkeys.forEach(function(k) { updateFuelSummary(k); });
+});
 
 function filterPurchaseHistory() {
     var search = (document.getElementById('histSearchPo')?.value || '').toLowerCase().trim();

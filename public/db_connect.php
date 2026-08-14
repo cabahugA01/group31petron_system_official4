@@ -145,3 +145,36 @@ try {
 } catch (Exception $e) {
     error_log("customer_credit_transactions self-healing error: " . $e->getMessage());
 }
+
+// ── Self-healing Database schema for stock_request_audit & fuel_stock_request_audit ──
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS stock_request_audit (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        stock_request_id INT NULL,
+        request_id INT NULL,
+        action_type VARCHAR(100) NOT NULL,
+        performed_by INT NULL,
+        performed_by_role VARCHAR(50) NULL,
+        old_status VARCHAR(100) NULL,
+        new_status VARCHAR(100) NULL,
+        notes TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_stock_req_id (stock_request_id),
+        INDEX idx_req_id (request_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS fuel_stock_request_audit (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        request_id INT NULL,
+        action_type VARCHAR(100) NOT NULL,
+        performed_by INT NULL,
+        performed_by_role VARCHAR(50) NULL,
+        old_status VARCHAR(100) NULL,
+        new_status VARCHAR(100) NULL,
+        notes TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_fuel_req_id (request_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (Exception $e) {
+    error_log("stock_request_audit self-healing error: " . $e->getMessage());
+}

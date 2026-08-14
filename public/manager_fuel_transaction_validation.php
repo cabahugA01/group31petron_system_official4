@@ -1358,17 +1358,17 @@ input[type="checkbox"]:indeterminate {
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                     <div class="form-group">
                         <label>Beginning Reading</label>
-                        <input type="number" step="0.01" id="adj_beginning" name="beginning" oninput="calcAdjTotals()">
+                        <input type="text" inputmode="decimal" autocomplete="off" id="adj_beginning" name="beginning" oninput="formatAutoCommaDot(this); calcAdjTotals();" onblur="formatAutoCommaDotOnBlur(this); calcAdjTotals();">
                     </div>
                     <div class="form-group">
                         <label>Ending Reading</label>
-                        <input type="number" step="0.01" id="adj_ending" name="ending" oninput="calcAdjTotals()">
+                        <input type="text" inputmode="decimal" autocomplete="off" id="adj_ending" name="ending" oninput="formatAutoCommaDot(this); calcAdjTotals();" onblur="formatAutoCommaDotOnBlur(this); calcAdjTotals();">
                     </div>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                     <div class="form-group">
                         <label>Calibration</label>
-                        <input type="number" step="0.01" id="adj_calibration" name="calibration" oninput="calcAdjTotals()">
+                        <input type="text" inputmode="decimal" autocomplete="off" id="adj_calibration" name="calibration" oninput="formatAutoCommaDot(this); calcAdjTotals();" onblur="formatAutoCommaDotOnBlur(this); calcAdjTotals();">
                     </div>
                     <div class="form-group">
                         <label>Price per Liter</label>
@@ -2065,6 +2065,72 @@ function printSelected() {
 // BATCH ADJUST FUNCTIONS
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
+// Number formatting helper with automatic commas and dot
+function formatAutoCommaDot(el) {
+    if (!el) return;
+    let val = el.value || '';
+    let rawPos = el.selectionStart || 0;
+    let digitsBeforeCursor = (val.substring(0, rawPos).match(/[0-9.]/g) || []).length;
+
+    let clean = val.replace(/[^0-9.]/g, '');
+    let parts = clean.split('.');
+    if (parts.length > 2) {
+        clean = parts[0] + '.' + parts.slice(1).join('');
+        parts = clean.split('.');
+    }
+
+    let integerPart = parts[0] || '';
+    let decimalPart = parts.length > 1 ? parts[1] : null;
+
+    if (integerPart !== '') {
+        integerPart = parseInt(integerPart, 10).toLocaleString('en-US');
+    }
+
+    let formatted = integerPart;
+    if (decimalPart !== null) {
+        decimalPart = decimalPart.substring(0, 2);
+        formatted += '.' + decimalPart;
+    }
+
+    el.value = formatted;
+
+    if (document.activeElement === el) {
+        let newPos = 0;
+        let digitsCount = 0;
+        for (let i = 0; i < formatted.length; i++) {
+            if (/[0-9.]/.test(formatted[i])) {
+                digitsCount++;
+            }
+            if (digitsCount === digitsBeforeCursor) {
+                newPos = i + 1;
+                break;
+            }
+        }
+        if (newPos === 0) newPos = formatted.length;
+        try {
+            el.setSelectionRange(newPos, newPos);
+        } catch (e) {}
+    }
+}
+
+function formatAutoCommaDotOnBlur(el) {
+    if (!el) return;
+    let val = (el.value || '').toString().replace(/,/g, '');
+    let num = parseFloat(val);
+    if (!isNaN(num)) {
+        el.value = num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    } else {
+        el.value = '0.00';
+    }
+}
+
+function getRawNumber(elId) {
+    const el = document.getElementById(elId);
+    if (!el) return 0;
+    const raw = (el.value || '').toString().replace(/,/g, '');
+    return parseFloat(raw) || 0;
+}
+
 // Open Batch Adjust Modal
 function openBatchAdjust() {
     const selected = getSelectedTransactions();
@@ -2080,10 +2146,15 @@ function openBatchAdjust() {
     const singleFields = document.getElementById('singleAdjustFields');
     if (selected.length === 1) {
         const tx = selected[0];
-        document.getElementById('adj_beginning').value = parseFloat(tx.previous_reading || 0).toFixed(2);
-        document.getElementById('adj_ending').value = parseFloat(tx.present_reading || 0).toFixed(2);
-        document.getElementById('adj_calibration').value = parseFloat(tx.calibration || 0).toFixed(2);
-        document.getElementById('adj_price').value = parseFloat(tx.price_per_liter || 0).toFixed(2);
+        const begVal = parseFloat(tx.previous_reading || 0);
+        const endVal = parseFloat(tx.present_reading || 0);
+        const calVal = parseFloat(tx.calibration || 0);
+        const prcVal = parseFloat(tx.price_per_liter || 0);
+
+        document.getElementById('adj_beginning').value = begVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('adj_ending').value = endVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('adj_calibration').value = calVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('adj_price').value = prcVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         singleFields.style.display = 'block';
         calcAdjTotals();
     } else {
@@ -2094,18 +2165,18 @@ function openBatchAdjust() {
 }
 
 function calcAdjTotals() {
-    const beg = parseFloat(document.getElementById('adj_beginning').value) || 0;
-    const end = parseFloat(document.getElementById('adj_ending').value) || 0;
-    const cal = parseFloat(document.getElementById('adj_calibration').value) || 0;
-    const price = parseFloat(document.getElementById('adj_price').value) || 0;
+    const beg = getRawNumber('adj_beginning');
+    const end = getRawNumber('adj_ending');
+    const cal = getRawNumber('adj_calibration');
+    const price = getRawNumber('adj_price');
 
     let liters = end - beg - cal;
     if (liters < 0) liters = 0;
 
     const amount = liters * price;
 
-    document.getElementById('adj_liters_val').textContent = liters.toFixed(2) + ' L';
-    document.getElementById('adj_amount_val').textContent = '₱' + amount.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('adj_liters_val').textContent = liters.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
+    document.getElementById('adj_amount_val').textContent = '₱' + amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 
 // Confirm Batch Adjust
@@ -2134,9 +2205,9 @@ async function confirmBatchAdjust() {
             formData.append('remarks', reason);
             
             if (selected.length === 1) {
-                formData.append('beginning', document.getElementById('adj_beginning').value);
-                formData.append('ending', document.getElementById('adj_ending').value);
-                formData.append('calibration', document.getElementById('adj_calibration').value);
+                formData.append('beginning', getRawNumber('adj_beginning'));
+                formData.append('ending', getRawNumber('adj_ending'));
+                formData.append('calibration', getRawNumber('adj_calibration'));
             }
             
             const response = await fetch('', {

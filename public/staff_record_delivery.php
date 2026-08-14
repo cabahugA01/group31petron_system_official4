@@ -916,8 +916,8 @@ include __DIR__ . '/../partials/header.php';
 ?>
 <div class="stock-page">
 <style>
-.stock-page{overflow-x:hidden;max-width:100%;padding:0 !important;margin:0 !important;}
-.main, .main-content { padding-top: 0 !important; }
+.stock-page{overflow-x:hidden;max-width:100%;padding:0 0 120px 0 !important;margin:0 !important;}
+.main, .main-content, body { padding-bottom: 120px !important; }
 /* Page Header */
 .page-header { 
     display:flex; justify-content:space-between; gap:16px; align-items:center;
@@ -1734,17 +1734,15 @@ body[data-page="staff_record_delivery"] .main {
                     <!-- Inline delivery form -->
                     <tr id="detail_<?= $safe_key ?>" style="display:none;">
                         <td colspan="6" style="padding:0; background:#f8fafc; border:none !important;">
-                            <div style="position:relative;">
-                                <!-- Scrollable Content Area -->
-                                <div class="delivery-detail-scroll" style="max-height:calc(100vh - 180px); overflow-y:auto;">
-                                    <!-- Header bar -->
-                                    <div style="background:#002F70; padding:14px 24px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:10;">
-                                        <i class="fas fa-boxes" style="color:#fff; font-size:16px;"></i>
-                                        <span style="font-size:14px; font-weight:800; color:#fff; letter-spacing:0.3px;">
-                                            Merchandise Delivery — <?= htmlspecialchars($po['po_number']) ?>
-                                        </span>
-                                    </div>
-                                    <div style="padding:20px 24px; flex:1; overflow-y:auto;">
+                            <div style="position:relative; background:#f8fafc; border-bottom: 2px solid #cbd5e1;">
+                                <!-- Header bar -->
+                                <div style="background:#002F70; padding:14px 24px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:10;">
+                                    <i class="fas fa-boxes" style="color:#fff; font-size:16px;"></i>
+                                    <span style="font-size:14px; font-weight:800; color:#fff; letter-spacing:0.3px;">
+                                        Merchandise Delivery — <?= htmlspecialchars($po['po_number']) ?>
+                                    </span>
+                                </div>
+                                <div style="padding:20px 24px 10px 24px;">
                                     <div style="font-size:10.5px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;"><i class="fas fa-file-invoice" style="margin-right:5px;"></i> Purchase Order Information (Read Only)</div>
                                     <!-- PO Info -->
                                     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:14px 18px; margin-bottom:18px; display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; font-size:12px;">
@@ -1828,13 +1826,13 @@ body[data-page="staff_record_delivery"] .main {
                                                 </tbody>
                                             </table>
                                         </div>
+                                        <!-- Clean Action Buttons (No Box) -->
+                                        <div style="padding:16px 0 30px 0; display:flex; gap:12px; justify-content:flex-end; align-items:center;">
+                                            <button type="button" class="txn-btn secondary" onclick="toggleInlineDelivery('<?= $safe_key ?>')">Cancel</button>
+                                            <button type="submit" class="txn-btn primary"><i class="fas fa-paper-plane"></i> Submit Delivery</button>
+                                        </div>
                                     </form>
                                 </div>
-                                </div>
-                                <!-- Fixed Action Buttons -->
-                                <div style="background:#fff; padding:16px 24px; border-top:2px solid #e2e8f0; border-bottom:none; display:flex; gap:10px; justify-content:flex-end;">
-                                    <button type="button" class="txn-btn secondary" onclick="toggleInlineDelivery('<?= $safe_key ?>')">Cancel</button>
-                                    <button type="submit" form="merch-form-<?= $safe_key ?>" class="txn-btn primary"><i class="fas fa-paper-plane"></i> Submit Delivery</button>
                                 </div>
                             </div>
                         </td>
@@ -2109,17 +2107,15 @@ body[data-page="staff_record_delivery"] .main {
                     <!-- Inline fuel delivery form -->
                     <tr id="detail_<?= $safe_fkey ?>" style="display:none;">
                         <td colspan="6" style="padding:0; background:#f8fafc; border:none !important;">
-                            <div style="position:relative;">
-                                <!-- Scrollable Content Area -->
-                                <div class="delivery-detail-scroll" style="max-height:calc(100vh - 180px); overflow-y:auto;">
-                                    <!-- Header bar -->
-                                    <div style="background:#002F70; padding:14px 24px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:10;">
-                                        <i class="fas fa-gas-pump" style="color:#fff; font-size:16px;"></i>
-                                        <span style="font-size:14px; font-weight:800; color:#fff; letter-spacing:0.3px;">
-                                            Fuel Delivery — <?= htmlspecialchars($po['po_number']) ?>
-                                        </span>
+                            <div style="position:relative; background:#f8fafc; border-bottom: 2px solid #cbd5e1;">
+                                <!-- Header bar -->
+                                <div style="background:#002F70; padding:14px 24px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:10;">
+                                    <i class="fas fa-gas-pump" style="color:#fff; font-size:16px;"></i>
+                                    <span style="font-size:14px; font-weight:800; color:#fff; letter-spacing:0.3px;">
+                                        Fuel Delivery — <?= htmlspecialchars($po['po_number']) ?>
+                                    </span>
                                 </div>
-                                <div style="padding:20px 24px;">
+                                <div style="padding:20px 24px 10px 24px;">
                                     <div style="font-size:10.5px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;"><i class="fas fa-file-invoice" style="margin-right:5px;"></i> Purchase Order Information (Read Only)</div>
                                     <!-- PO Info -->
                                     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:14px 18px; margin-bottom:18px; display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; font-size:12px;">
@@ -2201,13 +2197,12 @@ body[data-page="staff_record_delivery"] .main {
                                                 </tbody>
                                             </table>
                                         </div>
+                                        <!-- Clean Action Buttons (No Box) -->
+                                        <div style="padding:16px 0 30px 0; display:flex; gap:12px; justify-content:flex-end; align-items:center;">
+                                            <button type="button" class="txn-btn secondary" onclick="toggleInlineDelivery('<?= $safe_fkey ?>')">Cancel</button>
+                                            <button type="submit" class="txn-btn primary"><i class="fas fa-paper-plane"></i> Submit Delivery</button>
+                                        </div>
                                     </form>
-                                </div>
-                                </div>
-                                <!-- Fixed Action Buttons -->
-                                <div style="background:#fff; padding:16px 24px; border-top:2px solid #e2e8f0; border-bottom:none; display:flex; gap:10px; justify-content:flex-end;">
-                                    <button type="button" class="txn-btn secondary" onclick="toggleInlineDelivery('<?= $safe_fkey ?>')">Cancel</button>
-                                    <button type="submit" form="fuel-form-<?= $safe_fkey ?>" class="txn-btn primary"><i class="fas fa-paper-plane"></i> Submit Delivery</button>
                                 </div>
                             </div>
                         </td>

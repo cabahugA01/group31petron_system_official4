@@ -482,7 +482,6 @@ body .main,
                 <i class="<?= $active_type === 'fuel' ? 'fas fa-gas-pump' : 'fas fa-boxes' ?>"></i>
                 Pending Stock-In Table
             </div>
-            <div style="font-size:12px;color:#64748b;font-weight:700;"><?= count($active_groups) ?> pending PO(s)</div>
         </div>
 
         <?php if (empty($active_groups)): ?>
@@ -619,10 +618,6 @@ body .main,
                                 </div>
 
                                 <div class="detail-summary">
-                                    <div class="summary-inline">
-                                        <span><?= $active_type === 'fuel' ? 'Total Fuel Types' : 'Total Products' ?>: <strong><?= $row_count ?></strong></span>
-                                        <span><?= $active_type === 'fuel' ? 'Total Liters Received' : 'Total Quantity Received' ?>: <strong id="sum-<?= si_h($gid) ?>"><?= $active_type === 'fuel' ? si_qty($total_received_default, 2) . ' L' : si_qty($total_received_default) ?></strong></span>
-                                    </div>
                                     <button type="button" class="si-btn success approve-btn"
                                             onclick="approveStockIn('<?= si_h($active_type) ?>','<?= si_h($gid) ?>','<?= si_h($group['po_no']) ?>')">
                                         <i class="fas fa-check-circle"></i> Approve Stock-In
