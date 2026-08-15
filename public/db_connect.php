@@ -178,3 +178,13 @@ try {
 } catch (Exception $e) {
     error_log("stock_request_audit self-healing error: " . $e->getMessage());
 }
+
+// ── Self-healing Database schema for fuel_sales_closing shift_period column ──
+try {
+    $chk_sp = $pdo->query("SHOW COLUMNS FROM fuel_sales_closing LIKE 'shift_period'");
+    if (!$chk_sp || $chk_sp->rowCount() === 0) {
+        $pdo->exec("ALTER TABLE fuel_sales_closing ADD COLUMN shift_period VARCHAR(50) DEFAULT NULL AFTER shift");
+    }
+} catch (Exception $e) {
+    error_log("fuel_sales_closing shift_period self-healing error: " . $e->getMessage());
+}

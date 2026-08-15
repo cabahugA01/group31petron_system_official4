@@ -15,6 +15,15 @@ if (!isset($_SESSION['user_id'])) {
 
 $station_id  = (int)($_SESSION['station_id'] ?? 1);
 $report_date = $_GET['date'] ?? date('Y-m-d');
+$shift       = trim($_GET['shift'] ?? '');
+
+$shift_key = '';
+$shift_lower = strtolower($shift);
+if (strpos($shift_lower, '1') !== false || strpos($shift_lower, 'first') !== false) {
+    $shift_key = 'first';
+} elseif (strpos($shift_lower, '2') !== false || strpos($shift_lower, 'second') !== false) {
+    $shift_key = 'second';
+}
 
 // Fetch Station Info
 try {
@@ -28,20 +37,27 @@ $station_name = $station['station_name'] ?? 'Petron Station';
 $station_addr = $station['address'] ?? 'Vamenta Blvd., Carmen, City Of Cagayan De Oro , Misamis Oriental';
 
 // Fetch Saved Closing Data
-$stmt_cl = $pdo->prepare("SELECT * FROM fuel_sales_closing WHERE station_id = ? AND report_date = ? ORDER BY id DESC LIMIT 1");
-$stmt_cl->execute([$station_id, $report_date]);
+$stmt_cl = $pdo->prepare("
+    SELECT * FROM fuel_sales_closing
+    WHERE station_id = ? AND report_date = ? AND (? = '' OR shift = ? OR shift_period = ?)
+    ORDER BY id DESC LIMIT 1
+");
+$stmt_cl->execute([$station_id, $report_date, $shift, $shift, $shift_key]);
 $closing = $stmt_cl->fetch(PDO::FETCH_ASSOC) ?: [];
 
-// Fetch Meter Readings / Transactions for Date
+// Fetch Meter Readings / Transactions for Date and Shift
 $stmt_readings = $pdo->prepare("
     SELECT 
         pump_id, fuel_type, present_reading, previous_reading, calibration,
         price_per_liter, liters_sold, total_amount, shift_period
     FROM fuel_transactions
-    WHERE station_id = ? AND (DATE(transaction_date) = ? OR (transaction_date IS NULL AND DATE(created_at) = ?))
+    WHERE station_id = ? 
+      AND (DATE(transaction_date) = ? OR (transaction_date IS NULL AND DATE(created_at) = ?))
+      AND (? = '' OR shift_period = ? OR shift_name = ?)
+      AND LOWER(COALESCE(status,'')) NOT IN ('rejected','voided','cancelled','canceled')
     ORDER BY pump_id ASC, id ASC
 ");
-$stmt_readings->execute([$station_id, $report_date, $report_date]);
+$stmt_readings->execute([$station_id, $report_date, $report_date, $shift, $shift_key, $shift]);
 $readings = $stmt_readings->fetchAll(PDO::FETCH_ASSOC);
 
 // Fetch Tank Inventories

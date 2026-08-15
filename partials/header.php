@@ -4024,20 +4024,11 @@ require_once __DIR__ . '/rbac_menu.php';
                 }
                 ?>
                 <div class="profile-dropdown" id="profileDropdown">
-                    <a href="<?php echo htmlspecialchars($hdr_home_url); ?>">
-                        <i class="fas fa-home" style="margin-right:8px;color:var(--petron-blue);"></i>Home
-                    </a>
                     <a href="<?php echo htmlspecialchars($public_base_url . '/profile.php'); ?>">
                         <i class="fas fa-user-circle" style="margin-right:8px;color:var(--petron-blue);"></i>My Profile
                     </a>
                     <a href="<?php echo htmlspecialchars($public_base_url . '/update_password.php'); ?>">
                         <i class="fas fa-key" style="margin-right:8px;color:var(--petron-blue);"></i>Change Password
-                    </a>
-                    <a href="<?php echo htmlspecialchars($public_base_url . '/contact_us.php'); ?>">
-                        <i class="fas fa-phone-alt" style="margin-right:8px;color:var(--petron-blue);"></i>Contact Us
-                    </a>
-                    <a href="<?php echo htmlspecialchars($public_base_url . '/about.php'); ?>">
-                        <i class="fas fa-info-circle" style="margin-right:8px;color:var(--petron-blue);"></i>About System
                     </a>
                     <div class="dropdown-divider"></div>
                     <a href="javascript:void(0);" onclick="openGlobalLogoutModal();" class="logout">

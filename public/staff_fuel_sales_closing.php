@@ -514,8 +514,9 @@ function handleClosingKeydown(e, input) {
 
 async function fetchSummary() {
     const reportDate = '<?= htmlspecialchars($report_date) ?>';
+    const shift      = '<?= htmlspecialchars($shift, ENT_QUOTES) ?>';
     try {
-        const response = await fetch(`staff_fuel_sales_closing_handler.php?action=get_summary&date=${encodeURIComponent(reportDate)}`);
+        const response = await fetch(`staff_fuel_sales_closing_handler.php?action=get_summary&date=${encodeURIComponent(reportDate)}&shift=${encodeURIComponent(shift)}`);
         const result = await response.json();
         
         if (result.success) {
@@ -676,7 +677,9 @@ async function saveClosingData() {
         const result = await response.json();
 
         if (result.success) {
-            window.location.href = 'staff_transactions_hub.php?section=fuel&closing_saved=1';
+            const targetUrl = result.report_url || 'staff_transactions_hub.php?section=fuel&closing_saved=1';
+            alert('✅ Fuel Sales Closing saved successfully.');
+            window.location.href = targetUrl;
         } else {
             alert('Error: ' + (result.message || 'Failed to save closing.'));
         }

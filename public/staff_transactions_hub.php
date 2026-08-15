@@ -316,13 +316,13 @@ try {
         global $last_readings_by_pump;
 
         try {
-            // Fetch latest present_reading (ending meter) for each pump in descending order
+            // Fetch latest present_reading (ending meter) for each pump from COMPLETED/FINALIZED closings only
             $latest_stmt = $pdo->prepare("
                 SELECT ft.id, COALESCE(fp.pump_number, ft.fuel_type) AS pump_label, ft.fuel_type, ft.present_reading
                 FROM fuel_transactions ft
                 LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
                 WHERE ft.station_id = ?
-                  AND (LOWER(ft.status) NOT IN ('rejected','voided','cancelled','canceled') OR ft.status IS NULL)
+                  AND LOWER(COALESCE(ft.status, '')) IN ('closing_completed', 'completed', 'reported', 'approved', 'verified', 'adjusted', 'saved')
                 ORDER BY ft.transaction_date DESC, ft.id DESC
             ");
             $latest_stmt->execute([$station_id]);
@@ -419,24 +419,70 @@ if (isset($__fetch_prev_readings) && is_callable($__fetch_prev_readings)) {
     $__fetch_prev_readings();
 }
 
-// ── If current shift already submitted readings, reset beginning to 0 ──────────
-// Professional behavior: once Shift 2 submits, the form resets to 0 (clean slate).
-// The next shift will fetch today's endings as their beginning from the DB.
-$shift_already_submitted = false;
+// ── Detect workflow state & pre-fetch saved readings for current date + shift ──────────
+$today_date = date('Y-m-d');
+$current_shift_status = 'DRAFT';
+$today_saved_readings = [];
+
 try {
-    $subm_check = $pdo->prepare("
-        SELECT COUNT(*) FROM fuel_transactions
-        WHERE station_id = ?
-          AND shift_period = ?
-          AND DATE(transaction_date) = CURDATE()
+    $stmt_cstat = $pdo->prepare("
+        SELECT status FROM fuel_sales_closing
+        WHERE station_id = ? AND report_date = ? AND (shift = ? OR shift_period = ?)
+        ORDER BY id DESC LIMIT 1
     ");
-    $subm_check->execute([$station_id, $fuel_shift_key]);
-    $shift_already_submitted = (int)$subm_check->fetchColumn() > 0;
+    $stmt_cstat->execute([$station_id, $today_date, $fuel_shift_name, $fuel_shift_key]);
+    $found_cstat = $stmt_cstat->fetchColumn();
+    if ($found_cstat) {
+        $current_shift_status = strtoupper(trim($found_cstat));
+    }
 } catch (Exception $e) {}
 
-// Clear fetched readings so beginning renders as 0 (not re-populated from prev shift)
-if ($shift_already_submitted) {
-    $last_readings_by_pump = [];
+if ($current_shift_status === 'DRAFT' || empty($current_shift_status)) {
+    try {
+        $stmt_txstat = $pdo->prepare("
+            SELECT status FROM fuel_transactions
+            WHERE station_id = ? AND DATE(transaction_date) = ? AND shift_period = ?
+              AND LOWER(COALESCE(status,'')) NOT IN ('rejected','voided','cancelled','canceled')
+            ORDER BY id DESC LIMIT 1
+        ");
+        $stmt_txstat->execute([$station_id, $today_date, $fuel_shift_key]);
+        $found_txstat = $stmt_txstat->fetchColumn();
+        if ($found_txstat) {
+            $current_shift_status = strtoupper(trim($found_txstat));
+        }
+    } catch (Exception $e) {}
+}
+
+try {
+    $st_readings = $pdo->prepare("
+        SELECT ft.id, COALESCE(NULLIF(fp.pump_number, ''), ft.fuel_type) AS pump_label, ft.fuel_type,
+               ft.present_reading, ft.previous_reading, ft.calibration, ft.liters_sold, ft.total_amount, ft.status
+        FROM fuel_transactions ft
+        LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
+        WHERE ft.station_id = ?
+          AND DATE(ft.transaction_date) = ?
+          AND ft.shift_period = ?
+          AND LOWER(COALESCE(ft.status,'')) NOT IN ('rejected','voided','cancelled','canceled')
+    ");
+    $st_readings->execute([$station_id, $today_date, $fuel_shift_key]);
+    $saved_rows = $st_readings->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($saved_rows as $sr) {
+        $lbl_u = strtoupper(trim($sr['pump_label'] ?? ''));
+        $ft_u  = strtoupper(trim($sr['fuel_type'] ?? ''));
+        if ($lbl_u !== '') $today_saved_readings[$lbl_u] = $sr;
+        if ($ft_u !== '')  $today_saved_readings[$ft_u]  = $sr;
+    }
+} catch (Exception $e) {}
+
+// Check if current shift has submitted readings awaiting closing input
+$has_submitted_readings_unclosed = false;
+if (!in_array($current_shift_status, ['CLOSING_COMPLETED', 'SAVED', 'REPORTED'])) {
+    foreach ($today_saved_readings as $sr) {
+        if ((float)($sr['present_reading'] ?? 0) > 0) {
+            $has_submitted_readings_unclosed = true;
+            break;
+        }
+    }
 }
 
 // ── STAFF DASHBOARD KPI CARDS DATA ────────────────────────────────────────────
@@ -3459,10 +3505,18 @@ setTimeout(function() {
         </div>
 
         <?php if (isset($_GET['closing_saved']) && $_GET['closing_saved'] == '1'): ?>
-        <div class="txn-info-banner green" style="background:#dcfce7; border:1px solid #86efac; color:#15803d; padding:12px 16px; border-radius:10px; margin-bottom:18px; display:flex; align-items:center; gap:10px; font-weight:600; font-size:13.5px;">
-            <i class="fas fa-check-circle" style="font-size:18px; color:#16a34a;"></i>
-            <div>Fuel Sales Closing saved successfully!</div>
-        </div>
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof showToast === 'function') {
+                showToast('Fuel Sales Closing saved successfully!', 'success');
+            }
+            if (window.history && window.history.replaceState) {
+                var cleanUrl = new URL(window.location.href);
+                cleanUrl.searchParams.delete('closing_saved');
+                window.history.replaceState(null, '', cleanUrl);
+            }
+        });
+        </script>
         <?php endif; ?>
 
         <?php if (empty($fuel_types)): ?>
@@ -3828,9 +3882,24 @@ setTimeout(function() {
                                 $display_name = strtoupper($group_name) . ' - ' . $tanker_num;
 
                                 // ── Validated shift carry-over lookup ──
-                                $lbl_key = strtoupper(trim($display_name));
-                                $pump_prev_reading   = isset($last_readings_by_pump[$lbl_key]) ? $last_readings_by_pump[$lbl_key] : null;
-                                $has_prev_reading    = ($pump_prev_reading !== null && $pump_prev_reading > 0);
+                                $lbl_key   = strtoupper(trim($display_name));
+                                $saved_row = $today_saved_readings[$lbl_key] ?? null;
+
+                                if (in_array($current_shift_status, ['CLOSING_COMPLETED', 'SAVED', 'REPORTED'])) {
+                                    // Shift closing completed! Use completed present_reading as new beginning reading, reset ending inputs
+                                    $pump_prev_reading = ($saved_row && (float)$saved_row['present_reading'] > 0)
+                                        ? (float)$saved_row['present_reading']
+                                        : (isset($last_readings_by_pump[$lbl_key]) ? (float)$last_readings_by_pump[$lbl_key] : null);
+                                    $saved_ending_val = '';
+                                    $saved_calib_val  = '0.00';
+                                } else {
+                                    $pump_prev_reading = ($saved_row && isset($saved_row['previous_reading']) && (float)$saved_row['previous_reading'] > 0)
+                                        ? (float)$saved_row['previous_reading']
+                                        : (isset($last_readings_by_pump[$lbl_key]) ? (float)$last_readings_by_pump[$lbl_key] : null);
+                                    $saved_ending_val = ($saved_row && (float)$saved_row['present_reading'] > 0) ? number_format((float)$saved_row['present_reading'], 2, '.', ',') : '';
+                                    $saved_calib_val  = ($saved_row && isset($saved_row['calibration'])) ? number_format((float)$saved_row['calibration'], 2, '.', ',') : '0.00';
+                                }
+                                $has_prev_reading = ($pump_prev_reading !== null && (float)$pump_prev_reading > 0);
                     ?>
                     <tr id="fuelRow_<?= $ft_id ?>" style="border-bottom:1px solid #e2e8f0;">
                         <!-- NAME Column (plain text, no icon) -->
@@ -3846,9 +3915,9 @@ setTimeout(function() {
                                        name="beginning_reading"
                                        id="beginning_<?= $ft_id ?>"
                                        style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;border:1px solid #86efac;border-radius:4px;text-align:right;background:#f0fdf4;font-weight:700;color:#15803d;cursor:not-allowed;"
-                                       value="<?= number_format($pump_prev_reading, 2, '.', ',') ?>"
+                                       value="<?= number_format((float)$pump_prev_reading, 2, '.', ',') ?>"
                                        readonly
-                                       title="Auto-fetched from previous meter reading (<?= number_format($pump_prev_reading, 2, '.', ',') ?>). Read-only."
+                                       title="Auto-fetched from previous meter reading (<?= number_format((float)$pump_prev_reading, 2, '.', ',') ?>). Read-only."
                                        data-pump="<?= htmlspecialchars($display_name) ?>">
                             <?php else: ?>
                                 <!-- Initial meter reading / first shift — Editable manual input -->
@@ -3876,6 +3945,7 @@ setTimeout(function() {
                                    name="ending_reading"
                                    id="ending_<?= $ft_id ?>"
                                    style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;border:2px solid #3b82f6;border-radius:4px;text-align:right;font-weight:700;"
+                                   value="<?= htmlspecialchars($saved_ending_val) ?>"
                                    placeholder="0.00"
                                    required
                                    autocomplete="off"
@@ -3893,7 +3963,7 @@ setTimeout(function() {
                                    name="calibration"
                                    id="cal_<?= $ft_id ?>"
                                    style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;"
-                                   value="0.00"
+                                   value="<?= htmlspecialchars($saved_calib_val) ?>"
                                    placeholder="0.00"
                                    autocomplete="off"
                                    title="Calibration correction (default 0.00). Cannot exceed Gross Volume."
@@ -4097,20 +4167,22 @@ setTimeout(function() {
             </script>
             <!-- ═══ end STANDALONE FUEL CALC SCRIPT ═══ -->
 
-            <!-- Submit/Reset Buttons -->
+            <!-- Submit/Reset/Closing Buttons -->
             <div style="display:flex; justify-content:flex-end; align-items:center; gap:12px; margin-top:20px; margin-bottom:0; padding:10px 0; background:transparent; border:none; box-shadow:none;">
                 <button type="button"
                         onclick="resetAllFuelRows()"
                         class="fet-reset-btn">
                     <i class="fas fa-undo"></i> Reset All
                 </button>
-                <button type="button"
-                        onclick="openGlobalRemarksModal()"
-                        style="background:#0066cc;color:#fff;padding:10px 18px;border:none;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:all 0.2s;box-shadow:0 2px 4px rgba(0,102,204,0.2);"
-                        onmouseover="this.style.background='#0052a3'"
-                        onmouseout="this.style.background='#0066cc'">
-                    <i class="fas fa-comment-alt"></i> <span id="remarksButtonLabel">Add Remarks</span>
-                </button>
+                <?php if (!empty($has_submitted_readings_unclosed)): ?>
+                <a href="staff_fuel_sales_closing.php?date=<?= date('Y-m-d') ?>&shift=<?= urlencode($fuel_shift_name) ?>"
+                   style="background:#002F70; color:#ffffff; padding:10px 20px; border:none; border-radius:6px; font-weight:700; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; text-decoration:none; box-shadow:0 2px 6px rgba(0,47,112,0.25); transition:all 0.2s;"
+                   onmouseover="this.style.background='#001f4d'"
+                   onmouseout="this.style.background='#002F70'"
+                   title="Meter readings submitted. Click to continue to Fuel Sales Closing form">
+                    <i class="fas fa-calculator"></i> Fuel Sales Closing
+                </a>
+                <?php endif; ?>
                 <button type="button"
                         onclick="submitAllFuelRows()"
                         class="fet-submit-btn">
@@ -4498,7 +4570,7 @@ setTimeout(function() {
             el.innerHTML = safeText;
         }
 
-        // ── Reset a single row ────────────────────────────────────────────────
+        // ── Reset a single row (Clears manual inputs: Ending & Calibration; keeps auto Beginning intact) ──
         function resetFuelRow(ftId) {
             const msgEl         = document.getElementById('cardMsg_' + ftId);
             const beginningEl   = document.getElementById(`beginning_${ftId}`);
@@ -4509,8 +4581,10 @@ setTimeout(function() {
             const amountEl      = document.getElementById(`amount_${ftId}`);
             const amountValueEl = document.getElementById(`amount_value_${ftId}`);
             
-            // Restore beginning to its carryover value (previous shift Ending), not blank
-            if (beginningEl) beginningEl.value = beginningEl.placeholder !== '0.00' ? beginningEl.placeholder : '';
+            // Do NOT touch beginning reading if it's auto-fetched (read-only)
+            if (beginningEl && !beginningEl.readOnly) {
+                beginningEl.value = '';
+            }
             if (endingEl) endingEl.value = '';
             if (calEl) calEl.value = '0.00';
             if (volumeEl) volumeEl.value = '0.00';
@@ -4521,21 +4595,42 @@ setTimeout(function() {
         }
 
 
-        // ── Reset ALL fuel rows ────────────────────────────────────────────────
-        function resetAllFuelRows() {
+        // ── Reset ALL fuel rows + clear server-side unclosed draft entries ──────
+        async function resetAllFuelRows() {
             if (!confirm('Reset all fuel readings? This will clear all entered data.')) return;
             
-            // Find all forms that start with "fuelForm_"
+            // 1. Clear UI fields
             const allForms = document.querySelectorAll('form[id^="fuelForm_"]');
             allForms.forEach(form => {
                 const ftId = form.id.replace('fuelForm_', '');
                 resetFuelRow(ftId);
             });
             
-            // Clear global remarks
-            document.getElementById('globalFuelRemarks').value = '';
-            document.getElementById('globalRemarksTextarea').value = '';
-            document.getElementById('remarksButtonLabel').textContent = 'Add Remarks';
+            // 2. Clear global remarks
+            const remarksInput = document.getElementById('globalFuelRemarks');
+            if (remarksInput) remarksInput.value = '';
+            const remarksTextarea = document.getElementById('globalRemarksTextarea');
+            if (remarksTextarea) remarksTextarea.value = '';
+            const remarksBtnLbl = document.getElementById('remarksButtonLabel');
+            if (remarksBtnLbl) remarksBtnLbl.textContent = 'Add Remarks';
+
+            // 3. Call API to clear unclosed draft readings from DB for this shift so F5 refresh won't restore them
+            try {
+                const shiftVal = '<?= htmlspecialchars($fuel_shift_name, ENT_QUOTES) ?>';
+                const dateVal  = '<?= date('Y-m-d') ?>';
+                const formData = new FormData();
+                formData.append('action', 'reset_shift');
+                formData.append('shift_period', shiftVal);
+                formData.append('reading_date', dateVal);
+
+                await fetch('api_fuel_readings.php', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'same-origin'
+                });
+            } catch (e) {
+                console.error('Reset shift API error:', e);
+            }
 
             showToast('All fuel readings have been reset.', 'info');
         }
@@ -4740,7 +4835,8 @@ setTimeout(function() {
                 showToast('Meter readings submitted! Redirecting to Fuel Sales Closing...', 'success');
                 setTimeout(() => {
                     const todayStr = new Date().toISOString().split('T')[0];
-                    window.location.href = 'staff_fuel_sales_closing.php?date=' + encodeURIComponent(todayStr) + '&from_readings=1';
+                    const shiftStr = '<?= htmlspecialchars($fuel_shift_name, ENT_QUOTES) ?>';
+                    window.location.href = 'staff_fuel_sales_closing.php?date=' + encodeURIComponent(todayStr) + '&shift=' + encodeURIComponent(shiftStr) + '&from_readings=1';
                 }, 1500);
             } else {
                 const firstErr = errors[0] ? errors[0].replace(/^[^:]+:\s*/, '') : 'Submission failed.';
@@ -4783,7 +4879,7 @@ setTimeout(function() {
                     toast.style.transform = 'translateY(-10px)';
                     setTimeout(() => toast.remove(), 350);
                 }
-            }, 4500);
+            }, 3000);
         }
 
         // ── Custom confirm modal (replaces browser confirm()) ───────────────────

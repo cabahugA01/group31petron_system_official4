@@ -89,6 +89,14 @@ function get_preceding_shift_validated_ending($pdo, $station_id, $pump_id, $curr
     return $val_fallback !== false ? (float)$val_fallback : 0.0;
 }
 
+function is_pending_validation_status($status_str) {
+    $s = strtolower(trim($status_str ?? ''));
+    if ($s === 'readings_submitted' || $s === 'draft' || empty($s)) {
+        return false;
+    }
+    return str_contains($s, 'pending') || in_array($s, ['closing_completed', 'submitted']);
+}
+
 // â”€â”€ Filters & Inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $date_from          = trim($_GET['date_from']          ?? date('Y-m-d', strtotime('-30 days')));
 $date_to            = trim($_GET['date_to']            ?? date('Y-m-d'));
@@ -102,10 +110,10 @@ $export             = trim($_GET['export']             ?? '');
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $is_ajax = !empty($_POST['ajax']) || (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
     $action  = trim($_POST['action'] ?? '');
-    $tx_id   = (int)($_POST['id'] ?? 0);
+    $raw_id  = trim($_POST['id'] ?? '');
     $remarks = trim($_POST['remarks'] ?? '');
 
-    if ($tx_id <= 0) {
+    if (empty($raw_id)) {
         if ($is_ajax) {
             header('Content-Type: application/json');
             echo json_encode(['success' => false, 'message' => 'Invalid transaction ID.']);
@@ -118,18 +126,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->beginTransaction();
 
-        // Fetch transaction details
-        $stmt = $pdo->prepare("SELECT * FROM fuel_transactions WHERE id = ? AND station_id = ?");
-        $stmt->execute([$tx_id, $station_id]);
+        // Fetch transaction details (supports both integer id and transaction_id string)
+        $stmt = $pdo->prepare("SELECT * FROM fuel_transactions WHERE (id = ? OR transaction_id = ?) AND station_id = ? LIMIT 1");
+        $stmt->execute([$raw_id, $raw_id, $station_id]);
         $tx = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$tx) {
             throw new Exception("Transaction not found.");
         }
+        $tx_id = (int)$tx['id'];
 
         if ($action === 'validate') {
-            // Guard: must be pending
-            if (!str_contains(strtolower($tx['status']), 'pending')) {
+            // Guard: must be pending validation
+            if (!is_pending_validation_status($tx['status'])) {
                 throw new Exception("Transaction has already been processed.");
             }
 
@@ -178,8 +187,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (empty($remarks)) {
                 throw new Exception("Rejection remarks/reason is required.");
             }
-            // Guard: must be pending
-            if (!str_contains(strtolower($tx['status']), 'pending')) {
+            // Guard: must be pending validation
+            if (!is_pending_validation_status($tx['status'])) {
                 throw new Exception("Transaction has already been processed.");
             }
 
@@ -197,8 +206,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (empty($remarks)) {
                 throw new Exception("Adjustment remarks/reason is required.");
             }
-            // Guard: must be pending
-            if (!str_contains(strtolower($tx['status']), 'pending')) {
+            // Guard: must be pending validation
+            if (!is_pending_validation_status($tx['status'])) {
                 throw new Exception("Transaction has already been processed.");
             }
 
@@ -386,10 +395,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Location: ' . $redirect_url); exit;
 }
 
-// â”€â”€ Helper functions for badges â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Helper functions for badges ─────────────────────────────────
 function getStatusBadgeClass($status) {
     $s = strtolower(trim($status ?? ''));
-    if (str_contains($s, 'pending')) return 'bg-amber';
+    if ($s === 'readings_submitted') return 'bg-gray';       // not yet ready for manager
+    if (str_contains($s, 'pending') || in_array($s, ['closing_completed', 'submitted'])) return 'bg-amber';
     if ($s === 'verified' || $s === 'approved' || $s === 'validated') return 'bg-green';
     if ($s === 'adjusted') return 'bg-blue';
     if ($s === 'rejected') return 'bg-red';
@@ -397,14 +407,15 @@ function getStatusBadgeClass($status) {
 }
 function getStatusLabel($status) {
     $s = strtolower(trim($status ?? ''));
-    if (str_contains($s, 'pending')) return 'Pending';
+    if ($s === 'readings_submitted') return 'Awaiting Fuel Sales Closing';
+    if (str_contains($s, 'pending') || in_array($s, ['closing_completed', 'submitted'])) return 'Pending Validation';
     if ($s === 'verified' || $s === 'approved' || $s === 'validated') return 'Validated';
     if ($s === 'adjusted') return 'Adjusted';
     if ($s === 'rejected') return 'Rejected';
     return ucfirst($status);
 }
 
-// â”€â”€ Summary Cards Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Summary Cards Data ─────────────────────────────────────────────────
 $pending_count   = 0;
 $validated_count = 0;
 $rejected_count  = 0;
@@ -413,7 +424,9 @@ $total_sales_today = 0.0;
 
 try {
     // 1. Pending Transactions (Total overall currently awaiting manager validation)
-    $sp = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND LOWER(status) LIKE '%pending%'");
+    // Only CLOSING_COMPLETED = fuel sales closing done, ready for manager
+    // READINGS_SUBMITTED = staff not yet done with closing, do NOT show to manager
+    $sp = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND (LOWER(status) LIKE '%pending%' OR LOWER(status) IN ('closing_completed', 'submitted'))");
     $sp->execute([$station_id]);
     $pending_count = (int)$sp->fetchColumn();
 
@@ -441,7 +454,7 @@ try {
     error_log("Summary cards fetch error: " . $e->getMessage());
 }
 
-// â”€â”€ Fetch Dynamic Fuel Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Fetch Dynamic Fuel Types ───────────────────────────────────────────
 $fuel_types = [];
 try {
     $ft_stmt = $pdo->prepare("SELECT DISTINCT fuel_type FROM fuel_inventory WHERE station_id = ? ORDER BY fuel_type");
@@ -449,7 +462,7 @@ try {
     $fuel_types = $ft_stmt->fetchAll(PDO::FETCH_COLUMN);
 } catch (Exception $e) {}
 
-// â”€â”€ Fetch Filtered Transactions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Fetch Filtered Transactions ───────────────────────────────────────
 $where = ["ft.station_id = ?"];
 $params = [$station_id];
 
@@ -474,7 +487,8 @@ if ($fuel_type_filter !== '') {
 // Status filter
 if ($status_filter !== 'all') {
     if ($status_filter === 'pending') {
-        $where[] = "LOWER(ft.status) LIKE '%pending%'";
+        // Only show CLOSING_COMPLETED (fuel sales closing done) - NOT readings_submitted (closing not yet done)
+        $where[] = "(LOWER(ft.status) LIKE '%pending%' OR LOWER(ft.status) IN ('closing_completed', 'submitted'))";
     } elseif ($status_filter === 'validated') {
         $where[] = "LOWER(ft.status) IN ('verified', 'approved', 'adjusted')";
     } elseif ($status_filter === 'rejected') {
@@ -1066,7 +1080,7 @@ input[type="checkbox"]:indeterminate {
                         ?>
                             <tr id="tx_row_<?= $tx['id'] ?>" data-tx-id="<?= $tx['id'] ?>" data-tx-json='<?= htmlspecialchars(json_encode($tx), ENT_QUOTES, 'UTF-8') ?>'>
                                 <td>
-                                    <?php if (str_contains(strtolower($tx['status'] ?? ''), 'pending')): ?>
+                                    <?php if (is_pending_validation_status($tx['status'] ?? '')): ?>
                                         <input type="checkbox" class="tx-checkbox" data-tx-id="<?= $tx['id'] ?>" style="cursor: pointer;" onchange="updateBatchButtons()">
                                     <?php else: ?>
                                         <span style="color: #cbd5e1;">—</span>
@@ -1874,7 +1888,7 @@ async function batchValidate() {
             const formData = new FormData();
             formData.append('ajax', '1');
             formData.append('action', 'validate');
-            formData.append('id', tx.id);
+            formData.append('id', tx.id || tx.transaction_id);
             formData.append('remarks', 'Batch validation - approved by manager');
             
             const response = await fetch('', {
@@ -1944,7 +1958,7 @@ async function confirmBatchReject() {
             const formData = new FormData();
             formData.append('ajax', '1');
             formData.append('action', 'reject');
-            formData.append('id', tx.id);
+            formData.append('id', tx.id || tx.transaction_id);
             formData.append('remarks', reason);
             
             const response = await fetch('', {

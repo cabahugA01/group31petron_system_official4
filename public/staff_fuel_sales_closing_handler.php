@@ -34,9 +34,19 @@ $action = $_REQUEST['action'] ?? '';
 
 if ($action === 'get_summary') {
     $report_date = $_GET['date'] ?? date('Y-m-d');
-    
+    $shift       = trim($_GET['shift'] ?? $_POST['shift'] ?? '');
+
+    // Shift period key matching helper
+    $shift_key = '';
+    $shift_lower = strtolower($shift);
+    if (strpos($shift_lower, '1') !== false || strpos($shift_lower, 'first') !== false) {
+        $shift_key = 'first';
+    } elseif (strpos($shift_lower, '2') !== false || strpos($shift_lower, 'second') !== false) {
+        $shift_key = 'second';
+    }
+
     // Deduplicated query: fetch only the latest transaction entry per pump/nozzle for Section A
-    $stmt = $pdo->prepare("
+    $sql = "
         SELECT 
             ft.id,
             COALESCE(NULLIF(fp.pump_number, ''), ft.fuel_type) AS pump_name,
@@ -52,13 +62,16 @@ if ($action === 'get_summary') {
         INNER JOIN (
             SELECT MAX(id) AS max_id
             FROM fuel_transactions
-            WHERE station_id = ? AND (DATE(transaction_date) = ? OR (transaction_date IS NULL AND DATE(created_at) = ?))
+            WHERE station_id = ? 
+              AND (DATE(transaction_date) = ? OR (transaction_date IS NULL AND DATE(created_at) = ?))
+              AND (? = '' OR shift_period = ? OR shift_name = ?)
               AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
             GROUP BY COALESCE(pump_id, fuel_type)
         ) latest ON ft.id = latest.max_id
         ORDER BY ft.id ASC
-    ");
-    $stmt->execute([$station_id, $report_date, $report_date]);
+    ";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$station_id, $report_date, $report_date, $shift, $shift_key, $shift]);
     $meter_rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     // Summaries per fuel type
@@ -141,18 +154,19 @@ if ($action === 'get_summary') {
         }
     }
 
-    // Fetch existing saved closing if available
+    // Fetch existing saved closing if available for this specific date + shift
     $stmt_closing = $pdo->prepare("
         SELECT * FROM fuel_sales_closing
-        WHERE station_id = ? AND report_date = ?
+        WHERE station_id = ? AND report_date = ? AND (? = '' OR shift = ? OR shift_period = ?)
         ORDER BY id DESC LIMIT 1
     ");
-    $stmt_closing->execute([$station_id, $report_date]);
+    $stmt_closing->execute([$station_id, $report_date, $shift, $shift, $shift_key]);
     $existing = $stmt_closing->fetch(PDO::FETCH_ASSOC);
 
     echo json_encode([
         'success' => true,
         'report_date' => $report_date,
+        'shift' => $shift,
         'meter_rows' => $meter_rows,
         'by_fuel' => $by_fuel,
         'tank_summary' => $tank_summary,
@@ -167,7 +181,7 @@ if ($action === 'get_summary') {
 
 if ($action === 'save_closing') {
     $report_date        = $_POST['report_date'] ?? date('Y-m-d');
-    $shift              = $_POST['shift'] ?? 'General';
+    $shift              = trim($_POST['shift'] ?? 'General');
     $total_fuel_sales   = (float)($_POST['total_fuel_sales'] ?? 0);
     $total_liters       = (float)($_POST['total_liters'] ?? 0);
 
@@ -185,21 +199,31 @@ if ($action === 'save_closing') {
     $verified_by        = trim($_POST['verified_by'] ?? '');
     $checked_by         = trim($_POST['checked_by'] ?? '');
 
+    $shift_key = '';
+    $shift_lower = strtolower($shift);
+    if (strpos($shift_lower, '1') !== false || strpos($shift_lower, 'first') !== false) {
+        $shift_key = 'first';
+    } elseif (strpos($shift_lower, '2') !== false || strpos($shift_lower, 'second') !== false) {
+        $shift_key = 'second';
+    }
+
     try {
-        $stmt_chk = $pdo->prepare("SELECT id FROM fuel_sales_closing WHERE station_id = ? AND report_date = ?");
-        $stmt_chk->execute([$station_id, $report_date]);
+        $pdo->beginTransaction();
+
+        $stmt_chk = $pdo->prepare("SELECT id FROM fuel_sales_closing WHERE station_id = ? AND report_date = ? AND (shift = ? OR shift_period = ?)");
+        $stmt_chk->execute([$station_id, $report_date, $shift, $shift_key]);
         $exist_id = $stmt_chk->fetchColumn();
 
         if ($exist_id) {
             $stmt_upd = $pdo->prepare("
                 UPDATE fuel_sales_closing SET
-                    shift = ?, total_fuel_sales = ?, total_liters = ?, cash_shift1 = ?, cash_shift2 = ?,
+                    shift = ?, shift_period = ?, total_fuel_sales = ?, total_liters = ?, cash_shift1 = ?, cash_shift2 = ?,
                     total_cash = ?, ar_shift1 = ?, ar_shift2 = ?, total_ar = ?, net_sales = ?,
-                    total_cash_bank = ?, verified_by = ?, checked_by = ?, encoded_by = ?, encoded_at = NOW(), status = 'saved'
+                    total_cash_bank = ?, verified_by = ?, checked_by = ?, encoded_by = ?, encoded_at = NOW(), status = 'CLOSING_COMPLETED'
                 WHERE id = ?
             ");
             $stmt_upd->execute([
-                $shift, $total_fuel_sales, $total_liters, $cash_shift1, $cash_shift2,
+                $shift, $shift_key, $total_fuel_sales, $total_liters, $cash_shift1, $cash_shift2,
                 $total_cash, $ar_shift1, $ar_shift2, $total_ar, $net_sales,
                 $total_cash_bank, $verified_by, $checked_by, $user_id, $exist_id
             ]);
@@ -207,27 +231,43 @@ if ($action === 'save_closing') {
         } else {
             $stmt_ins = $pdo->prepare("
                 INSERT INTO fuel_sales_closing (
-                    station_id, report_date, shift, total_fuel_sales, total_liters, cash_shift1, cash_shift2,
+                    station_id, report_date, shift, shift_period, total_fuel_sales, total_liters, cash_shift1, cash_shift2,
                     total_cash, ar_shift1, ar_shift2, total_ar, net_sales, total_cash_bank, verified_by, checked_by,
                     encoded_by, encoded_at, status
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'saved'
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'CLOSING_COMPLETED'
                 )
             ");
             $stmt_ins->execute([
-                $station_id, $report_date, $shift, $total_fuel_sales, $total_liters, $cash_shift1, $cash_shift2,
+                $station_id, $report_date, $shift, $shift_key, $total_fuel_sales, $total_liters, $cash_shift1, $cash_shift2,
                 $total_cash, $ar_shift1, $ar_shift2, $total_ar, $net_sales, $total_cash_bank, $verified_by, $checked_by, $user_id
             ]);
             $saved_id = $pdo->lastInsertId();
         }
 
+        // Update corresponding fuel_transactions status to CLOSING_COMPLETED
+        $pdo->prepare("
+            UPDATE fuel_transactions
+            SET status = 'CLOSING_COMPLETED'
+            WHERE station_id = ?
+              AND DATE(transaction_date) = ?
+              AND (shift_period = ? OR shift_name = ? OR ? = '')
+              AND LOWER(COALESCE(status,'')) NOT IN ('rejected','voided','cancelled','canceled')
+        ")->execute([$station_id, $report_date, $shift_key, $shift, $shift]);
+
+        $pdo->commit();
+
+        $report_url = 'staff_transactions_hub.php?section=fuel&closing_saved=1';
+
         echo json_encode([
             'success' => true,
-            'message' => 'Official Fuel Sales Closing saved successfully.',
+            'message' => 'Fuel Sales Closing saved successfully.',
             'closing_id' => $saved_id,
-            'report_date' => $report_date
+            'report_date' => $report_date,
+            'report_url' => $report_url
         ]);
     } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
         echo json_encode(['success' => false, 'message' => 'Failed to save closing: ' . $e->getMessage()]);
     }
     exit;

@@ -1119,9 +1119,326 @@ $_asset_base = $_login_base . '/assets';
             text-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
         }
 
+        /* ── Top Navigation Bar ── */
+        .login-navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 0 28px;
+            height: 60px;
+            background: transparent;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            border-bottom: none;
+            box-shadow: none;
+            animation: navSlideDown 0.5s cubic-bezier(0.22,1,0.36,1) both;
+        }
+        @keyframes navSlideDown {
+            from { transform: translateY(-100%); opacity: 0; }
+            to   { transform: translateY(0);     opacity: 1; }
+        }
+        .login-navbar .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+        }
+        .login-navbar .nav-brand img {
+            height: 36px;
+            width: auto;
+            filter: drop-shadow(0 0 6px rgba(227,6,19,0.4));
+        }
+        .login-navbar .nav-brand-text {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.1;
+        }
+        .login-navbar .nav-brand-text span:first-child {
+            font-size: 15px;
+            font-weight: 800;
+            color: #ffffff;
+            letter-spacing: 0.5px;
+            text-shadow: 0 0 12px rgba(255,255,255,0.3);
+        }
+        .login-navbar .nav-brand-text span:last-child {
+            font-size: 10px;
+            font-weight: 500;
+            color: rgba(180,210,255,0.75);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        .login-navbar .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            list-style: none;
+        }
+        .login-navbar .nav-links li a,
+        .login-navbar .nav-links li button {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 8px 18px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            color: #111111;
+            text-decoration: none;
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: color 0.2s, background 0.2s;
+            letter-spacing: 0.3px;
+            position: relative;
+            text-shadow: none;
+        }
+        .login-navbar .nav-links li a::after,
+        .login-navbar .nav-links li button::after {
+            content: '';
+            position: absolute;
+            bottom: 4px;
+            left: 18px;
+            right: 18px;
+            height: 2px;
+            background: linear-gradient(90deg, #E30613, #002F6C);
+            border-radius: 2px;
+            transform: scaleX(0);
+            transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
+        }
+        .login-navbar .nav-links li a:hover,
+        .login-navbar .nav-links li button:hover {
+            color: #002F6C;
+            background: rgba(0,47,108,0.08);
+        }
+        .login-navbar .nav-links li a:hover::after,
+        .login-navbar .nav-links li button:hover::after {
+            transform: scaleX(1);
+        }
+        .login-navbar .nav-links li a.active {
+            color: #111111;
+            background: transparent;
+        }
+        .login-navbar .nav-links li a:active,
+        .login-navbar .nav-links li button:active {
+            color: #002F6C;
+            background: rgba(0,47,108,0.12);
+        }
+        /* Mobile nav toggle */
+        .nav-toggle {
+            display: none;
+            background: none;
+            border: 1.5px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            padding: 6px 10px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 18px;
+            transition: background 0.2s;
+        }
+        .nav-toggle:hover { background: rgba(255,255,255,0.1); }
+        @media (max-width: 600px) {
+            .login-navbar { padding: 0 20px; }
+            .nav-toggle { display: flex; align-items: center; }
+            .login-navbar .nav-links {
+                display: none;
+                position: absolute;
+                top: 64px; left: 0; right: 0;
+                flex-direction: column;
+                background: rgba(0, 15, 40, 0.97);
+                backdrop-filter: blur(20px);
+                padding: 12px 20px 20px;
+                gap: 4px;
+                border-bottom: 1px solid rgba(255,255,255,0.08);
+            }
+            .login-navbar .nav-links.open { display: flex; }
+            .login-navbar .nav-links li a,
+            .login-navbar .nav-links li button { width: 100%; border-radius: 10px; }
+        }
+        /* Push body content below navbar */
+        .login-wrap {
+            margin-top: 60px;
+        }
+
+        /* ── About / Contact Modal Overrides ── */
+        .nav-modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 9998;
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(6px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s ease;
+        }
+        .nav-modal-overlay.open { display: flex; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .nav-modal-box {
+            background: linear-gradient(145deg, rgba(0,20,55,0.98), rgba(0,10,30,0.98));
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            width: 90%;
+            max-width: 520px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06) inset;
+            animation: modalPop 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
+            overflow: hidden;
+        }
+        @keyframes modalPop {
+            from { transform: scale(0.88) translateY(20px); opacity: 0; }
+            to   { transform: scale(1) translateY(0);       opacity: 1; }
+        }
+        .nav-modal-head {
+            padding: 20px 24px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+            background: rgba(0,47,108,0.3);
+        }
+        .nav-modal-head h2 {
+            font-size: 16px;
+            font-weight: 800;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .nav-modal-head h2 i { color: #60a5fa; }
+        .nav-modal-close {
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.5);
+            font-size: 22px;
+            cursor: pointer;
+            line-height: 1;
+            transition: color 0.2s, transform 0.2s;
+            padding: 4px;
+        }
+        .nav-modal-close:hover { color: #fff; transform: scale(1.15) rotate(90deg); }
+        .nav-modal-body {
+            padding: 24px;
+            overflow-y: auto;
+            flex: 1;
+            color: rgba(255,255,255,0.82);
+            font-size: 14px;
+            line-height: 1.75;
+        }
+        .nav-modal-body h3 {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #93c5fd;
+            margin: 20px 0 8px;
+        }
+        .nav-modal-body h3:first-child { margin-top: 0; }
+        .nav-modal-body p { margin-bottom: 10px; }
+        .nav-modal-body .info-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 16px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 10px;
+            margin-bottom: 10px;
+        }
+        .nav-modal-body .info-row i {
+            font-size: 16px;
+            color: #60a5fa;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+        .nav-modal-body .info-row div { flex: 1; }
+        .nav-modal-body .info-row strong {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            color: rgba(255,255,255,0.5);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 2px;
+        }
     </style>
 </head>
 <body>
+
+<!-- ── Top Navigation Bar ── -->
+<nav class="login-navbar" id="loginNavbar" role="navigation" aria-label="Main navigation">
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" onclick="document.getElementById('navLinks').classList.toggle('open')">
+        <i class="fas fa-bars"></i>
+    </button>
+    <ul class="nav-links" id="navLinks">
+        <li><a href="login.php" class="active" id="nav-home"><i class="fas fa-home"></i> Home</a></li>
+        <li><button type="button" onclick="openNavModal('about')" id="nav-about"><i class="fas fa-info-circle"></i> About Us</button></li>
+        <li><button type="button" onclick="openNavModal('contact')" id="nav-contact"><i class="fas fa-envelope"></i> Contact Us</button></li>
+    </ul>
+</nav>
+
+<!-- ── About Us Modal ── -->
+<div class="nav-modal-overlay" id="navModalAbout" role="dialog" aria-modal="true" aria-labelledby="aboutModalTitle" onclick="if(event.target===this)closeNavModal('about')">
+    <div class="nav-modal-box">
+        <div class="nav-modal-head">
+            <h2 id="aboutModalTitle"><i class="fas fa-info-circle"></i> About Us</h2>
+            <button class="nav-modal-close" onclick="closeNavModal('about')" aria-label="Close">&#x2715;</button>
+        </div>
+        <div class="nav-modal-body">
+            <h3>Who We Are</h3>
+            <p>Petron Station &amp; Service Center Management System is a comprehensive digital platform developed to streamline the daily operations of Petron fuel stations. Built for efficiency, accuracy, and real-time visibility.</p>
+            <h3>Our Mission</h3>
+            <p>To empower station managers and staff with smart, intuitive tools that simplify fuel inventory tracking, sales reporting, and transaction management — all in one place.</p>
+            <h3>What We Offer</h3>
+            <p>✦ Real-time fuel inventory monitoring<br>
+               ✦ Meter reading &amp; fuel sales closing<br>
+               ✦ Manager validation &amp; approval workflows<br>
+               ✦ Merchandise transaction management<br>
+               ✦ Comprehensive reports &amp; analytics</p>
+            <h3>System Version</h3>
+            <p>Petron SMS v4.0 &mdash; &copy; <?= date('Y') ?> All Rights Reserved.</p>
+        </div>
+    </div>
+</div>
+
+<!-- ── Contact Us Modal ── -->
+<div class="nav-modal-overlay" id="navModalContact" role="dialog" aria-modal="true" aria-labelledby="contactModalTitle" onclick="if(event.target===this)closeNavModal('contact')">
+    <div class="nav-modal-box">
+        <div class="nav-modal-head">
+            <h2 id="contactModalTitle"><i class="fas fa-envelope"></i> Contact Us</h2>
+            <button class="nav-modal-close" onclick="closeNavModal('contact')" aria-label="Close">&#x2715;</button>
+        </div>
+        <div class="nav-modal-body">
+            <h3>Get In Touch</h3>
+            <p>For system support, technical concerns, or inquiries, please reach out to our team:</p>
+            <div class="info-row">
+                <i class="fas fa-map-marker-alt"></i>
+                <div><strong>Address</strong>Vamenta Blvd., Carmen, City of Cagayan De Oro, Misamis Oriental</div>
+            </div>
+            <div class="info-row">
+                <i class="fas fa-phone-alt"></i>
+                <div><strong>Phone</strong>(088) 123-4567 &nbsp;|&nbsp; 0917-123-4567</div>
+            </div>
+            <div class="info-row">
+                <i class="fas fa-envelope"></i>
+                <div><strong>Email</strong>support@petron-sms.com</div>
+            </div>
+            <div class="info-row">
+                <i class="fas fa-clock"></i>
+                <div><strong>Operating Hours</strong>Monday – Saturday &nbsp;|&nbsp; 8:00 AM – 5:00 PM</div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- 4D Background Layers -->
 <div class="bg-layer bg-image"></div>
@@ -1439,6 +1756,33 @@ $_asset_base = $_login_base . '/assets';
         }
     });
 }());
+</script>
+
+<script>
+// ── Nav Modal Functions ──
+function openNavModal(type) {
+    var id = type === 'about' ? 'navModalAbout' : 'navModalContact';
+    var el = document.getElementById(id);
+    if (el) {
+        el.classList.add('open');
+        document.body.style.overflow = 'hidden';
+    }
+}
+function closeNavModal(type) {
+    var id = type === 'about' ? 'navModalAbout' : 'navModalContact';
+    var el = document.getElementById(id);
+    if (el) {
+        el.classList.remove('open');
+        document.body.style.overflow = '';
+    }
+}
+// Close modals on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeNavModal('about');
+        closeNavModal('contact');
+    }
+});
 </script>
 
 </body>

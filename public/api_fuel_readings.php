@@ -199,7 +199,7 @@ try {
                                 LIMIT 1
                             )
                           )
-                          AND COALESCE(status, '') != 'Rejected'
+                          AND LOWER(COALESCE(status, '')) IN ('closing_completed', 'completed', 'reported', 'approved', 'verified', 'adjusted', 'saved')
                         ORDER BY transaction_date DESC, id DESC LIMIT 1
                     ");
                     $prev_stmt->execute([
@@ -418,23 +418,97 @@ try {
             $fuel_type_to_save = $actual_pump_name;
             // $resolved_pump_id is NULL if no match — FK allows NULL (ON DELETE SET NULL)
 
+            // Use the resolved pump name for saving — guarantees specific label is stored
+            $fuel_type_to_save = $actual_pump_name;
+            // $resolved_pump_id is NULL if no match — FK allows NULL (ON DELETE SET NULL)
+
             try {
                 $pdo->beginTransaction();
-                $pdo->prepare("
-                    INSERT INTO fuel_transactions
-                        (transaction_id, station_id, fuel_type, pump_id,
-                         present_reading, previous_reading, calibration, staff_calibration,
-                         liters_sold, price_per_liter, total_amount,
-                         payment_method, staff_id, transaction_date,
-                         shift_period, shift_name, shift_id, notes, status)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Pending Validation')
-                ")->execute([
-                    $txn_id, $station_id, $fuel_type_to_save, $resolved_pump_id,
-                    $present, $previous, $calibration, $calibration,
-                    $liters_sold, $price, $total_amount,
-                    $payment_method_safe, $me['id'], $reading_date . ' ' . date('H:i:s'),
-                    $shift_period_safe, $shift_name_safe, $shift_id, $notes,
-                ]);
+
+                // Check for existing reading for same station, date, shift, and pump/fuel_type
+                $existing_tx_id = null;
+                try {
+                    $chk_tx = $pdo->prepare("
+                        SELECT id FROM fuel_transactions
+                        WHERE station_id = ?
+                          AND DATE(transaction_date) = ?
+                          AND shift_period = ?
+                          AND (
+                            (pump_id IS NOT NULL AND pump_id = ?)
+                            OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                          )
+                          AND LOWER(COALESCE(status, '')) NOT IN ('rejected','voided','cancelled','canceled')
+                        ORDER BY id DESC LIMIT 1
+                    ");
+                    $chk_tx->execute([$station_id, $reading_date, $shift_period_safe, $resolved_pump_id, $fuel_type_to_save]);
+                    $existing_tx_id = $chk_tx->fetchColumn();
+                } catch (Exception $e) {}
+
+                if ($existing_tx_id) {
+                    $pdo->prepare("
+                        UPDATE fuel_transactions SET
+                            present_reading = ?,
+                            previous_reading = ?,
+                            calibration = ?,
+                            staff_calibration = ?,
+                            liters_sold = ?,
+                            price_per_liter = ?,
+                            total_amount = ?,
+                            payment_method = ?,
+                            staff_id = ?,
+                            notes = ?,
+                            status = 'READINGS_SUBMITTED'
+                        WHERE id = ?
+                    ")->execute([
+                        $present, $previous, $calibration, $calibration,
+                        $liters_sold, $price, $total_amount,
+                        $payment_method_safe, $me['id'], $notes,
+                        $existing_tx_id
+                    ]);
+                } else {
+                    $pdo->prepare("
+                        INSERT INTO fuel_transactions
+                            (transaction_id, station_id, fuel_type, pump_id,
+                             present_reading, previous_reading, calibration, staff_calibration,
+                             liters_sold, price_per_liter, total_amount,
+                             payment_method, staff_id, transaction_date,
+                             shift_period, shift_name, shift_id, notes, status)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'READINGS_SUBMITTED')
+                    ")->execute([
+                        $txn_id, $station_id, $fuel_type_to_save, $resolved_pump_id,
+                        $present, $previous, $calibration, $calibration,
+                        $liters_sold, $price, $total_amount,
+                        $payment_method_safe, $me['id'], $reading_date . ' ' . date('H:i:s'),
+                        $shift_period_safe, $shift_name_safe, $shift_id, $notes,
+                    ]);
+                }
+
+                // ── Upsert stub in fuel_sales_closing to record READINGS_SUBMITTED status ──
+                try {
+                    $chk_cls = $pdo->prepare("
+                        SELECT id, status FROM fuel_sales_closing
+                        WHERE station_id = ? AND report_date = ? AND (shift = ? OR shift_period = ?)
+                        LIMIT 1
+                    ");
+                    $chk_cls->execute([$station_id, $reading_date, $shift_name_safe, $shift_period_safe]);
+                    $cls_row = $chk_cls->fetch(PDO::FETCH_ASSOC);
+
+                    if ($cls_row) {
+                        if (($cls_row['status'] ?? '') !== 'CLOSING_COMPLETED' && ($cls_row['status'] ?? '') !== 'REPORTED') {
+                            $pdo->prepare("
+                                UPDATE fuel_sales_closing
+                                SET status = 'READINGS_SUBMITTED', shift = ?, shift_period = ?
+                                WHERE id = ?
+                            ")->execute([$shift_name_safe, $shift_period_safe, $cls_row['id']]);
+                        }
+                    } else {
+                        $pdo->prepare("
+                            INSERT INTO fuel_sales_closing
+                                (station_id, report_date, shift, shift_period, status, encoded_by, encoded_at)
+                            VALUES (?, ?, ?, ?, 'READINGS_SUBMITTED', ?, NOW())
+                        ")->execute([$station_id, $reading_date, $shift_name_safe, $shift_period_safe, $me['id']]);
+                    }
+                } catch (Exception $e_cls) {}
 
                 try {
                     $pdo->prepare("
@@ -491,6 +565,24 @@ try {
                 'total_amount'    => $total_amount,
                 'price_missing'   => $price_missing ?? false,
             ]);
+            break;
+
+        case 'reset_shift':
+            if ($method !== 'POST') respond(false, 'Method not allowed.');
+            $shift_period = trim($_POST['shift_period'] ?? $_GET['shift_period'] ?? '');
+            $reading_date = trim($_POST['reading_date'] ?? $_GET['reading_date'] ?? date('Y-m-d'));
+
+            // Delete unclosed/draft transactions for this station and shift so inputs reset cleanly
+            $del = $pdo->prepare("
+                DELETE FROM fuel_transactions
+                WHERE station_id = ?
+                  AND DATE(transaction_date) = ?
+                  AND (shift_period = ? OR shift_name = ? OR ? = '')
+                  AND LOWER(COALESCE(status, '')) NOT IN ('closing_completed', 'saved', 'reported', 'verified', 'approved')
+            ");
+            $del->execute([$station_id, $reading_date, $shift_period, $shift_period, $shift_period]);
+
+            respond(true, 'Shift readings reset successfully.');
             break;
 
         case 'get_pending':
