@@ -10,6 +10,7 @@ require_once __DIR__ . '/../public/db_connect.php';
 require_login();
 
 $u = current_user();
+$superadmin_name = trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? '')) ?: ($u['username'] ?? 'Super Admin');
 $role = $u['role'] ?? 'staff';
 $roleKey = function_exists('role_key') ? role_key($role) : strtolower(trim((string)$role));
 
@@ -270,16 +271,115 @@ $export = $_GET['export'] ?? '';
 if (in_array($export, ['excel', 'csv'], true)) {
     if (ob_get_level()) ob_end_clean();
     $filename = strtolower($active_tab) . "_report_" . date('Ymd_His');
+
+    $col_counts = [
+        'health' => 8,
+        'database' => 6,
+        'backup' => 6,
+        'error' => 5,
+        'security' => 5
+    ];
+    $col_span = $col_counts[$active_tab] ?? 8;
+
     if ($export === 'excel') {
         header('Content-Type: application/vnd.ms-excel; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '.xls"');
-    } else {
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
+        echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel">';
+        echo '<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" />';
+        echo '<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>';
+        echo '<x:Name>' . htmlspecialchars($active_tab) . '</x:Name>';
+        echo '<x:WorksheetOptions><x:Print><x:ValidPrinterInfo/></x:Print></x:WorksheetOptions>';
+        echo '</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->';
+        echo '<style>
+            body { font-family: Arial, sans-serif; font-size: 11px; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { border: 1px solid #000; padding: 6px 10px; }
+            th { background-color: #00264D; color: #ffffff; font-weight: bold; text-align: center; }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+        </style></head><body>';
+        echo '<table>';
+        echo '<tr><td colspan="' . $col_span . '" align="center" style="border:none; text-align:center; font-size:16px; font-weight:bold; color:#00264D; padding:10px 0 4px 0;">' . htmlspecialchars(strtoupper($current_report_title)) . '</td></tr>';
+        echo '<tr><td colspan="' . $col_span . '" align="center" style="border:none; text-align:center; font-size:11px; color:#333; padding:2px 0;">Vamenta Blvd., Carmen, City Of Cagayan De Oro , Misamis Oriental</td></tr>';
+        echo '<tr><td colspan="' . $col_span . '" align="center" style="border:none; text-align:center; font-size:11px; color:#555; padding:2px 0 10px 0;">Date: ' . htmlspecialchars($display_date_range) . '</td></tr>';
+        echo '<tr><td colspan="' . $col_span . '" style="border:none; padding:4px;"></td></tr>';
+
+        if ($active_tab === 'health') {
+            echo '<tr><th>Date</th><th>Server Status</th><th>Database Status</th><th>System Uptime (%)</th><th>CPU Usage (%)</th><th>Memory Usage (%)</th><th>Disk Usage (%)</th><th>Overall Status</th></tr>';
+            foreach ($health_rows as $r) {
+                echo '<tr>'
+                    . '<td class="text-center">' . date('M d, Y', strtotime($r['recorded_date'])) . '</td>'
+                    . '<td class="text-center">' . htmlspecialchars($r['server_status']) . '</td>'
+                    . '<td class="text-center">' . htmlspecialchars($r['database_status']) . '</td>'
+                    . '<td class="text-right">' . number_format($r['system_uptime'], 2) . '%</td>'
+                    . '<td class="text-right">' . $r['cpu_usage'] . '%</td>'
+                    . '<td class="text-right">' . $r['memory_usage'] . '%</td>'
+                    . '<td class="text-right">' . $r['disk_usage'] . '%</td>'
+                    . '<td class="text-center">' . htmlspecialchars($r['overall_status']) . '</td>'
+                    . '</tr>';
+            }
+        } elseif ($active_tab === 'database') {
+            echo '<tr><th>Database Name</th><th>Total Tables</th><th>Total Records</th><th>Database Size</th><th>Last Optimization</th><th>Status</th></tr>';
+            foreach ($database_rows as $r) {
+                echo '<tr>'
+                    . '<td>' . htmlspecialchars($r['db_name']) . '</td>'
+                    . '<td class="text-right">' . $r['tables'] . '</td>'
+                    . '<td class="text-right">' . $r['records'] . '</td>'
+                    . '<td class="text-right">' . htmlspecialchars($r['size']) . '</td>'
+                    . '<td class="text-center">' . htmlspecialchars($r['last_opt']) . '</td>'
+                    . '<td class="text-center">' . htmlspecialchars($r['status']) . '</td>'
+                    . '</tr>';
+            }
+        } elseif ($active_tab === 'backup') {
+            echo '<tr><th>Backup Name</th><th>Backup Type</th><th>Backup Date</th><th>File Size</th><th>Created By</th><th>Status</th></tr>';
+            foreach ($backup_rows as $r) {
+                echo '<tr>'
+                    . '<td>' . htmlspecialchars($r['backup_name']) . '</td>'
+                    . '<td class="text-center">' . htmlspecialchars($r['backup_type'] ?: 'Database') . '</td>'
+                    . '<td class="text-center">' . date('M d, Y h:i A', strtotime($r['created_at'])) . '</td>'
+                    . '<td class="text-right">' . ($r['backup_size'] > 0 ? number_format($r['backup_size']/1024, 1).' KB' : '125 MB') . '</td>'
+                    . '<td class="text-center">' . ($r['created_by'] == 1 ? 'Developer' : 'Super Admin') . '</td>'
+                    . '<td class="text-center">' . htmlspecialchars($r['status'] === 'Completed' || $r['status'] === 'completed' ? 'Successful' : $r['status']) . '</td>'
+                    . '</tr>';
+            }
+        } elseif ($active_tab === 'error') {
+            echo '<tr><th>Date & Time</th><th>Module</th><th>Error Level</th><th>Description</th><th>Status</th></tr>';
+            foreach ($error_rows as $r) {
+                echo '<tr>'
+                    . '<td class="text-center">' . date('M d, Y h:i A', strtotime($r['created_at'])) . '</td>'
+                    . '<td>' . htmlspecialchars($r['module_name']) . '</td>'
+                    . '<td class="text-center">' . htmlspecialchars($r['severity']) . '</td>'
+                    . '<td>' . htmlspecialchars($r['error_message']) . '</td>'
+                    . '<td class="text-center">' . htmlspecialchars($r['status']) . '</td>'
+                    . '</tr>';
+            }
+        } elseif ($active_tab === 'security') {
+            echo '<tr><th>Date & Time</th><th>User</th><th>Activity</th><th>IP Address</th><th>Status</th></tr>';
+            foreach ($security_rows as $r) {
+                echo '<tr>'
+                    . '<td class="text-center">' . date('M d, Y h:i A', strtotime($r['created_at'])) . '</td>'
+                    . '<td>' . htmlspecialchars($r['username'] ?: 'developer') . '</td>'
+                    . '<td>' . htmlspecialchars($r['action']) . '</td>'
+                    . '<td class="text-center">' . htmlspecialchars($r['ip_address'] ?: '192.168.1.10') . '</td>'
+                    . '<td class="text-center">Success</td>'
+                    . '</tr>';
+            }
+        }
+        echo '</table></body></html>';
+        exit;
     }
 
+    // CSV Output
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
     $out = fopen('php://output', 'w');
     fprintf($out, "\xEF\xBB\xBF"); // UTF-8 BOM
+
+    // Print-style Header for CSV
+    fputcsv($out, [strtoupper($current_report_title)]);
+    fputcsv($out, ['Vamenta Blvd., Carmen, City Of Cagayan De Oro , Misamis Oriental']);
+    fputcsv($out, ['Date: ' . $display_date_range]);
+    fputcsv($out, []); // Blank separator line
 
     if ($active_tab === 'health') {
         fputcsv($out, ['Date', 'Server Status', 'Database Status', 'System Uptime (%)', 'CPU Usage (%)', 'Memory Usage (%)', 'Disk Usage (%)', 'Overall Status']);
@@ -595,6 +695,28 @@ a.rpt-action-btn:hover,
     .sfss-print-only td { font-size: 9px !important; padding: 5px 8px !important; border: 1px solid #ddd !important; vertical-align: top !important; color: #000 !important; }
     .sfss-print-only span { background: transparent !important; color: #000 !important; padding: 0 !important; font-weight: bold !important; }
     .sfss-print-only, .sfss-print-only * { min-height: 0 !important; height: auto !important; }
+    .sfss-print-only .print-only-sig {
+        display: table !important;
+        width: 100% !important;
+        border-collapse: collapse !important;
+        margin-top: 35px !important;
+        border: none !important;
+        page-break-inside: avoid !important;
+    }
+    .sfss-print-only .print-only-sig tr {
+        display: table-row !important;
+        border: none !important;
+    }
+    .sfss-print-only .print-only-sig td {
+        display: table-cell !important;
+        border: none !important;
+        padding: 0 !important;
+        background: transparent !important;
+    }
+}
+
+.print-only-sig {
+    display: none !important;
 }
 </style>
 
@@ -785,7 +907,7 @@ a.rpt-action-btn:hover,
                 <button type="button" class="rpt-export-btn rpt-btn-print" onclick="_sfssDoNativePrint()">
                     <i class="fas fa-print"></i> Print
                 </button>
-                <button type="button" class="rpt-export-btn rpt-btn-pdf" onclick="_sfssDoNativePrint(this, 'PDF')">
+                <button type="button" class="rpt-export-btn rpt-btn-pdf" onclick="exportPrintableAreaToPDF('.print-area', '<?php echo htmlspecialchars($current_report_title); ?>', 'technical_report_<?php echo date('Ymd'); ?>', this)">
                     <i class="fas fa-file-pdf"></i> PDF
                 </button>
                 <a href="<?php echo htmlspecialchars($excel_url); ?>" class="rpt-export-btn rpt-btn-excel">
@@ -1024,6 +1146,20 @@ a.rpt-action-btn:hover,
             </table>
         </div>
         <?php endif; ?>
+
+        <!-- SYSTEM DEVELOPED BY SIGNATURE (Print Only — hidden on web view, visible on print) -->
+        <table class="print-only-sig" style="width:100%; margin-top:35px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+            <tr>
+                <td style="border:none;"></td>
+                <td style="border:none; width:220px; text-align:center; vertical-align:bottom;">
+                    <div style="font-size:10px; font-weight:700; color:#333; margin-bottom:25px; text-transform:uppercase;">SYSTEM DEVELOPED BY:</div>
+                    <div style="border-top:1px solid #000; padding-top:4px; font-weight:700; font-size:11px; color:#000;">
+                        <?= htmlspecialchars($superadmin_name) ?>
+                    </div>
+                    <div style="font-size:9.5px; color:#555; margin-top:2px;">Super Admin</div>
+                </td>
+            </tr>
+        </table>
         </div><!-- End print-area -->
 </div>
 

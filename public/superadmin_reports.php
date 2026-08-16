@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // SuperAdmin Reports (Developer View) — Auto-redirect to Technical Reports
 // ============================================================
@@ -9,6 +9,7 @@ require_once __DIR__ . '/../public/db_connect.php';
 require_login();
 
 $me      = current_user();
+$superadmin_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')) ?: ($me['username'] ?? 'Super Admin');
 $role    = function_exists('role_key') ? role_key($me['role'] ?? '') : strtolower(trim($me['role'] ?? ''));
 
 if (!in_array($role, ['superadmin', 'developer'], true)) {
@@ -289,6 +290,13 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     header('Content-Type: text/csv');
     header("Content-Disposition: attachment; filename=\"{$filename}\"");
     $out = fopen('php://output', 'w');
+    fprintf($out, "\xEF\xBB\xBF"); // UTF-8 BOM
+
+    // Print-style Header for CSV
+    fputcsv($out, ['SYSTEM MONITORING & AUDIT REPORTS — ' . mb_strtoupper(str_replace('_', ' ', $section))]);
+    fputcsv($out, ['Vamenta Blvd., Carmen, City Of Cagayan De Oro, Misamis Oriental']);
+    fputcsv($out, ['Date: ' . $date_from . ' – ' . $date_to]);
+    fputcsv($out, []); // Blank separator line
 
     if ($section === 'technical' && !empty($tech_data['recent_logs'])) {
         fputcsv($out, ['ID','Action Type','Module','Details','Status','IP Address','User','Role','Timestamp']);
@@ -817,11 +825,16 @@ require_once __DIR__ . '/../partials/header.php';
         <div>
             <h1><i class="fas fa-chart-line"></i> SYSTEM MONITORING & AUDIT REPORTS</h1>
             <div class="subtitle">SuperAdmin Technical Monitoring & Security Audit</div>
+            <div class="rpt-address" style="font-size:12px; color:#475569; margin-top:2px;">Vamenta Blvd., Carmen, City Of Cagayan De Oro, Misamis Oriental</div>
+            <div class="rpt-date-range" style="font-size:11px; color:#64748b; margin-top:1px;">Date: <?php echo htmlspecialchars($date_from . ' – ' . $date_to); ?></div>
         </div>
         <div class="rpt-actions">
             <a href="?<?php echo http_build_query(array_merge($_GET, ['export' => 'csv'])); ?>" class="rpt-btn rpt-btn-success">
                 <i class="fas fa-file-csv"></i> Export CSV
             </a>
+            <button onclick="exportPrintableAreaToPDF('.rpt-content', '<?php echo htmlspecialchars(ucwords(str_replace('_', ' ', $section))); ?> Report', 'superadmin_report_<?php echo date('Ymd'); ?>', this)" class="rpt-btn rpt-btn-outline" style="color:#dc2626; border-color:#dc2626;">
+                <i class="fas fa-file-pdf"></i> Export PDF
+            </button>
             <button onclick="window.print()" class="rpt-btn rpt-btn-outline">
                 <i class="fas fa-print"></i> Print
             </button>
@@ -1499,8 +1512,21 @@ require_once __DIR__ . '/../partials/header.php';
             <?php endif; ?>
         </div>
     </div>
-
     <?php endif; ?>
+
+    <!-- SYSTEM DEVELOPED BY SIGNATURE (Print Only — hidden on web view, visible on print) -->
+    <table class="print-only-sig" style="width:100%; margin-top:35px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+        <tr>
+            <td style="border:none;"></td>
+            <td style="border:none; width:220px; text-align:center; vertical-align:bottom;">
+                <div style="font-size:10px; font-weight:700; color:#333; margin-bottom:25px; text-transform:uppercase;">SYSTEM DEVELOPED BY:</div>
+                <div style="border-top:1px solid #000; padding-top:4px; font-weight:700; font-size:11px; color:#000;">
+                    <?= htmlspecialchars($superadmin_name) ?>
+                </div>
+                <div style="font-size:9.5px; color:#555; margin-top:2px;">Super Admin</div>
+            </td>
+        </tr>
+    </table>
 
 </div>
 

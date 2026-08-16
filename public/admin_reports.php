@@ -1311,88 +1311,13 @@ function exportReport(type) {
 
     if (type === 'pdf') {
         const pdfBtn = document.querySelector('.rpt-btn-pdf');
-        const origHTML = pdfBtn ? pdfBtn.innerHTML : '';
-        if (pdfBtn) {
-            pdfBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating PDF...';
-            pdfBtn.disabled  = true;
-        }
-
         const headerElem = printableArea.querySelector('.rpt-header-title');
         let title = '';
-        const metaLines = [];
         if (headerElem) {
-            const h2 = headerElem.querySelector('h2');
+            const h2 = headerElem.querySelector('h2, h4');
             if (h2) title = h2.innerText.trim();
-            headerElem.querySelectorAll('h3, h4, p').forEach(el => {
-                const txt = el.innerText.trim();
-                if (txt) metaLines.push(txt);
-            });
         }
-
-        const sections = [];
-        const tables = Array.from(printableArea.querySelectorAll('table'));
-        tables.forEach((tbl) => {
-            let sectionTitle = '';
-            let prev = tbl.closest('.table-responsive')?.previousElementSibling;
-            if (prev && prev.classList.contains('rpt-section-heading')) {
-                sectionTitle = prev.innerText.trim();
-            }
-
-            const headers = [];
-            const headerRow = tbl.querySelector('thead tr');
-            if (headerRow) {
-                headerRow.querySelectorAll('th').forEach(th => headers.push(th.innerText.trim()));
-            }
-
-            const rows = [];
-            tbl.querySelectorAll('tbody tr').forEach(tr => {
-                const rowData = [];
-                tr.querySelectorAll('td').forEach(td => rowData.push(td.innerText.trim()));
-                if (rowData.length) rows.push(rowData);
-            });
-
-            sections.push({
-                title: sectionTitle,
-                headers: headers,
-                rows: rows
-            });
-        });
-
-        const pdfPayload = {
-            filename: filename + '.pdf',
-            title: title || 'REPORT',
-            metaLines: metaLines,
-            sections: sections
-        };
-
-        fetch('report_pdf_download.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(pdfPayload)
-        })
-        .then(response => {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return response.blob();
-        })
-        .then(blob => {
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename + '.pdf';
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 200);
-        })
-        .catch(err => {
-            console.error('PDF download error:', err);
-            _doDirectNativePrint();
-        })
-        .finally(() => {
-            if (pdfBtn) {
-                pdfBtn.innerHTML = origHTML;
-                pdfBtn.disabled  = false;
-            }
-        });
+        exportPrintableAreaToPDF('#adminReportPrintable', title || 'ADMIN REPORT', filename, pdfBtn);
         return;
     }
 
@@ -1444,15 +1369,40 @@ function exportReport(type) {
         setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
 
     } else if (type === 'excel') {
-        if (typeof XLSX === 'undefined') {
-            alert('Excel export library not loaded. Please refresh the page.');
-            return;
-        }
+        let maxCols = 1;
+        tables.forEach((tbl) => {
+            tbl.querySelectorAll('tr').forEach(r => {
+                const colCount = r.querySelectorAll('th, td').length;
+                if (colCount > maxCols) maxCols = colCount;
+            });
+        });
 
-        const wb = XLSX.utils.book_new();
-        const masterData = [];
-        headerLines.forEach(line => { masterData.push([line]); });
-        masterData.push([]);
+        let html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<!--[if gte mso 9]><xml>
+<x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+<x:Name>${tab.replace(/_/g, ' ').substring(0, 30).toUpperCase()}</x:Name>
+<x:WorksheetOptions><x:Print><x:ValidPrinterInfo/></x:Print></x:WorksheetOptions>
+</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook>
+</xml><![endif]-->
+<style>
+    body { font-family: Arial, sans-serif; font-size: 11px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #000; padding: 6px 10px; }
+    th { background-color: #00264D; color: #ffffff; font-weight: bold; text-align: center; }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+</style>
+</head>
+<body>
+<table>`;
+
+        headerLines.forEach((line, idx) => {
+            const fontStyle = idx === 0 ? 'font-size:16px; font-weight:bold; color:#00264D;' : 'font-size:11px; color:#333;';
+            html += `<tr><td colspan="${maxCols}" align="center" style="border:none; text-align:center !important; ${fontStyle} padding:4px 0;">${line.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td></tr>`;
+        });
+        html += `<tr><td colspan="${maxCols}" style="border:none; padding:4px;"></td></tr>`;
 
         tables.forEach((tbl) => {
             let sectionHeading = '';
@@ -1460,21 +1410,26 @@ function exportReport(type) {
             if (prev && prev.classList.contains('rpt-section-heading')) {
                 sectionHeading = prev.innerText.trim();
             }
-            if (sectionHeading) { masterData.push([sectionHeading]); }
+            if (sectionHeading) {
+                html += `<tr><td colspan="${maxCols}" align="left" style="border:none; font-weight:bold; font-size:12px; color:#00264D; padding:8px 0 4px 0;">${sectionHeading.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td></tr>`;
+            }
 
             tbl.querySelectorAll('tr').forEach(r => {
-                const cols = r.querySelectorAll('th, td');
-                const rowData = [];
-                cols.forEach(c => rowData.push(c.innerText.trim()));
-                masterData.push(rowData);
+                html += r.outerHTML;
             });
-            masterData.push([]);
+            html += `<tr><td colspan="${maxCols}" style="border:none; padding:4px;"></td></tr>`;
         });
 
-        const ws = XLSX.utils.aoa_to_sheet(masterData);
-        const sheetName = tab.replace(/_/g, ' ').substring(0, 30).toUpperCase();
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
-        XLSX.writeFile(wb, filename + '.xlsx');
+        html += `</table></body></html>`;
+
+        const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename + '.xls';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
     }
 }
 

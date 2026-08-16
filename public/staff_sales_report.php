@@ -1031,7 +1031,7 @@ require_once __DIR__ . '/../partials/header.php';
         <div>
             <a href="?date_start=<?= urlencode($date_start) ?>&date_end=<?= urlencode($date_end) ?>&export=excel" class="btn">Export Excel</a>
             <a href="?date_start=<?= urlencode($date_start) ?>&date_end=<?= urlencode($date_end) ?>&export=csv" class="btn">CSV</a>
-            <button type="button" class="btn" onclick="_sfssDoNativePrint(this, 'Export PDF')">Export PDF</button>
+            <button type="button" class="btn rpt-btn-pdf" onclick="exportPrintableAreaToPDF('.print-area', 'STAFF SALES REPORT', 'staff_sales_report', this)"><i class="fas fa-file-pdf"></i> Export PDF</button>
             <button type="button" class="btn" onclick="_sfssDoNativePrint()">Print</button>
         </div>
     </div>
@@ -1039,10 +1039,10 @@ require_once __DIR__ . '/../partials/header.php';
     <!-- Printable Document Area -->
     <div class="print-area">
     <div class="container">
-        <div class="header">
-            <h1>DELIVERIES REPORT</h1>
-            <p><?= htmlspecialchars($station_name) ?></p>
-            <p>Period: <?= date('F d, Y', strtotime($date_start)) ?> - <?= date('F d, Y', strtotime($date_end)) ?></p>
+        <div class="header" style="text-align:center;">
+            <h1 style="color:#002F6C; font-weight:800;">STAFF SALES & DELIVERIES REPORT</h1>
+            <p class="rpt-address" style="color:#555; font-size:12px;"><?= htmlspecialchars($station_name) ?></p>
+            <p class="rpt-date-range" style="color:#555; font-size:12px;"><strong>Period:</strong> <?= date('F d, Y', strtotime($date_start)) ?> - <?= date('F d, Y', strtotime($date_end)) ?></p>
         </div>
         
         <div class="content">

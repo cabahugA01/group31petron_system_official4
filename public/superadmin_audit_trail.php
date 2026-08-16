@@ -13,6 +13,7 @@ require_once __DIR__ . '/db_connect.php';
 require_login();
 
 $u = current_user();
+$superadmin_name = trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? '')) ?: ($u['username'] ?? 'Super Admin');
 $role = $u['role'] ?? 'staff';
 $roleKey = function_exists('role_key') ? role_key($role) : strtolower(trim((string)$role));
 
@@ -406,10 +407,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     $out = fopen('php://output', 'w');
     fprintf($out, "\xEF\xBB\xBF"); // UTF-8 BOM for Excel compatibility
 
-    fputcsv($out, ['PETRON STATION MANAGEMENT SYSTEM — DEVELOPER AUDIT TRAIL']);
-    fputcsv($out, ['Report Tab:', $valid_tabs[$active_tab]]);
-    fputcsv($out, ['Date Range:', date('F d, Y', strtotime($date_from)) . ' to ' . date('F d, Y', strtotime($date_to))]);
-    fputcsv($out, ['Generated:', date('F d, Y h:i A')]);
+    fputcsv($out, ['DEVELOPER AUDIT TRAIL — ' . mb_strtoupper($valid_tabs[$active_tab])]);
+    fputcsv($out, ['Vamenta Blvd., Carmen, City Of Cagayan De Oro, Misamis Oriental']);
+    fputcsv($out, ['Date Range: ' . date('F d, Y', strtotime($date_from)) . ' to ' . date('F d, Y', strtotime($date_to)) . ' | Log Category: ' . $valid_tabs[$active_tab]]);
     fputcsv($out, []);
 
     switch ($active_tab) {
@@ -512,12 +512,25 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     </style>';
     echo '</head><body>';
 
-    echo '<p class="title">PETRON STATION MANAGEMENT SYSTEM — DEVELOPER AUDIT TRAIL</p>';
-    echo '<p class="subtitle"><strong>Report Tab:</strong> ' . htmlspecialchars($tab_label) . ' &nbsp;&nbsp; <strong>Date Range:</strong> ' . htmlspecialchars($period_label) . ' &nbsp;&nbsp; <strong>Generated:</strong> ' . date('F d, Y h:i A') . '</p>';
-    echo '<br/>';
+    $col_counts = [
+        'system_activity' => 8,
+        'database' => 6,
+        'security' => 5,
+        'module_config' => 5,
+        'backup_restore' => 5,
+        'maintenance' => 5,
+        'error_exception' => 5,
+        'scheduled_tasks' => 4,
+        'archived_logs' => 6
+    ];
+    $col_span = $col_counts[$active_tab] ?? 8;
 
-    // Build table headers & rows per tab
+    // Build table with merged centered header rows
     echo '<table>';
+    echo '<tr><td colspan="' . $col_span . '" align="center" style="border:none; text-align:center; font-size:16px; font-weight:bold; color:#002F6C; padding:10px 0 4px 0;">DEVELOPER AUDIT TRAIL — ' . htmlspecialchars(strtoupper($tab_label)) . '</td></tr>';
+    echo '<tr><td colspan="' . $col_span . '" align="center" style="border:none; text-align:center; font-size:11px; color:#333; padding:2px 0;">Vamenta Blvd., Carmen, City Of Cagayan De Oro, Misamis Oriental</td></tr>';
+    echo '<tr><td colspan="' . $col_span . '" align="center" style="border:none; text-align:center; font-size:11px; color:#555; padding:2px 0 10px 0;"><strong>Date Range:</strong> ' . htmlspecialchars($period_label) . ' &nbsp;|&nbsp; <strong>Log Category:</strong> ' . htmlspecialchars($tab_label) . '</td></tr>';
+    echo '<tr><td colspan="' . $col_span . '" style="border:none; padding:4px;"></td></tr>';
     switch ($active_tab) {
         case 'system_activity':
             echo '<tr><th>Date & Time</th><th>Developer / System</th><th>Module</th><th>Action</th><th>Description</th><th>IP Address</th><th>Device / Agent</th><th>Status</th></tr>';
@@ -816,8 +829,30 @@ include __DIR__ . '/../partials/header.php';
     .sfss-print-only .text-success { color: #15803d !important; }
     .sfss-print-only .text-danger  { color: #b91c1c !important; }
     .sfss-print-only .text-warning { color: #a16207 !important; }
-    .sfss-print-only .text-muted   { color: #6b7280 !important; }
+    /* Print-Only Signature Table — display in print container, remove cell borders */
+    .sfss-print-only .print-only-sig {
+        display: table !important;
+        width: 100% !important;
+        border-collapse: collapse !important;
+        margin-top: 35px !important;
+        border: none !important;
+        page-break-inside: avoid !important;
+    }
+    .sfss-print-only .print-only-sig tr {
+        display: table-row !important;
+        border: none !important;
+    }
+    .sfss-print-only .print-only-sig td {
+        display: table-cell !important;
+        border: none !important;
+        padding: 0 !important;
+        background: transparent !important;
+    }
     .no-print { display: none !important; }
+}
+
+.print-only-sig {
+    display: none !important;
 }
 </style>
 
@@ -856,7 +891,7 @@ include __DIR__ . '/../partials/header.php';
             <button type="button" class="rpt-export-btn rpt-btn-print" onclick="printReport()">
                 <i class="fas fa-print"></i> Print
             </button>
-            <button type="button" class="rpt-export-btn rpt-btn-pdf" onclick="exportReport('pdf', this)">
+            <button type="button" class="rpt-export-btn rpt-btn-pdf" onclick="exportPrintableAreaToPDF('#auditPrintableArea', 'Developer Audit Trail - <?= htmlspecialchars($valid_tabs[$active_tab]) ?>', 'audit_trail_<?= date('Ymd') ?>', this)">
                 <i class="fas fa-file-pdf"></i> PDF
             </button>
             <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'excel'])) ?>" class="rpt-export-btn rpt-btn-excel" title="Export to Excel">
@@ -888,13 +923,11 @@ include __DIR__ . '/../partials/header.php';
                 <h1 style="font-size:20px; font-weight:800; color:#002F6C; margin:0 0 4px 0; letter-spacing:0.5px; font-family:'Segoe UI', sans-serif;">
                     DEVELOPER AUDIT TRAIL — <?= strtoupper(htmlspecialchars($valid_tabs[$active_tab])) ?>
                 </h1>
-                <div style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:4px;">
-                    Petron Station Management System — Superadmin Portal
+                <div class="rpt-address" style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:4px;">
+                    Vamenta Blvd., Carmen, City Of Cagayan De Oro, Misamis Oriental
                 </div>
-                <div style="font-size:11px; color:#334155; font-weight:600; display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
-                    <span><strong>Date Range:</strong> <?= htmlspecialchars($report_period_label) ?></span>
-                    <span style="color:#94a3b8;">|</span>
-                    <span><strong>Log Category:</strong> <?= htmlspecialchars($valid_tabs[$active_tab]) ?></span>
+                <div class="rpt-date-range" style="font-size:11px; color:#334155; font-weight:600;">
+                    Date Range: <?= htmlspecialchars($report_period_label) ?> &nbsp;|&nbsp; Log Category: <?= htmlspecialchars($valid_tabs[$active_tab]) ?>
                 </div>
             </div>
 
@@ -1055,6 +1088,20 @@ include __DIR__ . '/../partials/header.php';
                     </tbody>
                 </table>
             </div>
+
+            <!-- SYSTEM DEVELOPED BY SIGNATURE (Print Only — hidden on web view, visible on print) -->
+            <table class="print-only-sig" style="width:100%; margin-top:35px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+                <tr>
+                    <td style="border:none;"></td>
+                    <td style="border:none; width:220px; text-align:center; vertical-align:bottom;">
+                        <div style="font-size:10px; font-weight:700; color:#333; margin-bottom:25px; text-transform:uppercase;">SYSTEM DEVELOPED BY:</div>
+                        <div style="border-top:1px solid #000; padding-top:4px; font-weight:700; font-size:11px; color:#000;">
+                            <?= htmlspecialchars($superadmin_name) ?>
+                        </div>
+                        <div style="font-size:9.5px; color:#555; margin-top:2px;">Super Admin</div>
+                    </td>
+                </tr>
+            </table>
 
         </div>
     </div>

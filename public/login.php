@@ -77,8 +77,8 @@ if (isset($_GET['logout'])) {
 }
 // 2. Handle Login Logic
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $login_input = trim($_POST['username'] ?? '');
-    $password = $_POST['password_hash'] ?? '';
+    $login_input = trim($_POST['username'] ?? $_POST['account_id'] ?? '');
+    $password = $_POST['password'] ?? $_POST['password_hash'] ?? '';
     $captcha_input = trim($_POST['captcha'] ?? '');
 
     if (empty($login_input) || empty($password)) {
@@ -417,17 +417,20 @@ $_asset_base = $_login_base . '/assets';
             --icon:      rgba(200,225,255,.85);
         }
 
+        html {
+            scroll-behavior: smooth;
+        }
+
         body {
             font-family: 'Inter', 'Segoe UI', sans-serif;
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
+            margin: 0;
+            padding: 0;
             position: relative;
-            overflow: hidden;
+            overflow-x: hidden;
+            overflow-y: auto;
             /* Absolute path so Edge trailing-slash URLs don't break the background */
-            background: url('<?= htmlspecialchars($_asset_base) ?>/img/background.jpg') center center / cover no-repeat;
+            background: #000c1e url('<?= htmlspecialchars($_asset_base) ?>/img/background.jpg') center center / cover no-repeat fixed;
         }
 
         /* 4D Animated Background Layers */
@@ -437,9 +440,9 @@ $_asset_base = $_login_base . '/assets';
             z-index: 0;
         }
 
-        /* Base image layer — real Petron station photo, no grid */
+        /* Base image layer — real Petron station photo, fixed position */
         .bg-image {
-            background: url('<?= htmlspecialchars($_asset_base) ?>/img/background.jpg') center center / cover no-repeat;
+            background: url('<?= htmlspecialchars($_asset_base) ?>/img/background.jpg') center center / cover no-repeat fixed;
             z-index: 1;
         }
 
@@ -575,14 +578,16 @@ $_asset_base = $_login_base . '/assets';
             display: flex;
             align-items: center;
             gap: 10px;
-            background: rgba(227,6,19,.12);
-            border: 1px solid rgba(227,6,19,.35);
+            background: rgba(227,6,19,.28);
+            border: 1px solid rgba(227,6,19,.65);
             border-radius: 10px;
             padding: 12px 14px;
             margin-bottom: 22px;
             font-size: 13px;
-            color: #ff8080;
+            font-weight: 600;
+            color: #ffc2c2;
             animation: shake .35s ease;
+            box-shadow: 0 4px 16px rgba(227,6,19,0.25);
         }
         .alert-success {
             display: flex;
@@ -683,13 +688,21 @@ $_asset_base = $_login_base . '/assets';
         }
         .pw-toggle:hover { color: #93c5fd; text-shadow: 0 0 10px rgba(96,165,250,.6); }
 
-        /* Hide browser native password reveal eye (Edge/IE/Chrome) */
+        /* Hide browser native password reveal eye & number spinners */
         input[type="password"]::-ms-reveal,
         input[type="password"]::-ms-clear { display: none !important; }
         input[type="password"]::-webkit-contacts-auto-fill-button,
         input[type="password"]::-webkit-credentials-auto-fill-button,
         input[type="password"]::-webkit-strong-password-auto-fill-button {
             display: none !important; visibility: hidden; pointer-events: none;
+        }
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
         }
 
         .checkbox-group {
@@ -1262,113 +1275,253 @@ $_asset_base = $_login_base . '/assets';
         }
         /* Push body content below navbar */
         .login-wrap {
-            margin-top: 60px;
+            margin-top: 0;
         }
 
-        /* ── About / Contact Modal Overrides ── */
-        .nav-modal-overlay {
-            position: fixed;
-            inset: 0;
-            z-index: 9998;
-            background: rgba(0,0,0,0.65);
-            backdrop-filter: blur(6px);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            animation: fadeIn 0.2s ease;
-        }
-        .nav-modal-overlay.open { display: flex; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .nav-modal-box {
-            background: linear-gradient(145deg, rgba(0,20,55,0.98), rgba(0,10,30,0.98));
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 20px;
-            width: 90%;
-            max-width: 520px;
-            max-height: 85vh;
+        /* ── In-Page Sections Styling ── */
+        .page-sections-wrapper {
+            position: relative;
+            z-index: 10;
+            width: 100%;
             display: flex;
             flex-direction: column;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06) inset;
-            animation: modalPop 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
-            overflow: hidden;
-        }
-        @keyframes modalPop {
-            from { transform: scale(0.88) translateY(20px); opacity: 0; }
-            to   { transform: scale(1) translateY(0);       opacity: 1; }
-        }
-        .nav-modal-head {
-            padding: 20px 24px 16px;
-            display: flex;
             align-items: center;
-            justify-content: space-between;
-            border-bottom: 1px solid rgba(255,255,255,0.07);
-            background: rgba(0,47,108,0.3);
+            padding-bottom: 48px; /* space for fixed footer */
         }
-        .nav-modal-head h2 {
-            font-size: 16px;
-            font-weight: 800;
-            color: #fff;
+
+        .page-section {
+            width: 100%;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            gap: 10px;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
+            justify-content: center;
+            padding: 90px 24px 70px;
+            scroll-margin-top: 60px;
+            box-sizing: border-box;
         }
-        .nav-modal-head h2 i { color: #60a5fa; }
-        .nav-modal-close {
-            background: none;
+
+        .section-home {
+            min-height: 100vh;
+            padding-top: 80px;
+            padding-bottom: 60px;
+        }
+
+        /* ── Full-Width Integrated Sections ── */
+        .page-section {
+            width: 100%;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 70px 24px 60px;
+            scroll-margin-top: 0;
+            box-sizing: border-box;
+        }
+
+        .section-home {
+            min-height: 100vh;
+            justify-content: center;
+            padding-top: 60px;
+            padding-bottom: 60px;
+        }
+
+        /* Transparent overlays for about/contact sections */
+        .section-about,
+        .section-contact {
+            background: transparent;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
             border: none;
-            color: rgba(255,255,255,0.5);
-            font-size: 22px;
-            cursor: pointer;
-            line-height: 1;
-            transition: color 0.2s, transform 0.2s;
-            padding: 4px;
         }
-        .nav-modal-close:hover { color: #fff; transform: scale(1.15) rotate(90deg); }
-        .nav-modal-body {
-            padding: 24px;
-            overflow-y: auto;
-            flex: 1;
-            color: rgba(255,255,255,0.82);
-            font-size: 14px;
-            line-height: 1.75;
+
+        .section-inner {
+            width: 100%;
+            max-width: 960px;
+            margin: 0 auto;
+            text-align: center;
+            color: #111111;
+            box-sizing: border-box;
         }
-        .nav-modal-body h3 {
-            font-size: 11px;
-            font-weight: 700;
+
+        /* Reveal animation */
+        .reveal {
+            opacity: 0;
+            transform: translateY(40px);
+            transition: opacity 0.7s cubic-bezier(0.22,1,0.36,1), transform 0.7s cubic-bezier(0.22,1,0.36,1);
+        }
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+
+        .section-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11.5px;
+            font-weight: 800;
             text-transform: uppercase;
-            letter-spacing: 1.5px;
-            color: #93c5fd;
-            margin: 20px 0 8px;
+            letter-spacing: 2px;
+            color: #ffffff;
+            background: linear-gradient(135deg, #002F6C, #0050b3);
+            border: none;
+            padding: 8px 22px;
+            border-radius: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0,47,108,0.35);
         }
-        .nav-modal-body h3:first-child { margin-top: 0; }
-        .nav-modal-body p { margin-bottom: 10px; }
-        .nav-modal-body .info-row {
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-            padding: 12px 16px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.07);
-            border-radius: 10px;
-            margin-bottom: 10px;
+
+        .section-heading {
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: -0.2px;
+            color: #0a1628;
+            margin: 0 0 14px 0;
+            line-height: 1.2;
         }
-        .nav-modal-body .info-row i {
+
+        .section-divider {
+            width: 60px;
+            height: 4px;
+            background: linear-gradient(90deg, #E30613, #002F6C);
+            border-radius: 4px;
+            margin: 0 auto 28px auto;
+        }
+
+        .about-body-p {
             font-size: 16px;
-            color: #60a5fa;
-            margin-top: 2px;
+            line-height: 1.9;
+            color: #111111;
+            margin-bottom: 18px;
+            text-align: center;
+            font-weight: 500;
+            max-width: 760px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .about-body-p:last-of-type {
+            margin-bottom: 0;
+        }
+
+        /* Clean Box-Free Contact Layout */
+        .clean-contact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 40px;
+            margin-top: 24px;
+            text-align: center;
+        }
+
+        .contact-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 14px;
+            padding: 8px;
+            background: transparent;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            border-radius: 0;
+            border: none;
+            box-shadow: none;
+        }
+
+        .contact-person-role {
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1.8px;
+            color: #002F6C;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: transparent;
+            padding: 0;
+            border-radius: 0;
+            width: fit-content;
+            margin: 0 auto;
+        }
+
+        .contact-person-title {
+            font-size: 20px;
+            font-weight: 800;
+            color: #111111;
+            letter-spacing: 0.2px;
+            line-height: 1.3;
+            text-align: center;
+        }
+
+        .contact-divider {
+            width: 45px;
+            height: 3px;
+            background: linear-gradient(90deg, #E30613, #002F6C);
+            border-radius: 3px;
+            margin: 0 auto;
+        }
+
+        .contact-link-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            font-size: 15px;
+            color: #111111;
+            font-weight: 600;
+        }
+
+        .contact-link-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: rgba(0,47,108,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
             flex-shrink: 0;
         }
-        .nav-modal-body .info-row div { flex: 1; }
-        .nav-modal-body .info-row strong {
-            display: block;
-            font-size: 12px;
+        .contact-link-icon i {
+            font-size: 13px;
+            color: #002F6C;
+        }
+
+        .contact-link-row a {
+            color: #002F6C;
+            text-decoration: none;
             font-weight: 700;
-            color: rgba(255,255,255,0.5);
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            margin-bottom: 2px;
+            transition: color 0.2s;
+        }
+        .contact-link-row a:hover {
+            color: #E30613;
+            text-decoration: underline;
+        }
+
+        /* Site Footer Section */
+        .page-site-footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            width: 100%;
+            padding: 14px 24px;
+            text-align: center;
+            color: #111111;
+            font-size: 12.5px;
+            font-weight: 600;
+            background: transparent;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            box-shadow: none;
+            box-sizing: border-box;
+            letter-spacing: 0.3px;
+            text-shadow: none;
+            z-index: 900;
         }
     </style>
 </head>
@@ -1380,65 +1533,11 @@ $_asset_base = $_login_base . '/assets';
         <i class="fas fa-bars"></i>
     </button>
     <ul class="nav-links" id="navLinks">
-        <li><a href="login.php" class="active" id="nav-home"><i class="fas fa-home"></i> Home</a></li>
-        <li><button type="button" onclick="openNavModal('about')" id="nav-about"><i class="fas fa-info-circle"></i> About Us</button></li>
-        <li><button type="button" onclick="openNavModal('contact')" id="nav-contact"><i class="fas fa-envelope"></i> Contact Us</button></li>
+        <li><a href="#home" class="active" id="nav-home" onclick="document.getElementById('navLinks').classList.remove('open')"><i class="fas fa-home"></i> Home</a></li>
+        <li><a href="#about-us" id="nav-about" onclick="document.getElementById('navLinks').classList.remove('open')"><i class="fas fa-info-circle"></i> About Us</a></li>
+        <li><a href="#contact-us" id="nav-contact" onclick="document.getElementById('navLinks').classList.remove('open')"><i class="fas fa-envelope"></i> Contact Us</a></li>
     </ul>
 </nav>
-
-<!-- ── About Us Modal ── -->
-<div class="nav-modal-overlay" id="navModalAbout" role="dialog" aria-modal="true" aria-labelledby="aboutModalTitle" onclick="if(event.target===this)closeNavModal('about')">
-    <div class="nav-modal-box">
-        <div class="nav-modal-head">
-            <h2 id="aboutModalTitle"><i class="fas fa-info-circle"></i> About Us</h2>
-            <button class="nav-modal-close" onclick="closeNavModal('about')" aria-label="Close">&#x2715;</button>
-        </div>
-        <div class="nav-modal-body">
-            <h3>Who We Are</h3>
-            <p>Petron Station &amp; Service Center Management System is a comprehensive digital platform developed to streamline the daily operations of Petron fuel stations. Built for efficiency, accuracy, and real-time visibility.</p>
-            <h3>Our Mission</h3>
-            <p>To empower station managers and staff with smart, intuitive tools that simplify fuel inventory tracking, sales reporting, and transaction management — all in one place.</p>
-            <h3>What We Offer</h3>
-            <p>✦ Real-time fuel inventory monitoring<br>
-               ✦ Meter reading &amp; fuel sales closing<br>
-               ✦ Manager validation &amp; approval workflows<br>
-               ✦ Merchandise transaction management<br>
-               ✦ Comprehensive reports &amp; analytics</p>
-            <h3>System Version</h3>
-            <p>Petron SMS v4.0 &mdash; &copy; <?= date('Y') ?> All Rights Reserved.</p>
-        </div>
-    </div>
-</div>
-
-<!-- ── Contact Us Modal ── -->
-<div class="nav-modal-overlay" id="navModalContact" role="dialog" aria-modal="true" aria-labelledby="contactModalTitle" onclick="if(event.target===this)closeNavModal('contact')">
-    <div class="nav-modal-box">
-        <div class="nav-modal-head">
-            <h2 id="contactModalTitle"><i class="fas fa-envelope"></i> Contact Us</h2>
-            <button class="nav-modal-close" onclick="closeNavModal('contact')" aria-label="Close">&#x2715;</button>
-        </div>
-        <div class="nav-modal-body">
-            <h3>Get In Touch</h3>
-            <p>For system support, technical concerns, or inquiries, please reach out to our team:</p>
-            <div class="info-row">
-                <i class="fas fa-map-marker-alt"></i>
-                <div><strong>Address</strong>Vamenta Blvd., Carmen, City of Cagayan De Oro, Misamis Oriental</div>
-            </div>
-            <div class="info-row">
-                <i class="fas fa-phone-alt"></i>
-                <div><strong>Phone</strong>(088) 123-4567 &nbsp;|&nbsp; 0917-123-4567</div>
-            </div>
-            <div class="info-row">
-                <i class="fas fa-envelope"></i>
-                <div><strong>Email</strong>support@petron-sms.com</div>
-            </div>
-            <div class="info-row">
-                <i class="fas fa-clock"></i>
-                <div><strong>Operating Hours</strong>Monday – Saturday &nbsp;|&nbsp; 8:00 AM – 5:00 PM</div>
-            </div>
-        </div>
-    </div>
-</div>
 
 <!-- 4D Background Layers -->
 <div class="bg-layer bg-image"></div>
@@ -1468,147 +1567,225 @@ $_asset_base = $_login_base . '/assets';
     <div class="ray"></div>
 </div>
 
-<div class="login-wrap">
-    <div class="login-card">
+<div class="page-sections-wrapper">
 
-        <!-- Branding -->
-        <div class="brand">
-            <?php
-                // Build absolute logo URL (avoids Edge trailing-slash relative path issues)
-                $logo_rel = get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0));
-                // Encode each segment to handle spaces in filenames
-                $logo_segs = explode('/', ltrim($logo_rel, '/'));
-                $logo_abs  = $_login_base . '/' . implode('/', array_map('rawurlencode', $logo_segs));
-                $logo_fallback = $_asset_base . '/img/Petron%20Logo.png';
-            ?>
-            <img src="<?= htmlspecialchars($logo_abs) ?>" alt="Petron" class="brand-logo"
-                 onerror="this.onerror=null;this.src='<?= htmlspecialchars($logo_fallback) ?>'">
-            <span class="brand-tagline">Station Management System</span>
-        </div>
+    <!-- ── SECTION 1: HOME (LOGIN) ── -->
+    <section id="home" class="page-section section-home">
+        <div class="login-wrap">
+            <div class="login-card">
 
-        <!-- Success Banner on Login -->
-        <?php if ($login_success): ?>
-        <div class="alert-success" role="alert" style="display:flex;align-items:center;justify-content:center;gap:10px;padding:16px 20px;font-size:15px;font-weight:700;margin: 24px 0 16px;">
-            <i class="fas fa-check-circle" style="font-size:18px;"></i>
-            <span>Login Successfully</span>
-        </div>
-        <p style="text-align:center;color:rgba(200,225,255,.85);font-size:13px;margin:16px 0 8px;">
-            <i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Redirecting to your dashboard…
-        </p>
-        <script>
-        setTimeout(function(){
-            window.location.href = <?= json_encode($dashboard_url) ?>;
-        }, 1100);
-        </script>
-        <?php else: ?>
-
-        <!-- Error Banner -->
-        <?php if ($error): ?>
-        <div class="alert-error" role="alert">
-            <i class="fas fa-exclamation-circle"></i>
-            <span><?php echo htmlspecialchars($error); ?></span>
-        </div>
-        <?php endif; ?>
-
-        <!-- Success Banner -->
-        <?php if ($success_msg): ?>
-        <div class="alert-success" role="alert">
-            <i class="fas fa-check-circle"></i>
-            <span><?php echo htmlspecialchars($success_msg); ?></span>
-        </div>
-        <?php endif; ?>
-
-        <!-- Login Form -->
-        <form method="POST" action="<?= htmlspecialchars($_login_base . '/public/login.php') ?>" id="loginForm" novalidate>
-
-            <!-- Account ID -->
-            <div class="form-group">
-                <div class="field-label">
-                    <span>Account ID</span>
-                    <!-- type-badge kept in DOM for JS compat but hidden via CSS -->
-                    <span class="type-badge" id="typeBadge"></span>
+                <!-- Branding -->
+                <div class="brand">
+                    <?php
+                        // Build absolute logo URL (avoids Edge trailing-slash relative path issues)
+                        $logo_rel = get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0));
+                        // Encode each segment to handle spaces in filenames
+                        $logo_segs = explode('/', ltrim($logo_rel, '/'));
+                        $logo_abs  = $_login_base . '/' . implode('/', array_map('rawurlencode', $logo_segs));
+                        $logo_fallback = $_asset_base . '/img/Petron%20Logo.png';
+                    ?>
+                    <img src="<?= htmlspecialchars($logo_abs) ?>" alt="Petron" class="brand-logo"
+                         onerror="this.onerror=null;this.src='<?= htmlspecialchars($logo_fallback) ?>'">
+                    <span class="brand-tagline">Station Management System</span>
                 </div>
-                <div class="input-wrap">
-                    <i class="fas fa-id-badge input-icon"></i>
-                    <input
-                        type="text"
-                        name="username"
-                        id="accountId"
-                        class="field-input no-right"
-                        placeholder="Enter Account"
-                        required
-                        autofocus
-                        autocomplete="username"
-                        aria-label="Account ID"
-                    >
+
+                <!-- Success Banner on Login -->
+                <?php if ($login_success): ?>
+                <div class="alert-success" role="alert" style="display:flex;align-items:center;justify-content:center;gap:10px;padding:16px 20px;font-size:15px;font-weight:700;margin: 24px 0 16px;">
+                    <i class="fas fa-check-circle" style="font-size:18px;"></i>
+                    <span>Login Successfully</span>
+                </div>
+                <p style="text-align:center;color:rgba(200,225,255,.85);font-size:13px;margin:16px 0 8px;">
+                    <i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Redirecting to your dashboard…
+                </p>
+                <script>
+                setTimeout(function(){
+                    window.location.href = <?= json_encode($dashboard_url) ?>;
+                }, 1100);
+                </script>
+                <?php else: ?>
+
+                <!-- Error Banner -->
+                <?php if ($error): ?>
+                <div class="alert-error" role="alert">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span><?php echo htmlspecialchars($error); ?></span>
+                </div>
+                <?php endif; ?>
+
+                <!-- Success Banner -->
+                <?php if ($success_msg): ?>
+                <div class="alert-success" role="alert">
+                    <i class="fas fa-check-circle"></i>
+                    <span><?php echo htmlspecialchars($success_msg); ?></span>
+                </div>
+                <?php endif; ?>
+
+                <!-- Login Form -->
+                <form method="POST" action="<?= htmlspecialchars($_login_base . '/public/login.php') ?>" id="loginForm" novalidate>
+
+                    <!-- Account ID -->
+                    <div class="form-group">
+                        <div class="field-label">
+                            <span>Account ID</span>
+                            <span class="type-badge" id="typeBadge"></span>
+                        </div>
+                        <div class="input-wrap">
+                            <i class="fas fa-id-badge input-icon"></i>
+                            <input
+                                type="text"
+                                name="username"
+                                id="accountId"
+                                class="field-input no-right"
+                                placeholder="Enter Account"
+                                required
+                                autofocus
+                                autocomplete="username"
+                                aria-label="Account ID"
+                            >
+                        </div>
+                    </div>
+
+                    <!-- Password -->
+                    <div class="form-group">
+                        <div class="field-label">
+                            <span>Password</span>
+                        </div>
+                        <div class="input-wrap">
+                            <i class="fas fa-lock input-icon"></i>
+                            <input
+                                type="password"
+                                name="password"
+                                id="passwordField"
+                                class="field-input"
+                                placeholder="Enter Password"
+                                required
+                                autocomplete="current-password"
+                                aria-label="Password"
+                            >
+                            <button type="button" class="pw-toggle" id="pwToggle" aria-label="Toggle password visibility">
+                                <i class="fas fa-eye" id="pwIcon"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Math Captcha -->
+                    <div class="form-group" style="margin-top:16px;">
+                        <div class="captcha-box">
+                            <div class="captcha-question" id="captchaQuestion">
+                                <?= htmlspecialchars($captcha_question) ?>
+                            </div>
+                            <div class="captcha-equals">=</div>
+                            <input
+                                type="text"
+                                inputmode="numeric"
+                                pattern="[0-9]*"
+                                name="captcha"
+                                id="captchaInput"
+                                class="captcha-input"
+                                placeholder=""
+                                required
+                                autocomplete="off"
+                                aria-label="Captcha Answer"
+                            >
+                            <button type="button" class="captcha-refresh" id="refreshCaptcha" title="Get new math question" aria-label="Refresh Captcha">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="form-actions" style="margin-top:20px;">
+                        <button type="submit" class="btn-login" id="submitBtn">
+                            <span class="spinner" id="spinner"></span>
+                            <span id="btnText"><i class="fas fa-sign-in-alt" style="margin-right:6px;font-size:13px;"></i>Login</span>
+                        </button>
+                    </div>
+
+                </form>
+
+                <div class="login-footer">
+                    <a href="<?= htmlspecialchars($_login_base . '/public/forgot_password.php') ?>">
+                        <i class="fas fa-key" style="margin-right:5px;font-size:11px;opacity:.7;"></i>Forgot Password?
+                    </a>
+                </div>
+                <?php endif; ?>
+            </div><!-- /.login-card -->
+        </div><!-- /.login-wrap -->
+    </section>
+
+    <!-- ── SECTION 2: ABOUT US ── -->
+    <section id="about-us" class="page-section section-about">
+        <div class="section-inner">
+            <div class="section-badge reveal">
+                <i class="fas fa-info-circle"></i> About Us
+            </div>
+            <h2 class="section-heading reveal reveal-delay-1">Petron Station Management System</h2>
+            <div class="section-divider reveal reveal-delay-1"></div>
+            <p class="about-body-p reveal reveal-delay-2">
+                The Petron Station Management System is a web-based back-office management solution developed to support the daily operations of Petron Station &amp; Service Center – Vamenta Blvd., Carmen, Cagayan de Oro City, Misamis Oriental.
+            </p>
+            <p class="about-body-p reveal reveal-delay-2">
+                The system provides a centralized platform for managing fuel operations, merchandise and job order transactions, inventory, customer records, reporting, approvals, notifications, and audit trails. It is designed to improve operational efficiency, record accuracy, accountability, and monitoring within the station.
+            </p>
+            <p class="about-body-p reveal reveal-delay-3">
+                Currently implemented for one Petron franchise branch, the system follows a scalable and nationwide-ready design that can support future expansion to additional franchise branches.
+            </p>
+        </div>
+    </section>
+
+    <!-- ── SECTION 3: CONTACT US ── -->
+    <section id="contact-us" class="page-section section-contact">
+        <div class="section-inner">
+            <div class="section-badge reveal">
+                <i class="fas fa-envelope"></i> Contact Us
+            </div>
+            <div class="section-divider reveal reveal-delay-1"></div>
+
+            <div class="clean-contact-grid">
+                <!-- Admin / Owner -->
+                <div class="contact-col reveal reveal-delay-2">
+                    <div class="contact-person-role">
+                        <i class="fas fa-user-shield"></i> Admin / Owner
+                    </div>
+                    <div class="contact-person-title">Romeca Katherine Jane Tello Pepito</div>
+                    <div class="contact-divider"></div>
+                    <div class="contact-link-row">
+                        <div class="contact-link-icon"><i class="fas fa-envelope"></i></div>
+                        <a href="mailto:romeca.katherine@gmail.com">romeca.katherine@gmail.com</a>
+                    </div>
+                    <div class="contact-link-row">
+                        <div class="contact-link-icon"><i class="fas fa-phone-alt"></i></div>
+                        <a href="tel:+639177918140">+63 917 791 8140</a>
+                    </div>
+                </div>
+
+                <!-- Developer -->
+                <div class="contact-col reveal reveal-delay-3">
+                    <div class="contact-person-role">
+                        <i class="fas fa-code"></i> Developer
+                    </div>
+                    <div class="contact-person-title">Christian Valencia</div>
+                    <div class="contact-divider"></div>
+                    <div class="contact-link-row">
+                        <div class="contact-link-icon"><i class="fas fa-envelope"></i></div>
+                        <a href="mailto:christianval0813@gmail.com">christianval0813@gmail.com</a>
+                    </div>
+                    <div class="contact-link-row">
+                        <div class="contact-link-icon"><i class="fas fa-phone-alt"></i></div>
+                        <a href="tel:+639288089251">+63 928 808 9251</a>
+                    </div>
                 </div>
             </div>
-
-            <!-- Password -->
-            <div class="form-group">
-                <div class="field-label">
-                    <span>Password</span>
-                </div>
-                <div class="input-wrap">
-                    <i class="fas fa-lock input-icon"></i>
-                    <input
-                        type="password"
-                        name="password_hash"
-                        id="passwordField"
-                        class="field-input"
-                        placeholder="Enter password"
-                        required
-                        autocomplete="current-password"
-                        aria-label="Password"
-                    >
-                    <button type="button" class="pw-toggle" id="pwToggle" aria-label="Show or hide password">
-                        <i class="fas fa-eye" id="pwIcon"></i>
-                    </button>
-                </div>
-            </div>
-
-            <!-- CAPTCHA -->
-            <div class="captcha-group">
-                <div class="captcha-box">
-                    <div class="captcha-question" id="captchaQuestion"><?php echo htmlspecialchars($captcha_question); ?></div>
-                    <div class="captcha-equals">=</div>
-                    <input
-                        type="text"
-                        name="captcha"
-                        id="captchaInput"
-                        class="captcha-input"
-                        placeholder=""
-                        maxlength="3"
-                        inputmode="numeric"
-                        autocomplete="off"
-                        required
-                        aria-label="CAPTCHA Answer"
-                    >
-                    <button type="button" class="captcha-refresh" id="refreshCaptcha" aria-label="Refresh CAPTCHA">
-                        <i class="fas fa-redo-alt"></i>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Submit -->
-            <button type="submit" class="btn-login" id="submitBtn">
-                <div class="spinner" id="spinner"></div>
-                <span id="btnText"><i class="fas fa-sign-in-alt" style="margin-right:6px;font-size:13px;"></i>Login</span>
-            </button>
-        </form>
-
-        <div class="login-footer">
-            <a href="<?= htmlspecialchars($_login_base . '/public/forgot_password.php') ?>">
-                <i class="fas fa-key" style="margin-right:5px;font-size:11px;opacity:.7;"></i>Forgot Password?
-            </a>
         </div>
-        <?php endif; ?>
-        </div><!-- /.login-card -->
+    </section>
 
-    <div class="page-footer"><?php echo $footer_text; ?></div>
-</div><!-- /.login-wrap -->
+    <!-- ── SITE FOOTER ── -->
+    <footer class="page-site-footer">
+        &copy; <?= date('Y') ?> Petron Station Management System. All Rights Reserved.
+    </footer>
 
-
+</div><!-- /.page-sections-wrapper -->
 
 <script>
 (function () {
@@ -1759,28 +1936,35 @@ $_asset_base = $_login_base . '/assets';
 </script>
 
 <script>
-// ── Nav Modal Functions ──
-function openNavModal(type) {
-    var id = type === 'about' ? 'navModalAbout' : 'navModalContact';
-    var el = document.getElementById(id);
-    if (el) {
-        el.classList.add('open');
-        document.body.style.overflow = 'hidden';
+// ── Smooth Scroll Navigation Active Link Highlighter ──
+document.addEventListener('DOMContentLoaded', function() {
+    var navLinks = document.querySelectorAll('.nav-links a');
+    var sections = document.querySelectorAll('.page-section');
+
+    function changeActiveNav() {
+        var index = sections.length;
+        while(--index && window.scrollY + 120 < sections[index].offsetTop) {}
+        navLinks.forEach(function(link) { link.classList.remove('active'); });
+        if (navLinks[index]) navLinks[index].classList.add('active');
     }
-}
-function closeNavModal(type) {
-    var id = type === 'about' ? 'navModalAbout' : 'navModalContact';
-    var el = document.getElementById(id);
-    if (el) {
-        el.classList.remove('open');
-        document.body.style.overflow = '';
-    }
-}
-// Close modals on Escape key
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        closeNavModal('about');
-        closeNavModal('contact');
+    changeActiveNav();
+    window.addEventListener('scroll', changeActiveNav);
+
+    // ── Scroll Reveal (Intersection Observer) ──
+    var reveals = document.querySelectorAll('.reveal');
+    if ('IntersectionObserver' in window) {
+        var observer = new IntersectionObserver(function(entries) {
+            entries.forEach(function(entry) {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.15 });
+        reveals.forEach(function(el) { observer.observe(el); });
+    } else {
+        // Fallback: show all
+        reveals.forEach(function(el) { el.classList.add('visible'); });
     }
 });
 </script>

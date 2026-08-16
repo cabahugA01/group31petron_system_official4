@@ -1877,10 +1877,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     
     if ($export_type === 'merchandise') {
         // Merchandise & Service CSV
-        fputcsv($output, ['DAILY MERCHANDISE & SERVICE SALES REPORT']);
-        fputcsv($output, [$summary_title_suffix]);
-        fputcsv($output, [$station_name]);
-        fputcsv($output, ['Date Range:', $report_period_label]);
+        fputcsv($output, ['MERCHANDISE & SERVICE SALES REPORT']);
+        fputcsv($output, [$station_name . ($station_location ? ' — ' . $station_location : '')]);
+        fputcsv($output, ['Date: ' . $report_period_label . ' | Assigned Shift: ' . $shift_label_display]);
         fputcsv($output, []); // blank line
         
         fputcsv($output, ['MERCHANDISE TRANSACTIONS']);
@@ -1946,10 +1945,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         
     } else {
         // Fuel CSV
-        fputcsv($output, ['DAILY FUEL SALES REPORT']);
-        fputcsv($output, [$summary_title_suffix]);
-        fputcsv($output, [$station_name]);
-        fputcsv($output, ['Date Range:', $report_period_label]);
+        fputcsv($output, ['FUEL SALES REPORT']);
+        fputcsv($output, [$station_name . ($station_location ? ' — ' . $station_location : '')]);
+        fputcsv($output, ['Date: ' . $report_period_label . ' | Assigned Shift: ' . $shift_label_display]);
         fputcsv($output, []);
         
         fputcsv($output, ['METER READINGS']);
@@ -2046,10 +2044,13 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     
     if ($export_type === 'merchandise') {
         // MERCHANDISE & SERVICE SALES REPORT
-        echo '<h1>DAILY MERCHANDISE & SERVICE SALES REPORT</h1>';
-        echo '<h1 style="font-size: 16px;">' . $summary_title_suffix . '</h1>';
-        echo '<p>' . htmlspecialchars($station_name) . '</p>';
-        echo '<p><strong>Date Range:</strong> ' . htmlspecialchars($report_period_label) . '</p>';
+        $st_full = htmlspecialchars($station_name) . ($station_location ? ' — ' . htmlspecialchars($station_location) : '');
+        $period_full = 'Date: ' . htmlspecialchars($report_period_label) . ' | Assigned Shift: ' . htmlspecialchars($shift_label_display);
+        echo '<table border="0" cellpadding="0" cellspacing="0" style="width:100%; border:none; margin-bottom:15px;">';
+        echo '<tr><td colspan="10" align="center" style="border:none; text-align:center !important; font-size:16px; font-weight:bold; color:#00264D; padding:4px 0;">MERCHANDISE &amp; SERVICE SALES REPORT</td></tr>';
+        echo '<tr><td colspan="10" align="center" style="border:none; text-align:center !important; font-size:12px; font-weight:bold; color:#1e293b; padding:3px 0;">' . $st_full . '</td></tr>';
+        echo '<tr><td colspan="10" align="center" style="border:none; text-align:center !important; font-size:11px; color:#334155; padding:3px 0;">' . $period_full . '</td></tr>';
+        echo '</table>';
         echo '<br/>';
         
         $merch_transactions = $merchandise_report_transactions;
@@ -2240,12 +2241,14 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         echo '</table>';
         
     } else {
-        // FUEL SALES REPORT (existing code)
-        // Header
-        echo '<h1>DAILY FUEL SALES REPORT</h1>';
-        echo '<h1 style="font-size: 16px;">' . $summary_title_suffix . '</h1>';
-        echo '<p>' . htmlspecialchars($station_name) . '</p>';
-        echo '<p><strong>Date Range:</strong> ' . htmlspecialchars($report_period_label) . '</p>';
+        // FUEL SALES REPORT
+        $st_full = htmlspecialchars($station_name) . ($station_location ? ' — ' . htmlspecialchars($station_location) : '');
+        $period_full = 'Date: ' . htmlspecialchars($report_period_label) . ' | Assigned Shift: ' . htmlspecialchars($shift_label_display);
+        echo '<table border="0" cellpadding="0" cellspacing="0" style="width:100%; border:none; margin-bottom:15px;">';
+        echo '<tr><td colspan="8" align="center" style="border:none; text-align:center !important; font-size:16px; font-weight:bold; color:#00264D; padding:4px 0;">FUEL SALES REPORT</td></tr>';
+        echo '<tr><td colspan="8" align="center" style="border:none; text-align:center !important; font-size:12px; font-weight:bold; color:#1e293b; padding:3px 0;">' . $st_full . '</td></tr>';
+        echo '<tr><td colspan="8" align="center" style="border:none; text-align:center !important; font-size:11px; color:#334155; padding:3px 0;">' . $period_full . '</td></tr>';
+        echo '</table>';
         echo '<br/>';
     
     // METER READINGS TABLE
@@ -3185,21 +3188,22 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     
     .print-area {
         background: #fff;
-        margin-bottom: 0 !important;
-        padding-bottom: 0 !important;
+        margin-bottom: 30px;
+        padding-bottom: 20px;
     }
     
     .stock-page {
-        margin-bottom: 0 !important;
-        padding-bottom: 0 !important;
+        margin-bottom: 30px;
+        padding-bottom: 20px;
     }
     
     .content {
-        padding: 15px 20px 20px 20px !important;
+        padding: 15px 20px 40px 20px !important;
     }
     
     .tab-content {
-        padding-bottom: 0 !important;
+        padding-bottom: 30px !important;
+        margin-bottom: 30px !important;
     }
     
     .section-title {
@@ -3675,10 +3679,10 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         <div class="container">
             <div class="header" style="text-align:center; margin-bottom:14px; border-bottom:2px solid #002F6C; padding-bottom:8px;">
                 <h1 style="font-size:18px; font-weight:800; color:#002F6C; margin:0 0 3px 0; letter-spacing:0.5px; font-family:'Segoe UI', sans-serif;">FUEL SALES REPORT</h1>
-                <div style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:4px;">
+                <div class="rpt-address" style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:4px;">
                     <?= htmlspecialchars($station_name) ?><?= $station_location ? ' — ' . htmlspecialchars($station_location) : '' ?>
                 </div>
-                <div style="font-size:11px; color:#334155; font-weight:600; display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
+                <div class="rpt-date-range" style="font-size:11px; color:#334155; font-weight:600; display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
                     <span><strong>Date:</strong> <?= htmlspecialchars($report_period_label) ?></span>
                     <span style="color:#94a3b8;">|</span>
                     <span><strong>Assigned Shift:</strong> <?= htmlspecialchars($shift_label_display) ?></span>
@@ -3950,10 +3954,10 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         <div class="container">
             <div class="header" style="text-align:center; margin-bottom:14px; border-bottom:2px solid #002F6C; padding-bottom:8px;">
                 <h1 style="font-size:18px; font-weight:800; color:#002F6C; margin:0 0 3px 0; letter-spacing:0.5px; font-family:'Segoe UI', sans-serif;">MERCHANDISE & SERVICE SALES REPORT</h1>
-                <div style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:4px;">
+                <div class="rpt-address" style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:4px;">
                     <?= htmlspecialchars($station_name) ?><?= $station_location ? ' — ' . htmlspecialchars($station_location) : '' ?>
                 </div>
-                <div style="font-size:11px; color:#334155; font-weight:600; display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
+                <div class="rpt-date-range" style="font-size:11px; color:#334155; font-weight:600; display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
                     <span><strong>Date:</strong> <?= htmlspecialchars($report_period_label) ?></span>
                     <span style="color:#94a3b8;">|</span>
                     <span><strong>Assigned Shift:</strong> <?= htmlspecialchars($shift_label_display) ?></span>

@@ -469,17 +469,65 @@ function manager_view_customer(): void {
                 FROM merchandise_transactions 
                 WHERE customer_id = ? OR credit_customer_id = ? 
                 ORDER BY created_at DESC 
-                LIMIT 10
+                LIMIT 20
             ");
             $tStmt->execute([$id, $id]);
             $transactions = $tStmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {}
     }
 
+    if (manager_has_table($pdo, 'fuel_transactions')) {
+        try {
+            $cols = manager_table_columns($pdo, 'fuel_transactions');
+            $txIdCol = isset($cols['transaction_code']) ? 'transaction_code' : (isset($cols['transaction_id']) ? 'transaction_id' : 'id');
+            $dateCol = isset($cols['transaction_date']) ? 'transaction_date' : 'created_at';
+            $amtCol  = isset($cols['total_amount']) ? 'total_amount' : 'amount';
+            $statCol = isset($cols['status']) ? 'status' : "'Completed'";
+
+            if (isset($cols['customer_id'])) {
+                $fStmt = $pdo->prepare("
+                    SELECT 
+                        `$txIdCol` AS transaction_id, 
+                        `$dateCol` AS date, 
+                        'Fuel' AS type, 
+                        `$amtCol` AS amount, 
+                        COALESCE(`$statCol`, 'Completed') AS status 
+                    FROM fuel_transactions 
+                    WHERE customer_id = ? 
+                    ORDER BY `$dateCol` DESC 
+                    LIMIT 20
+                ");
+                $fStmt->execute([$id]);
+                $fuelTxs = $fStmt->fetchAll(PDO::FETCH_ASSOC);
+                $transactions = array_merge($transactions, $fuelTxs);
+                usort($transactions, function($a, $b) {
+                    return strtotime($b['date'] ?? '') - strtotime($a['date'] ?? '');
+                });
+                $transactions = array_slice($transactions, 0, 20);
+            }
+        } catch (Throwable $e) {}
+    }
+
     $jobOrders = [];
     if (manager_has_table($pdo, 'job_orders')) {
         try {
-            $jStmt = $pdo->prepare("SELECT job_order_number AS jo_no, vehicle_plate AS vehicle, service_type AS service, assigned_mechanic_id AS mechanic, status FROM job_orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT 10");
+            $hasMechanics = manager_has_table($pdo, 'mechanics');
+            if ($hasMechanics) {
+                $jStmt = $pdo->prepare("
+                    SELECT 
+                        jo.job_order_number AS jo_no, 
+                        jo.vehicle_plate AS vehicle, 
+                        jo.service_type AS service, 
+                        COALESCE(m.full_name, CONCAT(m.first_name, ' ', m.last_name), CONCAT('Mechanic #', jo.assigned_mechanic_id)) AS mechanic, 
+                        jo.status 
+                    FROM job_orders jo 
+                    LEFT JOIN mechanics m ON m.id = jo.assigned_mechanic_id 
+                    WHERE jo.customer_id = ? 
+                    ORDER BY jo.created_at DESC LIMIT 20
+                ");
+            } else {
+                $jStmt = $pdo->prepare("SELECT job_order_number AS jo_no, vehicle_plate AS vehicle, service_type AS service, assigned_mechanic_id AS mechanic, status FROM job_orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT 20");
+            }
             $jStmt->execute([$id]);
             $jobOrders = $jStmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {}
@@ -498,7 +546,7 @@ function manager_view_customer(): void {
                 WHERE (customer_id = ? OR credit_customer_id = ?)
                   AND (transaction_type IN ('job_order', 'combined') OR (job_order_service IS NOT NULL AND TRIM(job_order_service) <> ''))
                 ORDER BY created_at DESC 
-                LIMIT 10
+                LIMIT 20
             ");
             $mJoStmt->execute([$id, $id]);
             $mJobOrders = $mJoStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -553,17 +601,19 @@ function manager_view_customer(): void {
     try {
         require_once __DIR__ . '/../backend/loyalty_schema_fix.php';
         loyalty_ensure_tables($pdo);
+
+        $loyaltyAccount = get_or_create_loyalty_account($pdo, $id, $customer['loyalty_card_no'] ?? '');
+        $accId = (int)($loyaltyAccount['id'] ?? 0);
+
         $lStmt = $pdo->prepare("
             SELECT reference_id AS reference, transaction_type, points_earned, points_redeemed, points_balance_after AS balance, created_at AS date
             FROM loyalty_transactions
-            WHERE customer_id = ?
+            WHERE customer_id = ? OR loyalty_account_id = ?
             ORDER BY created_at DESC
             LIMIT 50
         ");
-        $lStmt->execute([$id]);
+        $lStmt->execute([$id, $accId]);
         $loyaltyHistory = $lStmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $loyaltyAccount = get_or_create_loyalty_account($pdo, $id, $customer['loyalty_card_no'] ?? '');
     } catch (Throwable $e) {}
 
     manager_send_json([
@@ -1151,83 +1201,128 @@ function manager_ar_history(): void {
     $today = date('Y-m-d');
     $arRows = [];
 
-    // ── 1. Merchandise credit transactions ───────────────────────────────────
+    // Fetch customer's credit terms (default 30 days)
+    $daysAdd = 30;
+    try {
+        $ctStmt = $pdo->prepare("SELECT credit_terms FROM customers WHERE id = ? LIMIT 1");
+        $ctStmt->execute([$customerId]);
+        $ctVal = $ctStmt->fetchColumn();
+        if ($ctVal && preg_match('/(\d+)/', (string)$ctVal, $m)) {
+            $daysAdd = (int)$m[1];
+        }
+    } catch (Throwable $e) {}
+
+    // ── 1. All merchandise / job-order transactions for this customer ─────────
     if (manager_has_table($pdo, 'merchandise_transactions')) {
         try {
             $cols = manager_table_columns($pdo, 'merchandise_transactions');
-            $isCredit    = isset($cols['is_credit'])    ? '(is_credit = 1 OR payment_method = \'Credit Account\' OR payment_method = \'credit\')' : '(payment_method = \'Credit Account\' OR payment_method = \'credit\')';
-            $balanceSql  = isset($cols['balance_due'])  ? 'COALESCE(balance_due, total_amount - COALESCE(amount_paid,0))' : 'total_amount - COALESCE(amount_paid,0)';
-            $amtPaidSql  = isset($cols['amount_paid'])  ? 'COALESCE(amount_paid,0)' : '0';
-            $dueDateSql  = isset($cols['due_date'])     ? 'due_date' : 'NULL';
-            $payStatusSql= isset($cols['payment_status'])? 'payment_status' : 'NULL';
-            $txTypeSql   = isset($cols['transaction_type']) ? 'transaction_type' : "'merchandise'";
-            $creditCustId= isset($cols['credit_customer_id']) ? '(customer_id = :cid OR credit_customer_id = :cid2)' : 'customer_id = :cid';
-            $descSql     = "COALESCE(NULLIF(TRIM(job_order_service),''), NULLIF(TRIM(job_order_description),''), 'Merchandise Purchase')";
-            if (!isset($cols['job_order_service']))  $descSql = "'Merchandise Purchase'";
 
-            $creditParam = isset($cols['credit_customer_id'])
+            $balanceSql   = isset($cols['balance_due'])
+                ? 'COALESCE(balance_due, GREATEST(0, total_amount - COALESCE(amount_paid,0)))'
+                : 'GREATEST(0, total_amount - COALESCE(amount_paid,0))';
+            $amtPaidSql   = isset($cols['amount_paid'])  ? 'COALESCE(amount_paid,0)'  : '0';
+            $dueDateSql   = isset($cols['due_date'])      ? 'due_date'                 : 'NULL';
+            $payStatusSql = isset($cols['payment_status'])? 'COALESCE(payment_status, \'\')' : "''";
+            $txTypeSql    = isset($cols['transaction_type']) ? 'transaction_type'      : "'merchandise'";
+
+            // Build a human-readable description
+            if (isset($cols['job_order_service']) && isset($cols['job_order_description'])) {
+                $descSql = "COALESCE(NULLIF(TRIM(job_order_service),''), NULLIF(TRIM(job_order_description),''), 'Merchandise Purchase')";
+            } elseif (isset($cols['job_order_service'])) {
+                $descSql = "COALESCE(NULLIF(TRIM(job_order_service),''), 'Merchandise Purchase')";
+            } else {
+                $descSql = "'Merchandise Purchase'";
+            }
+
+            // Customer filter — check both customer_id and credit_customer_id columns
+            $custFilter = isset($cols['credit_customer_id'])
+                ? '(customer_id = :cid OR credit_customer_id = :cid2)'
+                : 'customer_id = :cid';
+            $params = isset($cols['credit_customer_id'])
                 ? [':cid' => $customerId, ':cid2' => $customerId]
                 : [':cid' => $customerId];
 
+            $voidFilter = isset($cols['void_reason']) ? "AND COALESCE(void_reason,'') = ''" : '';
+
             $sql = "
                 SELECT
-                    DATE(COALESCE(transaction_date, created_at)) AS ar_date,
+                    DATE(COALESCE(created_at)) AS ar_date,
                     transaction_id AS reference_no,
                     $txTypeSql AS tx_type,
                     $descSql AS description,
-                    COALESCE(total_amount,0) AS total_amount,
+                    COALESCE(total_amount, 0) AS total_amount,
                     $amtPaidSql AS amount_paid,
                     $balanceSql AS balance,
                     $dueDateSql AS due_date,
                     $payStatusSql AS pay_status,
+                    COALESCE(payment_method, 'Cash') AS payment_method,
                     id AS db_id
                 FROM merchandise_transactions
-                WHERE ($creditCustId)
-                  AND $isCredit
-                  AND COALESCE(void_reason,'') = ''
-                ORDER BY COALESCE(transaction_date, created_at) DESC
+                WHERE ($custFilter)
+                  $voidFilter
+                ORDER BY created_at DESC
             ";
             $stmt = $pdo->prepare($sql);
-            $stmt->execute($creditParam);
+            $stmt->execute($params);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             foreach ($rows as $row) {
-                $txType = strtolower($row['tx_type'] ?? '');
-                $isJO = in_array($txType, ['job_order','combined']) || strpos($txType,'job') !== false;
+                $txType  = strtolower($row['tx_type'] ?? '');
+                $isJO    = in_array($txType, ['job_order', 'combined']) || strpos($txType, 'job') !== false;
+                $balance = max(0, (float)($row['balance'] ?? 0));
+                $payStatus = $row['pay_status'] ?? '';
+
+                // If payment_status is Paid, or amount_paid >= total_amount => Paid
+                $amtPaid  = (float)($row['amount_paid'] ?? 0);
+                $total    = (float)($row['total_amount'] ?? 0);
+                if ($amtPaid > 0 && $amtPaid >= $total && $balance <= 0) {
+                    $payStatus = 'Paid';
+                }
+
+                $arDate = $row['ar_date'] ?? date('Y-m-d');
+                $dueDate = !empty($row['due_date']) ? $row['due_date'] : date('Y-m-d', strtotime("$arDate + {$daysAdd} days"));
+
                 $arRows[] = [
-                    'date'        => $row['ar_date'] ?? '',
-                    'reference'   => $row['reference_no'] ?? '',
-                    'tx_type'     => $isJO ? 'Job Order' : 'Merchandise',
-                    'description' => $row['description'] ?? 'Merchandise',
-                    'amount'      => (float)($row['total_amount'] ?? 0),
-                    'paid'        => (float)($row['amount_paid'] ?? 0),
-                    'balance'     => max(0, (float)($row['balance'] ?? 0)),
-                    'due_date'    => $row['due_date'] ?? '',
-                    'status'      => manager_ar_row_status((float)($row['balance'] ?? 0), $row['due_date'] ?? '', $today, $row['pay_status'] ?? ''),
-                    'source'      => 'merchandise',
-                    'db_id'       => $row['db_id'],
+                    'date'           => $arDate,
+                    'reference'      => $row['reference_no'] ?? '',
+                    'tx_type'        => $isJO ? 'Job Order' : 'Merchandise',
+                    'description'    => $row['description'] ?? 'Merchandise Purchase',
+                    'amount'         => $total,
+                    'paid'           => $amtPaid,
+                    'balance'        => $balance,
+                    'due_date'       => $dueDate,
+                    'payment_method' => $row['payment_method'] ?? 'Cash',
+                    'status'         => manager_ar_row_status($balance, $dueDate, $today, $payStatus),
+                    'source'         => 'merchandise',
+                    'db_id'          => $row['db_id'],
                 ];
             }
         } catch (Throwable $e) {}
     }
 
-    // ── 2. Standalone Job Orders (not in merchandise_transactions) ───────────
+    // ── 2. Standalone Job Orders not already captured in merchandise_transactions ──
     if (manager_has_table($pdo, 'job_orders')) {
         try {
             $jcols = manager_table_columns($pdo, 'job_orders');
-            $joIsCredit   = isset($jcols['is_credit'])     ? '(is_credit = 1 OR payment_method = \'Credit Account\')' : "(payment_method = 'Credit Account')";
-            $joBalance    = isset($jcols['balance_due'])   ? 'COALESCE(balance_due, total_cost - COALESCE(amount_paid,0))' : 'total_cost - COALESCE(amount_paid,0)';
-            $joAmtPaid    = isset($jcols['amount_paid'])   ? 'COALESCE(amount_paid,0)' : '0';
-            $joDueDate    = isset($jcols['due_date'])      ? 'due_date' : 'NULL';
-            $joPayStatus  = isset($jcols['payment_status'])? 'payment_status' : 'NULL';
-            $joTotal      = isset($jcols['total_cost'])    ? 'COALESCE(total_cost,0)' : '0';
-            $joCustCols   = isset($jcols['customer_id'])   ? 'customer_id = :jcid' : '0=1';
-            $joDesc       = isset($jcols['service_type'])  ? "COALESCE(NULLIF(TRIM(service_type),''), NULLIF(TRIM(service_description),''), 'Job Order Service')" : "'Job Order Service'";
-            if (!isset($jcols['service_description'])) $joDesc = isset($jcols['service_type']) ? "COALESCE(NULLIF(TRIM(service_type),''),'Job Order Service')" : "'Job Order Service'";
+
+            $joBalance   = isset($jcols['balance_due'])
+                ? 'COALESCE(balance_due, GREATEST(0, COALESCE(total_cost,0) - COALESCE(amount_paid,0)))'
+                : 'GREATEST(0, COALESCE(total_cost,0) - COALESCE(amount_paid,0))';
+            $joAmtPaid   = isset($jcols['amount_paid'])    ? 'COALESCE(amount_paid,0)'   : '0';
+            $joDueDate   = isset($jcols['due_date'])       ? 'due_date'                  : 'NULL';
+            $joPayStatus = isset($jcols['payment_status']) ? 'COALESCE(payment_status, \'\')' : "''";
+            $joTotal     = isset($jcols['total_cost'])     ? 'COALESCE(total_cost, 0)'   : '0';
+            $joPayMethod = isset($jcols['payment_method']) ? "COALESCE(payment_method,'Cash')" : "'Cash'";
+
+            $joDesc = isset($jcols['service_type'])
+                ? "COALESCE(NULLIF(TRIM(service_type),''), 'Job Order Service')"
+                : "'Job Order Service'";
+
+            $joCustFilter = isset($jcols['customer_id']) ? 'customer_id = :jcid' : '0=1';
 
             $sql = "
                 SELECT
-                    DATE(COALESCE(created_at, updated_at)) AS ar_date,
+                    DATE(COALESCE(created_at)) AS ar_date,
                     job_order_number AS reference_no,
                     $joDesc AS description,
                     $joTotal AS total_amount,
@@ -1235,11 +1330,11 @@ function manager_ar_history(): void {
                     $joBalance AS balance,
                     $joDueDate AS due_date,
                     $joPayStatus AS pay_status,
+                    $joPayMethod AS payment_method,
                     id AS db_id
                 FROM job_orders
-                WHERE $joCustCols
-                  AND $joIsCredit
-                ORDER BY COALESCE(created_at, updated_at) DESC
+                WHERE $joCustFilter
+                ORDER BY COALESCE(created_at) DESC
             ";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([':jcid' => $customerId]);
@@ -1249,18 +1344,30 @@ function manager_ar_history(): void {
             $existRefs = array_column($arRows, 'reference');
             foreach ($joRows as $jr) {
                 if (in_array($jr['reference_no'], $existRefs)) continue;
+                $balance   = max(0, (float)($jr['balance'] ?? 0));
+                $amtPaid   = (float)($jr['amount_paid'] ?? 0);
+                $total     = (float)($jr['total_amount'] ?? 0);
+                $payStatus = $jr['pay_status'] ?? '';
+                if ($amtPaid > 0 && $amtPaid >= $total && $balance <= 0) {
+                    $payStatus = 'Paid';
+                }
+
+                $arDate  = $jr['ar_date'] ?? date('Y-m-d');
+                $dueDate = !empty($jr['due_date']) ? $jr['due_date'] : date('Y-m-d', strtotime("$arDate + {$daysAdd} days"));
+
                 $arRows[] = [
-                    'date'        => $jr['ar_date'] ?? '',
-                    'reference'   => $jr['reference_no'] ?? '',
-                    'tx_type'     => 'Job Order',
-                    'description' => $jr['description'] ?? 'Job Order Service',
-                    'amount'      => (float)($jr['total_amount'] ?? 0),
-                    'paid'        => (float)($jr['amount_paid'] ?? 0),
-                    'balance'     => max(0, (float)($jr['balance'] ?? 0)),
-                    'due_date'    => $jr['due_date'] ?? '',
-                    'status'      => manager_ar_row_status((float)($jr['balance'] ?? 0), $jr['due_date'] ?? '', $today, $jr['pay_status'] ?? ''),
-                    'source'      => 'job_order',
-                    'db_id'       => $jr['db_id'],
+                    'date'           => $arDate,
+                    'reference'      => $jr['reference_no'] ?? '',
+                    'tx_type'        => 'Job Order',
+                    'description'    => $jr['description'] ?? 'Job Order Service',
+                    'amount'         => $total,
+                    'paid'           => $amtPaid,
+                    'balance'        => $balance,
+                    'due_date'       => $dueDate,
+                    'payment_method' => $jr['payment_method'] ?? 'Cash',
+                    'status'         => manager_ar_row_status($balance, $dueDate, $today, $payStatus),
+                    'source'         => 'job_order',
+                    'db_id'          => $jr['db_id'],
                 ];
             }
         } catch (Throwable $e) {}
@@ -1272,9 +1379,16 @@ function manager_ar_history(): void {
     // ── 3. Summary ───────────────────────────────────────────────────────────
     $totalMerch = 0.0; $totalJO = 0.0; $totalPaid = 0.0;
     $totalOutstanding = 0.0; $totalOverdue = 0.0; $nextDue = null;
+    $totalMerchBal = 0.0; $totalJOBal = 0.0;
+
     foreach ($arRows as $r) {
-        if ($r['tx_type'] === 'Merchandise') $totalMerch += $r['amount'];
-        else                                  $totalJO    += $r['amount'];
+        if ($r['tx_type'] === 'Merchandise') {
+            $totalMerch += $r['amount'];
+            $totalMerchBal += $r['balance'];
+        } else {
+            $totalJO += $r['amount'];
+            $totalJOBal += $r['balance'];
+        }
         $totalPaid        += $r['paid'];
         $totalOutstanding += $r['balance'];
         if ($r['balance'] > 0 && $r['status'] === 'Overdue') $totalOverdue += $r['balance'];
@@ -1283,27 +1397,132 @@ function manager_ar_history(): void {
         }
     }
 
-    // ── 4. Payment history from customer_credit_transactions ─────────────────
+    // ── 4. Payment history — merge all payment sources ───────────────────────
     $payments = [];
+
+    // Source A: Manual AR payments from customer_credit_transactions
     if (manager_has_table($pdo, 'customer_credit_transactions')) {
         try {
             $pStmt = $pdo->prepare("
                 SELECT
-                    DATE(created_at) AS pay_date,
-                    COALESCE(CONCAT('OR-',LPAD(id,5,'0')), id) AS receipt_no,
+                    created_at AS pay_date,
+                    CONCAT('OR-', LPAD(id, 5, '0')) AS receipt_no,
                     '' AS reference_no,
-                    COALESCE(payment_method,'Cash') AS payment_method,
+                    COALESCE(payment_method, 'Cash') AS payment_method,
                     amount AS amount_paid,
-                    remarks,
-                    id
+                    COALESCE(remarks, '') AS remarks,
+                    'Credit Payment' AS source_type
                 FROM customer_credit_transactions
                 WHERE customer_id = ?
                 ORDER BY created_at DESC
             ");
             $pStmt->execute([$customerId]);
-            $payments = $pStmt->fetchAll(PDO::FETCH_ASSOC);
+            $cctRows = $pStmt->fetchAll(PDO::FETCH_ASSOC);
+            $payments = array_merge($payments, $cctRows);
         } catch (Throwable $e) {}
     }
+
+    // Source B: Merchandise & Job Order transactions (paid)
+    if (manager_has_table($pdo, 'merchandise_transactions')) {
+        try {
+            $mStmt = $pdo->prepare("
+                SELECT
+                    created_at AS pay_date,
+                    CONCAT('OR-MT-', SUBSTR(transaction_id, -6)) AS receipt_no,
+                    transaction_id AS reference_no,
+                    COALESCE(payment_method, 'Cash') AS payment_method,
+                    COALESCE(amount_paid, total_amount, 0) AS amount_paid,
+                    CASE 
+                        WHEN transaction_type = 'job_order' THEN 'Job Order Payment'
+                        WHEN transaction_type = 'combined'  THEN 'Combined Payment'
+                        ELSE 'Merchandise Payment'
+                    END AS remarks,
+                    CASE 
+                        WHEN transaction_type = 'job_order' THEN 'Job Order'
+                        WHEN transaction_type = 'combined'  THEN 'Combined'
+                        ELSE 'Merchandise'
+                    END AS source_type
+                FROM merchandise_transactions
+                WHERE (customer_id = ? OR credit_customer_id = ?)
+                  AND COALESCE(payment_status, '') IN ('Paid', 'paid', 'Completed', 'completed')
+                ORDER BY created_at DESC
+                LIMIT 50
+            ");
+            $mStmt->execute([$customerId, $customerId]);
+            $mRows = $mStmt->fetchAll(PDO::FETCH_ASSOC);
+            $payments = array_merge($payments, $mRows);
+        } catch (Throwable $e) {}
+    }
+
+    // Source C: Job orders with payments
+    if (manager_has_table($pdo, 'job_orders')) {
+        try {
+            $joPayCols = manager_table_columns($pdo, 'job_orders');
+            if (isset($joPayCols['amount_paid']) && isset($joPayCols['payment_method'])) {
+                $jPStmt = $pdo->prepare("
+                    SELECT
+                        created_at AS pay_date,
+                        CONCAT('OR-JO-', LPAD(id, 5, '0')) AS receipt_no,
+                        job_order_number AS reference_no,
+                        COALESCE(payment_method, 'Cash') AS payment_method,
+                        COALESCE(amount_paid, 0) AS amount_paid,
+                        CONCAT('Job Order: ', service_type) AS remarks,
+                        'Job Order' AS source_type
+                    FROM job_orders
+                    WHERE customer_id = ?
+                      AND COALESCE(amount_paid, 0) > 0
+                    ORDER BY created_at DESC
+                    LIMIT 30
+                ");
+                $jPStmt->execute([$customerId]);
+                $joPayRows = $jPStmt->fetchAll(PDO::FETCH_ASSOC);
+                // Avoid duplicates with merchandise_transactions job orders
+                $existRefs = array_column($payments, 'reference_no');
+                foreach ($joPayRows as $jp) {
+                    if (!in_array($jp['reference_no'], $existRefs)) {
+                        $payments[] = $jp;
+                    }
+                }
+            }
+        } catch (Throwable $e) {}
+    }
+
+    // Source D: payment_audit_log (if any)
+    if (manager_has_table($pdo, 'payment_audit_log')) {
+        try {
+            $palCols = manager_table_columns($pdo, 'payment_audit_log');
+            if (isset($palCols['customer_id']) || isset($palCols['record_id'])) {
+                // payment_audit_log doesn't have customer_id directly — join via merchandise_transactions
+                $palStmt = $pdo->prepare("
+                    SELECT
+                        pal.logged_at AS pay_date,
+                        CONCAT('OR-PAL-', LPAD(pal.id, 5, '0')) AS receipt_no,
+                        mt.transaction_id AS reference_no,
+                        COALESCE(pal.payment_method, 'Cash') AS payment_method,
+                        COALESCE(pal.amount_paid, 0) AS amount_paid,
+                        COALESCE(pal.remarks, 'Payment recorded') AS remarks,
+                        'Payment Log' AS source_type
+                    FROM payment_audit_log pal
+                    JOIN merchandise_transactions mt ON mt.id = pal.record_id AND pal.record_source = 'merchandise_transactions'
+                    WHERE mt.customer_id = ? OR mt.credit_customer_id = ?
+                    ORDER BY pal.logged_at DESC
+                    LIMIT 30
+                ");
+                $palStmt->execute([$customerId, $customerId]);
+                $palRows = $palStmt->fetchAll(PDO::FETCH_ASSOC);
+                $existRefs2 = array_column($payments, 'reference_no');
+                foreach ($palRows as $pr) {
+                    if (!in_array($pr['reference_no'], $existRefs2)) {
+                        $payments[] = $pr;
+                    }
+                }
+            }
+        } catch (Throwable $e) {}
+    }
+
+    // Sort all payments by date descending
+    usort($payments, fn($a, $b) => strcmp($b['pay_date'] ?? '', $a['pay_date'] ?? ''));
+
 
     // Get credit limit from customers table
     $creditLimit = 0.0;
@@ -1315,18 +1534,42 @@ function manager_ar_history(): void {
 
     $availableCredit = max(0, $creditLimit - $totalOutstanding);
 
+    // Compute accurate overall status
     $overallStatus = 'Good Standing';
-    if ($totalOverdue > 0) $overallStatus = 'Overdue';
-    elseif ($totalOutstanding > 0) $overallStatus = 'Outstanding';
-    elseif (count($arRows) === 0) $overallStatus = 'No AR';
+    if ($totalOverdue > 0) {
+        $overallStatus = 'Overdue';
+    } elseif ($totalOutstanding > 0) {
+        $overallStatus = 'Outstanding';
+    } elseif (count($arRows) > 0) {
+        $overallStatus = 'Good Standing';
+    } else {
+        $overallStatus = 'No AR';
+    }
+
+    // Fetch system payment methods from payment_methods table if exists
+    $systemPaymentMethods = ['Cash', 'Credit Card', 'Debit Card', 'GCash', 'Bank Transfer', 'Check', 'E-Wallet', 'Credit Account'];
+    if (manager_has_table($pdo, 'payment_methods')) {
+        try {
+            $pmCols = manager_table_columns($pdo, 'payment_methods');
+            $nameCol = isset($pmCols['name']) ? 'name' : (isset($pmCols['method_name']) ? 'method_name' : (isset($pmCols['payment_method']) ? 'payment_method' : ''));
+            if ($nameCol) {
+                $pmStmt = $pdo->query("SELECT DISTINCT `$nameCol` FROM payment_methods WHERE (status IS NULL OR status = 'active' OR status = '1') AND TRIM(`$nameCol`) != ''");
+                $dbMethods = $pmStmt->fetchAll(PDO::FETCH_COLUMN);
+                if (!empty($dbMethods)) {
+                    $systemPaymentMethods = array_values(array_unique(array_filter(array_map('trim', $dbMethods))));
+                }
+            }
+        } catch (Throwable $e) {}
+    }
 
     manager_send_json([
-        'success'     => true,
-        'ar_rows'     => $arRows,
-        'payments'    => $payments,
-        'summary'     => [
-            'total_merchandise_credit' => $totalMerch,
-            'total_job_order_credit'   => $totalJO,
+        'success'         => true,
+        'ar_rows'         => $arRows,
+        'payments'        => $payments,
+        'payment_methods' => $systemPaymentMethods,
+        'summary'         => [
+            'total_merchandise_credit' => $totalMerchBal,
+            'total_job_order_credit'   => $totalJOBal,
             'total_credit_purchases'   => $totalMerch + $totalJO,
             'total_payments'           => $totalPaid,
             'outstanding_balance'      => $totalOutstanding,

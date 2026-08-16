@@ -282,6 +282,20 @@ if (!empty($station)) {
         </tbody>
     </table>
 
+    <!-- SYSTEM DEVELOPED BY SIGNATURE (Print Only) -->
+    <table class="print-only-sig" style="width:100%; margin-top:35px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+        <tr>
+            <td style="border:none;"></td>
+            <td style="border:none; width:220px; text-align:center; vertical-align:bottom;">
+                <div style="font-size:10px; font-weight:700; color:#333; margin-bottom:25px; text-transform:uppercase;">SYSTEM DEVELOPED BY:</div>
+                <div style="border-top:1px solid #000; padding-top:4px; font-weight:700; font-size:11px; color:#000;">
+                    <?php echo htmlspecialchars(trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')) ?: ($me['username'] ?? 'Super Admin')); ?>
+                </div>
+                <div style="font-size:9.5px; color:#555; margin-top:2px;">Super Admin</div>
+            </td>
+        </tr>
+    </table>
+
     <script>
         window.addEventListener('DOMContentLoaded', () => {
             window.print();

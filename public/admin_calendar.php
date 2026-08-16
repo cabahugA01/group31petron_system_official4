@@ -1050,7 +1050,7 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 /* Google Calendar Style */
-.cal-layout { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff; display: flex; min-height: calc(100vh - 60px); }
+.cal-layout { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff; display: flex; height: auto; min-height: calc(100vh - 150px); overflow: visible; margin-bottom: 60px !important; }
 .cal-layout *:not(i):not([class*="fa-"]) { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; box-sizing: border-box; }
 
 /* Font Awesome Icon Override */
@@ -1086,7 +1086,7 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
 .cal-calendar-checkbox.checked::before { content: '✓'; }
 
 /* Main content */
-.cal-main { flex: 1; display: flex; flex-direction: column; overflow: visible; }
+.cal-main { flex: 1 0 auto; display: flex; flex-direction: column; overflow: visible; width: 100%; min-width: 0; }
 .cal-header { padding: 8px 16px; border-bottom: 1px solid #dadce0; display: flex; align-items: center; justify-content: space-between; }
 .cal-header-left { display: flex; align-items: center; gap: 16px; }
 .cal-menu-btn { background: none; border: none; padding: 12px; border-radius: 50%; cursor: pointer; color: #5f6368; font-size: 20px; }
@@ -1107,11 +1107,11 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
 .cal-icon-btn:hover { background: #f1f3f4; }
 
 /* Calendar grid */
-.cal-content { flex: 1; overflow: visible; }
-.cal-grid-container { min-width: 100%; }
+.cal-content { flex: 1 0 auto; height: auto; overflow: visible; width: 100%; }
+.cal-grid-container { min-width: 100%; height: auto; }
 .cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid #dadce0; position: sticky; top: 0; background: #fff; z-index: 2; }
 .cal-weekday { padding: 8px; text-align: center; font-size: 11px; font-weight: 500; color: #70757a; }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: 120px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: minmax(120px, auto); }
 .cal-day { border: 1px solid #dadce0; border-top: none; border-left: none; padding: 2px; position: relative; background: #fff; overflow: hidden; }
 .cal-day:nth-child(7n) { border-right: none; }
 .cal-day:hover { background: #f8f9fa; }

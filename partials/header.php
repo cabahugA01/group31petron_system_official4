@@ -1559,39 +1559,74 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         }
 
 
-        /* Main content adjustments */
+        /* Main content adjustments — bottom:0 so scroll area fills full viewport,
+           padding-bottom clears the fixed footer (40px) with extra breathing room */
         .main {
             position: fixed;
             top: 70px;
             left: 250px;
             right: 0;
-            bottom: 40px !important;
+            bottom: 0 !important;
             overflow-y: auto;
             overflow-x: hidden;
-            padding: 20px 20px 25px 20px !important;
+            padding: 20px 20px 105px 20px !important;
             background: #f8f9fa;
             transition: left 0.3s ease;
             pointer-events: auto !important;
             z-index: 1 !important;
         }
 
-        /* Ensure clean bottom clearance for full scrolling across all reports */
-        .main > div:last-child,
-        .main > section:last-child,
+        /* Ensure clean bottom clearance for full scrolling across all reports & pages */
         .main > .container,
         .main > .main-content,
         .main > .reports-wrapper,
         .main > .stock-page,
         .main > .print-area,
-        .main .table-responsive:last-child,
-        .main .card:last-child {
-            margin-bottom: 15px !important;
-            padding-bottom: 0 !important;
+        .main .table-responsive,
+        .stock-page,
+        .print-area {
+            margin-bottom: 25px;
+        }
+
+        /* Calendar pages bottom room so the last grid row clears the footer */
+        body[data-page="calendar"] .main {
+            padding-bottom: 110px !important;
         }
         
         /* Ensure all main content children are clickable */
         .main * {
             pointer-events: auto !important;
+        }
+
+        /* Hide client-side rows-per-page pagination bars system-wide so all rows render continuously */
+        .petron-pagination-bar,
+        .pagination-wrapper,
+        .client-side-pagination,
+        .client-pagination,
+        .rows-per-page,
+        .rows-select,
+        .petron-rows-select-wrap {
+            display: none !important;
+        }
+
+        /* Hide report signatures on web view — show ONLY when printing */
+        .print-only-sig {
+            display: none !important;
+        }
+        @media print {
+            .print-only-sig,
+            .sfss-print-only .print-only-sig {
+                display: table !important;
+                width: 100% !important;
+                margin-top: 30px !important;
+                border: none !important;
+                background: transparent !important;
+            }
+            .print-only-sig td,
+            .sfss-print-only .print-only-sig td {
+                border: none !important;
+                background: transparent !important;
+            }
         }
         
         /* Mobile responsive adjustments */
@@ -1638,7 +1673,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             box-shadow: 0 2px 8px rgba(0,0,0,0.12);
         }
 
-        /* Main content pushed down by header height */
+        /* Main content pushed down by header height — full viewport height, footer padding clears the fixed bar */
         .main {
             position: fixed !important;
             top: 60px !important;
@@ -1647,7 +1682,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             bottom: 0 !important;
             overflow-y: auto !important;
             overflow-x: hidden !important;
-            padding: 0 16px 60px 16px !important;
+            padding: 0 16px 105px 16px !important;
             background: var(--bg-main, #f8f9fa);
             pointer-events: auto !important;
             z-index: 1 !important;
@@ -4031,7 +4066,7 @@ require_once __DIR__ . '/rbac_menu.php';
                         <i class="fas fa-key" style="margin-right:8px;color:var(--petron-blue);"></i>Change Password
                     </a>
                     <div class="dropdown-divider"></div>
-                    <a href="javascript:void(0);" onclick="openGlobalLogoutModal();" class="logout">
+                    <a href="<?php echo htmlspecialchars($public_base_url . '/logout.php'); ?>" class="logout">
                         <i class="fas fa-sign-out-alt" style="margin-right:8px;color:#cc0000;"></i>Logout
                     </a>
                 </div>
@@ -4039,7 +4074,7 @@ require_once __DIR__ . '/rbac_menu.php';
         </div>
 </header>
 
-  <main class="main" style="padding: 20px 20px 70px 20px !important;">
+  <main class="main" style="padding: 20px 20px 105px 20px !important;">
 
     <!-- ══ GLOBAL FLASH MESSAGE STYLES â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
     <style>
@@ -4475,15 +4510,16 @@ require_once __DIR__ . '/rbac_menu.php';
                 container.appendChild(paginationBar);
             }
 
-            // RULE: IF Total Records <= Default Page Size (10): HIDE Pagination completely!
-            if (totalRecords <= defaultPageSize) {
+            // Show all rows unconditionally without page limits
+            if (paginationBar) {
                 paginationBar.style.display = 'none';
-                allRows.forEach(row => row.style.display = '');
-                return;
             }
-
-            paginationBar.style.display = 'flex';
-            let currentPage = 1;
+            allRows.forEach(row => {
+                if (!row.classList.contains('search-hidden')) {
+                    row.style.display = '';
+                }
+            });
+            return;
             let rowsPerPage = defaultPageSize;
 
             function render() {
@@ -5410,30 +5446,34 @@ require_once __DIR__ . '/rbac_menu.php';
                 el.innerHTML = list.map(n => {
                     const icon  = TYPE_ICON[n.event_type] || TYPE_ICON.general;
                     const color = SEV_COLOR[n.severity]   || SEV_COLOR.info;
-                    const url   = n.redirect_url ? n.redirect_url : '#';
+                    const rawUrl = n.redirect_url || '';
+                    const targetUrl = (rawUrl && rawUrl !== '#' && rawUrl !== 'null') 
+                        ? (window.resolveRedirectUrl ? window.resolveRedirectUrl(rawUrl) : rawUrl)
+                        : 'javascript:void(0)';
                     const unread = n.status === 'unread';
-                    // Escape quotes in URL to prevent breaking the onclick attribute
-                    const safeUrl = url.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                    return `<div class="sa-notif-item${unread ? ' unread' : ''}"
-                                 style="padding:12px 14px;border-bottom:1px solid #f0f0f0;cursor:pointer;background:${unread ? '#fff9f0' : '#fff'};transition:background .15s;"
-                                 onclick="saMarkRead(${n.id}, '${safeUrl}')"
-                                 onmouseenter="this.style.background='#f8fafc'"
-                                 onmouseleave="this.style.background='${unread ? '#fff9f0' : '#fff'}'">
-                        <div style="display:flex;align-items:flex-start;gap:10px;">
-                            <div style="width:34px;height:34px;border-radius:50%;background:${color}22;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;">
-                                <i class="${icon}" style="color:${color};font-size:14px;"></i>
-                            </div>
-                            <div style="flex:1;min-width:0;">
-                                <div style="font-weight:${unread ? '700' : '500'};font-size:13px;color:#1a1a1a;line-height:1.3;margin-bottom:2px;">${n.title}</div>
-                                <div style="font-size:11px;color:#666;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px;" title="${n.message}">${n.message}</div>
-                                <div style="font-size:10px;color:#aaa;margin-top:3px;display:flex;align-items:center;gap:6px;">
-                                    <span style="padding:1px 6px;border-radius:10px;background:${color}22;color:${color};font-weight:700;text-transform:uppercase;font-size:9px;">${n.severity}</span>
-                                    ${timeAgo(n.created_at)}
-                                </div>
-                            </div>
-                            ${unread ? '<div style="width:8px;height:8px;border-radius:50%;background:#fd7e14;flex-shrink:0;margin-top:6px;"></div>' : ''}
+                    const hoverClass = unread ? 'notif-item unread' : 'notif-item';
+                    const title = (n.title || 'Notification').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const msg   = (n.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    return `<a href="${targetUrl}" class="${hoverClass}"
+                                 style="padding:12px 16px;cursor:pointer;display:flex;align-items:flex-start;gap:12px;text-decoration:none !important;color:inherit;"
+                                 onclick="saMarkRead(${n.id})">
+                        <div style="width:40px;height:40px;border-radius:50%;background:${color}18;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid ${color}30;margin-top:2px;">
+                            <i class="${icon}" style="color:${color};font-size:16px;"></i>
                         </div>
-                    </div>`;
+                        <div style="flex:1;min-width:0;line-height:1.3;">
+                            <div style="font-size:13.5px;color:#050505;margin-bottom:2px;">
+                                <strong style="font-weight:${unread ? '700' : '600'};">${title}</strong>
+                            </div>
+                            <div style="color:#65676B;font-size:12.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">
+                                ${msg}
+                            </div>
+                            <div style="color:${unread ? '#002F6C' : '#65676B'};font-size:11.5px;font-weight:${unread ? '600' : 'normal'};margin-top:4px;display:flex;align-items:center;gap:6px;">
+                                <span style="padding:1px 6px;border-radius:10px;background:${color}18;color:${color};font-weight:700;text-transform:uppercase;font-size:9px;">${n.severity || 'info'}</span>
+                                ${timeAgo(n.created_at)}
+                            </div>
+                        </div>
+                        ${unread ? '<div style="width:10px;height:10px;border-radius:50%;background:#002F6C;flex-shrink:0;margin-top:16px;"></div>' : ''}
+                    </a>`;
                 }).join('');
             }
 
@@ -5451,7 +5491,7 @@ require_once __DIR__ . '/rbac_menu.php';
 
             async function loadNotifications() {
                 const el = document.getElementById('notificationList');
-                if (el) el.innerHTML = '<div style="padding:20px;text-align:center;color:#888;font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Loading—¦</div>';
+                if (el) el.innerHTML = '<div style="padding:20px;text-align:center;color:#888;font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
                 try {
                     const res  = await fetch(API_LIST + '?action=list&limit=15&status=all');
                     const data = await res.json();
@@ -5469,8 +5509,6 @@ require_once __DIR__ . '/rbac_menu.php';
                     const res  = await fetch(API_LIST + '?action=unread_count');
                     const data = await res.json();
                     if (data.success) {
-                        // Use bell_unread_count for the bell badge (actual unread notifications)
-                        // unread_count is the sidebar action badge count (separate)
                         const bellCount = (typeof data.bell_unread_count !== 'undefined')
                             ? data.bell_unread_count
                             : (data.unread_count || 0);
@@ -5485,22 +5523,12 @@ require_once __DIR__ . '/rbac_menu.php';
             }
 
             // Expose mark-read globally so onclick works
-            window.saMarkRead = async function(id, url) {
+            window.saMarkRead = function(id) {
                 try {
                     const fd = new FormData();
                     fd.append('notification_id', id);
-                    await fetch(API_LIST + '?action=mark_read', { method: 'POST', body: fd, credentials: 'same-origin' });
+                    fetch(API_LIST + '?action=mark_read', { method: 'POST', body: fd, credentials: 'same-origin' });
                 } catch (e) {}
-                
-                // Navigate to the URL after marking as read
-                if (url && url !== '#' && url.trim() !== '') {
-                    // Add a small delay to ensure the mark-read completes
-                    setTimeout(function() {
-                        window.location.href = window.resolveRedirectUrl(url);
-                    }, 100);
-                } else {
-                    loadNotifications();
-                }
             };
 
             // Mark all read button

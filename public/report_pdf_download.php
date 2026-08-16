@@ -76,13 +76,14 @@ class SimpleReportPdf {
 
     public function render(string $title, array $metaLines, array $sections): void {
         $this->title($title !== '' ? $title : 'Report');
+        // Render station address + date range meta lines centered under title
         foreach ($metaLines as $line) {
             $line = report_pdf_text($line);
             if ($line !== '') {
-                $this->lineText($line, 8, 'F1', [0.25, 0.25, 0.25], true);
+                $this->lineText($line, 8.5, 'F1', [0.15, 0.15, 0.15], true);
             }
         }
-        $this->y -= 8;
+        $this->y -= 10;
 
         if (empty($sections)) {
             $this->lineText('No report data found.', 10, 'F1');
@@ -104,22 +105,119 @@ class SimpleReportPdf {
             $this->y -= 10;
         }
 
-        // PREPARED BY SIGNATURE BLOCK
-        if ($this->y < 65.0) {
+        // SIGNATURE BLOCK (Role-specific)
+        if ($this->y < 80.0) {
             $this->addPage();
         }
-        $this->y -= 10;
-        $sigX = $this->width - $this->margin - 180;
-        $u = current_user();
-        $prepared_by_name = trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? '')) ?: ($u['username'] ?? 'System User');
-        $user_role_label  = function_exists('role_key') ? ucfirst(role_key($u['role'] ?? 'staff')) : 'Staff';
 
-        $this->lineText('PREPARED BY:', 9, 'F2', [0.2, 0.2, 0.2]);
-        $this->line($sigX, $this->y - 4, $sigX + 180, $this->y - 4, [0, 0, 0], 1.0);
-        $this->y -= 14;
-        $this->lineText($prepared_by_name, 10, 'F2', [0, 0, 0]);
-        $this->y -= 10;
-        $this->lineText($user_role_label, 8.5, 'F1', [0.35, 0.35, 0.35]);
+        $u = current_user();
+        $user_role = function_exists('role_key') ? role_key($u['role'] ?? '') : strtolower((string)($u['role'] ?? ''));
+
+        if (in_array($user_role, ['admin', 'manager'], true)) {
+            // ── ADMIN & MANAGER REPORT SIGNATURE BLOCK (Prepared By, Verified By, Approved By) ──
+            $this->y -= 15;
+            $sigWidth = 170.0;
+            $sig1X = $this->margin;
+            $sig2X = ($this->width - $sigWidth) / 2.0;
+            $sig3X = $this->width - $this->margin - $sigWidth;
+
+            $user_name = strtoupper(trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? ''))) ?: strtoupper($u['username'] ?? ($user_role === 'admin' ? 'SYSTEM ADMIN' : 'STATION MANAGER'));
+
+            $startY = $this->y;
+
+            // Labels
+            $this->append($this->pdfText($sig1X, $startY, 'Prepared By:', 9, 'F2', [0.0, 0.18, 0.42]));
+            $this->append($this->pdfText($sig2X, $startY, 'Verified By:', 9, 'F2', [0.0, 0.18, 0.42]));
+            $this->append($this->pdfText($sig3X, $startY, 'Approved By:', 9, 'F2', [0.0, 0.18, 0.42]));
+
+            $lineY = $startY - 26;
+            // Lines
+            $this->line($sig1X, $lineY, $sig1X + $sigWidth, $lineY, [0.0, 0.18, 0.42], 0.8);
+            $this->line($sig2X, $lineY, $sig2X + $sigWidth, $lineY, [0.0, 0.18, 0.42], 0.8);
+            $this->line($sig3X, $lineY, $sig3X + $sigWidth, $lineY, [0.0, 0.18, 0.42], 0.8);
+
+            $nameY = $lineY - 12;
+            // Name 1 (User Name)
+            $x1 = $sig1X + max(0, ($sigWidth - strlen($user_name) * 9.5 * 0.48) / 2);
+            $this->append($this->pdfText($x1, $nameY, $user_name, 9.5, 'F2', [0.1, 0.16, 0.23]));
+
+            // Name 2: Shift Supervisor
+            $txt2 = 'SHIFT SUPERVISOR';
+            $x2 = $sig2X + max(0, ($sigWidth - strlen($txt2) * 9.5 * 0.48) / 2);
+            $this->append($this->pdfText($x2, $nameY, $txt2, 9.5, 'F2', [0.1, 0.16, 0.23]));
+
+            // Name 3: Station Manager
+            $txt3 = 'STATION MANAGER';
+            $x3 = $sig3X + max(0, ($sigWidth - strlen($txt3) * 9.5 * 0.48) / 2);
+            $this->append($this->pdfText($x3, $nameY, $txt3, 9.5, 'F2', [0.1, 0.16, 0.23]));
+
+            $subY = $nameY - 11;
+            $subTxt = 'Signature over Printed Name';
+            $sx1 = $sig1X + max(0, ($sigWidth - strlen($subTxt) * 8 * 0.48) / 2);
+            $sx2 = $sig2X + max(0, ($sigWidth - strlen($subTxt) * 8 * 0.48) / 2);
+            $sx3 = $sig3X + max(0, ($sigWidth - strlen($subTxt) * 8 * 0.48) / 2);
+            $this->append($this->pdfText($sx1, $subY, $subTxt, 8, 'F1', [0.4, 0.45, 0.55]));
+            $this->append($this->pdfText($sx2, $subY, $subTxt, 8, 'F1', [0.4, 0.45, 0.55]));
+            $this->append($this->pdfText($sx3, $subY, $subTxt, 8, 'F1', [0.4, 0.45, 0.55]));
+        } elseif ($user_role === 'staff') {
+            // ── STAFF REPORT SIGNATURE BLOCK (PREPARED BY:) ──
+            $this->y -= 20;
+            $sigWidth = 180;
+            $sigX = $this->width - $this->margin - $sigWidth;
+            $staff_name = strtoupper(trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? ''))) ?: strtoupper($u['username'] ?? 'STAFF');
+
+            // Label: PREPARED BY:
+            $label = 'PREPARED BY:';
+            $labelSize = 9;
+            $labelX = $sigX + ($sigWidth - strlen($label) * $labelSize * 0.48) / 2;
+            $this->append($this->pdfText($labelX, $this->y, $label, $labelSize, 'F2', [0.2, 0.2, 0.2]));
+            $this->y -= 22;
+
+            // Horizontal signature line
+            $this->line($sigX, $this->y, $sigX + $sigWidth, $this->y, [0, 0, 0], 0.8);
+            $this->y -= 13; // drop below line
+
+            // Name centered below line
+            $nameSize = 10;
+            $nameX = $sigX + ($sigWidth - strlen($staff_name) * $nameSize * 0.48) / 2;
+            $this->append($this->pdfText($nameX, $this->y, $staff_name, $nameSize, 'F2', [0, 0, 0]));
+            $this->y -= 13;
+
+            // Role label: Staff
+            $roleLabel = 'Staff';
+            $roleLabelSize = 8.5;
+            $roleLabelX = $sigX + ($sigWidth - strlen($roleLabel) * $roleLabelSize * 0.48) / 2;
+            $this->append($this->pdfText($roleLabelX, $this->y, $roleLabel, $roleLabelSize, 'F1', [0.35, 0.35, 0.35]));
+        } else {
+            // ── SUPERADMIN / DEVELOPER SIGNATURE BLOCK (right-aligned) ──
+            $this->y -= 20;
+            $sigWidth = 180;
+            $sigX = $this->width - $this->margin - $sigWidth;
+            $developed_by_name = trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? '')) ?: ($u['username'] ?? 'System User');
+
+            // Label: SYSTEM DEVELOPED BY:
+            $label = 'SYSTEM DEVELOPED BY:';
+            $labelSize = 9;
+            $labelX = $sigX + ($sigWidth - strlen($label) * $labelSize * 0.48) / 2;
+            $this->append($this->pdfText($labelX, $this->y, $label, $labelSize, 'F2', [0.2, 0.2, 0.2]));
+            $this->y -= 22;
+
+            // Horizontal signature line
+            $this->line($sigX, $this->y, $sigX + $sigWidth, $this->y, [0, 0, 0], 0.8);
+            $this->y -= 13; // drop below the line so name appears under it
+
+            // Name centered below line
+            $nameSize = 10;
+            $nameX = $sigX + ($sigWidth - strlen($developed_by_name) * $nameSize * 0.48) / 2;
+            $this->append($this->pdfText($nameX, $this->y, $developed_by_name, $nameSize, 'F2', [0, 0, 0]));
+            $this->y -= 13;
+
+            // Role label: Super Admin
+            $roleLabel = 'Super Admin';
+            $roleLabelSize = 8.5;
+            $roleLabelX = $sigX + ($sigWidth - strlen($roleLabel) * $roleLabelSize * 0.48) / 2;
+            $this->append($this->pdfText($roleLabelX, $this->y, $roleLabel, $roleLabelSize, 'F1', [0.35, 0.35, 0.35]));
+        }
     }
 
     public function output(): string {
@@ -377,7 +475,8 @@ foreach (($payload['meta'] ?? []) as $line) {
         $metaLines[] = $clean;
     }
 }
-$metaLines[] = 'Downloaded: ' . date('M d, Y h:i A');
+// Date printed line at the bottom of meta block
+$metaLines[] = 'Date Printed: ' . date('M d, Y h:i A');
 
 $sections = [];
 foreach (($payload['sections'] ?? []) as $section) {

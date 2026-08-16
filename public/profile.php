@@ -224,72 +224,52 @@ require_once __DIR__ . '/../partials/header.php';
 
 <style>
 /* ═══════════════════════════════════════════════
-   MY PROFILE — COMPLETE SPECIFICATION STYLES
+   MY PROFILE — ULTRA PREMIUM PROFESSIONAL DESIGN
    ═══════════════════════════════════════════════ */
 
 .pf-page {
-    max-width: 840px;
+    max-width: 920px;
     margin: 0 auto 80px;
-    padding: 0 10px;
+    padding: 0 12px;
 }
 
-/* ── 1. Common Profile Header ── */
+/* ── 1. Super Compact White Hero Header Card ── */
 .pf-header-card {
-    background: linear-gradient(145deg, #002244 0%, #003366 50%, #001a33 100%);
-    border-radius: 18px;
-    padding: 38px 24px 28px;
+    background: #ffffff;
+    border-radius: 14px;
+    padding: 14px 18px 12px;
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
-    position: relative;
-    overflow: hidden;
-    box-shadow: 0 10px 30px rgba(0, 34, 68, 0.35);
-    margin-bottom: 24px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    margin-bottom: 16px;
+    border: 1px solid #e2e8f0;
+    width: 100%;
+    box-sizing: border-box;
 }
 
-.pf-header-card::before {
-    content: '';
-    position: absolute;
-    top: -60px; right: -60px;
-    width: 240px; height: 240px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(227, 6, 19, 0.25) 0%, rgba(227, 6, 19, 0) 70%);
-    pointer-events: none;
-}
-
-.pf-header-card::after {
-    content: '';
-    position: absolute;
-    bottom: -60px; left: -60px;
-    width: 220px; height: 220px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(0, 102, 204, 0.3) 0%, rgba(0, 102, 204, 0) 70%);
-    pointer-events: none;
-}
-
-/* Profile Image Container */
 .pf-avatar-container {
-    position: relative;
-    margin-bottom: 18px;
-    z-index: 2;
+    margin-bottom: 6px;
 }
 
 .pf-avatar-frame {
-    width: 120px;
-    height: 120px;
+    width: 72px;
+    height: 72px;
     border-radius: 50%;
-    border: 4px solid #ffffff;
-    background: linear-gradient(135deg, #003366, #001a33);
+    border: 2.5px solid #00264D;
+    background: #f1f5f9;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 52px;
-    color: rgba(255, 255, 255, 0.85);
+    font-size: 30px;
+    color: #00264D;
     overflow: hidden;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     transition: transform 0.2s ease;
+}
+.pf-avatar-frame:hover {
+    transform: scale(1.04);
 }
 
 .pf-avatar-frame img {
@@ -299,274 +279,289 @@ require_once __DIR__ . '/../partials/header.php';
     border-radius: 50%;
 }
 
-.pf-cam-overlay {
-    position: absolute;
-    bottom: 4px;
-    right: 4px;
-    background: #E30613;
-    border: 2.5px solid #ffffff;
-    border-radius: 50%;
-    width: 34px;
-    height: 34px;
+.pf-header-info {
+    width: 100%;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    box-shadow: 0 3px 8px rgba(0,0,0,0.4);
-    color: #ffffff;
+    text-align: center;
 }
 
-.pf-cam-overlay:hover {
-    background: #b8000b;
-    transform: scale(1.1);
-}
-
-.pf-cam-overlay i {
-    font-size: 14px;
-    pointer-events: none;
-}
-
-/* Header Text */
 .pf-full-name {
-    font-size: 22px;
+    font-size: 16px;
     font-weight: 800;
-    color: #ffffff;
-    letter-spacing: 0.6px;
+    color: #00264D;
+    letter-spacing: 0.4px;
     text-transform: uppercase;
-    margin-bottom: 6px;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
-    z-index: 2;
+    margin-bottom: 2px;
+    word-break: break-word;
+    max-width: 100%;
 }
 
-.pf-role-title {
-    font-size: 13.5px;
-    font-weight: 700;
-    color: #ff9999;
-    letter-spacing: 1.2px;
-    text-transform: uppercase;
+.pf-role-line {
     margin-bottom: 4px;
-    z-index: 2;
+}
+
+.pf-role-badge-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #fff0f1;
+    border: 1px solid #fecaca;
+    color: #E30613;
+    padding: 2px 10px;
+    border-radius: 16px;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
 }
 
 .pf-station-tagline {
-    font-size: 13px;
+    font-size: 11.5px;
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.85);
-    margin-bottom: 18px;
-    z-index: 2;
+    color: #64748b;
+    margin-bottom: 10px;
+    word-break: break-word;
 }
 
-/* Photo Action Buttons */
 .pf-photo-actions {
     display: flex;
-    gap: 10px;
-    justify-content: center;
+    gap: 6px;
     flex-wrap: wrap;
-    z-index: 2;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
 }
 
 .pf-btn-photo {
-    padding: 7px 16px;
-    border-radius: 20px;
-    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: 11px;
     font-weight: 700;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     transition: all 0.2s ease;
     text-decoration: none;
     border: none;
 }
 
 .pf-btn-photo-change {
-    background: #ffffff !important;
-    color: #002244 !important;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.25) !important;
-    border: 1.5px solid rgba(255,255,255,0.9) !important;
+    background: #f1f5f9 !important;
+    color: #00264D !important;
+    border: 1px solid #cbd5e1 !important;
 }
 .pf-btn-photo-change:hover {
-    background: #f0f4f8 !important;
-    transform: translateY(-1px) !important;
+    background: #e2e8f0 !important;
 }
 
 .pf-btn-photo-remove {
-    background: #E30613 !important;
-    color: #ffffff !important;
-    border: 1.5px solid rgba(255,255,255,0.3) !important;
-    box-shadow: 0 3px 10px rgba(227,6,19,0.35) !important;
+    background: #fee2e2 !important;
+    color: #dc2626 !important;
+    border: 1px solid #fecaca !important;
 }
 .pf-btn-photo-remove:hover {
-    background: #c0000e !important;
-    transform: translateY(-1px) !important;
+    background: #fca5a5 !important;
 }
 
-/* ── 2. Body Tabs & Panels ── */
-.pf-body-card {
-    background: #ffffff;
-    border-radius: 16px;
-    box-shadow: 0 6px 25px rgba(0,0,0,0.08);
-    overflow: hidden;
-    border: 1px solid rgba(0,0,0,0.06);
-}
-
+/* ── 2. Navigation Tabs (Pill Segmented Control) ── */
 .pf-tabs {
     display: flex !important;
-    background: #f1f5f9 !important;
-    border-bottom: 3px solid #00264D !important;
-    border-top: 1px solid #d1d9e6 !important;
-    border-left: 1px solid #d1d9e6 !important;
-    border-right: 1px solid #d1d9e6 !important;
-    overflow: hidden !important;
+    background: #e2e8f0 !important;
+    border-radius: 16px !important;
+    padding: 5px !important;
+    gap: 6px !important;
+    margin-bottom: 24px !important;
+    border: 1px solid #cbd5e1 !important;
 }
 
 .pf-tab {
     flex: 1 !important;
-    padding: 13px 12px !important;
+    padding: 12px 16px !important;
     text-align: center !important;
-    font-size: 11.5px !important;
+    font-size: 12px !important;
     font-weight: 700 !important;
-    color: #334155 !important;
-    cursor: pointer !important;
+    color: #475569 !important;
+    border-radius: 12px !important;
     border: none !important;
-    border-right: 1px solid #d1d9e6 !important;
-    background: #ffffff !important;
-    border-bottom: 3px solid transparent !important;
-    transition: all 0.15s ease !important;
+    background: transparent !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.3px !important;
+    letter-spacing: 0.5px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 7px !important;
-}
-
-.pf-tab:last-child {
-    border-right: none !important;
+    gap: 8px !important;
+    cursor: pointer !important;
 }
 
 .pf-tab:hover {
-    background: #f1f5f9 !important;
     color: #00264D !important;
+    background: rgba(255, 255, 255, 0.6) !important;
 }
 
 .pf-tab.active {
     background: #00264D !important;
     color: #ffffff !important;
-    font-weight: 800 !important;
-    border-bottom: 3px solid #E30613 !important;
+    box-shadow: 0 4px 14px rgba(0, 38, 77, 0.25) !important;
 }
 
-.pf-tab i,
-.pf-tab span {
+.pf-tab i, .pf-tab span {
     color: inherit !important;
 }
 
+/* ── 3. Panels & Card Grid Layout ── */
 .pf-panel {
     display: none;
-    padding: 28px 30px 32px;
 }
 .pf-panel.active {
     display: block;
+    animation: fadeIn 0.25s ease-in-out;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Section Titles */
-.pf-sec-header {
-    font-size: 12px;
+.pf-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
+.pf-info-card {
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    padding: 24px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.pf-info-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.07);
+}
+
+.pf-sec-title {
+    font-size: 13px;
     font-weight: 800;
-    color: #002244;
+    color: #00264D;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    margin: 0 0 16px;
-    padding-bottom: 8px;
-    border-bottom: 2px solid #f0f4f8;
+    letter-spacing: 0.8px;
+    margin-bottom: 18px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #f1f5f9;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
 }
-
-.pf-sec-header i {
+.pf-sec-title i {
     color: #E30613;
-    font-size: 14px;
+    font-size: 15px;
 }
 
-/* Two-column data table grid */
-.pf-info-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0;
-    margin-bottom: 24px;
-    border: 1px solid #edf2f7;
-    border-radius: 12px;
-    overflow: hidden;
-}
-
-.pf-info-row {
+/* Field Item Block */
+.pf-field-list {
     display: flex;
     flex-direction: column;
+    gap: 14px;
+}
+
+.pf-field-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: 12px 16px;
-    background: #ffffff;
-    border-bottom: 1px solid #edf2f7;
+    background: #f8fafc;
+    border-radius: 14px;
+    border: 1px solid #f1f5f9;
 }
 
-.pf-info-row:nth-child(odd) {
-    border-right: 1px solid #edf2f7;
+.pf-field-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
-.pf-info-row:last-child,
-.pf-info-row:nth-last-child(2):nth-child(odd) {
-    border-bottom: none;
+.pf-field-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    background: #e0f2fe;
+    color: #0284c7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
 }
 
-.pf-label {
-    font-size: 10.5px;
+.pf-field-label {
+    font-size: 11px;
     font-weight: 700;
     color: #64748b;
     text-transform: uppercase;
-    letter-spacing: 0.6px;
-    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+    margin: 0;
 }
 
-.pf-value {
-    font-size: 13.5px;
-    font-weight: 600;
+.pf-field-val {
+    font-size: 14px;
+    font-weight: 700;
     color: #1e293b;
+    margin-top: 1px;
     word-break: break-word;
 }
 
-.pf-badge-status {
+.pf-status-online {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    color: #16a34a;
+    gap: 6px;
+    background: #dcfce7;
+    color: #15803d;
+    padding: 4px 12px;
+    border-radius: 20px;
     font-weight: 700;
+    font-size: 12px;
 }
-.pf-badge-status i { font-size: 8px; }
-
-.pf-badge-role {
-    color: #002244;
-    font-weight: 800;
+.pf-status-online i {
+    font-size: 7px;
+    animation: pulse 1.8s infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.3); }
 }
 
-/* Edit form */
+/* Edit Form Styles */
+.pf-edit-card {
+    background: #ffffff;
+    border-radius: 20px;
+    border: 1px solid #e2e8f0;
+    padding: 28px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.05);
+}
+
 .pf-form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 20px;
+    gap: 18px;
+    margin-bottom: 24px;
 }
 
 .pf-fg {
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 6px;
 }
 
 .pf-fg label {
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 800;
-    color: #475569;
+    color: #334155;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -574,9 +569,9 @@ require_once __DIR__ . '/../partials/header.php';
 
 .pf-input {
     width: 100%;
-    padding: 10px 14px;
+    padding: 11px 15px;
     border: 1.5px solid #cbd5e1;
-    border-radius: 10px;
+    border-radius: 12px;
     font-size: 13.5px;
     color: #1e293b;
     box-sizing: border-box;
@@ -586,25 +581,83 @@ require_once __DIR__ . '/../partials/header.php';
 
 .pf-input:focus {
     outline: none;
-    border-color: #003366;
-    box-shadow: 0 0 0 3px rgba(0, 51, 102, 0.12);
+    border-color: #00264D;
+    box-shadow: 0 0 0 3.5px rgba(0, 38, 77, 0.12);
 }
 
 .pf-input[readonly] {
-    background: #f1f5f9;
+    background: #f8fafc;
     color: #64748b;
     cursor: not-allowed;
     border-color: #e2e8f0;
 }
 
 .pf-readonly-badge {
-    font-size: 10px;
+    font-size: 10.5px;
     color: #64748b;
     display: flex;
     align-items: center;
-    gap: 4px;
-    margin-top: 3px;
+    gap: 5px;
+    margin-top: 4px;
     font-weight: 500;
+}
+
+/* Action Buttons Bar */
+.pf-actions {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+.pf-btn {
+    padding: 11px 24px !important;
+    border-radius: 12px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    transition: all 0.2s ease !important;
+    text-decoration: none !important;
+}
+
+.pf-btn-primary {
+    background: #00264D !important;
+    color: #ffffff !important;
+    border: 2px solid #00264D !important;
+    box-shadow: 0 4px 14px rgba(0, 38, 77, 0.22) !important;
+}
+.pf-btn-primary i, .pf-btn-primary span {
+    color: #ffffff !important;
+}
+.pf-btn-primary:hover {
+    background: #001833 !important;
+    border-color: #001833 !important;
+    color: #ffffff !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(0, 38, 77, 0.32) !important;
+}
+
+.pf-btn-secondary {
+    background: #ffffff !important;
+    color: #00264D !important;
+    border: 2px solid #00264D !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+}
+.pf-btn-secondary i, .pf-btn-secondary span {
+    color: #00264D !important;
+}
+.pf-btn-secondary:hover {
+    background: #00264D !important;
+    color: #ffffff !important;
+    border-color: #00264D !important;
+    transform: translateY(-2px) !important;
+}
+.pf-btn-secondary:hover i, .pf-btn-secondary:hover span {
+    color: #ffffff !important;
 }
 
 /* Modal for Photo Preview */
@@ -625,12 +678,12 @@ require_once __DIR__ . '/../partials/header.php';
 
 .pf-modal-box {
     background: #ffffff;
-    border-radius: 16px;
+    border-radius: 20px;
     max-width: 440px;
     width: 100%;
-    padding: 24px;
+    padding: 28px;
     text-align: center;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+    box-shadow: 0 16px 50px rgba(0,0,0,0.45);
     animation: modalPop 0.25s ease;
 }
 @keyframes modalPop {
@@ -639,77 +692,32 @@ require_once __DIR__ . '/../partials/header.php';
 }
 
 .pf-modal-preview-img {
-    width: 180px;
-    height: 180px;
+    width: 190px;
+    height: 190px;
     border-radius: 50%;
     object-fit: cover;
-    margin: 16px auto;
-    border: 4px solid #002244;
+    margin: 18px auto;
+    border: 4px solid #00264D;
     display: block;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-}
-
-/* Action Buttons */
-.pf-actions {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-top: 10px;
-}
-
-.pf-btn {
-    padding: 10px 22px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    transition: all 0.2s ease;
-    text-decoration: none;
-    border: none;
-}
-
-.pf-btn-primary {
-    background: #00264D;
-    color: #ffffff;
-    border: 1.5px solid #00264D;
-    box-shadow: 0 2px 8px rgba(0, 38, 77, 0.18);
-}
-.pf-btn-primary:hover {
-    background: #003d7a;
-    border-color: #003d7a;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(0, 38, 77, 0.28);
-}
-
-.pf-btn-secondary {
-    background: #ffffff;
-    color: #334155;
-    border: 1.5px solid #cbd5e1;
-}
-.pf-btn-secondary:hover {
-    background: #e2e8f0;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.25);
 }
 
 /* Alert Notification */
 .pf-alert {
-    padding: 12px 18px;
-    border-radius: 10px;
-    margin-bottom: 20px;
+    padding: 14px 20px;
+    border-radius: 14px;
+    margin-bottom: 22px;
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 13.5px;
+    gap: 12px;
+    font-size: 14px;
     font-weight: 600;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.04);
 }
-.pf-alert.success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+.pf-alert.success { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
 .pf-alert.error   { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
 
 @media (max-width: 650px) {
-    .pf-info-grid { grid-template-columns: 1fr; }
-    .pf-info-row:nth-child(odd) { border-right: none; }
     .pf-form-grid { grid-template-columns: 1fr; }
 }
 </style>
@@ -723,7 +731,7 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
     <?php endif; ?>
 
-    <!-- ── 1. COMMON PROFILE HEADER ── -->
+    <!-- ── 1. HERO PROFILE HEADER CARD ── -->
     <div class="pf-header-card">
         <div class="pf-avatar-container">
             <div class="pf-avatar-frame" id="headerAvatarFrame" onclick="previewCurrentPhoto()" style="cursor:pointer;" title="Click to view full photo">
@@ -733,27 +741,33 @@ require_once __DIR__ . '/../partials/header.php';
                     <i class="fas fa-user"></i>
                 <?php endif; ?>
             </div>
-            <label class="pf-cam-overlay" for="photoFileInput" title="Change Profile Photo">
-                <i class="fas fa-camera"></i>
-            </label>
         </div>
 
-        <div class="pf-full-name"><?php echo htmlspecialchars(strtoupper($disp_full)); ?></div>
-        <div class="pf-role-title"><?php echo htmlspecialchars($role_display_title); ?></div>
-        <div class="pf-station-tagline">Petron Station &amp; Service Center &nbsp;•&nbsp; <?php echo htmlspecialchars($station_name); ?></div>
+        <div class="pf-header-info">
+            <div class="pf-full-name"><?php echo htmlspecialchars(strtoupper($disp_full)); ?></div>
+            <div class="pf-role-line">
+                <span class="pf-role-badge-pill">
+                    <i class="fas fa-user-shield"></i>
+                    <span><?php echo htmlspecialchars($role_display_title); ?></span>
+                </span>
+            </div>
+            <div class="pf-station-tagline">
+                <i class="fas fa-gas-pump me-1"></i> Petron Station &amp; Service Center &nbsp;•&nbsp; <?php echo htmlspecialchars($station_name); ?>
+            </div>
+        </div>
 
         <div class="pf-photo-actions">
             <button type="button" class="pf-btn-photo pf-btn-photo-change" onclick="document.getElementById('photoFileInput').click();">
-                <i class="fas fa-image"></i> Change Profile Photo
+                <i class="fas fa-camera"></i> Change Photo
             </button>
             <?php if ($pic_url): ?>
             <button type="button" class="pf-btn-photo pf-btn-photo-change" onclick="previewCurrentPhoto()">
-                <i class="fas fa-eye"></i> Preview Photo
+                <i class="fas fa-eye"></i> Preview
             </button>
             <form method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to remove your profile photo and return to default avatar?');">
                 <input type="hidden" name="action" value="remove_picture">
                 <button type="submit" class="pf-btn-photo pf-btn-photo-remove">
-                    <i class="fas fa-trash-alt"></i> Remove Photo
+                    <i class="fas fa-trash-alt"></i> Remove
                 </button>
             </form>
             <?php endif; ?>
@@ -768,138 +782,172 @@ require_once __DIR__ . '/../partials/header.php';
                onchange="handlePhotoSelected(this);">
     </form>
 
-    <!-- ── 2. PROFILE INFORMATION CARD ── -->
-    <div class="pf-body-card">
+    <!-- ── 2. SEGMENTED NAVIGATION TABS ── -->
+    <div class="pf-tabs" role="tablist">
+        <button class="pf-tab active" onclick="switchProfileTab('info')" id="tab-info" role="tab" aria-selected="true">
+            <i class="fas fa-id-card"></i>
+            <span>Profile Info</span>
+        </button>
+        <button class="pf-tab" onclick="switchProfileTab('edit')" id="tab-edit" role="tab" aria-selected="false">
+            <i class="fas fa-user-edit"></i>
+            <span>Edit Profile</span>
+        </button>
+        <button class="pf-tab" onclick="switchProfileTab('activity')" id="tab-activity" role="tab" aria-selected="false">
+            <i class="fas fa-history"></i>
+            <span>Account Activity</span>
+        </button>
+    </div>
 
-        <!-- Tabs -->
-        <div class="pf-tabs" role="tablist">
-            <button class="pf-tab active" onclick="switchProfileTab('info')" id="tab-info" role="tab" aria-selected="true">
-                <i class="fas fa-id-card"></i>
-                <span>Profile Info</span>
-            </button>
-            <button class="pf-tab" onclick="switchProfileTab('edit')" id="tab-edit" role="tab" aria-selected="false">
-                <i class="fas fa-user-edit"></i>
-                <span>Edit Profile</span>
-            </button>
-            <button class="pf-tab" onclick="switchProfileTab('activity')" id="tab-activity" role="tab" aria-selected="false">
-                <i class="fas fa-history"></i>
-                <span>Account Activity</span>
-            </button>
+    <!-- ── 3. TAB PANELS ── -->
+
+    <!-- TAB 1: Profile Information Cards -->
+    <div class="pf-panel active" id="panel-info" role="tabpanel">
+        <div class="pf-card-grid">
+
+            <!-- Card A: Personal Details -->
+            <div class="pf-info-card">
+                <div class="pf-sec-title">
+                    <i class="fas fa-user"></i>
+                    <span>Personal Details</span>
+                </div>
+                <div class="pf-field-list">
+                    <div class="pf-field-item">
+                        <div class="pf-field-left">
+                            <div class="pf-field-icon" style="background:#e0f2fe; color:#0284c7;">
+                                <i class="fas fa-user-tag"></i>
+                            </div>
+                            <div>
+                                <p class="pf-field-label">Full Name</p>
+                                <p class="pf-field-val"><?php echo htmlspecialchars($disp_full); ?></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pf-field-item">
+                        <div class="pf-field-left">
+                            <div class="pf-field-icon" style="background:#f0fdf4; color:#16a34a;">
+                                <i class="fas fa-at"></i>
+                            </div>
+                            <div>
+                                <p class="pf-field-label">Username</p>
+                                <p class="pf-field-val"><?php echo htmlspecialchars($me['username'] ?? '—'); ?></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pf-field-item">
+                        <div class="pf-field-left">
+                            <div class="pf-field-icon" style="background:#fef3c7; color:#d97706;">
+                                <i class="fas fa-envelope"></i>
+                            </div>
+                            <div>
+                                <p class="pf-field-label">Email Address</p>
+                                <p class="pf-field-val"><?php echo htmlspecialchars($me['email'] ?? 'Not set'); ?></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pf-field-item">
+                        <div class="pf-field-left">
+                            <div class="pf-field-icon" style="background:#fae8ff; color:#c026d3;">
+                                <i class="fas fa-phone-alt"></i>
+                            </div>
+                            <div>
+                                <p class="pf-field-label">Contact Number</p>
+                                <p class="pf-field-val"><?php echo htmlspecialchars($me['phone_number'] ?? 'Not set'); ?></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card B: Role & Station Assignment -->
+            <div class="pf-info-card">
+                <div class="pf-sec-title">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>Role &amp; Assignment</span>
+                </div>
+                <div class="pf-field-list">
+                    <div class="pf-field-item">
+                        <div class="pf-field-left">
+                            <div class="pf-field-icon" style="background:#e0e7ff; color:#4338ca;">
+                                <i class="fas fa-user-shield"></i>
+                            </div>
+                            <div>
+                                <p class="pf-field-label">Assigned Role</p>
+                                <p class="pf-field-val" style="color:#00264D; font-weight:800;"><?php echo htmlspecialchars($role_badge); ?></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pf-field-item">
+                        <div class="pf-field-left">
+                            <div class="pf-field-icon" style="background:#ffedd5; color:#ea580c;">
+                                <i class="fas fa-building"></i>
+                            </div>
+                            <div>
+                                <p class="pf-field-label">Branch Station</p>
+                                <p class="pf-field-val"><?php echo htmlspecialchars($station_name); ?></p>
+                            </div>
+                        </div>
+                    </div>
+                    <?php if ($shift_label): ?>
+                    <div class="pf-field-item">
+                        <div class="pf-field-left">
+                            <div class="pf-field-icon" style="background:#f0fdf4; color:#15803d;">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                            <div>
+                                <p class="pf-field-label">Shift Assignment</p>
+                                <p class="pf-field-val"><?php echo htmlspecialchars($shift_label); ?></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pf-field-item">
+                        <div class="pf-field-left">
+                            <div class="pf-field-icon" style="background:#e0f2fe; color:#0369a1;">
+                                <i class="fas fa-calendar-alt"></i>
+                            </div>
+                            <div>
+                                <p class="pf-field-label">Work Schedule</p>
+                                <p class="pf-field-val"><?php echo htmlspecialchars($schedule_label); ?></p>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                    <div class="pf-field-item">
+                        <div class="pf-field-left">
+                            <div class="pf-field-icon" style="background:#dcfce7; color:#15803d;">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <div>
+                                <p class="pf-field-label">Account Status</p>
+                                <p class="pf-field-val">
+                                    <span class="pf-status-online"><i class="fas fa-circle"></i> Active</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
-        <!-- ── TAB 1: Profile Information (Summary Grid) ── -->
-        <div class="pf-panel active" id="panel-info" role="tabpanel">
-
-            <div class="pf-sec-header">
-                <i class="fas fa-user"></i>
-                <span>Profile Information</span>
-            </div>
-
-            <div class="pf-info-grid">
-                <div class="pf-info-row">
-                    <span class="pf-label">Profile Photo</span>
-                    <span class="pf-value" style="color:#003366;font-weight:700;">
-                        <?php echo $pic_url ? 'Custom Photo Uploaded' : 'Default System Avatar'; ?>
-                    </span>
-                </div>
-                <div class="pf-info-row">
-                    <span class="pf-label">First Name</span>
-                    <span class="pf-value"><?php echo $disp_first ?: 'Not set'; ?></span>
-                </div>
-                <div class="pf-info-row">
-                    <span class="pf-label">Last Name</span>
-                    <span class="pf-value"><?php echo $disp_last ?: 'Not set'; ?></span>
-                </div>
-                <div class="pf-info-row">
-                    <span class="pf-label">Username</span>
-                    <span class="pf-value"><?php echo htmlspecialchars($me['username'] ?? '—'); ?></span>
-                </div>
-                <div class="pf-info-row">
-                    <span class="pf-label">Role</span>
-                    <span class="pf-value pf-badge-role"><?php echo htmlspecialchars($role_badge); ?></span>
-                </div>
-                <?php if ($shift_label): ?>
-                <div class="pf-info-row">
-                    <span class="pf-label">Shift</span>
-                    <span class="pf-value pf-badge-role"><?php echo htmlspecialchars($shift_label); ?></span>
-                </div>
-                <div class="pf-info-row">
-                    <span class="pf-label">Schedule</span>
-                    <span class="pf-value"><?php echo htmlspecialchars($schedule_label); ?></span>
-                </div>
-                <?php endif; ?>
-                <div class="pf-info-row">
-                    <span class="pf-label">Email Address</span>
-                    <span class="pf-value"><?php echo htmlspecialchars($me['email'] ?? 'Not set'); ?></span>
-                </div>
-                <div class="pf-info-row">
-                    <span class="pf-label">Contact Number</span>
-                    <span class="pf-value"><?php echo htmlspecialchars($me['phone_number'] ?? 'Not set'); ?></span>
-                </div>
-                <div class="pf-info-row">
-                    <span class="pf-label">Account Status</span>
-                    <span class="pf-value pf-badge-status">
-                        <i class="fas fa-circle"></i> Active
-                    </span>
-                </div>
-                <div class="pf-info-row">
-                    <span class="pf-label">Last Login</span>
-                    <span class="pf-value"><?php echo htmlspecialchars($last_login); ?></span>
-                </div>
-                <div class="pf-info-row">
-                    <span class="pf-label">Date Created</span>
-                    <span class="pf-value"><?php echo !empty($me['created_at']) ? date('M j, Y', strtotime($me['created_at'])) : 'N/A'; ?></span>
-                </div>
-            </div>
-
-            <!-- Role-Specific Additional Information -->
-            <?php if ($raw_role === 'admin'): ?>
-            <div class="pf-sec-header">
-                <i class="fas fa-building"></i>
-                <span>Admin / Owner Additional Information</span>
-            </div>
-            <div class="pf-info-grid">
-                <div class="pf-info-row">
-                    <span class="pf-label">Station / Branch</span>
-                    <span class="pf-value">Petron Franchise Branch</span>
-                </div>
-                <div class="pf-info-row">
-                    <span class="pf-label">Branch Location</span>
-                    <span class="pf-value"><?php echo htmlspecialchars($branch_location); ?></span>
-                </div>
-            </div>
-            <?php elseif ($raw_role === 'manager'): ?>
-            <div class="pf-sec-header">
-                <i class="fas fa-building"></i>
-                <span>Manager Additional Information</span>
-            </div>
-            <div class="pf-info-grid">
-                <div class="pf-info-row" style="grid-column: 1 / -1;">
-                    <span class="pf-label">Assigned Branch</span>
-                    <span class="pf-value"><?php echo htmlspecialchars($station_name); ?></span>
-                </div>
-            </div>
-            <?php endif; ?>
-
-            <div class="pf-actions">
-                <button type="button" class="pf-btn pf-btn-primary" onclick="switchProfileTab('edit')">
-                    <i class="fas fa-user-edit"></i> Edit Profile
-                </button>
-                <a href="update_password.php" class="pf-btn pf-btn-secondary">
-                    <i class="fas fa-key"></i> Change Password
-                </a>
-            </div>
+        <div class="pf-actions">
+            <button type="button" class="pf-btn pf-btn-primary" onclick="switchProfileTab('edit')">
+                <i class="fas fa-user-edit"></i> <span>Edit Profile Information</span>
+            </button>
+            <a href="update_password.php" class="pf-btn pf-btn-secondary">
+                <i class="fas fa-key"></i> <span>Change Password</span>
+            </a>
         </div>
+    </div>
 
-        <!-- ── TAB 2: Edit Profile ── -->
-        <div class="pf-panel" id="panel-edit" role="tabpanel">
-
+    <!-- TAB 2: Edit Profile -->
+    <div class="pf-panel" id="panel-edit" role="tabpanel">
+        <div class="pf-edit-card">
             <form method="post" id="editProfileForm" autocomplete="off">
                 <input type="hidden" name="action" value="update_profile">
 
-                <div class="pf-sec-header">
+                <div class="pf-sec-title">
                     <i class="fas fa-edit"></i>
-                    <span>Editable Information</span>
+                    <span>Editable Profile Information</span>
                 </div>
 
                 <div class="pf-form-grid">
@@ -907,25 +955,25 @@ require_once __DIR__ . '/../partials/header.php';
                         <label for="first_name">First Name <span>*</span></label>
                         <input type="text" id="first_name" name="first_name" class="pf-input"
                                value="<?php echo htmlspecialchars(strip_tags($disp_first)); ?>"
-                               required placeholder="e.g. Romeca Katherine Jane">
+                               required placeholder="e.g. Edgar">
                     </div>
                     <div class="pf-fg">
                         <label for="last_name">Last Name <span>*</span></label>
                         <input type="text" id="last_name" name="last_name" class="pf-input"
                                value="<?php echo htmlspecialchars(strip_tags($disp_last)); ?>"
-                               required placeholder="e.g. Tello Pepito">
+                               required placeholder="e.g. Eslit">
                     </div>
                     <div class="pf-fg" style="grid-column: 1 / -1;">
-                        <label for="phone">Contact Number <span>*</span></label>
+                        <label for="phone">Contact Number</label>
                         <input type="text" id="phone" name="phone" class="pf-input"
                                value="<?php echo htmlspecialchars($me['phone_number'] ?? ''); ?>"
-                               placeholder="+63 917 791 8140">
+                               placeholder="+63 917 123 4567">
                     </div>
                 </div>
 
-                <div class="pf-sec-header" style="margin-top: 10px;">
+                <div class="pf-sec-title" style="margin-top: 10px;">
                     <i class="fas fa-lock"></i>
-                    <span>System Controlled / Read-Only Information</span>
+                    <span>System Controlled Information</span>
                 </div>
 
                 <div class="pf-form-grid">
@@ -937,88 +985,97 @@ require_once __DIR__ . '/../partials/header.php';
                     <div class="pf-fg">
                         <label>Email Address</label>
                         <input type="text" class="pf-input" value="<?php echo htmlspecialchars($me['email'] ?? ''); ?>" readonly>
-                        <span class="pf-readonly-badge"><i class="fas fa-lock"></i> Read-only (requires verification to change)</span>
+                        <span class="pf-readonly-badge"><i class="fas fa-lock"></i> Read-only</span>
                     </div>
                     <div class="pf-fg">
                         <label>Role</label>
                         <input type="text" class="pf-input" value="<?php echo htmlspecialchars($role_badge); ?>" readonly>
-                        <span class="pf-readonly-badge"><i class="fas fa-lock"></i> Assigned by System Administrator</span>
+                        <span class="pf-readonly-badge"><i class="fas fa-lock"></i> Assigned by Administrator</span>
                     </div>
                     <?php if ($shift_label): ?>
                     <div class="pf-fg">
                         <label>Shift Assignment</label>
                         <input type="text" class="pf-input" value="<?php echo htmlspecialchars($shift_label . ' (' . $schedule_label . ')'); ?>" readonly>
-                        <span class="pf-readonly-badge"><i class="fas fa-lock"></i> Controlled by Manager / Admin</span>
+                        <span class="pf-readonly-badge"><i class="fas fa-lock"></i> Managed by System</span>
                     </div>
                     <?php endif; ?>
-                    <div class="pf-fg">
-                        <label>Branch / Station</label>
-                        <input type="text" class="pf-input" value="<?php echo htmlspecialchars($station_name); ?>" readonly>
-                        <span class="pf-readonly-badge"><i class="fas fa-lock"></i> Station assignment</span>
-                    </div>
-                    <div class="pf-fg">
-                        <label>Account Status</label>
-                        <input type="text" class="pf-input" value="Active" readonly>
-                        <span class="pf-readonly-badge"><i class="fas fa-lock"></i> Active account</span>
-                    </div>
                 </div>
 
                 <div class="pf-actions">
                     <button type="submit" class="pf-btn pf-btn-primary">
-                        <i class="fas fa-save"></i> Save Changes
+                        <i class="fas fa-save"></i> <span>Save Changes</span>
                     </button>
                     <button type="button" class="pf-btn pf-btn-secondary" onclick="switchProfileTab('info')">
-                        <i class="fas fa-times"></i> Cancel
+                        <i class="fas fa-times"></i> <span>Cancel</span>
                     </button>
                 </div>
             </form>
         </div>
+    </div>
 
-        <!-- ── TAB 3: Account Activity ── -->
-        <div class="pf-panel" id="panel-activity" role="tabpanel">
-            <div class="pf-sec-header">
+    <!-- TAB 3: Account Activity -->
+    <div class="pf-panel" id="panel-activity" role="tabpanel">
+        <div class="pf-edit-card">
+            <div class="pf-sec-title">
                 <i class="fas fa-history"></i>
-                <span>Recent System Activity</span>
+                <span>Recent Account Activity</span>
             </div>
 
-            <div class="pf-info-grid" style="grid-template-columns: 1fr;">
-                <div class="pf-info-row">
-                    <span class="pf-label">Last Login</span>
-                    <span class="pf-value"><?php echo htmlspecialchars($last_login); ?></span>
+            <div class="pf-field-list mb-4">
+                <div class="pf-field-item">
+                    <div class="pf-field-left">
+                        <div class="pf-field-icon" style="background:#e0f2fe; color:#0284c7;">
+                            <i class="fas fa-sign-in-alt"></i>
+                        </div>
+                        <div>
+                            <p class="pf-field-label">Last Login Timestamp</p>
+                            <p class="pf-field-val"><?php echo htmlspecialchars($last_login); ?></p>
+                        </div>
+                    </div>
                 </div>
-                <div class="pf-info-row">
-                    <span class="pf-label">Date Created</span>
-                    <span class="pf-value"><?php echo !empty($me['created_at']) ? date('M j, Y', strtotime($me['created_at'])) : 'N/A'; ?></span>
+                <div class="pf-field-item">
+                    <div class="pf-field-left">
+                        <div class="pf-field-icon" style="background:#f0fdf4; color:#16a34a;">
+                            <i class="fas fa-calendar-check"></i>
+                        </div>
+                        <div>
+                            <p class="pf-field-label">Account Registration Date</p>
+                            <p class="pf-field-val"><?php echo !empty($me['created_at']) ? date('F j, Y', strtotime($me['created_at'])) : 'N/A'; ?></p>
+                        </div>
+                    </div>
                 </div>
-                <div class="pf-info-row">
-                    <span class="pf-label">Current IP Address</span>
-                    <span class="pf-value"><?php echo htmlspecialchars($_SERVER['REMOTE_ADDR'] ?? '::1'); ?></span>
-                </div>
-                <div class="pf-info-row">
-                    <span class="pf-label">Role Category</span>
-                    <span class="pf-value pf-badge-role"><?php echo htmlspecialchars($role_badge); ?></span>
+                <div class="pf-field-item">
+                    <div class="pf-field-left">
+                        <div class="pf-field-icon" style="background:#fef3c7; color:#d97706;">
+                            <i class="fas fa-desktop"></i>
+                        </div>
+                        <div>
+                            <p class="pf-field-label">Current Session IP</p>
+                            <p class="pf-field-val"><?php echo htmlspecialchars($_SERVER['REMOTE_ADDR'] ?? '::1'); ?></p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <div class="pf-actions">
                 <a href="update_password.php" class="pf-btn pf-btn-primary">
-                    <i class="fas fa-key"></i> Change Password
+                    <i class="fas fa-key"></i> Change Account Password
                 </a>
             </div>
         </div>
-
     </div>
+
 </div>
 
 <!-- ── Photo Preview Modal ── -->
 <div class="pf-modal-backdrop" id="photoPreviewModal">
     <div class="pf-modal-box">
-        <h3 style="margin:0 0 10px;font-size:16px;color:#002244;font-weight:800;">PROFILE PHOTO PREVIEW</h3>
+        <h3 style="margin:0 0 10px;font-size:16px;color:#00264D;font-weight:800;">PROFILE PHOTO PREVIEW</h3>
         <img src="<?php echo htmlspecialchars($pic_url ?: '../assets/img/default-avatar.png'); ?>" alt="Profile Preview" class="pf-modal-preview-img" id="modalPreviewImg">
         <p style="font-size:12px;color:#64748b;margin:0 0 16px;">Allowed formats: JPG, JPEG, PNG, WebP</p>
         <div style="display:flex;gap:10px;justify-content:center;">
             <button type="button" class="pf-btn pf-btn-primary" onclick="document.getElementById('photoFileInput').click();closePreviewModal();">
-                <i class="fas fa-upload"></i> Upload / Replace
+                <i class="fas fa-camera"></i> Upload / Replace
             </button>
             <button type="button" class="pf-btn pf-btn-secondary" onclick="closePreviewModal();">
                 Close
@@ -1066,14 +1123,12 @@ function handlePhotoSelected(input) {
     }
 }
 
-// Close modal on click outside
 document.getElementById('photoPreviewModal').addEventListener('click', function(e) {
     if (e.target === this) {
         closePreviewModal();
     }
 });
 
-// Auto-dismiss alert banner
 setTimeout(function() {
     var a = document.getElementById('pfAlert');
     if (a) {

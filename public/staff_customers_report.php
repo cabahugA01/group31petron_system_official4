@@ -296,7 +296,7 @@ require_once __DIR__ . '/../partials/header.php';
             <i class="fas fa-file-csv"></i> CSV
         </button>
         <!-- PDF -->
-        <button type="button" onclick="_sfssDoNativePrint(this, 'Export PDF')" class="flt-btn flt-btn-pdf" title="Export PDF">
+        <button type="button" onclick="exportPrintableAreaToPDF('.print-area', 'CUSTOMER REPORT', 'staff_customers_report', this)" class="flt-btn flt-btn-pdf" title="Export PDF">
             <i class="fas fa-file-pdf"></i> Export PDF
         </button>
         <!-- Print -->
@@ -308,11 +308,10 @@ require_once __DIR__ . '/../partials/header.php';
 
 <div class="print-area">
     <div class="container">
-        <div class="header">
-            <h1>CUSTOMER REPORT</h1>
-            <p>Petron Station Management System</p>
-            <p><?= staff_customer_report_h($station_location ?: $station_name) ?></p>
-            <p><strong>Period:</strong> <?= date('F d, Y', strtotime($filters['date_start'])) ?> - <?= date('F d, Y', strtotime($filters['date_end'])) ?></p>
+        <div class="header" style="text-align:center;">
+            <h1 style="color:#002F6C; font-weight:800;">CUSTOMER REPORT</h1>
+            <p class="rpt-address" style="color:#555; font-size:12px;"><?= staff_customer_report_h($station_location ?: $station_name) ?></p>
+            <p class="rpt-date-range" style="color:#555; font-size:12px;"><strong>Period:</strong> <?= date('F d, Y', strtotime($filters['date_start'])) ?> - <?= date('F d, Y', strtotime($filters['date_end'])) ?></p>
         </div>
 
         <div class="content">

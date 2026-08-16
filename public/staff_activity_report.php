@@ -707,13 +707,7 @@ function actExportCSV() {
 }
 
 function exportPDF(btn) {
-    var origHTML = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Opening PDF dialog...';
-    btn.disabled  = true;
-    _actPrint(function() {
-        btn.innerHTML = origHTML;
-        btn.disabled  = false;
-    });
+    exportPrintableAreaToPDF('#actPrintArea', 'MY ACTIVITY REPORT', 'staff_activity_report', btn);
 }
 
 function _actPrint(afterPrint) {

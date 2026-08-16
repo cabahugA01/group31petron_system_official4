@@ -295,24 +295,23 @@ input:checked + .ss-slider:before {
     transform: translateX(22px);
 }
 
-/* Sticky Action Footer */
+/* Action Footer Bar at bottom of data */
 .ss-action-bar {
-    position: fixed !important;
-    bottom: 75px !important;
-    left: 0 !important;
-    right: 75px !important;
-    background: transparent !important;
-    background-color: transparent !important;
-    border-top: none !important;
-    border: none !important;
-    padding: 10px 32px !important;
+    position: static !important;
+    margin-top: 25px !important;
+    margin-bottom: 25px !important;
+    padding: 10px 0 !important;
     display: flex !important;
     justify-content: flex-end !important;
     align-items: center !important;
     gap: 12px !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border-top: none !important;
+    border: none !important;
     box-shadow: none !important;
-    z-index: 995 !important;
-    pointer-events: none !important;
+    z-index: 10 !important;
+    pointer-events: auto !important;
 }
 .ss-action-bar button,
 .ss-action-bar .ss-btn {
@@ -709,21 +708,21 @@ input:checked + .ss-slider:before {
                 </div>
             </div>
 
+            <!-- Action Footer Bar (at bottom of form data) -->
+            <div class="ss-action-bar">
+                <button type="button" class="ss-btn ss-btn-secondary" onclick="restoreDefaultSettings()">
+                    <i class="fas fa-undo-alt"></i> Restore Default
+                </button>
+                <button type="button" class="ss-btn ss-btn-light" onclick="cancelSettingsChanges()">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="button" class="ss-btn ss-btn-primary" onclick="saveAllSystemSettings()">
+                    <i class="fas fa-save"></i> Save Settings
+                </button>
+            </div>
+
         </form>
     </div>
-</div>
-
-<!-- Action Footer Bar -->
-<div class="ss-action-bar">
-    <button type="button" class="ss-btn ss-btn-secondary" onclick="restoreDefaultSettings()">
-        <i class="fas fa-undo-alt"></i> Restore Default
-    </button>
-    <button type="button" class="ss-btn ss-btn-light" onclick="cancelSettingsChanges()">
-        <i class="fas fa-times"></i> Cancel
-    </button>
-    <button type="button" class="ss-btn ss-btn-primary" onclick="saveAllSystemSettings()">
-        <i class="fas fa-save"></i> Save Settings
-    </button>
 </div>
 
 <!-- Toast Container -->

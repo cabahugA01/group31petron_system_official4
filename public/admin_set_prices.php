@@ -915,6 +915,14 @@ include __DIR__ . '/../partials/header.php';
     border-radius: 0 !important; border-bottom-color: transparent !important;
 }
 
+/* Tab Panel Visibility - Only active tab panel is displayed */
+.tab-panel {
+    display: none !important;
+}
+.tab-panel.active {
+    display: block !important;
+}
+
 /* == Action buttons — ultra crisp & visible outline style == */
 .act-btn {
     display: inline-flex !important;

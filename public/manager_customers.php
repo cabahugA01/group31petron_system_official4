@@ -818,7 +818,7 @@ button.remove-v-btn i {
                                 <th style="text-align:right;">Balance</th>
                                 <th>Due Date</th>
                                 <th>Status</th>
-                                <th>Action</th>
+                                <th style="text-align:center;">Action</th>
                             </tr>
                         </thead>
                         <tbody id="arHistoryBody">
@@ -831,20 +831,24 @@ button.remove-v-btn i {
             <!-- ═══ PANEL: PAYMENT HISTORY ════════════════════════════════════ -->
             <div class="view-panel" id="vpanel-payments">
                 <div class="view-box" style="overflow-x:auto;">
-                    <h4><i class="fas fa-receipt" style="color:#002f70;"></i> Payment History</h4>
-                    <table class="cust-table" style="margin-top:6px; min-width:640px;">
+                    <h4 style="display:flex; align-items:center; justify-content:space-between;">
+                        <span><i class="fas fa-receipt" style="color:#002f70;"></i> Payment History</span>
+                        <span id="payHistCount" style="font-size:11px; font-weight:600; color:#64748b;"></span>
+                    </h4>
+                    <table class="cust-table" style="margin-top:6px; min-width:760px;">
                         <thead>
                             <tr>
                                 <th>Date</th>
                                 <th>Receipt No.</th>
                                 <th>Reference No.</th>
-                                <th>Payment Type</th>
+                                <th>Payment Method</th>
+                                <th>Source</th>
                                 <th style="text-align:right;">Amount Paid</th>
                                 <th>Remarks</th>
                             </tr>
                         </thead>
                         <tbody id="arPaymentBody">
-                            <tr><td colspan="6" class="empty">No payment records yet.</td></tr>
+                            <tr><td colspan="7" class="empty">No payment records yet.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -1466,18 +1470,19 @@ function viewCustomer(id) {
             document.getElementById('vTerms').innerText = c.credit_terms || '30 Days';
 
             // Loyalty Summary
-            const cardNo = c.loyalty_card_no || (res.loyalty_account ? res.loyalty_account.card_number : '');
-            const pts = c.points || (res.loyalty_account ? res.loyalty_account.points_balance : 0);
+            const cardNo = (res.loyalty_account && res.loyalty_account.card_number) ? res.loyalty_account.card_number : (c.loyalty_card_no || c.customer_id || '');
+            const pts = (res.loyalty_account && res.loyalty_account.points_balance !== undefined) ? res.loyalty_account.points_balance : (c.points || 0);
+
             document.getElementById('vProfileCardNo').innerText = cardNo ? cardNo : '—';
-            document.getElementById('vProfilePoints').innerText = pts || 0;
+            document.getElementById('vProfilePoints').innerText = Number(pts || 0).toLocaleString();
             const lStatusEl = document.getElementById('vProfileLoyaltyStatus');
             if (lStatusEl) {
                 if (cardNo) {
                     lStatusEl.className = 'pill active';
-                    lStatusEl.innerText = 'Active';
+                    lStatusEl.innerText = res.loyalty_account ? (res.loyalty_account.status || 'Active').toUpperCase() : 'ACTIVE';
                 } else {
                     lStatusEl.className = 'pill muted';
-                    lStatusEl.innerText = 'No Card';
+                    lStatusEl.innerText = 'NO CARD';
                 }
             }
 
@@ -1531,15 +1536,21 @@ function viewCustomer(id) {
             if (!txs.length) {
                 tBody.innerHTML = `<tr><td colspan="5" class="empty">No recent transactions.</td></tr>`;
             } else {
-                tBody.innerHTML = txs.map(t => `
+                tBody.innerHTML = txs.map(t => {
+                    const tStat = (t.status || 'Completed').toLowerCase();
+                    const tStatClass = tStat.includes('complet') || tStat.includes('approv') || tStat.includes('valid') ? 'active' :
+                        (tStat.includes('cancel') || tStat.includes('reject') || tStat.includes('void') ? 'archived' : 'walk-in');
+                    const typeColors = {Fuel: '#d97706', Merchandise: '#2563eb', 'Job Order': '#7c3aed', Combined: '#0369a1'};
+                    const typeColor = typeColors[t.type] || '#475569';
+                    return `
                     <tr>
                         <td><strong>${h(t.transaction_id || '-')}</strong></td>
                         <td>${h(t.date || '-')}</td>
-                        <td>${h(t.type || 'Merchandise')}</td>
+                        <td><span style="font-weight:700; color:${typeColor};">${h(t.type || 'Merchandise')}</span></td>
                         <td>${money(t.amount)}</td>
-                        <td><span class="pill active">${h(t.status || 'Completed')}</span></td>
+                        <td><span class="pill ${tStatClass}">${h(t.status || 'Completed')}</span></td>
                     </tr>
-                `).join('');
+                `}).join('');
             }
 
             // Job Orders
@@ -1548,22 +1559,26 @@ function viewCustomer(id) {
             if (!jos.length) {
                 jBody.innerHTML = `<tr><td colspan="5" class="empty">No job orders found.</td></tr>`;
             } else {
-                jBody.innerHTML = jos.map(j => `
+                jBody.innerHTML = jos.map(j => {
+                    const jStat = (j.status || 'Pending').toLowerCase();
+                    const jStatClass = jStat.includes('complet') || jStat.includes('verif') || jStat.includes('final') ? 'active' :
+                        (jStat.includes('cancel') || jStat.includes('reject') ? 'archived' : 'walk-in');
+                    return `
                     <tr>
                         <td><strong>${h(j.jo_no || '-')}</strong></td>
                         <td>${h(j.vehicle || '-')}</td>
                         <td>${h(j.service || '-')}</td>
-                        <td>${h(j.mechanic ? (String(j.mechanic).match(/^\d+$/) ? 'Mechanic #' + j.mechanic : j.mechanic) : 'Unassigned')}</td>
-                        <td><span class="pill active">${h(j.status || 'Completed')}</span></td>
+                        <td>${h(j.mechanic || 'Unassigned')}</td>
+                        <td><span class="pill ${jStatClass}">${h(j.status || 'Pending')}</span></td>
                     </tr>
-                `).join('');
+                `}).join('');
             }
 
             // Loyalty Points History
             const cardEl = document.getElementById('vLoyaltyCardNo');
             const ptsEl  = document.getElementById('vLoyaltyPointsBalance');
-            if (cardEl) cardEl.innerText = c.customer_id || ('CUS-1253-' + String(c.id).padStart(3, '0'));
-            if (ptsEl)  ptsEl.innerText  = c.points || 0;
+            if (cardEl) cardEl.innerText = cardNo || '—';
+            if (ptsEl)  ptsEl.innerText  = Number(pts || 0).toLocaleString();
 
             const lBody = document.getElementById('vLoyaltyBody');
             const lHistory = res.loyalty_history || [];
@@ -1688,6 +1703,12 @@ function loadARHistory(customerId) {
             const payBtnRow = document.getElementById('arPayBtnRow');
             if (payBtnRow) payBtnRow.style.display = 'flex';
 
+            // Store for modal reference
+            window.currentArRowsData = res.ar_rows || [];
+            if (res.payment_methods && res.payment_methods.length) {
+                window.currentPaymentMethodsData = res.payment_methods;
+            }
+
             // AR Rows table
             renderARTable(res.ar_rows || [], customerId);
 
@@ -1724,11 +1745,14 @@ function renderARTable(rows, customerId) {
         const balNum  = parseFloat(r.balance) || 0;
 
         const payBtn = balNum > 0
-            ? `<button type="button" class="btn-plain success" style="height:26px;padding:0 8px;font-size:10px;"
+            ? `<button type="button" class="btn-plain success" style="height:26px; padding:0 10px; font-size:11px; font-weight:700; white-space:nowrap; display:inline-flex; align-items:center; gap:4px;"
                  onclick="openPaymentModal('${h(r.reference)}', ${balNum}, '${r.source}', ${r.db_id})">
-                 <i class="fas fa-money-bill"></i> Pay
+                 <i class="fas fa-money-bill-wave"></i> Pay
                </button>`
-            : `<span style="color:#94a3b8; font-size:11px;">—</span>`;
+            : `<button type="button" class="btn-plain secondary" style="height:26px; padding:0 10px; font-size:11px; font-weight:600; color:#002f70; white-space:nowrap; display:inline-flex; align-items:center; gap:4px;"
+                 onclick="openPaymentModal('${h(r.reference)}', 0, '${r.source}', ${r.db_id})">
+                 <i class="fas fa-eye"></i> Details
+               </button>`;
 
         return `
         <tr>
@@ -1739,9 +1763,9 @@ function renderARTable(rows, customerId) {
             <td style="text-align:right; font-weight:700;">${money(r.amount)}</td>
             <td style="text-align:right; color:#16a34a; font-weight:700;">${money(r.paid)}</td>
             <td style="text-align:right; color:${balNum > 0 ? '#dc2626' : '#16a34a'}; font-weight:800;">${money(balNum)}</td>
-            <td style="font-size:12px;">${dueTxt}</td>
+            <td style="font-size:12px; white-space:nowrap;">${dueTxt}</td>
             <td><span class="pill ${stClass}">${h(r.status)}</span></td>
-            <td>${payBtn}</td>
+            <td style="white-space:nowrap; text-align:center;">${payBtn}</td>
         </tr>`;
     }).join('');
 }
@@ -1749,20 +1773,62 @@ function renderARTable(rows, customerId) {
 function renderARPaymentHistory(payments) {
     const tbody = document.getElementById('arPaymentBody');
     if (!payments || !payments.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="empty">No payment records found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="empty" style="padding:28px;">
+            <i class="fas fa-receipt" style="font-size:24px; color:#cbd5e1; display:block; margin-bottom:6px;"></i>
+            No payment records found for this customer.
+        </td></tr>`;
         return;
     }
-    tbody.innerHTML = payments.map(p => `
+
+    // Payment method color map
+    const methodColor = {
+        'Cash': '#16a34a', 'Credit Card': '#2563eb', 'Debit Card': '#0369a1',
+        'GCash': '#7c3aed', 'Bank Transfer': '#0891b2', 'Check': '#d97706',
+        'Credit Payment': '#dc2626'
+    };
+
+    // Source type badge color
+    const sourceColor = {
+        'Merchandise': '#2563eb', 'Job Order': '#7c3aed', 'Combined': '#0369a1',
+        'Credit Payment': '#dc2626', 'Payment Log': '#d97706'
+    };
+
+    let grandTotal = 0;
+
+    const rows = payments.map(p => {
+        const amt = parseFloat(p.amount_paid) || 0;
+        grandTotal += amt;
+        const mColor = methodColor[p.payment_method] || '#475569';
+        const sType  = p.source_type || 'Payment';
+        const sColor = sourceColor[sType] || '#475569';
+
+        return `
         <tr>
-            <td style="font-size:12px;">${h(p.pay_date || '—')}</td>
-            <td><strong style="color:#002f70;">${h(p.receipt_no || '—')}</strong></td>
-            <td style="font-size:12px; color:#475569;">${h(p.reference_no || '—')}</td>
-            <td><span class="pill regular">${h(p.payment_method || 'Cash')}</span></td>
-            <td style="text-align:right; color:#16a34a; font-weight:800;">${money(p.amount_paid)}</td>
-            <td style="font-size:12px; color:#64748b;">${h(p.remarks || '—')}</td>
-        </tr>`
-    ).join('');
+            <td style="font-size:12px; color:#475569; white-space:nowrap;">${h(p.pay_date ? p.pay_date.split(' ')[0] : '—')}</td>
+            <td><strong style="color:#002f70; font-size:12px;">${h(p.receipt_no || '—')}</strong></td>
+            <td style="font-size:11px; color:#475569; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${h(p.reference_no || '')}">${h(p.reference_no || '—')}</td>
+            <td><span style="display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:800; background:${mColor}22; color:${mColor}; border:1px solid ${mColor}44;">${h(p.payment_method || 'Cash')}</span></td>
+            <td><span style="display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:800; background:${sColor}18; color:${sColor};">${h(sType)}</span></td>
+            <td style="text-align:right; color:#16a34a; font-weight:800; font-size:13px;">${money(amt)}</td>
+            <td style="font-size:11px; color:#64748b; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${h(p.remarks || '')}">${h(p.remarks || '—')}</td>
+        </tr>`;
+    }).join('');
+
+    // Grand total row
+    const totalRow = `
+        <tr style="background:#f0fdf4; border-top:2px solid #bbf7d0;">
+            <td colspan="5" style="text-align:right; font-size:12px; font-weight:800; color:#166534; padding:8px 12px;">TOTAL PAID</td>
+            <td style="text-align:right; font-weight:900; font-size:14px; color:#16a34a; padding:8px 12px;">${money(grandTotal)}</td>
+            <td></td>
+        </tr>`;
+
+    tbody.innerHTML = rows + totalRow;
+
+    // Update count label in header
+    const countEl = document.getElementById('payHistCount');
+    if (countEl) countEl.innerText = payments.length + ' record' + (payments.length !== 1 ? 's' : '');
 }
+
 
 // ── PAYMENT MODAL ─────────────────────────────────────────────────────────────
 let currentArRow = { reference: '', balance: 0, source: '', sourceId: 0 };
@@ -1770,11 +1836,31 @@ let currentArRow = { reference: '', balance: 0, source: '', sourceId: 0 };
 function openPaymentModal(reference = '', balance = 0, source = '', sourceId = 0) {
     currentArRow = { reference, balance, source, sourceId };
 
+    const arRows = window.currentArRowsData || [];
+    const matchedRow = arRows.find(r => r.reference === reference || (sourceId && r.db_id == sourceId && r.source === source));
+    const targetMethod = matchedRow ? (matchedRow.payment_method || 'Cash') : 'Cash';
+
+    // Populate dropdown with methods from DB + current target method
+    const defaultMethods = ['Cash', 'Credit Card', 'Debit Card', 'GCash', 'Bank Transfer', 'Check', 'E-Wallet', 'Credit Account'];
+    const availableMethods = window.currentPaymentMethodsData && window.currentPaymentMethodsData.length
+        ? window.currentPaymentMethodsData
+        : defaultMethods;
+
+    let methodsList = [...availableMethods];
+    if (targetMethod && !methodsList.includes(targetMethod)) {
+        methodsList.unshift(targetMethod);
+    }
+
+    const paySelect = document.getElementById('payMethod');
+    if (paySelect) {
+        paySelect.innerHTML = methodsList.map(m => `<option value="${h(m)}">${h(m)}</option>`).join('');
+        paySelect.value = targetMethod;
+    }
+
     document.getElementById('payCustomerId').value = currentCustomer?.id || '';
     document.getElementById('paySourceId').value   = sourceId;
     document.getElementById('paySource').value     = source;
     document.getElementById('payAmount').value     = balance > 0 ? balance.toFixed(2) : '';
-    document.getElementById('payMethod').value     = 'Cash';
     document.getElementById('payRemarks').value    = '';
 
     const refDisplay = document.getElementById('payRefDisplay');
