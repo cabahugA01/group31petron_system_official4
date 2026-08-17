@@ -90,96 +90,137 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Content-Type: application/json');
         $id = (int)($_POST['id'] ?? 0);
         try {
-            // Current Workload (active JOs)
-            $stmt = $pdo->prepare("
-                SELECT jo.job_order_number AS jo_no,
-                       jo.customer_name AS customer,
-                       COALESCE(jo.vehicle_plate, mt.job_order_vehicle_plate, '—') AS vehicle,
-                       COALESCE(jo.service_type, mt.job_order_service, '—') AS service,
-                       COALESCE(jo.status, mt.workflow_status, 'Pending') AS status_val,
-                       'job_orders' AS src
+            // ── Current Workload: from merchandise_transactions (primary source)
+            $stmtW = $pdo->prepare("
+                SELECT
+                    mt.transaction_id                                 AS jo_no,
+                    mt.customer_name                                  AS customer,
+                    COALESCE(mt.job_order_vehicle_plate, '—')         AS vehicle,
+                    COALESCE(mt.job_order_service, '—')               AS service,
+                    COALESCE(mt.workflow_status, 'Pending')           AS status_val,
+                    mt.transaction_date                               AS txn_date
+                FROM merchandise_transactions mt
+                WHERE mt.job_order_mechanic_id = ?
+                  AND mt.transaction_type IN ('job_order','combined')
+                  AND mt.workflow_status NOT IN ('Released','Completed','Cancelled','Voided')
+                ORDER BY mt.transaction_date DESC
+                LIMIT 30
+            ");
+            $stmtW->execute([$id]);
+            $workload = $stmtW->fetchAll(PDO::FETCH_ASSOC);
+
+            // Also include active JOs from job_orders table (if any)
+            $stmtW2 = $pdo->prepare("
+                SELECT
+                    jo.job_order_number                               AS jo_no,
+                    jo.customer_name                                  AS customer,
+                    COALESCE(jo.vehicle_plate, '—')                   AS vehicle,
+                    COALESCE(jo.service_type, '—')                    AS service,
+                    COALESCE(jo.status, 'Pending')                    AS status_val,
+                    jo.created_at                                     AS txn_date
                 FROM job_orders jo
-                LEFT JOIN merchandise_transactions mt ON mt.job_order_db_id = jo.id
                 WHERE jo.assigned_mechanic_id = ?
                   AND jo.status IN ('Pending','Reviewed','In Progress','Awaiting Parts')
                 ORDER BY jo.created_at DESC
-                LIMIT 20
+                LIMIT 30
             ");
-            $stmt->execute([$id]);
-            $workload = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmtW2->execute([$id]);
+            $workload_jo = $stmtW2->fetchAll(PDO::FETCH_ASSOC);
 
-            // Also from merchandise_transactions
-            $stmt2 = $pdo->prepare("
-                SELECT mt.transaction_id AS jo_no,
-                       mt.customer_name AS customer,
-                       COALESCE(mt.job_order_vehicle_plate, '—') AS vehicle,
-                       COALESCE(mt.job_order_service, '—') AS service,
-                       COALESCE(mt.workflow_status, 'Pending') AS status_val,
-                       'mt' AS src
+            // ── Service History: Released/Completed from merchandise_transactions
+            $stmtH = $pdo->prepare("
+                SELECT
+                    mt.transaction_id                                 AS jo_no,
+                    DATE_FORMAT(mt.transaction_date, '%b %d, %Y')     AS date_done,
+                    COALESCE(mt.job_order_service, '—')               AS service,
+                    COALESCE(mt.job_order_vehicle_plate, '—')         AS vehicle,
+                    COALESCE(mt.job_order_estimated_duration, 0)      AS duration,
+                    COALESCE(mt.workflow_status, 'Completed')         AS status_val
                 FROM merchandise_transactions mt
                 WHERE mt.job_order_mechanic_id = ?
-                  AND mt.workflow_status IN ('Pending','In Progress')
                   AND mt.transaction_type IN ('job_order','combined')
-                ORDER BY mt.created_at DESC
-                LIMIT 20
+                  AND mt.workflow_status IN ('Released','Completed')
+                ORDER BY mt.transaction_date DESC
+                LIMIT 30
             ");
-            $stmt2->execute([$id]);
-            $workload_mt = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+            $stmtH->execute([$id]);
+            $history_mt = $stmtH->fetchAll(PDO::FETCH_ASSOC);
 
-            // Service History
-            $stmt3 = $pdo->prepare("
-                SELECT jo.job_order_number AS jo_no,
-                       DATE_FORMAT(jo.completed_at,'%b %d, %Y') AS date_done,
-                       COALESCE(jo.service_type, '—') AS service,
-                       COALESCE(jo.vehicle_plate, '—') AS vehicle,
-                       COALESCE(jo.actual_duration, jo.estimated_duration, 0) AS duration,
-                       'Completed' AS status_val
+            // Also history from job_orders
+            $stmtH2 = $pdo->prepare("
+                SELECT
+                    jo.job_order_number                               AS jo_no,
+                    DATE_FORMAT(jo.completed_at, '%b %d, %Y')        AS date_done,
+                    COALESCE(jo.service_type, '—')                    AS service,
+                    COALESCE(jo.vehicle_plate, '—')                   AS vehicle,
+                    COALESCE(jo.actual_duration, jo.estimated_duration, 0) AS duration,
+                    'Completed'                                       AS status_val
                 FROM job_orders jo
                 WHERE jo.assigned_mechanic_id = ?
                   AND jo.status IN ('Completed','Verified','finalized')
                 ORDER BY jo.completed_at DESC
-                LIMIT 20
+                LIMIT 30
             ");
-            $stmt3->execute([$id]);
-            $history = $stmt3->fetchAll(PDO::FETCH_ASSOC);
+            $stmtH2->execute([$id]);
+            $history_jo = $stmtH2->fetchAll(PDO::FETCH_ASSOC);
 
-            // Performance Stats
-            $stmt4 = $pdo->prepare("
+            $history = array_merge($history_mt, $history_jo);
+
+            // ── Performance: total completed from merchandise_transactions
+            $stmtP = $pdo->prepare("
                 SELECT
-                  COUNT(*) AS total_completed,
-                  ROUND(AVG(COALESCE(actual_duration, estimated_duration)), 0) AS avg_duration
+                    COUNT(*) AS total_completed,
+                    ROUND(AVG(COALESCE(mt.job_order_estimated_duration, 0)), 0) AS avg_duration
+                FROM merchandise_transactions mt
+                WHERE mt.job_order_mechanic_id = ?
+                  AND mt.transaction_type IN ('job_order','combined')
+                  AND mt.workflow_status IN ('Released','Completed')
+            ");
+            $stmtP->execute([$id]);
+            $perf = $stmtP->fetch(PDO::FETCH_ASSOC);
+
+            // Add job_orders completed count
+            $stmtP2 = $pdo->prepare("
+                SELECT COUNT(*) AS total_jo_completed
                 FROM job_orders
                 WHERE assigned_mechanic_id = ?
                   AND status IN ('Completed','Verified','finalized')
             ");
-            $stmt4->execute([$id]);
-            $perf = $stmt4->fetch(PDO::FETCH_ASSOC);
+            $stmtP2->execute([$id]);
+            $joCompleted = (int)$stmtP2->fetchColumn();
 
-            $stmt5 = $pdo->prepare("
-                SELECT COUNT(*) AS active_jo FROM job_orders
-                WHERE assigned_mechanic_id = ? AND status IN ('Pending','Reviewed','In Progress','Awaiting Parts')
-            ");
-            $stmt5->execute([$id]);
-            $active_count = (int)$stmt5->fetchColumn();
+            $totalCompleted = (int)($perf['total_completed'] ?? 0) + $joCompleted;
 
-            $stmt6 = $pdo->prepare("
-                SELECT COALESCE(jo.service_type,'—') AS last_service
-                FROM job_orders jo
-                WHERE jo.assigned_mechanic_id = ?
-                  AND jo.status IN ('Completed','Verified','finalized')
-                ORDER BY jo.completed_at DESC LIMIT 1
+            // ── Active JO count
+            $active_count = count($workload) + count($workload_jo);
+
+            // ── Last service
+            $stmtL = $pdo->prepare("
+                SELECT COALESCE(mt.job_order_service, '—') AS last_service
+                FROM merchandise_transactions mt
+                WHERE mt.job_order_mechanic_id = ?
+                  AND mt.transaction_type IN ('job_order','combined')
+                ORDER BY mt.transaction_date DESC LIMIT 1
             ");
-            $stmt6->execute([$id]);
-            $last_svc = $stmt6->fetchColumn() ?: '—';
+            $stmtL->execute([$id]);
+            $last_svc = $stmtL->fetchColumn() ?: '—';
+            // Truncate if multiple services listed
+            if (strlen($last_svc) > 60) {
+                $parts = explode(',', $last_svc);
+                $last_svc = trim($parts[0]) . (count($parts) > 1 ? ' +' . (count($parts)-1) . ' more' : '');
+            }
+
+            // Avg duration: prefer mt value, fall back to 0
+            $avg_dur = (int)($perf['avg_duration'] ?? 0);
 
             echo json_encode([
-                'success'       => true,
-                'workload'      => array_merge($workload, $workload_mt),
-                'history'       => $history,
-                'total_completed'=> (int)($perf['total_completed'] ?? 0),
-                'active_jo'     => $active_count,
-                'avg_duration'  => (int)($perf['avg_duration'] ?? 0),
-                'last_service'  => $last_svc,
+                'success'        => true,
+                'workload'       => array_merge($workload, $workload_jo),
+                'history'        => $history,
+                'total_completed'=> $totalCompleted,
+                'active_jo'      => $active_count,
+                'avg_duration'   => $avg_dur,
+                'last_service'   => $last_svc,
             ]);
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'error' => $e->getMessage()]);
@@ -265,13 +306,33 @@ try {
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM mechanics WHERE archived = 0 AND status='active' {$and_st}"); $stmt->execute($p); $active_mechanics = (int)$stmt->fetchColumn();
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM mechanics WHERE archived = 0 AND status='inactive' {$and_st}"); $stmt->execute($p); $inactive_mechanics = (int)$stmt->fetchColumn();
 
-    $stmt = $pdo->prepare("SELECT COUNT(DISTINCT assigned_mechanic_id) FROM job_orders WHERE assigned_mechanic_id IS NOT NULL AND status IN ('Pending','Reviewed','In Progress','Awaiting Parts')");
+    // Assigned today: mechs with active JOs in merchandise_transactions OR job_orders
+    $stmt = $pdo->prepare("
+        SELECT COUNT(DISTINCT mechanic_id) FROM (
+            SELECT job_order_mechanic_id AS mechanic_id
+            FROM merchandise_transactions
+            WHERE job_order_mechanic_id IS NOT NULL
+              AND transaction_type IN ('job_order','combined')
+              AND workflow_status NOT IN ('Released','Completed','Cancelled','Voided')
+            UNION
+            SELECT assigned_mechanic_id AS mechanic_id
+            FROM job_orders
+            WHERE assigned_mechanic_id IS NOT NULL
+              AND status IN ('Pending','Reviewed','In Progress','Awaiting Parts')
+        ) AS active_mechs
+    ");
     $stmt->execute(); $assigned_today = (int)$stmt->fetchColumn();
 
-    // Available = active and NOT currently assigned to any active JO
+    // Available = active and NOT currently assigned to any active JO (mt or jo)
     $stmt = $pdo->prepare("
         SELECT COUNT(*) FROM mechanics m
         WHERE m.archived = 0 AND m.status = 'active' {$and_st}
+          AND m.id NOT IN (
+            SELECT DISTINCT job_order_mechanic_id FROM merchandise_transactions
+            WHERE job_order_mechanic_id IS NOT NULL
+              AND transaction_type IN ('job_order','combined')
+              AND workflow_status NOT IN ('Released','Completed','Cancelled','Voided')
+          )
           AND m.id NOT IN (
             SELECT DISTINCT assigned_mechanic_id FROM job_orders
             WHERE assigned_mechanic_id IS NOT NULL AND status IN ('Pending','Reviewed','In Progress','Awaiting Parts')
@@ -279,12 +340,20 @@ try {
     ");
     $stmt->execute($p); $available_mechanics = (int)$stmt->fetchColumn();
 
-    // On Duty = active mechanics assigned today (based on JO created today)
+    // On Duty = mechanics with any JO created today (mt or jo)
     $stmt = $pdo->prepare("
-        SELECT COUNT(DISTINCT assigned_mechanic_id) FROM job_orders
-        WHERE assigned_mechanic_id IS NOT NULL
-          AND DATE(created_at) = CURDATE()
-          AND status IN ('Pending','Reviewed','In Progress','Awaiting Parts','Completed')
+        SELECT COUNT(DISTINCT mechanic_id) FROM (
+            SELECT job_order_mechanic_id AS mechanic_id
+            FROM merchandise_transactions
+            WHERE job_order_mechanic_id IS NOT NULL
+              AND transaction_type IN ('job_order','combined')
+              AND DATE(transaction_date) = CURDATE()
+            UNION
+            SELECT assigned_mechanic_id AS mechanic_id
+            FROM job_orders
+            WHERE assigned_mechanic_id IS NOT NULL
+              AND DATE(created_at) = CURDATE()
+        ) AS duty_mechs
     ");
     $stmt->execute(); $on_duty = (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
@@ -299,10 +368,48 @@ try {
     $and_st = $station_id > 0 ? "AND m.station_id = ?" : "";
     $query = "
         SELECT m.*,
-            (SELECT COUNT(*) FROM job_orders jo WHERE jo.assigned_mechanic_id = m.id AND jo.status IN ('Pending','Reviewed','In Progress','Awaiting Parts')) AS assigned_jo_count,
-            (SELECT COUNT(*) FROM job_orders jo WHERE jo.assigned_mechanic_id = m.id AND jo.status IN ('Completed','Verified','finalized')) AS completed_jo_count,
-            (SELECT COUNT(*) FROM job_orders jo WHERE jo.assigned_mechanic_id = m.id AND jo.status IN ('Completed','Verified','finalized') AND DATE(jo.completed_at) = CURDATE()) AS completed_today,
-            (SELECT COUNT(*) FROM merchandise_transactions mt WHERE mt.job_order_mechanic_id = m.id AND mt.workflow_status IN ('Pending','In Progress') AND mt.transaction_type IN ('job_order','combined')) AS mt_active_count
+            (
+                SELECT COUNT(*)
+                FROM merchandise_transactions mt
+                WHERE mt.job_order_mechanic_id = m.id
+                  AND mt.transaction_type IN ('job_order','combined')
+                  AND mt.workflow_status NOT IN ('Released','Completed','Cancelled','Voided')
+            ) +
+            (
+                SELECT COUNT(*)
+                FROM job_orders jo
+                WHERE jo.assigned_mechanic_id = m.id
+                  AND jo.status IN ('Pending','Reviewed','In Progress','Awaiting Parts')
+            ) AS assigned_jo_count,
+            (
+                SELECT COUNT(*)
+                FROM merchandise_transactions mt
+                WHERE mt.job_order_mechanic_id = m.id
+                  AND mt.transaction_type IN ('job_order','combined')
+                  AND mt.workflow_status IN ('Released','Completed')
+            ) +
+            (
+                SELECT COUNT(*)
+                FROM job_orders jo
+                WHERE jo.assigned_mechanic_id = m.id
+                  AND jo.status IN ('Completed','Verified','finalized')
+            ) AS completed_jo_count,
+            (
+                SELECT COUNT(*)
+                FROM merchandise_transactions mt
+                WHERE mt.job_order_mechanic_id = m.id
+                  AND mt.transaction_type IN ('job_order','combined')
+                  AND mt.workflow_status IN ('Released','Completed')
+                  AND DATE(mt.transaction_date) = CURDATE()
+            ) +
+            (
+                SELECT COUNT(*)
+                FROM job_orders jo
+                WHERE jo.assigned_mechanic_id = m.id
+                  AND jo.status IN ('Completed','Verified','finalized')
+                  AND DATE(jo.completed_at) = CURDATE()
+            ) AS completed_today,
+            0 AS mt_active_count
         FROM mechanics m
         WHERE m.archived = 0 {$and_st}
         ORDER BY m.status ASC, m.id DESC
