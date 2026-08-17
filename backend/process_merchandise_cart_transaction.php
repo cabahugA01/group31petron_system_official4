@@ -98,37 +98,18 @@ try {
                     $item['subtotal']
                 ]);
                 
-                // Update inventory stock levels if product ID exists
+                // Update inventory stock levels via Global Movement Engine
                 if (!empty($item['productId'])) {
                     try {
-                        $updateStockStmt = $pdo->prepare("
-                            UPDATE station_inventory 
-                            SET stock_level = stock_level - ? 
-                            WHERE station_id = ? AND product_id = ? AND stock_level >= ?
-                        ");
-                        $updateStockStmt->execute([
-                            $item['quantity'],
+                        record_merchandise_sale_movement(
+                            $pdo,
                             $station_id,
-                            $item['productId'],
-                            $item['quantity']
-                        ]);
-
-                        if (function_exists('log_inventory_movement')) {
-                            try {
-                                $curStockStmt = $pdo->prepare("SELECT stock_level FROM station_inventory WHERE station_id = ? AND product_id = ? LIMIT 1");
-                                $curStockStmt->execute([$station_id, $item['productId']]);
-                                $stock_after = (int)$curStockStmt->fetchColumn();
-                                $stock_before = $stock_after + (int)$item['quantity'];
-                                log_inventory_movement(
-                                    $pdo, $station_id, (int)$item['productId'], $item['productName'],
-                                    'Merchandise Sale', $stock_before, $stock_after, -(int)$item['quantity'],
-                                    'merchandise_transaction', $input['transaction_id'],
-                                    $me['name'] ?? 'System', 'POS Merchandise Sale - Ref: ' . $input['transaction_id']
-                                );
-                            } catch (Exception $lErr) {}
-                        }
+                            (int)$item['productId'],
+                            (float)$item['quantity'],
+                            $input['transaction_id'],
+                            (int)($me['id'] ?? 0)
+                        );
                     } catch (Exception $stockError) {
-                        // Log stock update error but continue
                         error_log("Stock update failed: " . $stockError->getMessage());
                     }
                 }

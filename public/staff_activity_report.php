@@ -63,10 +63,10 @@ function check_table_exists($pdo, $table) {
     }
 }
 
-// ── Gather Activity Log Records ────────────────────────────────────────────────
+// ── Gather Activity Log Records (Strictly Scoped to Logged-in Staff) ──────────
 $raw_activities = [];
 
-// 1. Merchandise Sales (Module: Sales, Activity: Merchandise Sale / Processed Return)
+// 1. Merchandise Sales & Transactions
 if (check_table_exists($pdo, 'merchandise_transactions')) {
     try {
         $sql = "
@@ -75,6 +75,8 @@ if (check_table_exists($pdo, 'merchandise_transactions')) {
                 mt.created_at AS datetime,
                 'Sales' AS module,
                 CASE 
+                    WHEN mt.void_reason IS NOT NULL AND TRIM(mt.void_reason) != '' THEN 'Void Request'
+                    WHEN mt.adjustment_reason IS NOT NULL AND TRIM(mt.adjustment_reason) != '' THEN 'Adjustment Request'
                     WHEN LOWER(COALESCE(mt.transaction_type,'')) LIKE '%return%' THEN 'Processed Return'
                     ELSE 'Merchandise Sale'
                 END AS activity,
@@ -84,19 +86,19 @@ if (check_table_exists($pdo, 'merchandise_transactions')) {
                     WHEN LOWER(COALESCE(mt.validation_status,'')) IN ('verified','approved','completed','submitted','paid') THEN 'Success'
                     ELSE 'Pending'
                 END AS status,
-                mt.shift_period,
-                CONCAT('Customer: ', COALESCE(mt.customer_name,'Walk-in'), ' | Amount: ₱', FORMAT(mt.total_amount,2)) AS details
+                COALESCE(mt.shift_period, '') AS shift_period,
+                CONCAT('Customer: ', COALESCE(mt.customer_name,'Walk-in'), ' | Total: ₱', FORMAT(COALESCE(mt.total_amount,0),2), ' | Payment: ', COALESCE(mt.payment_method,'Cash')) AS details
             FROM merchandise_transactions mt
-            WHERE mt.station_id = :sid AND DATE(mt.created_at) BETWEEN :dstart AND :dend
+            WHERE mt.station_id = :sid AND mt.staff_id = :uid AND DATE(mt.created_at) BETWEEN :dstart AND :dend
         ";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute(['sid' => $station_id, 'dstart' => $date_start, 'dend' => $date_end]);
+        $stmt->execute(['sid' => $station_id, 'uid' => $user_id, 'dstart' => $date_start, 'dend' => $date_end]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         $raw_activities = array_merge($raw_activities, $rows);
     } catch (Exception $e) {}
 }
 
-// 2. Fuel Transactions (Module: Fuel Management, Activity: Submitted Fuel Reading)
+// 2. Fuel Transactions & Meter Readings
 if (check_table_exists($pdo, 'fuel_transactions')) {
     try {
         $sql = "
@@ -104,26 +106,26 @@ if (check_table_exists($pdo, 'fuel_transactions')) {
                 ft.id,
                 COALESCE(ft.transaction_date, ft.created_at) AS datetime,
                 'Fuel Management' AS module,
-                'Submitted Fuel Reading' AS activity,
-                CONCAT('FTX-', ft.id) AS ref_no,
+                'Fuel Meter Reading' AS activity,
+                COALESCE(NULLIF(ft.transaction_id,''), CONCAT('FTX-', ft.id)) AS ref_no,
                 CASE 
                     WHEN LOWER(COALESCE(ft.status,'')) IN ('voided','rejected','cancelled','canceled') THEN 'Cancelled'
                     WHEN LOWER(COALESCE(ft.status,'')) IN ('verified','approved','completed','submitted') THEN 'Success'
                     ELSE 'Pending'
                 END AS status,
-                ft.shift_period,
-                CONCAT('Type: ', ft.fuel_type, ' | Vol: ', FORMAT(COALESCE(ft.liters_sold,0),2), 'L') AS details
+                COALESCE(ft.shift_period, '') AS shift_period,
+                CONCAT('Fuel: ', COALESCE(ft.fuel_type,'Fuel'), ' | Volume: ', FORMAT(COALESCE(ft.liters_sold,0),2), ' L | Amount: ₱', FORMAT(COALESCE(ft.total_amount,0),2)) AS details
             FROM fuel_transactions ft
-            WHERE ft.station_id = :sid AND DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN :dstart AND :dend
+            WHERE ft.station_id = :sid AND ft.staff_id = :uid AND DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN :dstart AND :dend
         ";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute(['sid' => $station_id, 'dstart' => $date_start, 'dend' => $date_end]);
+        $stmt->execute(['sid' => $station_id, 'uid' => $user_id, 'dstart' => $date_start, 'dend' => $date_end]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         $raw_activities = array_merge($raw_activities, $rows);
     } catch (Exception $e) {}
 }
 
-// 3. Job Orders (Module: Job Orders, Activity: Created Job Order / Updated Job Order)
+// 3. Job Orders (Created / Updated / Submitted)
 if (check_table_exists($pdo, 'job_orders')) {
     try {
         $sql = "
@@ -142,41 +144,18 @@ if (check_table_exists($pdo, 'job_orders')) {
                     ELSE 'Pending'
                 END AS status,
                 '' AS shift_period,
-                CONCAT('Service: ', COALESCE(jo.service_type,'General'), ' | Vehicle: ', COALESCE(jo.vehicle_plate,'N/A')) AS details
+                CONCAT('Service: ', COALESCE(jo.service_type,'General Service'), ' | Vehicle: ', COALESCE(jo.vehicle_plate,'N/A'), ' | Total: ₱', FORMAT(COALESCE(jo.total_cost, jo.actual_labor_cost + jo.actual_parts_cost, 0),2)) AS details
             FROM job_orders jo
-            WHERE jo.station_id = :sid AND DATE(jo.created_at) BETWEEN :dstart AND :dend
+            WHERE jo.station_id = :sid AND (jo.user_id = :uid OR jo.created_by = :uid) AND DATE(jo.created_at) BETWEEN :dstart AND :dend
         ";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute(['sid' => $station_id, 'dstart' => $date_start, 'dend' => $date_end]);
+        $stmt->execute(['sid' => $station_id, 'uid' => $user_id, 'dstart' => $date_start, 'dend' => $date_end]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         $raw_activities = array_merge($raw_activities, $rows);
     } catch (Exception $e) {}
 }
 
-// 4. Customers (Module: Customers, Activity: Added New Customer)
-if (check_table_exists($pdo, 'customers')) {
-    try {
-        $sql = "
-            SELECT 
-                c.id,
-                c.created_at AS datetime,
-                'Customers' AS module,
-                'Added New Customer' AS activity,
-                CONCAT('CUST-', c.id) AS ref_no,
-                'Success' AS status,
-                '' AS shift_period,
-                CONCAT('Name: ', COALESCE(c.name, CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,'')))) AS details
-            FROM customers c
-            WHERE DATE(c.created_at) BETWEEN :dstart AND :dend
-        ";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute(['dstart' => $date_start, 'dend' => $date_end]);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        $raw_activities = array_merge($raw_activities, $rows);
-    } catch (Exception $e) {}
-}
-
-// 5. Inventory Stock Requests / Adjustments (Module: Inventory, Activity: Submitted Inventory Adjustment)
+// 4. Stock Requests (Submitted by Staff)
 if (check_table_exists($pdo, 'stock_requests')) {
     try {
         $sql = "
@@ -184,34 +163,84 @@ if (check_table_exists($pdo, 'stock_requests')) {
                 sr.id,
                 sr.created_at AS datetime,
                 'Inventory' AS module,
-                'Submitted Inventory Adjustment' AS activity,
-                COALESCE(NULLIF(sr.request_number,''), CONCAT('SR-', sr.id)) AS ref_no,
+                'Stock Request' AS activity,
+                COALESCE(NULLIF(sr.request_no,''), CONCAT('SR-', sr.id)) AS ref_no,
                 CASE 
                     WHEN LOWER(COALESCE(sr.status,'')) IN ('rejected','cancelled','canceled') THEN 'Cancelled'
                     WHEN LOWER(COALESCE(sr.status,'')) IN ('approved','completed','fulfilled') THEN 'Success'
                     ELSE 'Pending'
                 END AS status,
                 '' AS shift_period,
-                CONCAT('Item ID: ', sr.item_id, ' | Qty: ', sr.requested_qty) AS details
+                CONCAT('Item: ', COALESCE(sr.item_name,'N/A'), ' (SKU: ', COALESCE(sr.item_sku,'N/A'), ') | Requested Qty: ', COALESCE(sr.requested_quantity,0), IF(sr.remarks IS NOT NULL AND sr.remarks != '', CONCAT(' | Remarks: ', sr.remarks), '')) AS details
             FROM stock_requests sr
-            WHERE sr.station_id = :sid AND DATE(sr.created_at) BETWEEN :dstart AND :dend
+            WHERE sr.station_id = :sid AND sr.staff_id = :uid AND DATE(sr.created_at) BETWEEN :dstart AND :dend
         ";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute(['sid' => $station_id, 'dstart' => $date_start, 'dend' => $date_end]);
+        $stmt->execute(['sid' => $station_id, 'uid' => $user_id, 'dstart' => $date_start, 'dend' => $date_end]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         $raw_activities = array_merge($raw_activities, $rows);
     } catch (Exception $e) {}
 }
 
-// 6. Shift Reports (Module: Shift Turnover, Activity: Submitted Shift Turnover)
+// 5. Master Data Requests (Submitted by Staff)
+if (check_table_exists($pdo, 'master_data_requests')) {
+    try {
+        $sql = "
+            SELECT 
+                mdr.id,
+                mdr.created_at AS datetime,
+                'Master Data' AS module,
+                'Master Data Request' AS activity,
+                COALESCE(NULLIF(mdr.request_no,''), CONCAT('MDR-', mdr.id)) AS ref_no,
+                CASE 
+                    WHEN LOWER(COALESCE(mdr.status,'')) IN ('rejected','cancelled','canceled') THEN 'Cancelled'
+                    WHEN LOWER(COALESCE(mdr.status,'')) IN ('approved','completed') THEN 'Success'
+                    ELSE 'Pending'
+                END AS status,
+                '' AS shift_period,
+                CONCAT('Category: ', COALESCE(mdr.category,'General'), ' | Module: ', COALESCE(mdr.source_module,'Staff'), ' | Status: ', COALESCE(mdr.status,'Pending')) AS details
+            FROM master_data_requests mdr
+            WHERE mdr.station_id = :sid AND mdr.requested_by = :uid AND DATE(mdr.created_at) BETWEEN :dstart AND :dend
+        ";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute(['sid' => $station_id, 'uid' => $user_id, 'dstart' => $date_start, 'dend' => $date_end]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $raw_activities = array_merge($raw_activities, $rows);
+    } catch (Exception $e) {}
+}
+
+// 6. Transaction Adjustments (Submitted by Staff)
+if (check_table_exists($pdo, 'transaction_adjustments')) {
+    try {
+        $sql = "
+            SELECT 
+                ta.id,
+                COALESCE(ta.adjustment_date, NOW()) AS datetime,
+                'Sales' AS module,
+                'Adjustment Request' AS activity,
+                CONCAT('ADJ-', ta.id) AS ref_no,
+                'Pending' AS status,
+                '' AS shift_period,
+                CONCAT('Txn Ref: ', COALESCE(ta.transaction_id,'N/A'), ' | Diff: ₱', FORMAT(COALESCE(ta.amount_difference,0),2), ' | Reason: ', COALESCE(ta.adjustment_reason,'Adjustment requested')) AS details
+            FROM transaction_adjustments ta
+            WHERE ta.station_id = :sid AND ta.adjusted_by = :uid AND DATE(COALESCE(ta.adjustment_date, NOW())) BETWEEN :dstart AND :dend
+        ";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute(['sid' => $station_id, 'uid' => $user_id, 'dstart' => $date_start, 'dend' => $date_end]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $raw_activities = array_merge($raw_activities, $rows);
+    } catch (Exception $e) {}
+}
+
+// 7. Fuel Sales Closing / Shift Turnover Reports
 if (check_table_exists($pdo, 'shift_reports')) {
     try {
         $sql = "
             SELECT 
                 sr.id,
                 sr.created_at AS datetime,
-                'Shift Turnover' AS module,
-                'Submitted Shift Turnover' AS activity,
+                'Fuel Management' AS module,
+                'Fuel Sales Closing' AS activity,
                 CONCAT('STR-', sr.id) AS ref_no,
                 CASE 
                     WHEN LOWER(COALESCE(sr.status,'')) IN ('rejected','cancelled','canceled') THEN 'Cancelled'
@@ -221,16 +250,69 @@ if (check_table_exists($pdo, 'shift_reports')) {
                 sr.shift AS shift_period,
                 CONCAT('Shift: ', sr.shift, ' | Date: ', sr.report_date) AS details
             FROM shift_reports sr
-            WHERE sr.station_id = :sid AND DATE(sr.created_at) BETWEEN :dstart AND :dend
+            WHERE sr.station_id = :sid AND (sr.user_id = :uid OR sr.created_by = :uid OR sr.staff_id = :uid) AND DATE(sr.created_at) BETWEEN :dstart AND :dend
         ";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute(['sid' => $station_id, 'dstart' => $date_start, 'dend' => $date_end]);
+        $stmt->execute(['sid' => $station_id, 'uid' => $user_id, 'dstart' => $date_start, 'dend' => $date_end]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         $raw_activities = array_merge($raw_activities, $rows);
     } catch (Exception $e) {}
 }
 
-// 7. Generic Audit Logs / Activity Logs
+// 8. User Form Drafts (Draft Saved / Updated)
+if (check_table_exists($pdo, 'user_form_drafts')) {
+    try {
+        $sql = "
+            SELECT 
+                ufd.id,
+                ufd.updated_at AS datetime,
+                'Drafts' AS module,
+                'Draft Saved' AS activity,
+                CONCAT('DFT-', ufd.id) AS ref_no,
+                'Pending' AS status,
+                '' AS shift_period,
+                CONCAT('Form Module: ', REPLACE(ufd.module_key,'_',' '), ' | Draft Key: ', ufd.draft_key) AS details
+            FROM user_form_drafts ufd
+            WHERE ufd.user_id = :uid AND DATE(ufd.updated_at) BETWEEN :dstart AND :dend
+        ";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute(['uid' => $user_id, 'dstart' => $date_start, 'dend' => $date_end]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $raw_activities = array_merge($raw_activities, $rows);
+    } catch (Exception $e) {}
+}
+
+// 9. Activity Logs (Login, Logout, Clock In, Clock Out, Other Actions)
+if (check_table_exists($pdo, 'activity_logs')) {
+    try {
+        $sql = "
+            SELECT 
+                act.id,
+                act.created_at AS datetime,
+                CASE 
+                    WHEN LOWER(COALESCE(act.action,'')) LIKE '%login%' OR LOWER(COALESCE(act.action,'')) LIKE '%logout%' OR LOWER(COALESCE(act.action,'')) LIKE '%clock%' THEN 'Auth / Session'
+                    WHEN LOWER(COALESCE(act.action,'')) LIKE '%fuel%' THEN 'Fuel Management'
+                    WHEN LOWER(COALESCE(act.action,'')) LIKE '%stock%' OR LOWER(COALESCE(act.action,'')) LIKE '%invent%' THEN 'Inventory'
+                    WHEN LOWER(COALESCE(act.action,'')) LIKE '%job%' THEN 'Job Orders'
+                    WHEN LOWER(COALESCE(act.action,'')) LIKE '%draft%' THEN 'Drafts'
+                    ELSE 'Sales'
+                END AS module,
+                COALESCE(act.action, 'Action') AS activity,
+                CONCAT('ACT-', act.id) AS ref_no,
+                'Success' AS status,
+                '' AS shift_period,
+                COALESCE(act.details,'') AS details
+            FROM activity_logs act
+            WHERE act.user_id = :uid AND DATE(act.created_at) BETWEEN :dstart AND :dend
+        ";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute(['uid' => $user_id, 'dstart' => $date_start, 'dend' => $date_end]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $raw_activities = array_merge($raw_activities, $rows);
+    } catch (Exception $e) {}
+}
+
+// 10. Audit Logs (Explicit System & Security Audits)
 if (check_table_exists($pdo, 'audit_logs')) {
     try {
         $sql = "
@@ -238,12 +320,14 @@ if (check_table_exists($pdo, 'audit_logs')) {
                 al.id,
                 al.created_at AS datetime,
                 CASE 
+                    WHEN LOWER(COALESCE(al.action_type,'')) LIKE '%login%' OR LOWER(COALESCE(al.action_type,'')) LIKE '%logout%' THEN 'Auth / Session'
                     WHEN LOWER(COALESCE(al.log_type,'')) LIKE '%fuel%' THEN 'Fuel Management'
                     WHEN LOWER(COALESCE(al.log_type,'')) LIKE '%job%' OR LOWER(COALESCE(al.log_type,'')) LIKE '%service%' THEN 'Job Orders'
                     WHEN LOWER(COALESCE(al.log_type,'')) LIKE '%merch%' OR LOWER(COALESCE(al.log_type,'')) LIKE '%sale%' THEN 'Sales'
                     WHEN LOWER(COALESCE(al.log_type,'')) LIKE '%invent%' OR LOWER(COALESCE(al.log_type,'')) LIKE '%stock%' THEN 'Inventory'
                     WHEN LOWER(COALESCE(al.log_type,'')) LIKE '%cust%' THEN 'Customers'
                     WHEN LOWER(COALESCE(al.log_type,'')) LIKE '%shift%' THEN 'Shift Turnover'
+                    WHEN LOWER(COALESCE(al.log_type,'')) LIKE '%draft%' THEN 'Drafts'
                     ELSE 'Sales'
                 END AS module,
                 COALESCE(NULLIF(al.action_type,''), 'System Action') AS activity,
@@ -495,9 +579,11 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                     <option value="Sales"           <?= strtolower($filter_module)==='sales'           ? 'selected':'' ?>>Sales</option>
                     <option value="Fuel Management" <?= strtolower($filter_module)==='fuel management' ? 'selected':'' ?>>Fuel Management</option>
                     <option value="Job Orders"      <?= strtolower($filter_module)==='job orders'      ? 'selected':'' ?>>Job Orders</option>
-                    <option value="Customers"       <?= strtolower($filter_module)==='customers'       ? 'selected':'' ?>>Customers</option>
                     <option value="Inventory"       <?= strtolower($filter_module)==='inventory'       ? 'selected':'' ?>>Inventory</option>
-                    <option value="Shift Turnover"  <?= strtolower($filter_module)==='shift turnover'  ? 'selected':'' ?>>Shift Turnover</option>
+                    <option value="Master Data"     <?= strtolower($filter_module)==='master data'     ? 'selected':'' ?>>Master Data</option>
+                    <option value="Auth / Session"  <?= strtolower($filter_module)==='auth / session'  ? 'selected':'' ?>>Auth / Session</option>
+                    <option value="Drafts"          <?= strtolower($filter_module)==='drafts'          ? 'selected':'' ?>>Drafts</option>
+                    <option value="Customers"       <?= strtolower($filter_module)==='customers'       ? 'selected':'' ?>>Customers</option>
                 </select>
             </div>
 
@@ -506,15 +592,20 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <label style="font-weight:700; color:#002F6C; font-size:11px; text-transform:uppercase;">Activity</label>
                 <select id="filter_activity" style="padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; background:#fff;">
                     <option value="">All Activities</option>
+                    <option value="Login"                          <?= strtolower($filter_activity)==='login'                          ? 'selected':'' ?>>Login</option>
+                    <option value="Logout"                         <?= strtolower($filter_activity)==='logout'                         ? 'selected':'' ?>>Logout</option>
                     <option value="Merchandise Sale"               <?= strtolower($filter_activity)==='merchandise sale'               ? 'selected':'' ?>>Merchandise Sale</option>
                     <option value="Created Job Order"              <?= strtolower($filter_activity)==='created job order'              ? 'selected':'' ?>>Created Job Order</option>
                     <option value="Updated Job Order"              <?= strtolower($filter_activity)==='updated job order'              ? 'selected':'' ?>>Updated Job Order</option>
-                    <option value="Submitted Fuel Reading"         <?= strtolower($filter_activity)==='submitted fuel reading'         ? 'selected':'' ?>>Submitted Fuel Reading</option>
-                    <option value="Submitted Fuel Reconciliation"  <?= strtolower($filter_activity)==='submitted fuel reconciliation'  ? 'selected':'' ?>>Submitted Fuel Reconciliation</option>
-                    <option value="Added New Customer"             <?= strtolower($filter_activity)==='added new customer'             ? 'selected':'' ?>>Added New Customer</option>
-                    <option value="Submitted Inventory Adjustment" <?= strtolower($filter_activity)==='submitted inventory adjustment' ? 'selected':'' ?>>Submitted Inventory Adjustment</option>
-                    <option value="Processed Return"               <?= strtolower($filter_activity)==='processed return'               ? 'selected':'' ?>>Processed Return</option>
-                    <option value="Submitted Shift Turnover"       <?= strtolower($filter_activity)==='submitted shift turnover'       ? 'selected':'' ?>>Submitted Shift Turnover</option>
+                    <option value="Fuel Meter Reading"             <?= strtolower($filter_activity)==='fuel meter reading'             ? 'selected':'' ?>>Fuel Meter Reading</option>
+                    <option value="Fuel Sales Closing"             <?= strtolower($filter_activity)==='fuel sales closing'             ? 'selected':'' ?>>Fuel Sales Closing</option>
+                    <option value="Stock Request"                  <?= strtolower($filter_activity)==='stock request'                  ? 'selected':'' ?>>Stock Request</option>
+                    <option value="Master Data Request"            <?= strtolower($filter_activity)==='master data request'            ? 'selected':'' ?>>Master Data Request</option>
+                    <option value="Void Request"                   <?= strtolower($filter_activity)==='void request'                   ? 'selected':'' ?>>Void Request</option>
+                    <option value="Adjustment Request"             <?= strtolower($filter_activity)==='adjustment request'             ? 'selected':'' ?>>Adjustment Request</option>
+                    <option value="Draft Saved"                    <?= strtolower($filter_activity)==='draft saved'                    ? 'selected':'' ?>>Draft Saved</option>
+                    <option value="Clock In"                       <?= strtolower($filter_activity)==='clock in'                       ? 'selected':'' ?>>Clock In</option>
+                    <option value="Clock Out"                      <?= strtolower($filter_activity)==='clock out'                      ? 'selected':'' ?>>Clock Out</option>
                 </select>
             </div>
 

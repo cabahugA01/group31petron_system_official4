@@ -114,8 +114,8 @@ function upsert_notif(PDO $pdo, int $user_id, array $data): void {
     }
 
     $ins = $pdo->prepare(
-        "INSERT INTO notifications (user_id, type, title, message, event_type, severity, source_key, redirect_url, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unread')"
+        "INSERT INTO notifications (user_id, recipient_role, type, title, message, event_type, severity, source_key, redirect_url, status)
+         VALUES (?, 'admin', ?, ?, ?, ?, ?, ?, ?, 'unread')"
     );
     $ins->execute([
         $user_id,
@@ -190,7 +190,7 @@ if ($action === 'seed') {
             'event_type'  => 'transaction',
             'severity'    => 'low',
             'source_key'  => "admin_tx_today_{$station_id}_".date('Y-m-d'),
-            'redirect_url'=> '/public/admin_transactions_oversight.php',
+            'redirect_url'=> '/public/admin_all_transactions.php',
         ]);
     }
 
@@ -206,7 +206,7 @@ if ($action === 'seed') {
             'event_type'  => 'delivery',
             'severity'    => 'medium',
             'source_key'  => "pending_po_{$station_id}",
-            'redirect_url'=> '/public/purchase_orders.php',
+            'redirect_url'=> '/public/admin_procurement_reports.php?section=po',
         ]);
     }
 
@@ -222,7 +222,7 @@ if ($action === 'seed') {
             'event_type'  => 'joborder',
             'severity'    => 'low',
             'source_key'  => "admin_jo_today_{$station_id}_".date('Y-m-d'),
-            'redirect_url'=> '/public/admin_transactions_oversight.php',
+            'redirect_url'=> '/public/admin_all_transactions.php',
         ]);
     }
 
@@ -353,7 +353,7 @@ if ($action === 'seed') {
     // ── 10. Low Inventory ─────────────────────────────────────
     try {
         $low_inv = $pdo->prepare(
-            "SELECT COUNT(*) FROM inventory WHERE station_id=? AND stock_level <= 20"
+            "SELECT COUNT(*) FROM station_inventory si INNER JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id=? AND si.stock_level <= COALESCE(si.reorder_level, ip.min_stock, 10) AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels')"
         );
         $low_inv->execute([$station_id]);
         $low_cnt = (int)$low_inv->fetchColumn();
@@ -361,11 +361,11 @@ if ($action === 'seed') {
             upsert_notif($pdo, $user_id, [
                 'type'        => 'warning',
                 'title'       => 'Low Inventory Alert',
-                'message'     => "{$low_cnt} product(s) at or below minimum stock level (20 units). Reorder required.",
+                'message'     => "{$low_cnt} product(s) at or below minimum stock level. Reorder required.",
                 'event_type'  => 'inventory',
                 'severity'    => 'high',
                 'source_key'  => "low_inv_{$station_id}",
-                'redirect_url'=> '/public/inventory.php',
+                'redirect_url'=> '/public/admin_inventory_merchandise.php',
             ]);
         }
     } catch (Exception $e) {}

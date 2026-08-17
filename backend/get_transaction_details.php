@@ -17,7 +17,7 @@ require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/lib.php';
 
 // Verify login
-session_start();
+if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user_id'])) {
     echo json_encode(['success' => false, 'error' => 'Unauthorized']);
     exit;
@@ -63,6 +63,9 @@ try {
                 mt.subtotal_amount,
                 mt.vat_amount,
                 mt.transaction_type,
+                mt.void_reason,
+                mt.staff_remarks,
+                mt.manager_remarks,
                 mt.job_order_service,
                 mt.job_order_vehicle_plate,
                 mt.job_order_vehicle_type,
@@ -151,6 +154,28 @@ try {
             ? date('M d, Y h:i A', strtotime($row['validated_at'])) 
             : date('M d, Y h:i A', strtotime($row['transaction_date'] > '2000-01-01' ? $row['transaction_date'] : $row['created_at']));
 
+        // Check pending void/adjustment request in transaction_requests
+        $pending_void_req = null;
+        try {
+            $vr_stmt = $pdo->prepare("
+                SELECT tr.request_type, tr.request_reason, tr.remarks, tr.requested_at,
+                       COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Staff') AS req_staff_name
+                FROM transaction_requests tr
+                LEFT JOIN users u ON u.id = tr.requested_by
+                WHERE (tr.transaction_id = ? OR tr.transaction_id = ?)
+                ORDER BY tr.id DESC LIMIT 1
+            ");
+            $vr_stmt->execute([$row['id'], $row['transaction_id']]);
+            $pending_void_req = $vr_stmt->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {}
+
+        $eff_void_reason = !empty($row['void_reason']) && $row['void_reason'] !== 'N/A' 
+            ? $row['void_reason'] 
+            : ($pending_void_req['request_reason'] ?? '');
+        $eff_staff_remarks = !empty($row['staff_remarks']) && $row['staff_remarks'] !== 'N/A'
+            ? $row['staff_remarks']
+            : ($pending_void_req['remarks'] ?? ($row['remarks'] ?? ''));
+
         // Format response for merchandise transaction
         $is_jo_type = (in_array(strtolower($row['transaction_type'] ?? ''), ['job_order', 'combined']) || !empty(trim($row['job_order_service'] ?? '')));
         echo json_encode([
@@ -171,6 +196,13 @@ try {
             'validated_at' => $validated_at,
             'rejection_reason' => $row['rejection_reason'] ?: 'N/A',
             'adjustment_reason' => $row['adjustment_reason'] ?: 'N/A',
+            'void_reason' => $eff_void_reason,
+            'staff_remarks' => $eff_staff_remarks,
+            'manager_remarks' => $row['manager_remarks'] ?? '',
+            'pending_void_reason' => $pending_void_req['request_reason'] ?? $eff_void_reason,
+            'pending_void_remarks' => $pending_void_req['remarks'] ?? $eff_staff_remarks,
+            'pending_void_staff_name' => $pending_void_req['req_staff_name'] ?? ($row['staff_name'] ?: 'Staff'),
+            'pending_void_date' => !empty($pending_void_req['requested_at']) ? date('M d, Y h:i A', strtotime($pending_void_req['requested_at'])) : '',
             'remarks' => $row['remarks'] ?: 'N/A',
             'shift' => $row['shift_name'] ?: $row['shift_period'] ?: 'N/A',
             'amount_tendered' => $tendered > 0 ? number_format($tendered, 2) : 'N/A',
@@ -250,6 +282,8 @@ try {
                 jo.created_at,
                 jo.validated_at,
                 jo.adjustment_reason,
+                jo.void_reason,
+                jo.manager_remarks,
                 jo.status,
                 jo.notes,
                 jo.service_price_details,
@@ -300,6 +334,29 @@ try {
             ? date('M d, Y h:i A', strtotime($row['validated_at']))
             : date('M d, Y h:i A', strtotime($row['created_at']));
 
+        // Check pending void/adjustment request in transaction_requests
+        $pending_jo_void = null;
+        try {
+            $jo_no_check = $row['job_order_number'] ?: "JO-{$id}";
+            $vr_stmt = $pdo->prepare("
+                SELECT tr.request_type, tr.request_reason, tr.remarks, tr.requested_at,
+                       COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Staff') AS req_staff_name
+                FROM transaction_requests tr
+                LEFT JOIN users u ON u.id = tr.requested_by
+                WHERE (tr.transaction_id = ? OR tr.transaction_id = ?)
+                ORDER BY tr.id DESC LIMIT 1
+            ");
+            $vr_stmt->execute([$row['id'], $jo_no_check]);
+            $pending_jo_void = $vr_stmt->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {}
+
+        $eff_jo_void_reason = !empty($row['void_reason']) && $row['void_reason'] !== 'N/A'
+            ? $row['void_reason']
+            : ($pending_jo_void['request_reason'] ?? '');
+        $eff_jo_staff_remarks = !empty($row['additional_notes']) && $row['additional_notes'] !== 'N/A'
+            ? $row['additional_notes']
+            : ($pending_jo_void['remarks'] ?? ($row['notes'] ?? ''));
+
         // Format response for job order
         echo json_encode([
             'success' => true,
@@ -323,6 +380,13 @@ try {
             'transaction_date' => date('M d, Y h:i A', strtotime($row['created_at'])),
             'validated_at' => $jo_validated_at,
             'adjustment_reason' => $row['adjustment_reason'] ?: 'N/A',
+            'void_reason' => $eff_jo_void_reason,
+            'staff_remarks' => $eff_jo_staff_remarks,
+            'manager_remarks' => $row['manager_remarks'] ?? '',
+            'pending_void_reason' => $pending_jo_void['request_reason'] ?? $eff_jo_void_reason,
+            'pending_void_remarks' => $pending_jo_void['remarks'] ?? $eff_jo_staff_remarks,
+            'pending_void_staff_name' => $pending_jo_void['req_staff_name'] ?? ($row['staff_name'] ?: 'Staff'),
+            'pending_void_date' => !empty($pending_jo_void['requested_at']) ? date('M d, Y h:i A', strtotime($pending_jo_void['requested_at'])) : '',
             'staff_name' => $row['staff_name'] ?: 'Unknown',
             'validated_by' => $jo_validated_by,
             'mechanic_name' => $row['mechanic_name'] ?: 'Not assigned',

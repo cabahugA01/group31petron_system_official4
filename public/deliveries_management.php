@@ -1,6 +1,7 @@
 ﻿<?php
 // Deliveries Management System
 session_start();
+require_login();
 require_once '../config/database_config.php';
 require_once '../public/db_connect.php';
 

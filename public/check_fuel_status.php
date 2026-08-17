@@ -1,4 +1,8 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) session_start();
+require_once __DIR__ . '/../backend/lib.php';
+require_login();
+
 require_once __DIR__ . '/db_connect.php';
 $rows = $pdo->query("SELECT id, station_id, fuel_type, status FROM fuel_inventory ORDER BY station_id, id")->fetchAll(PDO::FETCH_ASSOC);
 echo "<table border='1' cellpadding='6' style='font-family:monospace;font-size:13px;border-collapse:collapse'>";

@@ -1996,11 +1996,10 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
         // =========================================================================
         case 'audit':
             $tab_labels = [
-                'user_activity_logs'   => ['icon' => 'fas fa-user-clock',     'title' => 'User Activity Logs'],
-                'login_history'        => ['icon' => 'fas fa-sign-in-alt',    'title' => 'Login History'],
                 'transaction_logs'     => ['icon' => 'fas fa-exchange-alt',   'title' => 'Transaction Logs'],
                 'inventory_logs'       => ['icon' => 'fas fa-boxes',          'title' => 'Inventory Logs'],
                 'approval_logs'        => ['icon' => 'fas fa-check-circle',   'title' => 'Approval Logs'],
+                'login_history'        => ['icon' => 'fas fa-sign-in-alt',    'title' => 'Login History'],
                 'archived_deactivated' => ['icon' => 'fas fa-archive',        'title' => 'Archived & Deactivated Logs'],
             ];
             $cur_tab = $tab_labels[$tab] ?? ['icon' => 'fas fa-history', 'title' => ucwords(str_replace('_', ' ', $tab))];
@@ -2011,245 +2010,192 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
             <div class="table-responsive">
                 <table class="rpt-table align-middle" style="font-size:12px;width:100%;">
 
-                <?php if ($tab === 'user_activity_logs'): ?>
+                <?php if ($tab === 'transaction_logs'): ?>
                     <thead><tr>
-                        <th>Date / Time</th>
-                        <th>User</th>
-                        <th>Role</th>
-                        <th>Action</th>
+                        <th style="width:125px;">Date / Time</th>
+                        <th style="width:115px;">Reference</th>
+                        <th style="width:110px;">Module</th>
+                        <th style="width:150px;">Action</th>
+                        <th style="width:130px;">Performed By</th>
                         <th>Details</th>
-                        <th>IP Address</th>
+                        <th class="text-end" style="width:105px;">Amount</th>
+                        <th style="width:85px;">Status</th>
                     </tr></thead>
                     <tbody>
                     <?php if (empty($rows)): ?>
-                        <tr><td colspan="6" class="text-center py-4 text-muted">No user activity logs found.</td></tr>
+                        <tr><td colspan="8" class="text-center py-4 text-muted">No transaction logs found for this period.</td></tr>
                     <?php else: foreach ($rows as $r):
-                        $act_lc = strtolower($r['action'] ?? '');
-                        $act_cls = match(true) {
-                            str_contains($act_lc, 'add') || str_contains($act_lc, 'creat')  => 'bg-success',
-                            str_contains($act_lc, 'edit') || str_contains($act_lc, 'updat')  => 'bg-warning text-dark',
-                            str_contains($act_lc, 'archive') || str_contains($act_lc, 'deact') => 'bg-danger',
-                            str_contains($act_lc, 'login') || str_contains($act_lc, 'logout')  => 'bg-info text-dark',
-                            default => 'bg-secondary',
+                        $mod = $r['module'] ?? 'Merchandise';
+                        $mod_cls = match(strtolower($mod)) {
+                            'fuel management'   => 'bg-info text-dark',
+                            'job orders'        => 'bg-primary',
+                            'fuel sales closing'=> 'bg-secondary',
+                            'sales adjustments' => 'bg-warning text-dark',
+                            'reports'           => 'bg-light text-dark border',
+                            default             => 'bg-success',
                         };
+                        $sts = strtolower($r['status'] ?? '');
+                        $sts_cls = match(true) {
+                            $sts === 'completed' || $sts === 'success' => 'bg-success',
+                            $sts === 'cancelled' || $sts === 'voided'  => 'bg-danger',
+                            default                                    => 'bg-warning text-dark',
+                        };
+                        $amt = (float)($r['total_amount'] ?? 0);
                     ?>
                         <tr>
-                            <td><small><?= htmlspecialchars($r['created_at'] ?? 'N/A') ?></small></td>
-                            <td><strong><?= htmlspecialchars($r['user'] ?? 'N/A') ?></strong></td>
-                            <td><span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars($r['role'] ?? 'N/A') ?></span></td>
-                            <td><span class="badge <?= $act_cls ?>" style="font-size:10px;"><?= htmlspecialchars($r['action'] ?? 'N/A') ?></span></td>
-                            <td><small><?= htmlspecialchars($r['details'] ?? 'N/A') ?></small></td>
-                            <td><code style="font-size:10px;"><?= htmlspecialchars($r['ip_address'] ?? 'N/A') ?></code></td>
-                        </tr>
-                    <?php endforeach; endif; ?>
-                    </tbody>
-
-                <?php elseif ($tab === 'login_history'): ?>
-                    <thead><tr>
-                        <th>Date</th>
-                        <th>User</th>
-                        <th>Role</th>
-                        <th>Login Time</th>
-                        <th>Logout Time</th>
-                        <th>Session</th>
-                        <th>IP Address</th>
-                        <th>Status</th>
-                    </tr></thead>
-                    <tbody>
-                    <?php if (empty($rows)): ?>
-                        <tr><td colspan="8" class="text-center py-4 text-muted">No login history found.</td></tr>
-                    <?php else: foreach ($rows as $r):
-                        $st = strtolower($r['status'] ?? '');
-                        $st_cls = match(true) {
-                            str_contains($st, 'success')  => 'bg-success',
-                            str_contains($st, 'failed')   => 'bg-danger',
-                            str_contains($st, 'locked')   => 'bg-warning text-dark',
-                            default                       => 'bg-secondary',
-                        };
-                        $st_lbl = match(true) {
-                            str_contains($st, 'success') => 'Success',
-                            str_contains($st, 'fail')    => 'Failed Login',
-                            str_contains($st, 'lock')    => 'Locked Account',
-                            default                      => ucfirst($r['status'] ?? 'N/A'),
-                        };
-                        $fail_reason = trim($r['failure_reason'] ?? '');
-                    ?>
-                        <tr>
-                            <td><small><?= htmlspecialchars(date('m/d/Y', strtotime($r['date'] ?? 'now'))) ?></small></td>
-                            <td><strong><?= htmlspecialchars($r['user'] ?? $r['username'] ?? 'N/A') ?></strong></td>
-                            <td><span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars($r['role'] ?? 'N/A') ?></span></td>
-                            <td><small><?= htmlspecialchars($r['login_time'] ?? 'N/A') ?></small></td>
-                            <td class="text-muted"><small><?= htmlspecialchars($r['logout_time'] ?? '—') ?></small></td>
-                            <td class="text-muted"><small><?= htmlspecialchars($r['session_duration'] ?? '—') ?></small></td>
-                            <td><code style="font-size:10px;"><?= htmlspecialchars($r['ip_address'] ?? 'N/A') ?></code></td>
-                            <td>
-                                <span class="badge <?= $st_cls ?>" style="font-size:10px;"><?= $st_lbl ?></span>
-                                <?php if ($fail_reason): ?><br><small class="text-muted"><?= htmlspecialchars($fail_reason) ?></small><?php endif; ?>
-                            </td>
-                        </tr>
-                    <?php endforeach; endif; ?>
-                    </tbody>
-
-                <?php elseif ($tab === 'transaction_logs'): ?>
-                    <thead><tr>
-                        <th>Transaction ID</th>
-                        <th>Module</th>
-                        <th>Customer</th>
-                        <th>Performed By</th>
-                        <th class="text-end">Amount</th>
-                        <th>Payment Method</th>
-                        <th>Date / Time</th>
-                        <th>Status</th>
-                    </tr></thead>
-                    <tbody>
-                    <?php if (empty($rows)): ?>
-                        <tr><td colspan="8" class="text-center py-4 text-muted">No transaction logs found.</td></tr>
-                    </tbody>
-                    <?php else: ?>
-                    <?php
-                        $grand_total = 0;
-                        foreach ($rows as $r):
-                            $grand_total += (float)($r['total_amount'] ?? 0);
-                            $mod = $r['module'] ?? 'Sale';
-                            $mod_cls = match($mod) {
-                                'Job Order' => 'bg-primary',
-                                'Return'    => 'bg-warning text-dark',
-                                'Void'      => 'bg-danger',
-                                'Refund'    => 'bg-info text-dark',
-                                default     => 'bg-success',
-                            };
-                    ?>
-                        <tr>
-                            <td><code style="font-size:10px;"><?= htmlspecialchars($r['transaction_id'] ?? 'N/A') ?></code></td>
+                            <td><small><?= htmlspecialchars($r['datetime'] ?? 'N/A') ?></small></td>
+                            <td><code style="font-size:10px;font-weight:700;"><?= htmlspecialchars($r['ref_no'] ?? 'N/A') ?></code></td>
                             <td><span class="badge <?= $mod_cls ?>" style="font-size:10px;"><?= htmlspecialchars($mod) ?></span></td>
-                            <td><?= htmlspecialchars($r['customer'] ?? 'Walk-in') ?></td>
+                            <td><strong><?= htmlspecialchars($r['action'] ?? 'Created Transaction') ?></strong></td>
                             <td><?= htmlspecialchars($r['performed_by'] ?? 'Staff') ?></td>
-                            <td class="text-end fw-bold text-success">₱<?= number_format((float)($r['total_amount'] ?? 0), 2) ?></td>
-                            <td><?= htmlspecialchars($r['payment_method'] ?? 'N/A') ?></td>
-                            <td><small><?= htmlspecialchars($r['transaction_date'] ?? 'N/A') ?></small></td>
-                            <td><span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars($r['status'] ?? 'N/A') ?></span></td>
+                            <td><small class="text-muted"><?= htmlspecialchars($r['details'] ?? '—') ?></small></td>
+                            <td class="text-end fw-bold <?= $amt > 0 ? 'text-success' : 'text-muted' ?>">
+                                <?= $amt > 0 ? ('₱' . number_format($amt, 2)) : '—' ?>
+                            </td>
+                            <td><span class="badge <?= $sts_cls ?>" style="font-size:10px;"><?= htmlspecialchars(ucfirst($r['status'] ?? 'Completed')) ?></span></td>
                         </tr>
-                    <?php endforeach; ?>
+                    <?php endforeach; endif; ?>
                     </tbody>
-                    <tfoot>
-                        <tr class="fw-bold" style="background:#f1f5f9;">
-                            <td colspan="4" class="text-end">Total:</td>
-                            <td class="text-end text-success">₱<?= number_format($grand_total, 2) ?></td>
-                            <td colspan="3"></td>
-                        </tr>
-                    </tfoot>
-                    <?php endif; ?>
 
                 <?php elseif ($tab === 'inventory_logs'): ?>
                     <thead><tr>
-                        <th>Date / Time</th>
-                        <th>Product</th>
-                        <th>SKU</th>
-                        <th>Action Type</th>
-                        <th class="text-center">Qty Before</th>
-                        <th class="text-center">Qty After</th>
-                        <th class="text-center">Qty Change</th>
-                        <th>Performed By</th>
-                        <th>Notes / Reason</th>
+                        <th style="width:125px;">Date / Time</th>
+                        <th style="width:115px;">Reference</th>
+                        <th style="width:160px;">Product / Item</th>
+                        <th style="width:150px;">Movement Type</th>
+                        <th class="text-center" style="width:110px;">Qty Change</th>
+                        <th style="width:130px;">Performed By</th>
+                        <th>Details / Reason</th>
+                        <th style="width:85px;">Status</th>
                     </tr></thead>
                     <tbody>
                     <?php if (empty($rows)): ?>
-                        <tr><td colspan="9" class="text-center py-4 text-muted">No inventory logs found.</td></tr>
+                        <tr><td colspan="8" class="text-center py-4 text-muted">No inventory logs found for this period.</td></tr>
                     <?php else: foreach ($rows as $r):
-                        $act = $r['action_type'] ?? $r['action'] ?? 'N/A';
-                        $act_c = match(true) {
-                            str_contains($act, 'Stock In')   => 'bg-success',
-                            str_contains($act, 'Stock Out')  => 'bg-danger',
-                            str_contains($act, 'Adjust')     => 'bg-warning text-dark',
-                            str_contains($act, 'Expired')    => 'bg-secondary',
-                            str_contains($act, 'Damaged')    => 'bg-dark',
-                            str_contains($act, 'Physical')   => 'bg-info text-dark',
-                            default                          => 'bg-secondary',
+                        $mov = $r['movement_type'] ?? 'Movement';
+                        $mov_cls = match(true) {
+                            str_contains(strtolower($mov), 'stock in') || str_contains(strtolower($mov), 'delivery') => 'bg-success',
+                            str_contains(strtolower($mov), 'stock out') || str_contains(strtolower($mov), 'damage') => 'bg-danger',
+                            str_contains(strtolower($mov), 'adjust') => 'bg-warning text-dark',
+                            str_contains(strtolower($mov), 'physical') => 'bg-info text-dark',
+                            default => 'bg-secondary',
                         };
                         $chg = (float)($r['quantity_change'] ?? 0);
                     ?>
                         <tr>
-                            <td><small><?= htmlspecialchars($r['created_at'] ?? 'N/A') ?></small></td>
+                            <td><small><?= htmlspecialchars($r['datetime'] ?? 'N/A') ?></small></td>
+                            <td><code style="font-size:10px;font-weight:700;"><?= htmlspecialchars($r['ref_no'] ?? 'N/A') ?></code></td>
                             <td><strong><?= htmlspecialchars($r['product'] ?? 'N/A') ?></strong></td>
-                            <td><code style="font-size:10px;"><?= htmlspecialchars($r['sku'] ?? 'N/A') ?></code></td>
-                            <td><span class="badge <?= $act_c ?>" style="font-size:10px;"><?= htmlspecialchars($act) ?></span></td>
-                            <td class="text-center"><?= number_format((float)($r['quantity_before'] ?? 0), 2) ?></td>
-                            <td class="text-center"><?= number_format((float)($r['quantity_after'] ?? 0), 2) ?></td>
+                            <td><span class="badge <?= $mov_cls ?>" style="font-size:10px;"><?= htmlspecialchars($mov) ?></span></td>
                             <td class="text-center fw-bold <?= $chg >= 0 ? 'text-success' : 'text-danger' ?>">
                                 <?= ($chg > 0 ? '+' : '') . number_format($chg, 2) ?>
                             </td>
-                            <td><?= htmlspecialchars($r['performed_by'] ?? 'System') ?></td>
-                            <td><small class="text-muted"><?= htmlspecialchars($r['notes'] ?? 'N/A') ?></small></td>
+                            <td><?= htmlspecialchars($r['performed_by'] ?? 'Staff') ?></td>
+                            <td><small class="text-muted"><?= htmlspecialchars($r['details'] ?? '—') ?></small></td>
+                            <td><span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars(ucfirst($r['status'] ?? 'Completed')) ?></span></td>
                         </tr>
                     <?php endforeach; endif; ?>
                     </tbody>
 
                 <?php elseif ($tab === 'approval_logs'): ?>
                     <thead><tr>
-                        <th>Date / Time</th>
-                        <th>Reference</th>
-                        <th>Category</th>
-                        <th>Requested By</th>
-                        <th>Approved By</th>
-                        <th>Old Value</th>
-                        <th>New Value</th>
-                        <th>Reviewed At</th>
-                        <th>Status</th>
+                        <th style="width:125px;">Date / Time</th>
+                        <th style="width:115px;">Request Ref</th>
+                        <th style="width:160px;">Workflow / Type</th>
+                        <th style="width:130px;">Action / Decision</th>
+                        <th style="width:130px;">Requested By</th>
+                        <th style="width:130px;">Reviewed By</th>
+                        <th>Details / Feedback</th>
+                        <th style="width:85px;">Status</th>
                     </tr></thead>
                     <tbody>
                     <?php if (empty($rows)): ?>
-                        <tr><td colspan="9" class="text-center py-4 text-muted">No approval logs found.</td></tr>
+                        <tr><td colspan="8" class="text-center py-4 text-muted">No approval logs found for this period.</td></tr>
                     <?php else: foreach ($rows as $r):
-                        $st = strtolower($r['status'] ?? '');
-                        $st_cls = match(true) {
-                            str_contains($st, 'approv') => 'bg-success',
-                            str_contains($st, 'reject') => 'bg-danger',
-                            str_contains($st, 'pend')   => 'bg-warning text-dark',
-                            default                     => 'bg-secondary',
+                        $act = strtolower($r['action'] ?? '');
+                        $act_cls = match(true) {
+                            str_contains($act, 'approv') => 'bg-success',
+                            str_contains($act, 'reject') => 'bg-danger',
+                            str_contains($act, 'revis')  => 'bg-info text-dark',
+                            default                      => 'bg-warning text-dark',
                         };
                     ?>
                         <tr>
-                            <td><small><?= htmlspecialchars($r['created_at'] ?? 'N/A') ?></small></td>
-                            <td><strong><?= htmlspecialchars($r['reference'] ?? 'N/A') ?></strong></td>
-                            <td><span class="badge bg-info text-dark" style="font-size:10px;"><?= htmlspecialchars($r['category'] ?? 'N/A') ?></span></td>
-                            <td><?= htmlspecialchars($r['requested_by'] ?? 'N/A') ?></td>
-                            <td><?= htmlspecialchars($r['approved_by'] ?? '—') ?></td>
-                            <td class="text-danger"><?= htmlspecialchars($r['old_value'] ?? 'N/A') ?></td>
-                            <td class="text-success fw-bold"><?= htmlspecialchars($r['new_value'] ?? 'N/A') ?></td>
-                            <td><small class="text-muted"><?= htmlspecialchars($r['reviewed_at'] ?? '—') ?></small></td>
-                            <td><span class="badge <?= $st_cls ?>" style="font-size:10px;"><?= htmlspecialchars(ucfirst($r['status'] ?? 'N/A')) ?></span></td>
+                            <td><small><?= htmlspecialchars($r['datetime'] ?? 'N/A') ?></small></td>
+                            <td><code style="font-size:10px;font-weight:700;"><?= htmlspecialchars($r['request_no'] ?? 'N/A') ?></code></td>
+                            <td><span class="badge bg-primary" style="font-size:10px;"><?= htmlspecialchars($r['request_type'] ?? 'Request') ?></span></td>
+                            <td><span class="badge <?= $act_cls ?>" style="font-size:10px;"><?= htmlspecialchars($r['action'] ?? 'Pending Review') ?></span></td>
+                            <td><?= htmlspecialchars($r['requested_by'] ?? 'Staff') ?></td>
+                            <td><?= htmlspecialchars($r['reviewed_by'] ?? '—') ?></td>
+                            <td><small class="text-muted"><?= htmlspecialchars($r['details'] ?? '—') ?></small></td>
+                            <td><span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars(ucfirst($r['status'] ?? 'Pending')) ?></span></td>
+                        </tr>
+                    <?php endforeach; endif; ?>
+                    </tbody>
+
+                <?php elseif ($tab === 'login_history'): ?>
+                    <thead><tr>
+                        <th style="width:130px;">Date / Time</th>
+                        <th style="width:150px;">User</th>
+                        <th style="width:100px;">Role</th>
+                        <th style="width:160px;">Event / Action</th>
+                        <th style="width:120px;">IP Address</th>
+                        <th style="width:85px;">Status</th>
+                        <th>Reason / Details</th>
+                    </tr></thead>
+                    <tbody>
+                    <?php if (empty($rows)): ?>
+                        <tr><td colspan="7" class="text-center py-4 text-muted">No login or authentication history found.</td></tr>
+                    <?php else: foreach ($rows as $r):
+                        $st = strtolower($r['status'] ?? '');
+                        $st_cls = match(true) {
+                            $st === 'success' => 'bg-success',
+                            $st === 'failed'  => 'bg-danger',
+                            default           => 'bg-secondary',
+                        };
+                    ?>
+                        <tr>
+                            <td><small><?= htmlspecialchars($r['datetime'] ?? 'N/A') ?></small></td>
+                            <td><strong><?= htmlspecialchars($r['user'] ?? 'N/A') ?></strong></td>
+                            <td><span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars($r['role'] ?? 'Staff') ?></span></td>
+                            <td><strong><?= htmlspecialchars($r['action'] ?? 'Login') ?></strong></td>
+                            <td><code style="font-size:10px;"><?= htmlspecialchars($r['ip_address'] ?? 'N/A') ?></code></td>
+                            <td><span class="badge <?= $st_cls ?>" style="font-size:10px;"><?= htmlspecialchars(ucfirst($r['status'] ?? 'Success')) ?></span></td>
+                            <td><small class="text-muted"><?= htmlspecialchars($r['reason'] ?? '—') ?></small></td>
                         </tr>
                     <?php endforeach; endif; ?>
                     </tbody>
 
                 <?php else: // archived_deactivated ?>
                     <thead><tr>
-                        <th>Date / Time</th>
-                        <th>Module</th>
-                        <th>Record / Name</th>
-                        <th>Action</th>
-                        <th>Reason</th>
-                        <th>Performed By</th>
+                        <th style="width:130px;">Date / Time</th>
+                        <th style="width:120px;">Record Type</th>
+                        <th style="width:120px;">Reference</th>
+                        <th style="width:130px;">Action Done</th>
+                        <th style="width:140px;">Performed By</th>
+                        <th>Reason / Details</th>
+                        <th style="width:85px;">Status</th>
                     </tr></thead>
                     <tbody>
                     <?php if (empty($rows)): ?>
-                        <tr><td colspan="6" class="text-center py-4 text-muted">No archived or deactivated records found for this period.</td></tr>
+                        <tr><td colspan="7" class="text-center py-4 text-muted">No archived or deactivated records found for this period.</td></tr>
                     <?php else: foreach ($rows as $r):
-                        $act = $r['action_done'] ?? 'N/A';
+                        $act = strtolower($r['action'] ?? '');
                         $act_cls = match(true) {
-                            str_contains(strtolower($act), 'archive')    => 'bg-warning text-dark',
-                            str_contains(strtolower($act), 'deactivat')  => 'bg-danger',
-                            str_contains(strtolower($act), 'reactivat')  => 'bg-success',
-                            default                                       => 'bg-secondary',
+                            str_contains($act, 'archive')   => 'bg-warning text-dark',
+                            str_contains($act, 'deactivat') => 'bg-danger',
+                            str_contains($act, 'reactivat') || str_contains($act, 'restore') => 'bg-success',
+                            default                         => 'bg-secondary',
                         };
                     ?>
                         <tr>
-                            <td><small><?= htmlspecialchars($r['created_at'] ?? 'N/A') ?></small></td>
-                            <td><span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars($r['module'] ?? 'N/A') ?></span></td>
-                            <td><strong><?= htmlspecialchars($r['record_name'] ?? 'N/A') ?></strong></td>
-                            <td><span class="badge <?= $act_cls ?>" style="font-size:10px;"><?= htmlspecialchars($act) ?></span></td>
-                            <td><small class="text-muted"><?= htmlspecialchars($r['reason'] ?? 'N/A') ?></small></td>
+                            <td><small><?= htmlspecialchars($r['datetime'] ?? 'N/A') ?></small></td>
+                            <td><span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars($r['entity_type'] ?? 'Record') ?></span></td>
+                            <td><code style="font-size:10px;font-weight:700;"><?= htmlspecialchars($r['ref_no'] ?? 'N/A') ?></code></td>
+                            <td><span class="badge <?= $act_cls ?>" style="font-size:10px;"><?= htmlspecialchars($r['action'] ?? 'Archived') ?></span></td>
                             <td><?= htmlspecialchars($r['performed_by'] ?? 'Admin') ?></td>
+                            <td><small class="text-muted"><?= htmlspecialchars($r['details'] ?? '—') ?></small></td>
+                            <td><span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars(ucfirst($r['status'] ?? 'Archived')) ?></span></td>
                         </tr>
                     <?php endforeach; endif; ?>
                     </tbody>

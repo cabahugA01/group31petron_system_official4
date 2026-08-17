@@ -334,19 +334,17 @@ function handle_create($pdo, $me, $role, $station_id) {
             return;
         }
 
-        $managers = [];
-        try {
-            $m_stmt = $pdo->prepare("SELECT id FROM users WHERE role = 'manager' AND station_id = ? AND status = 'Active'");
-            $m_stmt->execute([$station_id]);
-            $managers = $m_stmt->fetchAll(PDO::FETCH_COLUMN);
-        } catch (Exception $e) {}
-
-        $notif_stmt = $pdo->prepare("
-            INSERT INTO notifications (user_id, type, title, message, event_type, severity, redirect_url, created_at)
-            VALUES (?, 'info', 'New Bulk Stock Request', ?, 'stock_request', 'medium', 'manager_stock_request_review.php?tab=pending_requests', NOW())
-        ");
-        foreach ($managers as $mgr_id) {
-            $notif_stmt->execute([$mgr_id, "New stock request {$request_no} submitted by {$me['name']}. Manager review required."]);
+        // ── Notify manager(s) — event-driven, deduplicated ──────
+        foreach ($inserted_ids as $rid) {
+            notify_manager(
+                $pdo, $station_id,
+                'info', 'stock_request', 'medium',
+                'New Stock Request',
+                "Stock request {$request_no} submitted by {$me['name']}. Review required.",
+                "stock_req_submitted_{$rid}",
+                'manager_inventory_stock_requests.php?id=' . $rid,
+                'stock_request', $rid
+            );
         }
 
         $pdo->commit();
@@ -718,6 +716,23 @@ function handle_approve($pdo, $me, $role, $station_id) {
             $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'inventory', 'Approve', ?, 'stock_requests', ?, 'Success', ?, ?, NOW())")
                 ->execute([$safe_staff_id, $detail, $request_id, $ip, $ua]);
         } catch (Exception $e) {}
+
+        // ── Notify staff: their request was approved ─────────────────
+        notify($pdo, (int)$req['staff_id'], 'staff', 'success', 'stock_request', 'medium',
+            'Stock Request Approved',
+            "Your stock request {$pr_id} for {$req['item_name']} (Qty: {$approved_quantity}) has been approved." . ($manager_notes ? " Notes: {$manager_notes}" : ''),
+            "stock_req_approved_{$request_id}",
+            'staff_stock_requests.php?id=' . $request_id,
+            'stock_request', $request_id
+        );
+        // ── Notify admin: PO needs action ────────────────────────────
+        notify_admin($pdo, 'info', 'stock_request', 'medium',
+            'Purchase Order Requires Action',
+            "Stock Request {$pr_id} approved by manager. PO {$po_number} requires Admin review for {$req['item_name']}.",
+            "stock_req_po_{$request_id}",
+            'admin_approve_stock_requests.php?id=' . $request_id,
+            'stock_request', $request_id, (int)$req['station_id']
+        );
     } catch (Exception $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
@@ -793,6 +808,15 @@ function handle_reject($pdo, $me, $role, $station_id) {
             $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'inventory', 'Reject', ?, 'stock_requests', ?, 'Success', ?, ?, NOW())")
                 ->execute([$safe_staff_id, $detail, $request_id, $ip, $ua]);
         } catch (Exception $e) {}
+
+        // ── Notify staff: their request was rejected ──────────────────
+        notify($pdo, (int)$req['staff_id'], 'staff', 'error', 'stock_request', 'medium',
+            'Stock Request Rejected',
+            "Your stock request #{$request_id} for {$req['item_name']} was rejected." . ($manager_notes ? " Reason: {$manager_notes}" : ''),
+            "stock_req_rejected_{$request_id}",
+            'staff_stock_requests.php?id=' . $request_id,
+            'stock_request', $request_id
+        );
     } catch (Exception $e) {
         $pdo->rollBack();
         throw $e;

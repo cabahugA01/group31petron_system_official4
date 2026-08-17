@@ -1,5 +1,6 @@
 <?php
 session_start();
+require_login();
 // Database config not needed for static receipt generation
 // require_once '../config/database_config.php';
 // require_once '../backend/api/inventory_products.php';

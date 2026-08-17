@@ -5,6 +5,7 @@ header('Content-Type: application/json');
 
 // Only allow superadmin
 session_start();
+require_login();
 if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'superadmin') {
     echo json_encode(['success' => false, 'message' => 'Access denied']);
     exit;

@@ -197,18 +197,28 @@ try {
 
         $pdo->beginTransaction();
 
-        // ── Restore inventory ─────────────────────────────────────────────────────
+        // ── Restore inventory via Global Movement Engine ────────────────────────
         $inv_deducted = (int)($txn['inventory_deducted'] ?? 1);
+        $txn_ref_code = $txn['transaction_id'] ?? ('MERCH-' . $row_id);
         if ($inv_deducted) {
             foreach ($items as $item) {
                 $product_id = (int)($item['product_id'] ?? 0);
-                $qty        = (float)$item['quantity'];
-                if ($product_id > 0 && $qty > 0 && $item['item_type'] !== 'service') {
-                    $pdo->prepare("
-                        UPDATE station_inventory
-                        SET stock_level = stock_level + ?
-                        WHERE product_id = ? AND station_id = ?
-                    ")->execute([$qty, $product_id, $station_id]);
+                if (!$product_id && !empty($item['product_name'])) {
+                    $pst = $pdo->prepare("SELECT id FROM inventory_products WHERE product_name = ? LIMIT 1");
+                    $pst->execute([$item['product_name']]);
+                    $product_id = (int)$pst->fetchColumn();
+                }
+                $qty = (float)$item['quantity'];
+                if ($product_id > 0 && $qty > 0 && ($item['item_type'] ?? '') !== 'service') {
+                    record_void_reversal_movement(
+                        $pdo,
+                        $station_id,
+                        $product_id,
+                        $qty,
+                        $txn_ref_code,
+                        (int)($me['id'] ?? 0),
+                        "Void approval by Manager: " . $void_reason
+                    );
                 }
             }
         }
@@ -373,6 +383,21 @@ try {
     }
 
     $pdo->commit();
+
+    // ── Notify staff: Void approved ──────────────────────────────
+    try {
+        $staff_target_id = (int)($txn['staff_id'] ?? ($txn['created_by'] ?? ($txn['user_id'] ?? 0)));
+        if ($staff_target_id > 0) {
+            $txnRef = $txn['transaction_id'] ?? ('JO-' . $row_id);
+            notify($pdo, $staff_target_id, 'staff', 'success', 'void_request', 'medium',
+                "Void Request Approved: {$txnRef}",
+                "Void request for {$txnRef} was approved by Manager. Reason: {$void_reason}",
+                "void_approved_{$row_id}",
+                'voided_transactions.php?id=' . $row_id,
+                'void_request', $row_id
+            );
+        }
+    } catch (Throwable $notifErr) {}
 
     send_json_response([
         'success' => true,

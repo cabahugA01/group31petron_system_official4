@@ -61,31 +61,7 @@ if (empty($sa_ids)) {
 
 $generated = 0;
 
-// ── Seed Mock Developer logs if they do not exist ────────────
-try {
-    $mock_logs = [
-        ['action' => 'Server downtime detected - Node-4 offline', 'details' => 'Server went offline for 4 minutes before auto-recovery', 'ip' => '127.0.0.1'],
-        ['action' => 'High CPU usage alert', 'details' => 'CPU usage exceeded 92% on web host during log compression', 'ip' => '127.0.0.1'],
-        ['action' => 'Database connection error: timeout', 'details' => 'Database connection failed: Max connections reached', 'ip' => '127.0.0.1'],
-        ['action' => 'API connection failure: FleetCard sync', 'details' => 'Failed to connect to FleetCard host: timeout', 'ip' => '127.0.0.1'],
-        ['action' => 'Git merge conflict', 'details' => 'Conflict in public/search.php between branch dev and main', 'ip' => '127.0.0.1'],
-        ['action' => 'Sync job delay: ERP', 'details' => 'ERP Sync job delayed by 45 minutes due to network bandwidth limits', 'ip' => '127.0.0.1'],
-        ['action' => 'Password reset request', 'details' => 'Password reset request received for account admin_cebu', 'ip' => '192.168.1.45'],
-        ['action' => 'Suspicious activity flagged', 'details' => 'User developer executed a direct database drop table command attempt', 'ip' => '192.168.1.100'],
-        ['action' => 'Deployment: release-v2.4.1', 'details' => 'New release v2.4.1 deployed successfully by CI/CD agent', 'ip' => '127.0.0.1'],
-        ['action' => 'Rollback action: release-v2.4.0', 'details' => 'Rollback triggered for hotfix revision', 'ip' => '127.0.0.1']
-    ];
-
-    $check_stmt = $pdo->prepare("SELECT 1 FROM activity_logs WHERE action = ? LIMIT 1");
-    $insert_stmt = $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address, created_at) VALUES (?, ?, ?, ?, NOW())");
-    
-    foreach ($mock_logs as $log) {
-        $check_stmt->execute([$log['action']]);
-        if (!$check_stmt->fetch()) {
-            $insert_stmt->execute([$sa_ids[0] ?? null, $log['action'], $log['details'], $log['ip']]);
-        }
-    }
-} catch (Exception $e) {}
+// ── Real event scanning only (no artificial mock seeding) ─────
 
 
 /**
@@ -106,8 +82,8 @@ function push_sa_notification(
     $inserted = 0;
     $stmt = $pdo->prepare(
         "INSERT IGNORE INTO notifications
-            (user_id, type, event_type, severity, title, message, source_key, redirect_url, status)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'unread'
+            (user_id, recipient_role, type, event_type, severity, title, message, source_key, redirect_url, status)
+         SELECT ?, 'superadmin', ?, ?, ?, ?, ?, ?, ?, 'unread'
          FROM DUAL
          WHERE NOT EXISTS (
              SELECT 1 FROM notifications
@@ -185,8 +161,7 @@ try {
         "SELECT al.id, al.details, al.created_at, u.username AS user_name
          FROM activity_logs al
          LEFT JOIN users u ON u.id = al.user_id
-         WHERE (al.action LIKE '%lock%' OR al.action LIKE '%Lock%'
-                OR al.details LIKE '%locked%' OR al.details LIKE '%account lock%')
+         WHERE (al.action = 'Account Locked' OR al.action = 'Account Lockout' OR al.action = 'User Account Locked')
            AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
          ORDER BY al.created_at DESC LIMIT 10"
     )->fetchAll(PDO::FETCH_ASSOC);
@@ -210,7 +185,7 @@ try {
         "SELECT al.id, al.details, al.created_at, u.username AS user_name
          FROM activity_logs al
          LEFT JOIN users u ON u.id = al.user_id
-         WHERE (al.action LIKE '%Password Reset%' OR al.action LIKE '%password reset%' OR al.details LIKE '%reset password%' OR al.details LIKE '%Password reset%')
+         WHERE (al.action = 'Password Reset Request' OR al.action = 'Password Reset Requested')
            AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
          ORDER BY al.created_at DESC LIMIT 5"
     )->fetchAll(PDO::FETCH_ASSOC);
@@ -307,12 +282,12 @@ try {
     }
 } catch (Exception $e) {}
 
-// 2c. Server downtime/uptime warnings
+// 2c. Server downtime warnings
 try {
     $rows = $pdo->query(
         "SELECT al.id, al.action, al.details, al.created_at
          FROM activity_logs al
-         WHERE (al.action LIKE '%Downtime%' OR al.action LIKE '%downtime%' OR al.action LIKE '%Uptime%' OR al.action LIKE '%uptime%' OR al.details LIKE '%offline%' OR al.details LIKE '%online%')
+         WHERE (al.action = 'Server Downtime' OR al.action LIKE 'Server Downtime%' OR al.details LIKE '%server offline%')
            AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
          ORDER BY al.created_at DESC LIMIT 5"
     )->fetchAll(PDO::FETCH_ASSOC);
@@ -335,7 +310,7 @@ try {
     $rows = $pdo->query(
         "SELECT al.id, al.action, al.details, al.created_at
          FROM activity_logs al
-         WHERE (al.action LIKE '%CPU%' OR al.action LIKE '%Memory%' OR al.details LIKE '%CPU usage%' OR al.details LIKE '%memory usage%')
+         WHERE (al.action = 'High CPU Usage' OR al.action = 'High Memory Usage' OR al.details LIKE '%high cpu usage%')
            AND al.created_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
          ORDER BY al.created_at DESC LIMIT 5"
     )->fetchAll(PDO::FETCH_ASSOC);
@@ -690,13 +665,17 @@ try {
     }
 } catch (Exception $e) {}
 
-// ── Clean up old read notifications (>30 days) ───────────────
+// ── Clean up old read notifications (>30 days) for superadmins ─────────
 try {
-    $pdo->exec(
-        "DELETE FROM notifications
-         WHERE status = 'read'
-           AND created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)"
-    );
+    if (!empty($sa_ids)) {
+        $in_clause = implode(',', array_map('intval', $sa_ids));
+        $pdo->exec(
+            "DELETE FROM notifications
+             WHERE user_id IN ($in_clause)
+               AND status = 'read'
+               AND created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)"
+        );
+    }
 } catch (Exception $e) {}
 
 echo json_encode(['ok' => true, 'generated' => $generated]);

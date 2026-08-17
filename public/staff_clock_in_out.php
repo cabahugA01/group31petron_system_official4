@@ -1,9 +1,10 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
+require_login(); // Enforces authenticated session + no-cache headers
 
-// Check if user is logged in and is staff
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['staff', 'cashier', 'pump_attendant'])) {
+// Role guard: must be a staff-level user
+if (!in_array($_SESSION['user']['role'] ?? $_SESSION['role'] ?? '', ['Staff','staff','cashier','pump_attendant'])) {
     header('Location: login.php');
     exit;
 }

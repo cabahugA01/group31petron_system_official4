@@ -984,7 +984,7 @@ include __DIR__ . '/../partials/header.php';
 
 <?php if ($msg): ?>
 <!-- Floating Top-Right Toast Notification (Clear of Navbar) -->
-<div id="floatingToastMsg" style="position: fixed; top: 82px; right: 24px; z-index: 100002; max-width: 450px; background: #ffffff; border: 1.5px solid <?php echo $is_error ? '#fca5a5' : '#86efac'; ?>; border-left: 5px solid <?php echo $is_error ? '#dc2626' : '#16a34a'; ?>; border-radius: 10px; box-shadow: 0 12px 35px rgba(0,0,0,0.18); padding: 14px 18px; display: flex; align-items: flex-start; gap: 12px; animation: toastSlideIn .3s ease-out;">
+<div id="floatingToastMsg" style="position: fixed; top: 82px; right: 24px; z-index: 100002; max-width: 450px; background: #ffffff; border: 1.5px solid <?php echo $is_error ? '#fca5a5' : '#86efac'; ?>; border-radius: 10px; box-shadow: 0 12px 35px rgba(0,0,0,0.18); padding: 14px 18px; display: flex; align-items: flex-start; gap: 12px; animation: toastSlideIn .3s ease-out;">
     <div style="font-size: 20px; color: <?php echo $is_error ? '#dc2626' : '#16a34a'; ?>; line-height: 1; flex-shrink: 0; margin-top: 2px;">
         <i class="fas <?php echo $is_error ? 'fa-exclamation-circle' : 'fa-check-circle'; ?>"></i>
     </div>
@@ -994,7 +994,6 @@ include __DIR__ . '/../partials/header.php';
         </div>
         <?php echo $msg; ?>
     </div>
-    <button type="button" onclick="document.getElementById('floatingToastMsg').remove()" style="background: transparent; border: none; font-size: 18px; color: #94a3b8; cursor: pointer; line-height: 1; padding: 0 4px;" title="Dismiss">&times;</button>
 </div>
 <script>
 setTimeout(function() {
@@ -1007,11 +1006,6 @@ setTimeout(function() {
     }
 }, 8000);
 </script>
-
-<div class="card" style="padding:14px 18px; margin-bottom:20px; border-radius: 8px; font-weight: 500; background: <?php echo $is_error ? '#fef2f2' : '#f0fdf4'; ?>; color: <?php echo $is_error ? '#991b1b' : '#166534'; ?>; border: 1px solid <?php echo $is_error ? '#fecaca' : '#bbf7d0'; ?>; display: flex; align-items: center; gap: 10px;">
-    <i class="fas <?php echo $is_error ? 'fa-exclamation-circle' : 'fa-check-circle'; ?>" style="font-size: 16px;"></i>
-    <div><?php echo $msg; ?></div>
-</div>
 <?php endif; ?>
 
 <!-- DUAL TAB NAVIGATION -->
@@ -1136,7 +1130,7 @@ setTimeout(function() {
             <span class="modal-title"><i class="fas fa-user-plus"></i> Add New User</span>
             <button class="modal-close" onclick="closeModal('addModal')">&times;</button>
         </div>
-        <form method="post" id="addUserForm" onsubmit="return validateAddForm();" autocomplete="off" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+        <form method="post" id="addUserForm" data-draft-module="user_creation_form" onsubmit="return validateAddForm();" autocomplete="off" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
             <div class="modal-body">
                 <input type="hidden" name="action" value="add_user">
 

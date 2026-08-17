@@ -1,4 +1,8 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) session_start();
+require_once __DIR__ . '/../backend/lib.php';
+require_login();
+
 /**
  * Admin Procurement Reports Router
  * Redirects to the Unified Master Admin Reports page under the Procurement Reports category

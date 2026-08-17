@@ -1,4 +1,8 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) session_start();
+require_once __DIR__ . '/../backend/lib.php';
+require_login();
+
 // admin_purchase_orders_view.php
 // Modernized Admin Purchase Order Management Page
 include __DIR__ . '/../partials/header.php';

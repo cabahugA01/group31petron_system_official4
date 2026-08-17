@@ -93,8 +93,8 @@ function upsert_notif(PDO $pdo, int $user_id, array $data): int {
     }
 
     $ins = $pdo->prepare(
-        "INSERT INTO notifications (user_id, type, title, message, event_type, severity, source_key, redirect_url, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unread')"
+        "INSERT INTO notifications (user_id, recipient_role, type, title, message, event_type, severity, source_key, redirect_url, status)
+         VALUES (?, 'admin', ?, ?, ?, ?, ?, ?, ?, 'unread')"
     );
     $ins->execute([
         $user_id,

@@ -56,12 +56,21 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (Throwable $e) {}
 
+if (!function_exists('time_ago')) {
+function time_ago(string $datetime): string {
+    $diff = max(0, time() - strtotime($datetime));
+    if ($diff < 60)     return 'Just now';
+    if ($diff < 3600)   return floor($diff / 60) . 'm ago';
+    if ($diff < 86400)  return floor($diff / 3600) . 'h ago';
+    if ($diff < 604800) return floor($diff / 86400) . 'd ago';
+    return date('M j, Y', strtotime($datetime));
+}
+}
+
 /**
  * Category breakdown helper for sidebar drawer badges
  */
-/**
- * Category breakdown helper for sidebar drawer badges
- */
+if (!function_exists('get_category_unread_counts')) {
 function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', int $station_id = 0): array {
     $counts = [
         'transactions'  => 0,
@@ -198,6 +207,7 @@ function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', i
 
     return $counts;
 }
+}
 
 // ── Route ─────────────────────────────────────────────────────
 $method = $_SERVER['REQUEST_METHOD'];
@@ -210,16 +220,50 @@ try {
             // ── List notifications ────────────────────────────
             case 'list':
                 $status    = $_GET['status'] ?? 'all';
+                $category  = strtolower(trim($_GET['category'] ?? 'all'));
                 $type_f    = $_GET['type'] ?? 'all';
                 $sev_f     = $_GET['severity'] ?? 'all';
                 $search    = trim($_GET['search'] ?? '');
                 $date_from = trim($_GET['date_from'] ?? '');
                 $date_to   = trim($_GET['date_to'] ?? '');
+                $shift_req = trim($_GET['shift'] ?? 'all');
                 $limit     = min((int)($_GET['limit'] ?? 20), 500);
                 $offset    = (int)($_GET['offset'] ?? 0);
 
                 $where  = 'WHERE n.user_id = ?';
                 $params = [$user_id];
+
+                // Staff Shift Isolation
+                $assigned_shift = trim($me['assigned_shift'] ?? '');
+                if ($role === 'staff') {
+                    if ($shift_req !== 'all' && $shift_req !== '') {
+                        $where   .= ' AND (n.shift_period = ? OR n.shift_period IS NULL OR n.shift_period = "")';
+                        $params[] = $shift_req;
+                    } elseif (!empty($assigned_shift) && $assigned_shift !== 'All Shifts') {
+                        $where   .= ' AND (n.shift_period = ? OR n.shift_period IS NULL OR n.shift_period = "")';
+                        $params[] = $assigned_shift;
+                    }
+                } elseif ($shift_req !== 'all' && $shift_req !== '') {
+                    $where   .= ' AND (n.shift_period = ? OR n.shift_period IS NULL OR n.shift_period = "")';
+                    $params[] = $shift_req;
+                }
+
+                // Category filter mapping
+                if ($category !== 'all' && $category !== '') {
+                    if ($category === 'fuel') {
+                        $where .= " AND (n.event_type IN ('fuel_transaction','fuel_sales_closing','fuel_reading','fuel') OR n.title LIKE '%Fuel%')";
+                    } elseif ($category === 'inventory') {
+                        $where .= " AND (n.event_type IN ('stock_request','purchase_order','inventory','delivery') OR n.title LIKE '%Stock%' OR n.title LIKE '%Inventory%')";
+                    } elseif ($category === 'transactions') {
+                        $where .= " AND (n.event_type IN ('void_request','transaction_adjustment','transaction','job_order') OR n.title LIKE '%Void%' OR n.title LIKE '%Adjustment%' OR n.title LIKE '%Transaction%')";
+                    } elseif ($category === 'approvals') {
+                        $where .= " AND (n.event_type IN ('stock_request','void_request','master_data_request','fuel_transaction') OR n.title LIKE '%Approved%' OR n.title LIKE '%Pending%' OR n.title LIKE '%Review%')";
+                    } elseif ($category === 'master_data') {
+                        $where .= " AND (n.event_type IN ('master_data_request','customer_request') OR n.title LIKE '%Master Data%')";
+                    } elseif ($category === 'system') {
+                        $where .= " AND (n.event_type IN ('system','system_error','security','account_lockout','unauthorized_access') OR n.title LIKE '%System%' OR n.title LIKE '%Security%')";
+                    }
+                }
 
                 if ($status !== 'all' && $status !== '') {
                     $where   .= ' AND n.status = ?';
@@ -250,7 +294,8 @@ try {
 
                 $stmt = $pdo->prepare(
                     "SELECT n.id, n.type, n.title, n.message, n.event_type,
-                            n.severity, n.redirect_url, n.status, n.created_at
+                            n.severity, n.redirect_url, n.reference_type, n.reference_id,
+                            n.shift_period, n.status, n.created_at
                      FROM notifications n
                      {$where}
                      ORDER BY n.created_at DESC
@@ -262,19 +307,34 @@ try {
                 foreach ($rows as &$n) {
                     $n['time_ago'] = time_ago($n['created_at']);
                     $n['is_unread'] = ($n['status'] === 'unread');
+                    if (empty($n['redirect_url']) && !empty($n['reference_type'])) {
+                        $n['redirect_url'] = notification_redirect_url(
+                            $n['reference_type'],
+                            (int)($n['reference_id'] ?? 0),
+                            $role
+                        );
+                    }
                 }
                 unset($n);
 
-                // Unread count
+                // Category breakdown for sidebar badges (shared source)
+                $myStationId = (int)($me['station_id'] ?? 0);
+                $cat_counts  = get_category_unread_counts($pdo, $user_id, $role, $myStationId);
+
+                // Bell count = sum of all visible sidebar navigation badge counts (e.g. Transactions 6 + Inventory 41 = 47)
+                $bell_unread_count = ($cat_counts['transactions'] ?? 0)
+                                   + ($cat_counts['fuel']         ?? 0)
+                                   + ($cat_counts['inventory']    ?? 0)
+                                   + ($cat_counts['customers']    ?? 0)
+                                   + ($cat_counts['prod_pricing'] ?? 0)
+                                   + ($cat_counts['reports']      ?? 0);
+
+                // Notification-table unread count (for stats cards)
                 $cnt_stmt = $pdo->prepare(
                     "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'"
                 );
                 $cnt_stmt->execute([$user_id]);
-                $unread = (int)$cnt_stmt->fetchColumn();
-
-                // Category breakdown for sidebar badges
-                $myStationId = (int)($me['station_id'] ?? 0);
-                $cat_counts  = get_category_unread_counts($pdo, $user_id, $role, $myStationId);
+                $notif_unread = (int)$cnt_stmt->fetchColumn();
 
                 // Overall Stats breakdown for cards
                 $stats_stmt = $pdo->prepare(
@@ -291,14 +351,14 @@ try {
                 echo json_encode([
                     'success'           => true,
                     'notifications'     => $rows,
-                    'unread_count'      => $unread,
-                    'bell_unread_count' => $unread,
+                    'unread_count'      => $bell_unread_count,   // total of all sidebar badges
+                    'bell_unread_count' => $bell_unread_count,   // header bell == sidebar total
                     'total'             => (int)($stats['total'] ?? count($rows)),
                     'stats'             => [
-                        'total'    => (int)($stats['total'] ?? 0),
-                        'unread'   => (int)($stats['unread'] ?? 0),
+                        'total'    => (int)($stats['total']      ?? 0),
+                        'unread'   => (int)($stats['unread']     ?? 0),
                         'read'     => (int)($stats['read_count'] ?? 0),
-                        'archived' => (int)($stats['archived'] ?? 0),
+                        'archived' => (int)($stats['archived']   ?? 0),
                     ],
                     'category_counts'   => $cat_counts,
                 ]);
@@ -424,19 +484,22 @@ try {
                     );
                 }
 
-                // Also fetch actual bell unread count from notifications table
-                $bell_stmt = $pdo->prepare(
-                    "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'"
-                );
-                $bell_stmt->execute([$user_id]);
-                $bell_unread = (int)$bell_stmt->fetchColumn();
-                $cat_counts  = get_category_unread_counts($pdo, $user_id, $role, $myStationId);
+                // Compute category counts (shared source for sidebar + bell)
+                $cat_counts = get_category_unread_counts($pdo, $user_id, $role, $myStationId);
+
+                // Bell count = sum of all visible sidebar navigation badge counts
+                $bell_unread_count = ($cat_counts['transactions'] ?? 0)
+                                   + ($cat_counts['fuel']         ?? 0)
+                                   + ($cat_counts['inventory']    ?? 0)
+                                   + ($cat_counts['customers']    ?? 0)
+                                   + ($cat_counts['prod_pricing'] ?? 0)
+                                   + ($cat_counts['reports']      ?? 0);
 
                 echo json_encode([
                     'success'           => true,
-                    'unread_count'      => $action_count,      // sidebar badge counts
-                    'bell_unread_count' => $bell_unread,       // bell icon badge count
-                    'category_counts'   => $cat_counts,        // sidebar drawer category counts
+                    'unread_count'      => $bell_unread_count,  // total sidebar badges
+                    'bell_unread_count' => $bell_unread_count,  // header bell == sidebar total
+                    'category_counts'   => $cat_counts,         // per-section sidebar badges
                 ]);
                 break;
 
@@ -459,15 +522,19 @@ try {
                     );
                     $stmt->execute([$notif_id, $user_id]);
                 }
-                $cnt = $pdo->prepare(
-                    "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'"
-                );
-                $cnt->execute([$user_id]);
-                $cat_counts = get_category_unread_counts($pdo, $user_id);
+                $myStationId = (int)($me['station_id'] ?? 0);
+                $cat_counts = get_category_unread_counts($pdo, $user_id, $role, $myStationId);
+                $bell_unread_count = ($cat_counts['transactions'] ?? 0)
+                                   + ($cat_counts['fuel']         ?? 0)
+                                   + ($cat_counts['inventory']    ?? 0)
+                                   + ($cat_counts['customers']    ?? 0)
+                                   + ($cat_counts['prod_pricing'] ?? 0)
+                                   + ($cat_counts['reports']      ?? 0);
+
                 echo json_encode([
                     'success'           => true,
-                    'unread_count'      => (int)$cnt->fetchColumn(),
-                    'bell_unread_count' => (int)$cnt->fetchColumn(),
+                    'unread_count'      => $bell_unread_count,
+                    'bell_unread_count' => $bell_unread_count,
                     'category_counts'   => $cat_counts,
                 ]);
                 break;
@@ -484,15 +551,18 @@ try {
                     $stmt->execute([$notif_id, $user_id]);
                 }
                 $myStationId = (int)($me['station_id'] ?? 0);
-                $cnt = $pdo->prepare(
-                    "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'"
-                );
-                $cnt->execute([$user_id]);
                 $cat_counts = get_category_unread_counts($pdo, $user_id, $role, $myStationId);
+                $bell_unread_count = ($cat_counts['transactions'] ?? 0)
+                                   + ($cat_counts['fuel']         ?? 0)
+                                   + ($cat_counts['inventory']    ?? 0)
+                                   + ($cat_counts['customers']    ?? 0)
+                                   + ($cat_counts['prod_pricing'] ?? 0)
+                                   + ($cat_counts['reports']      ?? 0);
+
                 echo json_encode([
                     'success'           => true,
-                    'unread_count'      => (int)$cnt->fetchColumn(),
-                    'bell_unread_count' => (int)$cnt->fetchColumn(),
+                    'unread_count'      => $bell_unread_count,
+                    'bell_unread_count' => $bell_unread_count,
                     'category_counts'   => $cat_counts,
                 ]);
                 break;
@@ -505,16 +575,22 @@ try {
                      WHERE user_id = ? AND status = 'unread'"
                 );
                 $stmt->execute([$user_id]);
+                $myStationId = (int)($me['station_id'] ?? 0);
+                $cat_counts_mar = get_category_unread_counts($pdo, $user_id, $role, $myStationId);
+                $cat_counts_mar['notifications'] = 0; // bell entries all read
+
+                $bell_unread_count = ($cat_counts_mar['transactions'] ?? 0)
+                                   + ($cat_counts_mar['fuel']         ?? 0)
+                                   + ($cat_counts_mar['inventory']    ?? 0)
+                                   + ($cat_counts_mar['customers']    ?? 0)
+                                   + ($cat_counts_mar['prod_pricing'] ?? 0)
+                                   + ($cat_counts_mar['reports']      ?? 0);
+
                 echo json_encode([
                     'success'           => true,
-                    'unread_count'      => 0,
-                    'bell_unread_count' => 0,
-                    'category_counts'   => [
-                        'transactions' => 0,
-                        'fuel'         => 0,
-                        'inventory'    => 0,
-                        'customers'    => 0,
-                    ],
+                    'unread_count'      => $bell_unread_count,
+                    'bell_unread_count' => $bell_unread_count,
+                    'category_counts'   => $cat_counts_mar,
                 ]);
                 break;
 
@@ -532,14 +608,4 @@ try {
     error_log('notifications_api.php error: ' . $e->getMessage());
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Server error: ' . $e->getMessage()]);
-}
-
-// ── Helper ────────────────────────────────────────────────────
-function time_ago(string $datetime): string {
-    $diff = max(0, time() - strtotime($datetime));
-    if ($diff < 60)     return 'Just now';
-    if ($diff < 3600)   return floor($diff / 60) . 'm ago';
-    if ($diff < 86400)  return floor($diff / 3600) . 'h ago';
-    if ($diff < 604800) return floor($diff / 86400) . 'd ago';
-    return date('M j, Y', strtotime($datetime));
 }

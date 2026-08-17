@@ -34,12 +34,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Filter parameters
-$search    = trim($_GET['search'] ?? '');
-$filter_type = trim($_GET['type'] ?? 'all');
-$filter_prio = trim($_GET['priority'] ?? 'all');
-$filter_stat = trim($_GET['status'] ?? 'all');
-$date_from   = trim($_GET['date_from'] ?? '');
-$date_to     = trim($_GET['date_to'] ?? '');
+$search       = trim($_GET['search'] ?? '');
+$category     = strtolower(trim($_GET['category'] ?? 'all'));
+$filter_type  = trim($_GET['type'] ?? 'all');
+$filter_prio  = trim($_GET['priority'] ?? 'all');
+$filter_stat  = trim($_GET['status'] ?? 'all');
+$filter_shift = trim($_GET['shift'] ?? 'all');
+$date_from    = trim($_GET['date_from'] ?? '');
+$date_to      = trim($_GET['date_to'] ?? '');
+
+$assigned_shift = trim($me['assigned_shift'] ?? '');
 
 // Overall Counts
 $counts = ['total' => 0, 'unread' => 0, 'read' => 0, 'archived' => 0];
@@ -66,6 +70,37 @@ try {
 // Query Filter Build
 $where  = ['n.user_id = ?'];
 $params = [$me['id']];
+
+// Staff Shift Isolation
+if ($role === 'staff') {
+    if ($filter_shift !== 'all' && $filter_shift !== '') {
+        $where[]  = '(n.shift_period = ? OR n.shift_period IS NULL OR n.shift_period = "")';
+        $params[] = $filter_shift;
+    } elseif (!empty($assigned_shift) && $assigned_shift !== 'All Shifts') {
+        $where[]  = '(n.shift_period = ? OR n.shift_period IS NULL OR n.shift_period = "")';
+        $params[] = $assigned_shift;
+    }
+} elseif ($filter_shift !== 'all' && $filter_shift !== '') {
+    $where[]  = '(n.shift_period = ? OR n.shift_period IS NULL OR n.shift_period = "")';
+    $params[] = $filter_shift;
+}
+
+// Category filter
+if ($category !== 'all' && $category !== '') {
+    if ($category === 'fuel') {
+        $where[] = "(n.event_type IN ('fuel_transaction','fuel_sales_closing','fuel_reading','fuel') OR n.title LIKE '%Fuel%')";
+    } elseif ($category === 'inventory') {
+        $where[] = "(n.event_type IN ('stock_request','purchase_order','inventory','delivery') OR n.title LIKE '%Stock%' OR n.title LIKE '%Inventory%')";
+    } elseif ($category === 'transactions') {
+        $where[] = "(n.event_type IN ('void_request','transaction_adjustment','transaction','job_order') OR n.title LIKE '%Void%' OR n.title LIKE '%Adjustment%' OR n.title LIKE '%Transaction%')";
+    } elseif ($category === 'approvals') {
+        $where[] = "(n.event_type IN ('stock_request','void_request','master_data_request','fuel_transaction') OR n.title LIKE '%Approved%' OR n.title LIKE '%Pending%' OR n.title LIKE '%Review%')";
+    } elseif ($category === 'master_data') {
+        $where[] = "(n.event_type IN ('master_data_request','customer_request') OR n.title LIKE '%Master Data%')";
+    } elseif ($category === 'system') {
+        $where[] = "(n.event_type IN ('system','system_error','security','account_lockout','unauthorized_access') OR n.title LIKE '%System%' OR n.title LIKE '%Security%')";
+    }
+}
 
 if ($filter_stat !== 'all' && $filter_stat !== '') {
     $where[]  = 'n.status = ?';
@@ -121,6 +156,17 @@ try {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($notifications as &$nr) {
+        if (empty($nr['redirect_url']) && !empty($nr['reference_type'])) {
+            $nr['redirect_url'] = notification_redirect_url(
+                $nr['reference_type'],
+                (int)($nr['reference_id'] ?? 0),
+                $role
+            );
+        }
+    }
+    unset($nr);
 } catch (Exception $e) {
     $notifications = [];
 }
@@ -556,9 +602,67 @@ include __DIR__ . '/../partials/header.php';
         </a>
     </div>
 
+    <!-- Workflow & Category Navigation Tabs -->
+    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px;">
+        <?php
+        $curr_cat = $category ?: 'all';
+        $curr_stat = $filter_stat ?: 'all';
+        $curr_shift = $filter_shift ?: 'all';
+
+        $tabs = [
+            ['id' => 'all',          'label' => 'All',          'icon' => 'fa-layer-group', 'url' => 'notifications.php?category=all&status=all'],
+            ['id' => 'unread',       'label' => 'Unread',       'icon' => 'fa-bell',        'url' => 'notifications.php?status=unread'],
+            ['id' => 'read',         'label' => 'Read',         'icon' => 'fa-check-circle','url' => 'notifications.php?status=read'],
+            ['id' => 'approvals',    'label' => 'Approvals',    'icon' => 'fa-stamp',       'url' => 'notifications.php?category=approvals'],
+            ['id' => 'inventory',    'label' => 'Inventory',    'icon' => 'fa-boxes',       'url' => 'notifications.php?category=inventory'],
+            ['id' => 'transactions', 'label' => 'Transactions', 'icon' => 'fa-receipt',     'url' => 'notifications.php?category=transactions'],
+            ['id' => 'fuel',         'label' => 'Fuel',         'icon' => 'fa-gas-pump',    'url' => 'notifications.php?category=fuel'],
+            ['id' => 'master_data',  'label' => 'Master Data',  'icon' => 'fa-database',    'url' => 'notifications.php?category=master_data'],
+            ['id' => 'system',       'label' => 'System',       'icon' => 'fa-server',      'url' => 'notifications.php?category=system'],
+        ];
+
+        // Staff Shift Tabs
+        if ($role === 'staff') {
+            if ($assigned_shift === 'Shift 1' || $assigned_shift === 'All Shifts' || empty($assigned_shift)) {
+                $tabs[] = ['id' => 'shift1', 'label' => 'Shift 1 Only', 'icon' => 'fa-clock', 'url' => 'notifications.php?shift=' . urlencode('Shift 1')];
+            }
+            if ($assigned_shift === 'Shift 2' || $assigned_shift === 'All Shifts' || empty($assigned_shift)) {
+                $tabs[] = ['id' => 'shift2', 'label' => 'Shift 2 Only', 'icon' => 'fa-moon',  'url' => 'notifications.php?shift=' . urlencode('Shift 2')];
+            }
+        } elseif (in_array($role, ['manager', 'admin', 'superadmin'])) {
+            $tabs[] = ['id' => 'shift1', 'label' => 'Shift 1', 'icon' => 'fa-clock', 'url' => 'notifications.php?shift=' . urlencode('Shift 1')];
+            $tabs[] = ['id' => 'shift2', 'label' => 'Shift 2', 'icon' => 'fa-moon',  'url' => 'notifications.php?shift=' . urlencode('Shift 2')];
+        }
+
+        foreach ($tabs as $t) {
+            $is_active = false;
+            if ($t['id'] === 'all' && $curr_cat === 'all' && $curr_stat === 'all' && $curr_shift === 'all') $is_active = true;
+            elseif ($t['id'] === 'unread' && $curr_stat === 'unread') $is_active = true;
+            elseif ($t['id'] === 'read' && $curr_stat === 'read') $is_active = true;
+            elseif ($t['id'] === 'shift1' && $curr_shift === 'Shift 1') $is_active = true;
+            elseif ($t['id'] === 'shift2' && $curr_shift === 'Shift 2') $is_active = true;
+            elseif ($curr_cat === $t['id']) $is_active = true;
+
+            $active_style = $is_active 
+                ? 'background:#002F6C; color:#fff; font-weight:700; border-color:#002F6C;' 
+                : 'background:#fff; color:#475569; font-weight:600; border-color:#cbd5e1;';
+
+            echo '<a href="' . htmlspecialchars($t['url']) . '" style="padding: 8px 16px; border-radius: 20px; font-size: 13px; text-decoration: none !important; border: 1px solid #cbd5e1; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s ease; ' . $active_style . '">';
+            echo '<i class="fas ' . $t['icon'] . '"></i> ' . htmlspecialchars($t['label']);
+            echo '</a>';
+        }
+        ?>
+    </div>
+
     <!-- Filters Bar -->
     <div class="notif-filter-box">
         <form method="GET" class="notif-filter-form">
+            <?php if ($category !== 'all'): ?>
+                <input type="hidden" name="category" value="<?= htmlspecialchars($category) ?>">
+            <?php endif; ?>
+            <?php if ($filter_shift !== 'all'): ?>
+                <input type="hidden" name="shift" value="<?= htmlspecialchars($filter_shift) ?>">
+            <?php endif; ?>
             
             <div class="filter-group">
                 <label><i class="fas fa-search"></i> Search</label>

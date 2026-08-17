@@ -48,6 +48,7 @@ $generated = 0;
  * Insert a notification for the current user.
  * source_key prevents duplicates — same event is never inserted twice.
  */
+if (!function_exists('push_notif')) {
 function push_notif(
     PDO    $pdo,
     int    $user_id,
@@ -75,6 +76,7 @@ function push_notif(
         $user_id, $source_key
     ]);
     return $stmt->rowCount();
+}
 }
 
 // ════════════════════════════════════════════════════════════
@@ -212,7 +214,7 @@ try {
              WHERE si.station_id = ?
                AND si.stock_level >= 0
                AND si.stock_level <= COALESCE(si.reorder_level, ip.min_stock, 10)
-               AND LOWER(ip.category) NOT IN ('fuel', 'fuels')
+               AND LOWER(COALESCE(ip.category, '')) NOT IN ('fuel', 'fuels')
              ORDER BY si.stock_level ASC LIMIT 15"
         );
         $stmt->execute([$sw]);
@@ -223,14 +225,14 @@ try {
                     COALESCE(min_stock, 10) AS reorder_level
              FROM inventory_products
              WHERE COALESCE(stock_quantity, stock, 0) <= COALESCE(min_stock, 10)
-               AND LOWER(category) NOT IN ('fuel', 'fuels')
+               AND LOWER(COALESCE(category, '')) NOT IN ('fuel', 'fuels')
              ORDER BY stock_level ASC LIMIT 15"
         )->fetchAll(PDO::FETCH_ASSOC);
     }
 
     foreach ($rows as $r) {
         $stock = (int)($r['stock_level'] ?? 0);
-        $code  = $r['sku'] ?? ('ID-' . $r['id']);
+        $code  = !empty(trim((string)($r['sku'] ?? ''))) ? trim((string)$r['sku']) : ('ID-' . $r['id']);
         $sev   = $stock <= 0 ? 'critical' : ($stock <= 5 ? 'high' : 'medium');
         $type  = $stock <= 0 ? 'error' : 'warning';
         $label = $stock <= 0 ? 'Out of stock' : "Low stock ({$stock} remaining)";
@@ -368,8 +370,6 @@ try {
 } catch (Exception $e) {}
 
 // ── Fix any stale notifications with wrong redirect URLs ─────
-// Purge unread notifications whose redirect_url points to old/incorrect pages
-// so they are regenerated fresh with correct URLs on next load.
 try {
     $bad_urls = [
         'staff_inventory.php',                         // old — now staff_inventory_merchandise.php

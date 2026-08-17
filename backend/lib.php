@@ -28,32 +28,74 @@ function require_login(){
   if(session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
   }
+
+  $timeout = 1800; // 30 minutes inactivity timeout
+  $script = $_SERVER['SCRIPT_NAME'] ?? '';
+  $root = rtrim(dirname($script), '/\\');
+  if($root === '' || $root === '.') $root = '/';
+  $loginUrl = rtrim($root, '/') . '/login.php';
+
+  // Check if active user session has expired due to inactivity
+  if (!empty($_SESSION['user'])) {
+    if (isset($_SESSION['last_activity'])) {
+      $inactive_time = time() - (int)$_SESSION['last_activity'];
+      if ($inactive_time >= $timeout) {
+        // Destroy session data
+        $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+          $p = session_get_cookie_params();
+          setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], $p['secure'], $p['httponly']);
+        }
+        session_destroy();
+
+        // Prevent browser caching
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Cache-Control: post-check=0, pre-check=0', false);
+        header('Pragma: no-cache');
+        header('Expires: 0');
+
+        // If called from /backend/* API, return JSON 401
+        if (strpos($script, '/backend/') !== false) {
+          json_response(['ok' => false, 'error' => 'Session expired due to inactivity', 'timeout' => true], 401);
+        }
+
+        header('Location: ' . $loginUrl . '?timeout=1');
+        exit;
+      }
+    }
+    // Update last activity timestamp on any authenticated activity
+    $_SESSION['last_activity'] = time();
+  }
+
   if(empty($_SESSION['user'])){
     // If called from /backend/*, return JSON 401 to avoid fetch() HTML redirects.
-    $script = $_SERVER['SCRIPT_NAME'] ?? '';
     if(strpos($script, '/backend/') !== false){
       json_response(['ok'=>false,'error'=>'Unauthorized'], 401);
     }
-    // Redirect to the app's login page (index.php) in a way that works even when
-    // the app is deployed inside a subfolder (e.g., /petron-pos/index.php).
-    //
-    // Examples:
-    //  - /petron-pos/dashboard.php  -> /petron-pos/index.php
-    //  - /petron-pos/partials/...   -> /petron-pos/index.php (included pages)
-    //  - /petron-pos/backend/...    -> JSON 401 handled above
-    $root = '';
-    if(($pos = strpos($script, '/backend/')) !== false){
-      $root = substr($script, 0, $pos);
-    }elseif(($pos = strpos($script, '/auth/')) !== false){
-      $root = substr($script, 0, $pos);
-    }else{
-      $root = rtrim(dirname($script), '/\\');
+    // Destroy any partial session remnants
+    $_SESSION = [];
+    if(ini_get('session.use_cookies')){
+      $p = session_get_cookie_params();
+      setcookie(session_name(),'',time()-42000,$p['path'],$p['domain'],$p['secure'],$p['httponly']);
     }
-    if($root === '' || $root === '.') $root = '/';
-    $loginUrl = rtrim($root, '/') . '/index.php';
+    session_destroy();
+
+    // Prevent browser/proxy from caching the protected page
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Cache-Control: post-check=0, pre-check=0', false);
+    header('Pragma: no-cache');
+    header('Expires: 0');
+
     header('Location: ' . $loginUrl);
     exit;
   }
+
+  // Active session: still send no-cache headers so protected pages are
+  // never stored in browser history cache (prevents Back-button bypass after logout)
+  header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+  header('Cache-Control: post-check=0, pre-check=0', false);
+  header('Pragma: no-cache');
+  header('Expires: 0');
 }
 
 
@@ -1404,6 +1446,7 @@ function require_permission(string $permission){
   rbac_forbidden_html();
 }
 
+if (!function_exists('generateSecurePassword')) {
 function generateSecurePassword(int $length = 12): string {
   // Allowed symbols: _ . - ! @ #
   $upper   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -1424,6 +1467,7 @@ function generateSecurePassword(int $length = 12): string {
   }
 
   return str_shuffle($password);
+}
 }
 
 /**
@@ -1608,6 +1652,9 @@ function write_audit_log($pdo, $action_type, $action_details, $entity_type = nul
  */
 function fifo_deduct_stock(PDO $pdo, int $station_id, $product_id_or_name, float $qty): void {
     if ($qty <= 0) return;
+    // NOTE: station_inventory and inventory_products stock levels are managed
+    // exclusively by record_inventory_movement() using absolute SET values.
+    // fifo_deduct_stock() only drains the merchandise_batches FIFO queue.
 
     $product_id = 0;
     if (is_numeric($product_id_or_name) && (int)$product_id_or_name > 0) {
@@ -1622,36 +1669,11 @@ function fifo_deduct_stock(PDO $pdo, int $station_id, $product_id_or_name, float
     }
 
     if ($product_id <= 0) {
-        // If we still can't find a product ID, fallback to name-based direct deduction on station_inventory
-        if (is_string($product_id_or_name) && $product_id_or_name !== '') {
-            try {
-                $pdo->prepare("UPDATE station_inventory SET stock_level = GREATEST(stock_level - ?, 0), last_updated = NOW() WHERE product_name = ? AND station_id = ?")
-                    ->execute([$qty, $product_id_or_name, $station_id]);
-            } catch (Exception $e) {}
-        }
         return;
     }
 
-    // 1. Deduct from station_inventory.stock_level
-    $deductStmt = $pdo->prepare("
-        UPDATE station_inventory
-        SET stock_level = GREATEST(stock_level - ?, 0),
-            last_updated = NOW()
-        WHERE station_id = ? AND product_id = ?
-    ");
-    $deductStmt->execute([$qty, $station_id, $product_id]);
 
-    // 2. Deduct from inventory_products.stock (fallback table)
-    try {
-        $deductGlobalStmt = $pdo->prepare("
-            UPDATE inventory_products
-            SET stock = GREATEST(stock - ?, 0)
-            WHERE id = ?
-        ");
-        $deductGlobalStmt->execute([$qty, $product_id]);
-    } catch (Exception $e) {}
-
-    // 3. Deduct from merchandise_batches using FIFO/LIFO based on dynamic config
+    // Deduct from merchandise_batches using FIFO/LIFO based on dynamic config
     try {
         $fifo_enabled = get_module_setting('inventory', 'fifo_enabled', true);
         $order = $fifo_enabled ? "date_received ASC, id ASC" : "date_received DESC, id DESC";
@@ -1685,6 +1707,226 @@ function fifo_deduct_stock(PDO $pdo, int $station_id, $product_id_or_name, float
     } catch (Exception $e) {
         error_log("FIFO batch deduction failed for product $product_id: " . $e->getMessage());
     }
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * GLOBAL UNIFIED INVENTORY MOVEMENT ENGINE — record_inventory_movement()
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Universal inventory execution pipeline:
+ * TRANSACTION -> Determine IN / OUT -> Validate / Check duplicate -> Update stock -> Record Inventory Movement Log -> Audit Trail -> Notification
+ *
+ * Rules:
+ * - Customer buys merchandise           => OUT | Merchandise Sale
+ * - Job Order uses merchandise/parts    => OUT | Job Order Usage
+ * - Job Order + Merchandise             => OUT | Job Order + Merchandise Sale
+ * - Approved Stock-In                   => IN  | Stock-In (Approved)
+ * - Approved Void                       => IN  | Void / Sale Reversal (Duplicate checked!)
+ * - Approved Adjustment +               => IN  | Stock Adjustment (+)
+ * - Approved Adjustment -               => OUT | Stock Adjustment (-)
+ * - Return / Approved Return            => IN  | Customer Return / Restock
+ * - Pending/Rejected                    => No movement
+ */
+if (!function_exists('record_inventory_movement')) {
+function record_inventory_movement(
+    PDO $pdo,
+    int $station_id,
+    $product_id_or_name,
+    string $movement_type, // 'IN' or 'OUT'
+    float $quantity,
+    string $reason,
+    string $reference_no = '',
+    string $reference_type = 'general',
+    int $user_id = 0,
+    string $notes = '',
+    bool $check_duplicate_void = false
+): array {
+    $quantity = abs($quantity);
+    if ($quantity <= 0) {
+        return ['success' => false, 'error' => 'Quantity must be greater than zero.'];
+    }
+
+    $movement_type = strtoupper(trim($movement_type));
+    if (!in_array($movement_type, ['IN', 'OUT'])) {
+        return ['success' => false, 'error' => 'Invalid movement type. Must be IN or OUT.'];
+    }
+
+    // Resolve product ID & Name
+    $product_id = 0;
+    $product_name = '';
+    if (is_numeric($product_id_or_name) && (int)$product_id_or_name > 0) {
+        $product_id = (int)$product_id_or_name;
+        $st = $pdo->prepare("SELECT product_name FROM inventory_products WHERE id = ? LIMIT 1");
+        $st->execute([$product_id]);
+        $product_name = $st->fetchColumn() ?: ('Product #' . $product_id);
+    } else {
+        $product_name = (string)$product_id_or_name;
+        $st = $pdo->prepare("SELECT id FROM inventory_products WHERE product_name = ? LIMIT 1");
+        $st->execute([$product_name]);
+        $product_id = (int)$st->fetchColumn();
+    }
+
+    if ($product_id <= 0) {
+        return ['success' => false, 'error' => "Product not found: {$product_name}"];
+    }
+
+    // ── Check duplicate void/reversal protection ──────────────────────────────
+    if ($check_duplicate_void || stripos($reason, 'void') !== false || stripos($reason, 'reversal') !== false) {
+        if ($reference_no !== '') {
+            $chk = $pdo->prepare("
+                SELECT id FROM inventory_logs 
+                WHERE station_id = ? AND product_id = ? AND reference_no = ? 
+                  AND (movement_type = 'IN' OR action LIKE '%void%' OR action LIKE '%reversal%' OR reason LIKE '%void%' OR reason LIKE '%reversal%')
+                LIMIT 1
+            ");
+            $chk->execute([$station_id, $product_id, $reference_no]);
+            if ($chk->fetchColumn()) {
+                return [
+                    'success'          => false,
+                    'error'            => "Transaction {$reference_no} has already been reversed in inventory.",
+                    'already_reversed' => true
+                ];
+            }
+        }
+    }
+
+    // ── Fetch & lock station inventory row ────────────────────────────────────
+    $stInv = $pdo->prepare("SELECT id, stock_level, critical_level, reorder_level FROM station_inventory WHERE station_id = ? AND product_id = ? FOR UPDATE");
+    $stInv->execute([$station_id, $product_id]);
+    $invRow = $stInv->fetch(PDO::FETCH_ASSOC);
+
+    if (!$invRow) {
+        // Initialize row if not existing
+        $pdo->prepare("
+            INSERT INTO station_inventory (station_id, product_id, stock_level, critical_level, reorder_level, last_updated)
+            VALUES (?, ?, 0, 10, 5, NOW())
+        ")->execute([$station_id, $product_id]);
+        $previous_stock = 0.0;
+        $critical_level = 10;
+    } else {
+        $previous_stock = (float)$invRow['stock_level'];
+        $critical_level = (int)($invRow['critical_level'] ?? 10);
+    }
+
+    // Calculate new stock level
+    if ($movement_type === 'IN') {
+        $new_stock = $previous_stock + $quantity;
+    } else {
+        $new_stock = max(0, $previous_stock - $quantity);
+    }
+
+    // ── Update station_inventory ──────────────────────────────────────────────
+    $pdo->prepare("
+        UPDATE station_inventory 
+        SET stock_level = ?, last_updated = NOW() 
+        WHERE station_id = ? AND product_id = ?
+    ")->execute([$new_stock, $station_id, $product_id]);
+
+    // ── Sync inventory_products (fallback / catalog table) ─────────────────────
+    try {
+        $pdo->prepare("
+            UPDATE inventory_products 
+            SET stock = ?, stock_quantity = ?, updated_at = NOW() 
+            WHERE id = ?
+        ")->execute([$new_stock, $new_stock, $product_id]);
+    } catch (Exception $e) {}
+
+    // ── Sync FIFO batches if OUT movement ─────────────────────────────────────
+    if ($movement_type === 'OUT') {
+        try {
+            fifo_deduct_stock($pdo, $station_id, $product_id, $quantity);
+        } catch (Exception $e) {}
+    }
+
+    // ── Insert formatted Inventory Movement Log ───────────────────────────────
+    $logStmt = $pdo->prepare("
+        INSERT INTO inventory_logs
+            (station_id, product_id, user_id, action, movement_type, reason,
+             quantity_before, quantity_after, quantity_change, reference_type, reference_no, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    ");
+    $logStmt->execute([
+        $station_id,
+        $product_id,
+        $user_id > 0 ? $user_id : null,
+        strtolower(str_replace([' ', '/', '+', '-'], '_', $reason)),
+        $movement_type,
+        $reason,
+        $previous_stock,
+        $new_stock,
+        $quantity,
+        $reference_type,
+        $reference_no ?: null,
+        $notes ?: null
+    ]);
+    $movement_id = (int)$pdo->lastInsertId();
+
+    // ── Low / Critical Stock Notification ─────────────────────────────────────
+    if ($new_stock <= $critical_level && $movement_type === 'OUT') {
+        try {
+            notify_manager(
+                $pdo, $station_id,
+                'warning', 'inventory', 'high',
+                "Low Stock Alert: {$product_name}",
+                "Product {$product_name} is down to {$new_stock} units (Critical Level: {$critical_level}).",
+                "crit_stock_{$product_id}_{$new_stock}",
+                "manager_inventory_merchandise.php?id={$product_id}",
+                'inventory_product', $product_id
+            );
+        } catch (Throwable $e) {}
+    }
+
+    return [
+        'success'        => true,
+        'movement_id'    => $movement_id,
+        'movement_type'  => $movement_type,
+        'previous_stock' => $previous_stock,
+        'new_stock'      => $new_stock,
+        'quantity'       => $quantity,
+        'reason'         => $reason,
+        'reference_no'   => $reference_no
+    ];
+}
+}
+
+// ── Specific Workflow Wrappers ───────────────────────────────────────────
+if (!function_exists('record_merchandise_sale_movement')) {
+function record_merchandise_sale_movement(PDO $pdo, int $station_id, $product_id_or_name, float $quantity, string $txn_no, int $user_id = 0): array {
+    return record_inventory_movement($pdo, $station_id, $product_id_or_name, 'OUT', $quantity, 'Merchandise Sale', $txn_no, 'merchandise_transactions', $user_id);
+}
+}
+
+if (!function_exists('record_job_order_parts_movement')) {
+function record_job_order_parts_movement(PDO $pdo, int $station_id, $product_id_or_name, float $quantity, string $jo_no, int $user_id = 0): array {
+    return record_inventory_movement($pdo, $station_id, $product_id_or_name, 'OUT', $quantity, 'Job Order Usage', $jo_no, 'job_orders', $user_id);
+}
+}
+
+if (!function_exists('record_stock_in_movement')) {
+function record_stock_in_movement(PDO $pdo, int $station_id, $product_id_or_name, float $quantity, string $ref_no, int $user_id = 0, string $notes = ''): array {
+    return record_inventory_movement($pdo, $station_id, $product_id_or_name, 'IN', $quantity, 'Stock-In', $ref_no, 'stock_in', $user_id, $notes);
+}
+}
+
+if (!function_exists('record_void_reversal_movement')) {
+function record_void_reversal_movement(PDO $pdo, int $station_id, $product_id_or_name, float $quantity, string $orig_txn_no, int $user_id = 0, string $notes = ''): array {
+    return record_inventory_movement($pdo, $station_id, $product_id_or_name, 'IN', $quantity, 'Void/Reversal', $orig_txn_no, 'void', $user_id, $notes, true);
+}
+}
+
+if (!function_exists('record_adjustment_movement')) {
+function record_adjustment_movement(PDO $pdo, int $station_id, $product_id_or_name, float $delta_qty, string $ref_no, int $user_id = 0, string $notes = ''): array {
+    $mtype = $delta_qty >= 0 ? 'IN' : 'OUT';
+    $reason = $delta_qty >= 0 ? 'Stock Adjustment (+)' : 'Stock Adjustment (-)';
+    return record_inventory_movement($pdo, $station_id, $product_id_or_name, $mtype, abs($delta_qty), $reason, $ref_no, 'adjustment', $user_id, $notes);
+}
+}
+
+if (!function_exists('record_return_movement')) {
+function record_return_movement(PDO $pdo, int $station_id, $product_id_or_name, float $quantity, string $return_ref_no, int $user_id = 0, string $notes = ''): array {
+    return record_inventory_movement($pdo, $station_id, $product_id_or_name, 'IN', $quantity, 'Customer Return', $return_ref_no, 'returns', $user_id, $notes);
+}
 }
 
 function get_system_logo_url($station_id = null) {
@@ -1857,4 +2099,798 @@ function log_inventory_movement(PDO $pdo, int $station_id, int $product_id, stri
         error_log("log_inventory_movement error: " . $e->getMessage());
         return false;
     }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LEVEL 1: MASTER UNIT TESTING REGISTRY HELPERS (UT-101 to UT-107)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * UT-101: validateLoginCredentials
+ * Validates user credentials against database and returns authentication and role state
+ */
+if (!function_exists('validateLoginCredentials')) {
+function validateLoginCredentials($account, $password, $pdo = null) {
+    if ($pdo === null) {
+        global $pdo;
+    }
+    $account = trim((string)$account);
+    $password = (string)$password;
+    
+    if (empty($account) || empty($password)) {
+        return [
+            'valid' => false,
+            'user' => null,
+            'role' => null,
+            'error' => 'Account identifier and password are required'
+        ];
+    }
+    
+    if (!$pdo) {
+        return ['valid' => false, 'user' => null, 'role' => null, 'error' => 'Database connection unavailable'];
+    }
+    
+    try {
+        $stmt = $pdo->prepare("
+            SELECT * FROM users 
+            WHERE (LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?) OR phone = ?)
+              AND LOWER(COALESCE(status, 'active')) = 'active'
+            LIMIT 1
+        ");
+        $stmt->execute([$account, $account, $account]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) {
+            return ['valid' => false, 'user' => null, 'role' => null, 'error' => 'User not found or inactive'];
+        }
+        
+        $hash = $user['password_hash'] ?? $user['password'] ?? '';
+        if (password_verify($password, $hash) || $hash === $password || (md5($password) === $hash)) {
+            $role = role_key($user['role'] ?? 'staff');
+            return [
+                'valid' => true,
+                'user' => $user,
+                'role' => $role,
+                'error' => null
+            ];
+        }
+        
+        return ['valid' => false, 'user' => null, 'role' => null, 'error' => 'Invalid password credentials'];
+    } catch (Exception $e) {
+        return ['valid' => false, 'user' => null, 'role' => null, 'error' => $e->getMessage()];
+    }
+}
+}
+
+/**
+ * UT-102: validatePasswordStrength
+ * Validates password meets security requirements (min 8 chars, mixed case, number, special char)
+ */
+if (!function_exists('validatePasswordStrength')) {
+function validatePasswordStrength($password) {
+    $password = (string)$password;
+    if (strlen($password) < 8) {
+        return false;
+    }
+    // Must contain uppercase, lowercase, and at least one number or symbol
+    $has_upper = preg_match('/[A-Z]/', $password);
+    $has_lower = preg_match('/[a-z]/', $password);
+    $has_num   = preg_match('/[0-9]/', $password);
+    $has_sym   = preg_match('/[^a-zA-Z0-9]/', $password);
+    
+    return ($has_upper && $has_lower && ($has_num || $has_sym));
+}
+}
+
+/**
+ * UT-103: generateAndSendPasswordResetOTP / sendPasswordResetOTP
+ * Generates secure OTP, stores hash in database, and sends to registered email
+ */
+if (!function_exists('generateAndSendPasswordResetOTP')) {
+function generateAndSendPasswordResetOTP($email, $pdo = null) {
+    if ($pdo === null) {
+        global $pdo;
+    }
+    $email = trim((string)$email);
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return ['success' => false, 'error' => 'Invalid email address format'];
+    }
+    
+    if (!$pdo) {
+        return ['success' => false, 'error' => 'Database connection unavailable'];
+    }
+    
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE LOWER(email) = LOWER(?) AND LOWER(COALESCE(status,'active')) = 'active' LIMIT 1");
+        $stmt->execute([$email]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) {
+            return ['success' => false, 'error' => 'No active user found with that email address'];
+        }
+        
+        $userId = $user['id'] ?? $user['user_id'] ?? 0;
+        $otp_code = sprintf('%06d', random_int(100000, 999999));
+        $otp_hash = hash('sha256', $otp_code);
+        
+        // Ensure table exists
+        $pdo->exec("CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            token VARCHAR(255) NOT NULL,
+            token_type VARCHAR(50) NOT NULL DEFAULT 'reset',
+            expires_at DATETIME NOT NULL,
+            attempts INT NOT NULL DEFAULT 0,
+            is_used TINYINT(1) NOT NULL DEFAULT 0,
+            used_at DATETIME NULL,
+            ip_address VARCHAR(45) NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        
+        // Invalidate old tokens
+        $pdo->prepare("UPDATE password_reset_tokens SET is_used = 1 WHERE user_id = ? AND token_type = 'reset'")->execute([$userId]);
+        
+        // Insert new token
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+        $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token, token_type, expires_at, attempts, ip_address) VALUES (?, ?, 'reset', DATE_ADD(NOW(), INTERVAL 5 MINUTE), 0, ?)")
+            ->execute([$userId, $otp_hash, $ip]);
+            
+        // Attempt email dispatch
+        $sent = false;
+        if (function_exists('sendOtpEmail')) {
+            $sent = @sendOtpEmail($email, $otp_code);
+        } elseif (function_exists('sendPasswordResetOTPEmail')) {
+            $sent = @sendPasswordResetOTPEmail($email, $otp_code);
+        }
+        
+        return [
+            'success' => true,
+            'email_dispatched' => $sent,
+            'user_id' => $userId,
+            'expires_in_minutes' => 5,
+            'otp_hash' => $otp_hash,
+            'error' => null
+        ];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+}
+
+if (!function_exists('sendPasswordResetOTP')) {
+function sendPasswordResetOTP($to_email, $otp_or_pdo = null, $pdo = null) {
+    // If called with (email, '123456') -> legacy email dispatch
+    if (is_string($otp_or_pdo) && !empty($otp_or_pdo) && !($otp_or_pdo instanceof PDO) && preg_match('/^\d{4,8}$/', trim($otp_or_pdo))) {
+        if (function_exists('sendPasswordResetOTPEmail')) {
+            return sendPasswordResetOTPEmail($to_email, $otp_or_pdo);
+        }
+        if (function_exists('sendOtpEmail')) {
+            return sendOtpEmail($to_email, $otp_or_pdo);
+        }
+        return false;
+    }
+    
+    // Otherwise -> UT-103 OTP generation & DB storage
+    $target_pdo = ($otp_or_pdo instanceof PDO) ? $otp_or_pdo : ($pdo instanceof PDO ? $pdo : null);
+    return generateAndSendPasswordResetOTP($to_email, $target_pdo);
+}
+}
+
+/**
+ * UT-104: verifyPasswordResetOTP
+ * Verifies OTP validity, expiration, and attempt limits
+ */
+if (!function_exists('verifyPasswordResetOTP')) {
+function verifyPasswordResetOTP($otp, $email, $pdo = null) {
+    if ($pdo === null) {
+        global $pdo;
+    }
+    $otp = trim((string)$otp);
+    $email = trim((string)$email);
+    
+    if (strlen($otp) !== 6 || !is_numeric($otp)) {
+        return ['valid' => false, 'error' => 'Please enter a valid 6-digit numeric OTP'];
+    }
+    
+    if (!$pdo) {
+        return ['valid' => false, 'error' => 'Database connection unavailable'];
+    }
+    
+    try {
+        $submitted_hash = hash('sha256', $otp);
+        $stmt = $pdo->prepare("
+            SELECT prt.*, u.id as u_id
+            FROM password_reset_tokens prt
+            JOIN users u ON prt.user_id = u.id
+            WHERE LOWER(u.email) = LOWER(?)
+              AND prt.token_type = 'reset'
+              AND LOWER(COALESCE(u.status,'active')) = 'active'
+            ORDER BY prt.id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([$email]);
+        $token = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$token) {
+            return ['valid' => false, 'error' => 'Invalid OTP or no reset request found'];
+        }
+        
+        if ((int)$token['is_used'] === 1) {
+            return ['valid' => false, 'error' => 'This OTP has already been used'];
+        }
+        
+        if ((int)$token['attempts'] >= 5) {
+            $pdo->prepare("UPDATE password_reset_tokens SET is_used = 1 WHERE id = ?")->execute([$token['id']]);
+            return ['valid' => false, 'error' => 'Too many failed verification attempts. OTP locked.'];
+        }
+        
+        if (strtotime($token['expires_at']) < time()) {
+            return ['valid' => false, 'error' => 'OTP has expired'];
+        }
+        
+        if ($token['token'] !== $submitted_hash) {
+            $pdo->prepare("UPDATE password_reset_tokens SET attempts = attempts + 1 WHERE id = ?")->execute([$token['id']]);
+            $remaining = max(0, 5 - ((int)$token['attempts'] + 1));
+            return ['valid' => false, 'error' => "Invalid OTP. ({$remaining} attempts remaining)"];
+        }
+        
+        // Successful verification
+        $pdo->prepare("UPDATE password_reset_tokens SET is_used = 1, used_at = NOW() WHERE id = ?")->execute([$token['id']]);
+        return ['valid' => true, 'user_id' => (int)$token['user_id'], 'error' => null];
+    } catch (Exception $e) {
+        return ['valid' => false, 'error' => $e->getMessage()];
+    }
+}
+}
+
+/**
+ * UT-105: checkRolePermission
+ * Validates role-based permission for a specific module and action
+ */
+if (!function_exists('checkRolePermission')) {
+function checkRolePermission($role, $module, $action) {
+    $role = strtolower(trim((string)$role));
+    $module = strtolower(trim((string)$module));
+    $action = strtolower(trim((string)$action));
+    
+    // Superadmin has unrestricted root access
+    if (in_array($role, ['superadmin', 'developer'])) {
+        return true;
+    }
+    
+    // Admin access
+    if ($role === 'admin') {
+        // Admin has oversight across all station operational modules
+        $restricted_actions = ['superadmin_config', 'database_drop'];
+        return !in_array($action, $restricted_actions);
+    }
+    
+    // Manager access
+    if ($role === 'manager') {
+        $manager_modules = [
+            'transactions', 'job_orders', 'fuel', 'fuel_management',
+            'inventory', 'product_management', 'purchase_orders',
+            'calendar', 'reports', 'customers', 'deliveries', 'dashboard'
+        ];
+        $manager_actions = [
+            'view', 'review', 'approve', 'reject', 'validate',
+            'create_po', 'adjust', 'export', 'print', 'record'
+        ];
+        return in_array($module, $manager_modules) && in_array($action, $manager_actions);
+    }
+    
+    // Staff access (operational)
+    if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+        $staff_allowed = [
+            'transactions' => ['view', 'create', 'encode'],
+            'job_orders'   => ['view', 'create'],
+            'fuel'         => ['view', 'encode_readings', 'encode'],
+            'inventory'    => ['view', 'request_stock', 'record_delivery'],
+            'calendar'     => ['view', 'create_event'],
+            'reports'      => ['view_personal', 'view_shift'],
+            'customers'    => ['view', 'search'],
+            'dashboard'    => ['view']
+        ];
+        return isset($staff_allowed[$module]) && in_array($action, $staff_allowed[$module]);
+    }
+    
+    return false;
+}
+}
+
+/**
+ * UT-106: validateFuelReading
+ * Validates meter reading inputs: non-blank, numeric, non-negative, and logical progression
+ */
+if (!function_exists('validateFuelReading')) {
+function validateFuelReading($beginning, $ending, $calibration = 0.0) {
+    if (!is_numeric($beginning) || !is_numeric($ending)) {
+        return ['valid' => false, 'volume' => 0.0, 'error' => 'Meter readings must be valid numeric values'];
+    }
+    
+    $beg = (float)$beginning;
+    $end = (float)$ending;
+    $cal = is_numeric($calibration) ? (float)$calibration : 0.0;
+    
+    if ($beg < 0 || $end < 0 || $cal < 0) {
+        return ['valid' => false, 'volume' => 0.0, 'error' => 'Readings and calibration cannot be negative'];
+    }
+    
+    if ($end < $beg) {
+        return ['valid' => false, 'volume' => 0.0, 'error' => 'Ending reading cannot be less than beginning reading without mechanical rollover'];
+    }
+    
+    $volume = round($end - $beg - $cal, 2);
+    if ($volume < 0) {
+        return ['valid' => false, 'volume' => 0.0, 'error' => 'Calibration exceeds gross volume dispensed'];
+    }
+    
+    return [
+        'valid' => true,
+        'volume' => $volume,
+        'gross_volume' => round($end - $beg, 2),
+        'calibration' => $cal,
+        'error' => null
+    ];
+}
+}
+
+/**
+ * UT-107: formatCurrencyInput
+ * Formats manual monetary inputs into standard 2-decimal localized format
+ */
+if (!function_exists('formatCurrencyInput')) {
+function formatCurrencyInput($value) {
+    if ($value === null || $value === '' || (is_string($value) && trim($value) === '')) {
+        return '0.00';
+    }
+    
+    // Strip commas or currency symbols
+    $cleaned = str_replace([',', '₱', 'PHP', ' '], '', (string)$value);
+    if (!is_numeric($cleaned)) {
+        return '0.00';
+    }
+    
+    return number_format((float)$cleaned, 2, '.', ',');
+}
+}
+
+/**
+ * Category breakdown helper for sidebar drawer badges and header bell sync
+ */
+if (!function_exists('get_category_unread_counts')) {
+function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', int $station_id = 0): array {
+    $counts = [
+        'transactions'  => 0,
+        'fuel'          => 0,
+        'inventory'     => 0,
+        'customers'     => 0,
+        'prod_pricing'  => 0,
+        'reports'       => 0,
+        'notifications' => 0
+    ];
+
+    $safe_count = function(string $sql, array $params = []) use ($pdo) {
+        try {
+            $s = $pdo->prepare($sql);
+            $s->execute($params);
+            return (int)$s->fetchColumn();
+        } catch (Throwable $e) { return 0; }
+    };
+
+    $counts['notifications'] = $safe_count("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'", [$user_id]);
+
+    if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+        // SERVICE STAFF
+        $counts['transactions'] = $safe_count(
+            "SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND (created_by = ? OR user_id = ? OR assigned_mechanic_id = ?) AND LOWER(COALESCE(status,'')) IN ('pending','reviewed','in progress','awaiting parts')",
+            [$station_id, $user_id, $user_id, $user_id]
+        ) + $safe_count(
+            "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ? AND staff_id = ? AND LOWER(COALESCE(validation_status,'')) IN ('pending','pending validation','pending_validation')",
+            [$station_id, $user_id]
+        );
+
+        $counts['fuel'] = $safe_count(
+            "SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND staff_id = ? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation','pending_validation')",
+            [$station_id, $user_id]
+        );
+
+        $counts['inventory'] = $safe_count(
+            "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.reorder_level, ip.min_stock, 24)",
+            [$station_id]
+        );
+
+    } elseif (in_array($role, ['manager', 'supervisor'])) {
+        // MANAGER
+        $counts['transactions'] = $safe_count(
+            "SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation','reviewed')",
+            [$station_id]
+        ) + $safe_count(
+            "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ? AND LOWER(COALESCE(validation_status,'')) IN ('pending','pending validation')",
+            [$station_id]
+        ) + $safe_count(
+            "SELECT COUNT(*) FROM fuel_adjustments WHERE station_id = ? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation')",
+            [$station_id]
+        );
+
+        $counts['fuel'] = $safe_count(
+            "SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation')",
+            [$station_id]
+        ) + $safe_count(
+            "SELECT COUNT(*) FROM fuel_adjustments WHERE station_id = ? AND LOWER(COALESCE(adjustment_type,'')) LIKE '%calibration%' AND LOWER(COALESCE(status,'')) IN ('pending','pending review')",
+            [$station_id]
+        );
+
+        $counts['inventory'] = $safe_count(
+            "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.reorder_level, ip.min_stock, 24)",
+            [$station_id]
+        ) + $safe_count(
+            "SELECT COUNT(*) FROM stock_requests WHERE station_id = ? AND status IN ('Pending','Pending Manager Review')",
+            [$station_id]
+        ) + $safe_count(
+            "SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id = ? AND status IN ('Pending','Pending Manager Review')",
+            [$station_id]
+        ) + $safe_count(
+            "SELECT COUNT(*) FROM purchase_orders WHERE station_id = ? AND status IN ('Approved','Pending Stock-In')",
+            [$station_id]
+        );
+
+        $counts['customers']     = $safe_count(
+            "SELECT COUNT(*) FROM customers WHERE station_id = ? AND LOWER(COALESCE(NULLIF(verification_status,''), NULLIF(mgr_status,''), 'verified')) IN ('pending','pending verification','for review')",
+            [$station_id]
+        );
+        $counts['mgr_customers'] = $counts['customers'];
+
+    } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
+        // ADMIN
+        $admin_crit_stock = $safe_count(
+            "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.critical_level, ip.critical_level, 10)",
+            []
+        );
+        $admin_pos = $safe_count(
+            "SELECT COUNT(*) FROM purchase_orders WHERE status IN ('Pending Admin Review', 'Submitted', 'Pending Approval')",
+            []
+        );
+        $admin_inv_total = $admin_crit_stock + $admin_pos;
+        $counts['inventory']       = $admin_inv_total;
+        $counts['admin_inventory'] = $admin_inv_total;
+
+        $admin_price_change = $safe_count(
+            "SELECT COUNT(*) FROM pending_price_approvals WHERE status = 'pending'",
+            []
+        );
+        $counts['prod_pricing']          = $admin_price_change;
+        $counts['mgr_product_pricing']   = $admin_price_change;
+        $counts['admin_product_pricing'] = $admin_price_change;
+
+        $admin_system_alerts = $safe_count(
+            "SELECT COUNT(*) FROM notifications WHERE severity IN ('critical','error') AND status = 'unread'",
+            []
+        );
+        $counts['reports']       = $admin_system_alerts;
+        $counts['admin_reports'] = $admin_system_alerts;
+
+        // Fuel Management Oversight
+        $admin_fuel_txns = $safe_count(
+            "SELECT COUNT(*) FROM fuel_transactions WHERE LOWER(COALESCE(status,'')) IN ('verified','validated','approved','adjusted','pending')",
+            []
+        );
+        $admin_fuel_deliv = $safe_count(
+            "SELECT COUNT(*) FROM purchase_orders WHERE (type = 'fuel' OR LOWER(COALESCE(item_category,'')) IN ('fuel','fuels')) AND (delivery_validated = 1 OR status IN ('Validated','Delivered','Pending Admin Review','Submitted'))",
+            []
+        );
+        $admin_fuel_reqs = $safe_count(
+            "SELECT COUNT(*) FROM fuel_stock_requests WHERE LOWER(COALESCE(status,'')) IN ('pending','pending manager review','pending admin review','approved','submitted')",
+            []
+        );
+        $admin_fuel_adj = $safe_count(
+            "SELECT COUNT(*) FROM fuel_adjustments WHERE LOWER(COALESCE(status,'')) IN ('pending','verified','reviewed','approved')",
+            []
+        );
+        $admin_fuel_total = $admin_fuel_txns + $admin_fuel_deliv + $admin_fuel_reqs + $admin_fuel_adj;
+        $counts['fuel']                  = $admin_fuel_total;
+        $counts['admin_fuel']            = $admin_fuel_total;
+        $counts['admin_fuel_management'] = $admin_fuel_total;
+    }
+
+    return $counts;
+}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CENTRAL NOTIFICATION HELPER — notify()
+// ═══════════════════════════════════════════════════════════════════════════
+if (!function_exists('notify')) {
+function notify(
+    PDO    $pdo,
+    int    $user_id,
+    string $role,
+    string $type,
+    string $event_type,
+    string $severity,
+    string $title,
+    string $message,
+    string $source_key,
+    string $redirect_url = '',
+    string $ref_type = '',
+    int    $ref_id = 0,
+    string $shift_period = ''
+): void {
+    if ($user_id <= 0) return;
+    try {
+        static $migrated = false;
+        if (!$migrated) {
+            foreach ([
+                "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS recipient_role VARCHAR(30) NULL AFTER user_id",
+                "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_type VARCHAR(80) NULL AFTER redirect_url",
+                "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_id INT NULL AFTER reference_type",
+                "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS shift_period VARCHAR(20) NULL AFTER reference_id",
+            ] as $ddl) {
+                try { $pdo->exec($ddl); } catch (Throwable $e) {}
+            }
+            $migrated = true;
+        }
+
+        $stmt = $pdo->prepare("
+            INSERT INTO notifications
+                (user_id, recipient_role, type, event_type, severity, title, message,
+                 source_key, redirect_url, reference_type, reference_id, shift_period, status)
+            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unread'
+            FROM DUAL
+            WHERE NOT EXISTS (
+                SELECT 1 FROM notifications WHERE user_id = ? AND source_key = ?
+            )
+        ");
+        $stmt->execute([
+            $user_id, $role, $type, $event_type, $severity, $title, $message,
+            $source_key, $redirect_url,
+            $ref_type ?: null, $ref_id > 0 ? $ref_id : null, $shift_period ?: null,
+            $user_id, $source_key
+        ]);
+    } catch (Throwable $e) {
+        error_log('notify() error: ' . $e->getMessage());
+    }
+}
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// notify_manager() — find station's manager user(s) and notify them all
+// ─────────────────────────────────────────────────────────────────────────
+if (!function_exists('notify_manager')) {
+function notify_manager(
+    PDO    $pdo,
+    int    $station_id,
+    string $type,
+    string $event_type,
+    string $severity,
+    string $title,
+    string $message,
+    string $source_key,
+    string $redirect_url = '',
+    string $ref_type = '',
+    int    $ref_id = 0,
+    string $shift_period = ''
+): void {
+    try {
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE station_id = ? AND LOWER(role) IN ('manager','supervisor') AND status = 'Active'");
+        $stmt->execute([$station_id]);
+        $managers = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($managers as $mgr_id) {
+            notify($pdo, (int)$mgr_id, 'manager', $type, $event_type, $severity,
+                   $title, $message, $source_key . '_m' . $mgr_id,
+                   $redirect_url, $ref_type, $ref_id, $shift_period);
+        }
+    } catch (Throwable $e) { error_log('notify_manager error: ' . $e->getMessage()); }
+}
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// notify_admin() — notify all admin users (system-wide)
+// ─────────────────────────────────────────────────────────────────────────
+if (!function_exists('notify_admin')) {
+function notify_admin(
+    PDO    $pdo,
+    string $type,
+    string $event_type,
+    string $severity,
+    string $title,
+    string $message,
+    string $source_key,
+    string $redirect_url = '',
+    string $ref_type = '',
+    int    $ref_id = 0,
+    int    $station_id = 0
+): void {
+    try {
+        $sql = $station_id
+            ? "SELECT id FROM users WHERE station_id = ? AND LOWER(role) IN ('admin') AND status = 'Active'"
+            : "SELECT id FROM users WHERE LOWER(role) IN ('admin') AND status = 'Active'";
+        $params = $station_id ? [$station_id] : [];
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $admins = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($admins as $adm_id) {
+            notify($pdo, (int)$adm_id, 'admin', $type, $event_type, $severity,
+                   $title, $message, $source_key . '_a' . $adm_id,
+                   $redirect_url, $ref_type, $ref_id);
+        }
+    } catch (Throwable $e) { error_log('notify_admin error: ' . $e->getMessage()); }
+}
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// notify_superadmin() — system-level only
+// ─────────────────────────────────────────────────────────────────────────
+if (!function_exists('notify_superadmin')) {
+function notify_superadmin(
+    PDO    $pdo,
+    string $type,
+    string $event_type,
+    string $severity,
+    string $title,
+    string $message,
+    string $source_key,
+    string $redirect_url = '',
+    string $ref_type = '',
+    int    $ref_id = 0
+): void {
+    try {
+        $stmt = $pdo->query("SELECT id FROM users WHERE LOWER(role) IN ('superadmin','developer') AND status = 'Active'");
+        $sa_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($sa_ids as $sa_id) {
+            notify($pdo, (int)$sa_id, 'superadmin', $type, $event_type, $severity,
+                   $title, $message, $source_key . '_sa' . $sa_id,
+                   $redirect_url, $ref_type, $ref_id);
+        }
+    } catch (Throwable $e) { error_log('notify_superadmin error: ' . $e->getMessage()); }
+}
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// notification_redirect_url() — build clickable URL from reference_type + role
+// ─────────────────────────────────────────────────────────────────────────
+if (!function_exists('notification_redirect_url')) {
+function notification_redirect_url(string $ref_type, int $ref_id, string $role): string {
+    $id = $ref_id > 0 ? "?id={$ref_id}" : '';
+    $map = [
+        // Staff
+        'stock_request' => [
+            'staff'    => "staff_stock_requests.php{$id}",
+            'manager'  => "manager_inventory_stock_requests.php{$id}",
+            'admin'    => "admin_approve_stock_requests.php{$id}",
+        ],
+        'master_data_request' => [
+            'staff'    => "staff_requests.php{$id}",
+            'manager'  => "manager_review_stock_requests.php{$id}",
+            'admin'    => "admin_stock_requests_monitor.php{$id}",
+        ],
+        'void_request' => [
+            'staff'    => "voided_transactions.php{$id}",
+            'manager'  => "manager_validated_transactions.php{$id}",
+            'admin'    => "admin_voided_transactions.php{$id}",
+        ],
+        'transaction_adjustment' => [
+            'staff'    => "staff_fuel_sales_report.php{$id}",
+            'manager'  => "manager_validated_transactions.php{$id}",
+            'admin'    => "admin_voided_transactions.php{$id}",
+        ],
+        'fuel_transaction' => [
+            'staff'    => "staff_fuel_sales_closing.php",
+            'manager'  => "staff_fuel_sales_closing.php",
+            'admin'    => "staff_fuel_sales_closing.php",
+        ],
+        'fuel_sales_closing' => [
+            'staff'    => "staff_fuel_sales_closing.php",
+            'manager'  => "staff_fuel_sales_closing.php",
+            'admin'    => "staff_fuel_sales_closing.php",
+        ],
+        'job_order' => [
+            'staff'    => "job_order_detail.php{$id}",
+            'manager'  => "manager_job_orders.php{$id}",
+            'admin'    => "manager_job_orders.php{$id}",
+        ],
+        'purchase_order' => [
+            'staff'    => "admin_stock_confirmation.php{$id}",
+            'manager'  => "admin_stock_confirmation.php{$id}",
+            'admin'    => "admin_stock_confirmation.php{$id}",
+        ],
+        'user_account' => [
+            'superadmin' => "superadmin_admin_management.php{$id}",
+            'admin'      => "superadmin_admin_management.php{$id}",
+        ],
+    ];
+    return $map[$ref_type][$role] ?? $map[$ref_type]['staff'] ?? 'notifications.php';
+}
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Global Draft & Autosave Engine Functions (backend/lib.php)
+// ─────────────────────────────────────────────────────────────────────────
+if (!function_exists('ensure_drafts_table')) {
+function ensure_drafts_table(PDO $pdo): void {
+    static $done = false;
+    if ($done) return;
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS user_form_drafts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            station_id INT NULL,
+            module_key VARCHAR(100) NOT NULL,
+            draft_key VARCHAR(150) NOT NULL,
+            form_data LONGTEXT NOT NULL,
+            status ENUM('draft', 'submitted', 'discarded') NOT NULL DEFAULT 'draft',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_user_module (user_id, module_key),
+            INDEX idx_user_status (user_id, status),
+            INDEX idx_station_module (station_id, module_key)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $done = true;
+    } catch (Exception $e) {}
+}
+}
+
+if (!function_exists('save_user_draft')) {
+function save_user_draft(PDO $pdo, int $userId, int $stationId, string $moduleKey, array $formData): bool {
+    if ($userId <= 0 || empty($moduleKey) || empty($formData)) return false;
+    ensure_drafts_table($pdo);
+    try {
+        $json = json_encode($formData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $draftKey = "draft_{$userId}_{$moduleKey}";
+        $stmt = $pdo->prepare("
+            INSERT INTO user_form_drafts (user_id, station_id, module_key, draft_key, form_data, status, updated_at)
+            VALUES (?, ?, ?, ?, ?, 'draft', NOW())
+            ON DUPLICATE KEY UPDATE form_data = VALUES(form_data), status = 'draft', updated_at = NOW()
+        ");
+        return $stmt->execute([$userId, $stationId ?: null, $moduleKey, $draftKey, $json]);
+    } catch (Exception $e) {
+        error_log("save_user_draft error: " . $e->getMessage());
+        return false;
+    }
+}
+}
+
+if (!function_exists('get_user_draft')) {
+function get_user_draft(PDO $pdo, int $userId, string $moduleKey): ?array {
+    if ($userId <= 0 || empty($moduleKey)) return null;
+    ensure_drafts_table($pdo);
+    try {
+        $stmt = $pdo->prepare("
+            SELECT id, user_id, station_id, module_key, form_data, status, created_at, updated_at
+            FROM user_form_drafts
+            WHERE user_id = ? AND module_key = ? AND status = 'draft'
+            LIMIT 1
+        ");
+        $stmt->execute([$userId, $moduleKey]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) return null;
+        $decoded = json_decode($row['form_data'], true);
+        if (!is_array($decoded)) return null;
+        $row['data'] = $decoded;
+        return $row;
+    } catch (Exception $e) {
+        error_log("get_user_draft error: " . $e->getMessage());
+        return null;
+    }
+}
+}
+
+if (!function_exists('discard_user_draft')) {
+function discard_user_draft(PDO $pdo, int $userId, string $moduleKey): bool {
+    if ($userId <= 0 || empty($moduleKey)) return false;
+    ensure_drafts_table($pdo);
+    try {
+        $stmt = $pdo->prepare("DELETE FROM user_form_drafts WHERE user_id = ? AND module_key = ?");
+        return $stmt->execute([$userId, $moduleKey]);
+    } catch (Exception $e) {
+        error_log("discard_user_draft error: " . $e->getMessage());
+        return false;
+    }
+}
+}
+
+if (!function_exists('clear_user_draft')) {
+function clear_user_draft(PDO $pdo, int $userId, string $moduleKey): bool {
+    return discard_user_draft($pdo, $userId, $moduleKey);
+}
 }

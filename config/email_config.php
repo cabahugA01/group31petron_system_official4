@@ -49,13 +49,15 @@ require_once __DIR__ . '/../includes/PHPMailer/src/Exception.php';
 require_once __DIR__ . '/../includes/PHPMailer/src/PHPMailer.php';
 require_once __DIR__ . '/../includes/PHPMailer/src/SMTP.php';
 
-// Function to send password reset OTP email
+if (!function_exists('logEmailAttempt')) {
 function logEmailAttempt($entry) {
     $logfile = __DIR__ . '/../email_send.log';
     $line = json_encode($entry, JSON_UNESCAPED_SLASHES) . PHP_EOL;
     @file_put_contents($logfile, $line, FILE_APPEND | LOCK_EX);
 }
+}
 
+if (!function_exists('getOtpSmtpCandidates')) {
 function getOtpSmtpCandidates($email_config) {
     $candidates = [];
     $host = $email_config['host'] ?? 'smtp.gmail.com';
@@ -86,7 +88,9 @@ function getOtpSmtpCandidates($email_config) {
 
     return $candidates;
 }
+}
 
+if (!function_exists('getOtpRecipientAddresses')) {
 function getOtpRecipientAddresses($to_email, $email_config) {
     $primary = preg_replace('/\s+/', '', strtolower(trim((string)$to_email)));
     $addresses = [];
@@ -104,7 +108,9 @@ function getOtpRecipientAddresses($to_email, $email_config) {
 
     return $addresses;
 }
+}
 
+if (!function_exists('buildOtpMailer')) {
 function buildOtpMailer($email_config, $candidate, $subject, $htmlBody, $altBody, $logo_path) {
     $mail = new PHPMailer(true);
     $mail->SMTPDebug = 0;
@@ -144,8 +150,10 @@ function buildOtpMailer($email_config, $candidate, $subject, $htmlBody, $altBody
 
     return $mail;
 }
+}
 
-function sendPasswordResetOTP($to_email, $otp) {
+if (!function_exists('sendPasswordResetOTPEmail')) {
+function sendPasswordResetOTPEmail($to_email, $otp) {
     global $email_config;
     $to_email = preg_replace('/\s+/', '', trim((string)$to_email));
     $recipientAddresses = getOtpRecipientAddresses($to_email, $email_config);
@@ -346,9 +354,22 @@ function sendPasswordResetOTP($to_email, $otp) {
 
     return false;
 }
+}
 
+if (!function_exists('sendPasswordResetOTP')) {
+function sendPasswordResetOTP($to_email, $otp_or_pdo = null, $pdo = null) {
+    if (is_string($otp_or_pdo) && strlen(trim($otp_or_pdo)) > 0) {
+        return sendPasswordResetOTPEmail($to_email, $otp_or_pdo);
+    }
+    if (function_exists('generateAndSendPasswordResetOTP')) {
+        return generateAndSendPasswordResetOTP($to_email, $otp_or_pdo ?: $pdo);
+    }
+    return false;
+}
+}
 
 // Function to send admin credentials email
+if (!function_exists('sendAdminCredentialsEmail')) {
 function sendAdminCredentialsEmail($to_email, $full_name, $station_name, $username, $password, $created_by_role = 'Admin', $role = 'Staff', $employee_id = '') {
     global $email_config;
 
@@ -491,6 +512,7 @@ function sendAdminCredentialsEmail($to_email, $full_name, $station_name, $userna
         error_log("Credentials email sending failed: " . $mail->ErrorInfo);
         return false;
     }
+}
 }
 
 

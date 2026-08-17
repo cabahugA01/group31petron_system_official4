@@ -1081,6 +1081,33 @@
       </div>
   </div>
 
+  <!-- Session Inactivity Warning Modal (25 min warning / 30 min timeout) -->
+  <div id="sessionTimeoutModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,15,35,0.72);backdrop-filter:blur(4px);z-index:999999;align-items:center;justify-content:center;">
+      <div style="background:#ffffff;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,0.25);width:92%;max-width:440px;padding:32px 28px 24px;text-align:center;animation:logoutPop 0.25s cubic-bezier(0.34,1.56,0.64,1);border:1px solid #e2e8f0;position:relative;">
+          <div style="width:60px;height:60px;border-radius:50%;background:#fef3c7;border:2px solid #fbbf24;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;">
+              <i class="fas fa-exclamation-triangle" style="font-size:26px;color:#d97706;"></i>
+          </div>
+          <h3 style="margin:0 0 8px;font-size:18px;font-weight:800;color:#002244;">Session Timeout Warning</h3>
+          <p style="margin:0 0 12px;font-size:14px;color:#475569;line-height:1.5;">
+              You have been inactive. Your session will automatically expire in:
+          </p>
+          <div id="sessionCountdownDisplay" style="font-size:30px;font-weight:900;color:#d97706;letter-spacing:2px;font-family:monospace;margin:10px 0 20px;">
+              05:00
+          </div>
+          <p style="margin:0 0 24px;font-size:12.5px;color:#64748b;line-height:1.4;">
+              Click <strong>Stay Logged In</strong> to continue your work, or <strong>Log Out</strong> to exit safely.
+          </p>
+          <div style="display:flex;gap:12px;justify-content:center;">
+              <button type="button" id="btnStayLoggedIn" onclick="stayLoggedIn()" style="flex:1.2;padding:11px 18px;border:none;background:#002F6C;color:#ffffff;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 4px 12px rgba(0,47,108,0.25);transition:all 0.2s;">
+                  <i class="fas fa-redo-alt"></i> Stay Logged In
+              </button>
+              <a href="<?= isset($public_base_url) ? htmlspecialchars($public_base_url . '/logout.php?timeout=1') : 'logout.php?timeout=1' ?>" style="flex:0.8;padding:11px 16px;border:1px solid #cbd5e1;background:#f8fafc;color:#475569;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;">
+                  <i class="fas fa-sign-out-alt"></i> Log Out
+              </a>
+          </div>
+      </div>
+  </div>
+
   <style>
   @keyframes logoutPop {
       from { opacity: 0; transform: scale(0.92); }
@@ -1105,8 +1132,114 @@
           });
       }
   });
+
+  // ── INACTIVITY TIMEOUT CONTROLLER (30 min timeout, 25 min warning) ──
+  (function() {
+      const TOTAL_TIMEOUT_SEC  = 1800; // 30 minutes total
+      const WARNING_TIME_SEC   = 1500; // 25 minutes before warning (5 min remaining)
+      const KEEPALIVE_URL      = "<?= isset($app_base_path) ? $app_base_path : '' ?>/backend/api/session_keepalive.php";
+      const LOGOUT_URL         = "<?= isset($public_base_url) ? htmlspecialchars($public_base_url . '/logout.php?timeout=1') : 'logout.php?timeout=1' ?>";
+
+      let lastActivityTime = Date.now();
+      let warningModalOpen = false;
+      let countdownTimer   = null;
+
+      function resetActivityTimer() {
+          if (warningModalOpen) return; // Do not silently reset if user is currently looking at warning modal
+          lastActivityTime = Date.now();
+      }
+
+      // Track authentic user interactions on the page
+      ['mousedown', 'mousemove', 'keydown', 'touchstart', 'scroll', 'click'].forEach(function(evt) {
+          window.addEventListener(evt, resetActivityTimer, { passive: true });
+      });
+
+      function formatMinutesSeconds(sec) {
+          const m = Math.floor(sec / 60);
+          const s = Math.floor(sec % 60);
+          return (m < 10 ? '0' + m : m) + ':' + (s < 10 ? '0' + s : s);
+      }
+
+      function showWarningModal() {
+          warningModalOpen = true;
+          const modal = document.getElementById('sessionTimeoutModal');
+          const countdownEl = document.getElementById('sessionCountdownDisplay');
+          if (modal) modal.style.display = 'flex';
+
+          if (countdownTimer) clearInterval(countdownTimer);
+          countdownTimer = setInterval(function() {
+              const elapsedSec = Math.floor((Date.now() - lastActivityTime) / 1000);
+              const remainingSec = Math.max(0, TOTAL_TIMEOUT_SEC - elapsedSec);
+
+              if (countdownEl) {
+                  countdownEl.textContent = formatMinutesSeconds(remainingSec);
+              }
+
+              if (remainingSec <= 0) {
+                  clearInterval(countdownTimer);
+                  window.location.href = LOGOUT_URL;
+              }
+          }, 1000);
+      }
+
+      function hideWarningModal() {
+          warningModalOpen = false;
+          const modal = document.getElementById('sessionTimeoutModal');
+          if (modal) modal.style.display = 'none';
+          if (countdownTimer) {
+              clearInterval(countdownTimer);
+              countdownTimer = null;
+          }
+      }
+
+      window.stayLoggedIn = function() {
+          const btn = document.getElementById('btnStayLoggedIn');
+          if (btn) {
+              btn.disabled = true;
+              btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
+          }
+
+          fetch(KEEPALIVE_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin'
+          })
+          .then(function(res) { return res.json(); })
+          .then(function(data) {
+              if (data && data.ok) {
+                  lastActivityTime = Date.now();
+                  hideWarningModal();
+              } else {
+                  window.location.href = LOGOUT_URL;
+              }
+          })
+          .catch(function() {
+              // If network fail, still reset local activity timer
+              lastActivityTime = Date.now();
+              hideWarningModal();
+          })
+          .finally(function() {
+              if (btn) {
+                  btn.disabled = false;
+                  btn.innerHTML = '<i class="fas fa-redo-alt"></i> Stay Logged In';
+              }
+          });
+      };
+
+      // Periodic check every 5 seconds
+      setInterval(function() {
+          const elapsedSec = Math.floor((Date.now() - lastActivityTime) / 1000);
+
+          if (elapsedSec >= TOTAL_TIMEOUT_SEC) {
+              window.location.href = LOGOUT_URL;
+          } else if (elapsedSec >= WARNING_TIME_SEC && !warningModalOpen) {
+              showWarningModal();
+          }
+      }, 5000);
+  })();
   </script>
 
   <script src="<?= isset($app_base_path) ? $app_base_path : '' ?>/assets/js/live_sync.js?v=<?= time() ?>"></script>
+  <script src="<?= isset($app_base_path) ? $app_base_path : '' ?>/assets/js/global_draft_engine.js?v=<?= time() ?>"></script>
 </body>
 </html>

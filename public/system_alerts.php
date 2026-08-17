@@ -1,5 +1,6 @@
 ﻿<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
+require_login();
 $page_id = 'system_alerts';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../backend/rbac.php';

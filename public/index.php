@@ -26,6 +26,10 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['user']) && isset($_SESSION['
 }
 
 // If not logged in, go to the main login page
-header("Location: login.php");
+$login_url = "login.php";
+if (isset($_GET['timeout']) && $_GET['timeout'] === '1') {
+    $login_url .= "?timeout=1";
+}
+header("Location: " . $login_url);
 exit;
 ?>

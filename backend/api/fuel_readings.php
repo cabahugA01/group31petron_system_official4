@@ -143,6 +143,18 @@ try {
                     ->execute([$me['id'], $detail, $insert_id, $ip, $ua]);
             } catch (Exception $e) {}
 
+            // ── Notify manager(s) — shift-isolated ─────────────────────
+            notify_manager(
+                $pdo, $station_id,
+                'info', 'fuel_transaction', 'medium',
+                "Fuel Meter Reading Submitted ({$shift_period})",
+                "{$me['name']} submitted a {$fuel_type} reading: {$liters_sold}L for {$shift_period}. Pending validation.",
+                "fuel_reading_submitted_{$insert_id}",
+                'staff_fuel_sales_closing.php',
+                'fuel_transaction', $insert_id,
+                $shift_period
+            );
+
             respond(true, 'Reading submitted. Pending manager approval.', [
                 'transaction_id' => $txn_id,
                 'liters_sold'    => $liters_sold,
@@ -280,6 +292,31 @@ try {
                 $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'transaction', ?, ?, 'fuel_readings', ?, 'Success', ?, ?, NOW())")
                     ->execute([$me['id'], $action_type, $detail, $txn['id'] ?? null, $ip, $ua]);
             } catch (Exception $e) {}
+
+            // ── Notify staff: reading validated or rejected (shift-isolated) ──
+            $staff_id = (int)($txn['staff_id'] ?? 0);
+            if ($staff_id > 0) {
+                $shift_p = $txn['shift_period'] ?? '';
+                if ($new_status === 'Approved') {
+                    notify($pdo, $staff_id, 'staff', 'success', 'fuel_transaction', 'medium',
+                        "Fuel Meter Reading Validated ({$shift_p})",
+                        "Your {$txn['fuel_type']} reading ({$txn['liters_sold']}L) has been validated by manager.",
+                        "fuel_reading_approved_{$txn['id']}",
+                        'staff_fuel_sales_closing.php',
+                        'fuel_transaction', (int)$txn['id'],
+                        $shift_p
+                    );
+                } else {
+                    notify($pdo, $staff_id, 'staff', 'error', 'fuel_transaction', 'high',
+                        "Fuel Meter Reading Returned for Correction ({$shift_p})",
+                        "Your {$txn['fuel_type']} reading ({$txn['liters_sold']}L) was rejected/returned." . ($reject_reason ? " Reason: {$reject_reason}" : ''),
+                        "fuel_reading_rejected_{$txn['id']}",
+                        'staff_fuel_sales_closing.php',
+                        'fuel_transaction', (int)$txn['id'],
+                        $shift_p
+                    );
+                }
+            }
 
             respond(true, "Reading {$new_status}.");
 

@@ -1,58 +1,11 @@
 <?php
 // Simple JSON-based storage helpers (no DB required)
-function data_path($file){ return __DIR__ . '/../data/' . $file; }
-
-function read_json($file, $default){
-  $path = data_path($file);
-  if(!file_exists($path)) return $default;
-  $raw = file_get_contents($path);
-  $data = json_decode($raw, true);
-  return $data === null ? $default : $data;
+// NOTE: require_login() and session helpers are defined in the main lib.php.
+// This file extends lib.php — never redefine require_login() here.
+if (!function_exists('require_login')) {
+    require_once __DIR__ . '/../lib.php';
 }
 
-function write_json($file, $data){
-  $path = data_path($file);
-  $tmp = $path . '.tmp';
-  file_put_contents($tmp, json_encode($data, JSON_PRETTY_PRINT));
-  rename($tmp, $path);
-}
-
-function json_response($data, $code=200){
-  http_response_code($code);
-  header('Content-Type: application/json; charset=utf-8');
-  echo json_encode($data);
-  exit;
-}
-
-function require_login(){
-  if(session_status() !== PHP_SESSION_ACTIVE) session_start();
-  if(empty($_SESSION['user'])){
-    // If called from /backend/*, return JSON 401 to avoid fetch() HTML redirects.
-    $script = $_SERVER['SCRIPT_NAME'] ?? '';
-    if(strpos($script, '/backend/') !== false){
-      json_response(['ok'=>false,'error'=>'Unauthorized'], 401);
-    }
-    // Redirect to the app's login page (index.php) in a way that works even when
-    // the app is deployed inside a subfolder (e.g., /petron-pos/index.php).
-    //
-    // Examples:
-    //  - /petron-pos/dashboard.php  -> /petron-pos/index.php
-    //  - /petron-pos/partials/...   -> /petron-pos/index.php (included pages)
-    //  - /petron-pos/backend/...    -> JSON 401 handled above
-    $root = '';
-    if(($pos = strpos($script, '/backend/')) !== false){
-      $root = substr($script, 0, $pos);
-    }elseif(($pos = strpos($script, '/auth/')) !== false){
-      $root = substr($script, 0, $pos);
-    }else{
-      $root = rtrim(dirname($script), '/\\');
-    }
-    if($root === '' || $root === '.') $root = '/';
-    $loginUrl = rtrim($root, '/') . '/index.php';
-    header('Location: ' . $loginUrl);
-    exit;
-  }
-}
 
 
 function normalize_role($role){

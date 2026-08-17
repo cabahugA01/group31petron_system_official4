@@ -70,14 +70,25 @@ try {
     $upd = $pdo->prepare("UPDATE transaction_requests SET status = ?, reviewed_by = ?, reviewed_at = NOW(), review_remarks = ? WHERE id = ?");
     $upd->execute([$new_status, $user_id, $review_remarks, $request_id]);
 
-    // Send notification to staff member who requested
+    // ── Notify staff: request approved or rejected ───────────────
     if (!empty($req['requested_by'])) {
         $msg = "Your {$req['request_type']} request for Transaction #{$req['transaction_id']} was {$new_status} by Manager.";
         if (!empty($review_remarks)) {
             $msg .= " Remarks: {$review_remarks}";
         }
-        $notif = $pdo->prepare("INSERT INTO notifications (user_id, type, title, message, link, is_read, created_at) VALUES (?, 'info', ?, ?, 'staff_transactions_hub.php', 0, NOW())");
-        $notif->execute([(int)$req['requested_by'], "Request {$new_status}", $msg]);
+        $ref_t = ($req['request_type'] === 'Void') ? 'void_request' : 'transaction_adjustment';
+        $sev   = ($action === 'approve') ? 'medium' : 'high';
+        $ntype = ($action === 'approve') ? 'success' : 'error';
+        $url   = ($ref_t === 'void_request') ? 'voided_transactions.php?id=' . $request_id : 'staff_fuel_sales_report.php?id=' . $request_id;
+
+        notify(
+            $pdo, (int)$req['requested_by'], 'staff', $ntype, $ref_t, $sev,
+            "{$req['request_type']} Request {$new_status}",
+            $msg,
+            "txn_req_result_{$request_id}",
+            $url,
+            $ref_t, (int)$request_id
+        );
     }
 
     // Log activity

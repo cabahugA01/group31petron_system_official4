@@ -1718,6 +1718,30 @@ try {
           
         </div>
 
+        <!-- Staff Void Request Details Banner (Auto-fetched) -->
+        <div id="voidStaffRequestBanner" style="display:none; background:#eff6ff; border:1px solid #bfdbfe; border-left:4px solid #2563eb; border-radius:8px; padding:12px 14px; margin-bottom:16px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+            <div style="font-size:11.5px; font-weight:800; color:#1e40af; text-transform:uppercase; display:flex; align-items:center; gap:6px;">
+              <i class="fas fa-user-tag"></i> Staff Void Request Details (Auto-Fetched)
+            </div>
+            <span id="voidStaffReqDate" style="font-size:11px; color:#64748b; font-weight:600;"></span>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:12px;">
+            <div>
+              <span style="font-size:10.5px; font-weight:700; color:#64748b; text-transform:uppercase; display:block;">Requested By</span>
+              <span id="voidStaffReqName" style="color:#0f172a; font-weight:700;">Staff</span>
+            </div>
+            <div>
+              <span style="font-size:10.5px; font-weight:700; color:#64748b; text-transform:uppercase; display:block;">Staff Reason</span>
+              <strong id="voidStaffReasonText" style="color:#dc2626; font-size:12.5px;">-</strong>
+            </div>
+            <div style="grid-column:span 2;" id="voidStaffRemarksRow">
+              <span style="font-size:10.5px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:2px;">Staff Remarks / Justification</span>
+              <div id="voidStaffRemarksText" style="color:#1e293b; background:#fff; padding:6px 10px; border-radius:6px; border:1px solid #cbd5e1; font-size:12px; line-height:1.4;">-</div>
+            </div>
+          </div>
+        </div>
+
         <!-- Void Details & Manager Verification -->
         <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:14px; margin-bottom:16px;">
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
@@ -2416,21 +2440,22 @@ function closeViewModal() {
     document.getElementById('viewTransactionModal').classList.remove('active');
 }
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ ADJUST MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-let _adjRowId = null;
+let _adjRowId  = null;
+let _adjSource = 'merchandise_transactions';
 let _adjItems  = []; // fetched items
 
-function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, payMethod, payStat) {
-    _adjRowId = rowId;
-    _adjItems = [];
+function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, payMethod, payStat, source) {
+    _adjRowId  = rowId;
+    _adjSource = source || (entryType && entryType.toLowerCase().includes('job') ? 'job_orders' : 'merchandise_transactions');
+    _adjItems  = [];
 
     // Show loading state
     document.getElementById('adjustModal').classList.add('active');
     document.getElementById('adjustModalBody').innerHTML =
         '<div style="text-align:center;padding:40px"><i class="fas fa-spinner fa-spin" style="font-size:28px;color:#d97706"></i><div style="margin-top:10px;color:#64748b">Loading items...</div></div>';
 
-    // Fetch items via existing API
-    fetch('../backend/api/get_transaction_items.php?id=' + rowId)
+    // Fetch items via existing API (supports both merchandise and job_orders)
+    fetch('../backend/api/get_transaction_items.php?id=' + rowId + '&source=' + encodeURIComponent(_adjSource))
         .then(r => r.json())
         .then(data => {
             if (!data.success) {
@@ -2748,7 +2773,7 @@ function openReviewRequestModal(reqId, reqType, rowId, txnIdStr, customer, entry
         openVoidModal(rowId, txnIdStr, customer, source);
         return;
     } else if (reqType === 'Adjustment') {
-        openAdjustModal(rowId, txnIdStr, customer, entryType, txnDate, staffName, payMethod, payStat);
+        openAdjustModal(rowId, txnIdStr, customer, entryType, txnDate, staffName, payMethod, payStat, source);
         return;
     }
 
@@ -2943,9 +2968,58 @@ function openVoidModal(rowId, txnId, customer, source) {
         }
         if (elInv) elInv.innerHTML = invHtml;
         if (elCur) elCur.innerText = '₱' + grandTotal.toFixed(2);
-        if (elAft) elAft.innerText = '₱0.00';
-        if (elDif) elDif.innerText = '-₱' + grandTotal.toFixed(2);
-        
+        // ── Auto-fetch Staff Void Request Reason & Remarks ─────────
+        const staffReason = (details.void_reason || details.pending_void_reason || '').trim();
+        const staffRemarks = (details.staff_remarks || details.pending_void_remarks || '').trim();
+        const staffReqName = details.pending_void_staff_name || details.staff_name || 'Staff';
+        const staffReqDate = details.pending_void_date || '';
+
+        const bannerEl = document.getElementById('voidStaffRequestBanner');
+        if (staffReason || staffRemarks) {
+            if (bannerEl) bannerEl.style.display = 'block';
+            const reasonTextEl = document.getElementById('voidStaffReasonText');
+            if (reasonTextEl) reasonTextEl.innerText = staffReason || 'Not specified';
+            
+            const remarksTextEl = document.getElementById('voidStaffRemarksText');
+            if (remarksTextEl) remarksTextEl.innerText = staffRemarks || 'None specified';
+            
+            const reqNameEl = document.getElementById('voidStaffReqName');
+            if (reqNameEl) reqNameEl.innerText = staffReqName;
+            
+            const reqDateEl = document.getElementById('voidStaffReqDate');
+            if (reqDateEl) reqDateEl.innerText = staffReqDate;
+            
+            const remarksRow = document.getElementById('voidStaffRemarksRow');
+            if (remarksRow) remarksRow.style.display = staffRemarks ? 'block' : 'none';
+
+            // Auto-select or pre-populate the Void Reason dropdown
+            if (staffReason) {
+                const reasonSelect = document.getElementById('voidReasonSelect');
+                let matched = false;
+                if (reasonSelect) {
+                    for (let i = 0; i < reasonSelect.options.length; i++) {
+                        const optVal = reasonSelect.options[i].value;
+                        if (optVal && (optVal.toLowerCase() === staffReason.toLowerCase() || staffReason.toLowerCase().startsWith(optVal.toLowerCase()))) {
+                            reasonSelect.selectedIndex = i;
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (!matched) {
+                        reasonSelect.value = 'Other';
+                        const otherContainer = document.getElementById('voidReasonOtherContainer');
+                        if (otherContainer) otherContainer.style.display = 'block';
+                        const otherInput = document.getElementById('voidReasonOther');
+                        if (otherInput) otherInput.value = staffReason;
+                    } else {
+                        toggleVoidOtherReason();
+                    }
+                }
+            }
+        } else {
+            if (bannerEl) bannerEl.style.display = 'none';
+        }
+
         validateVoidForm();
     })
     .catch(err => {

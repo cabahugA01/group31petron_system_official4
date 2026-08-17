@@ -96,9 +96,94 @@ try {
         ");
     } catch (Exception $e) {}
 
+    $source = trim($data['source'] ?? '');
+
+    // ── Handle direct Job Order adjustment ─────────────────────────────────────
+    if ($source === 'job_orders') {
+        $stmt_jo = $pdo->prepare("SELECT * FROM job_orders WHERE id = ? AND (station_id = ? OR ? = 0 OR station_id IS NULL) LIMIT 1");
+        $stmt_jo->execute([$row_id, $station_id, $station_id]);
+        $jo = $stmt_jo->fetch(PDO::FETCH_ASSOC);
+
+        if ($jo) {
+            $old_total = (float)($jo['total_cost'] ?: $jo['estimated_cost'] ?: 0);
+            $new_total = 0.0;
+            foreach ($items_input as $item) {
+                $qty   = max(1, (int)($item['quantity'] ?? 1));
+                $price = max(0, (float)($item['unit_price'] ?? 0));
+                $new_total += round($qty * $price, 2);
+            }
+            if ($new_total <= 0) $new_total = $old_total;
+
+            $pdo->beginTransaction();
+
+            $pdo->prepare("
+                UPDATE job_orders SET
+                    total_cost        = ?,
+                    estimated_cost    = ?,
+                    payment_method    = ?,
+                    payment_status    = ?,
+                    adjustment_reason = ?,
+                    manager_remarks   = ?,
+                    validated_by      = ?,
+                    validated_at      = NOW(),
+                    updated_at        = NOW()
+                WHERE id = ?
+            ")->execute([
+                $new_total, $new_total,
+                $payment_method ?: $jo['payment_method'],
+                $payment_status ?: $jo['payment_status'],
+                $adjustment_reason,
+                $manager_remarks,
+                $me['id'],
+                $row_id
+            ]);
+
+            // Auto-approve pending transaction_requests
+            $jo_code = $jo['job_order_number'] ?: ('JO-' . $row_id);
+            $pdo->prepare("
+                UPDATE transaction_requests
+                SET status = 'Approved', reviewed_by = ?, reviewed_at = NOW(), review_remarks = ?
+                WHERE (transaction_id = ? OR transaction_id = ?) AND request_type = 'Adjustment' AND status = 'Pending'
+            ")->execute([$me['id'], $manager_remarks, (string)$row_id, $jo_code]);
+
+            // Insert into transaction_adjustments log
+            $pdo->prepare("
+                INSERT INTO transaction_adjustments
+                    (transaction_id, transaction_type, customer_name, original_amount, updated_amount,
+                     amount_difference, adjustment_reason, manager_remarks, adjusted_by, station_id, adjustment_date)
+                VALUES (?, 'job_order', ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ")->execute([
+                $jo_code, $jo['customer_name'] ?: 'Customer', $old_total, $new_total,
+                round($new_total - $old_total, 2), $adjustment_reason, $manager_remarks, $me['id'], $station_id
+            ]);
+
+            // Notify staff
+            $staff_target_id = (int)($jo['created_by'] ?: ($jo['user_id'] ?: 0));
+            if ($staff_target_id > 0) {
+                notify($pdo, $staff_target_id, 'staff', 'success', 'transaction_adjustment', 'medium',
+                    "Adjustment Approved: {$jo_code}",
+                    "Your adjustment request for {$jo_code} was approved by Manager. (₱" . number_format($old_total, 2) . " → ₱" . number_format($new_total, 2) . ")",
+                    "adj_approved_jo_{$row_id}",
+                    'staff_fuel_sales_report.php?id=' . $row_id,
+                    'transaction_adjustment', $row_id
+                );
+            }
+
+            $pdo->commit();
+
+            echo json_encode([
+                'success'   => true,
+                'message'   => 'Job Order adjusted successfully.',
+                'old_total' => $old_total,
+                'new_total' => $new_total
+            ]);
+            exit;
+        }
+    }
+
     // ── Load the transaction ──────────────────────────────────────────────────
-    $stmt = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ? LIMIT 1");
-    $stmt->execute([$row_id, $station_id]);
+    $stmt = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND (station_id = ? OR ? = 0 OR station_id IS NULL) LIMIT 1");
+    $stmt->execute([$row_id, $station_id, $station_id]);
     $txn = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$txn) {
         echo json_encode(['success' => false, 'error' => 'Transaction not found']); exit;
@@ -151,15 +236,19 @@ try {
         $pdo->prepare("UPDATE merchandise_transaction_items SET quantity=?, unit_price=?, subtotal=? WHERE id=?")
             ->execute([$new_qty, $new_price, $new_sub, $item_id]);
 
-        // ── Inventory delta (only for merchandise items) ───────────────────────
-        if ($product_id > 0 && $old_item['item_type'] !== 'service') {
-            $qty_diff = $old_qty - $new_qty; // positive = restore, negative = deduct more
+        // ── Inventory delta (only for merchandise items) via Global Movement Engine ─
+        if ($product_id > 0 && ($old_item['item_type'] ?? '') !== 'service') {
+            $qty_diff = $old_qty - $new_qty; // positive = restore (+IN), negative = deduct more (-OUT)
             if (abs($qty_diff) > 0.0001) {
-                $pdo->prepare("
-                    UPDATE station_inventory
-                    SET stock_level = stock_level + ?
-                    WHERE product_id = ? AND station_id = ?
-                ")->execute([$qty_diff, $product_id, $station_id]);
+                record_adjustment_movement(
+                    $pdo,
+                    $station_id,
+                    $product_id,
+                    $qty_diff,
+                    $txn['transaction_id'] ?? ('TXN-' . $row_id),
+                    (int)($me['id'] ?? 0),
+                    "Adjustment by Manager: " . $adjustment_reason
+                );
             }
         }
 
@@ -361,6 +450,21 @@ try {
     ]);
 
     $pdo->commit();
+
+    // ── Notify staff: Adjustment approved ─────────────────────────
+    try {
+        $staff_target_id = (int)($txn['staff_id'] ?? 0);
+        if ($staff_target_id > 0) {
+            $txnRef = $txn['transaction_id'] ?? ('TXN-' . $row_id);
+            notify($pdo, $staff_target_id, 'staff', 'success', 'transaction_adjustment', 'medium',
+                "Adjustment Approved: {$txnRef}",
+                "Your adjustment request for {$txnRef} was approved by Manager. (₱" . number_format($old_total, 2) . " → ₱" . number_format($new_total, 2) . ")",
+                "adj_approved_merch_{$row_id}",
+                'staff_fuel_sales_report.php?id=' . $row_id,
+                'transaction_adjustment', $row_id
+            );
+        }
+    } catch (Throwable $ne) {}
 
     echo json_encode([
         'success'   => true,

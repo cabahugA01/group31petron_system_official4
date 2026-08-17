@@ -11,6 +11,7 @@
  */
 
 session_start();
+require_login();
 require_once 'db_connect.php';
 require_once '../backend/lib.php';
 require_once '../backend/fuel_audit_logging.php';

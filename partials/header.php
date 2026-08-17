@@ -3603,14 +3603,18 @@ require_once __DIR__ . '/rbac_menu.php';
       $badges['admin_fuel_management'] = $admin_fuel_total;
   }
 
-  // Calculate Header Bell Unread Count
-  $header_unread_count = 0;
-  if ($__uid > 0) {
-      try {
-          $h_cnt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'");
-          $h_cnt->execute([$__uid]);
-          $header_unread_count = (int)$h_cnt->fetchColumn();
-      } catch (Exception $e) {}
+  // Calculate Header Bell Unread Count = sum of all visible sidebar badge counts
+  // This ensures bell count always matches the total of sidebar badges on page load (e.g. Transactions 6 + Inventory 41 = 47).
+  $header_unread_count = ($badges['transactions']  ?? 0)
+                       + ($badges['fuel']           ?? 0)
+                       + ($badges['inventory']      ?? 0)
+                       + ($badges['customers']      ?? 0)
+                       + ($badges['mgr_customers']  ?? 0)
+                       + ($badges['prod_pricing']   ?? 0)
+                       + ($badges['reports']        ?? 0);
+  // Deduplicate mgr_customers (same value as customers, counted once)
+  if (isset($badges['mgr_customers']) && isset($badges['customers'])) {
+      $header_unread_count -= min($badges['mgr_customers'], $badges['customers']);
   }
 
   foreach($items as $it){
@@ -5757,6 +5761,25 @@ require_once __DIR__ . '/rbac_menu.php';
                 }
             }
 
+            // ── Mark one notification as read ─────────────────────────────────
+            window.staffMarkRead = function (id) {
+                if (id) {
+                    try {
+                        const fd = new FormData();
+                        fd.append('notification_id', id);
+                        fetch(API_LIST + '?action=mark_read', { method: 'POST', body: fd, credentials: 'same-origin' })
+                            .then(r => r.ok ? r.json() : null)
+                            .then(data => {
+                                if (data && data.success) {
+                                    // Sync both header bell + sidebar badges immediately
+                                    updateBadge(data.bell_unread_count ?? 0, data.category_counts);
+                                }
+                            })
+                            .catch(() => {});
+                    } catch (e) {}
+                }
+            };
+
             // ── Fetch unread count only (lightweight) ─────────────────────────
             async function fetchUnreadCount() {
                 try {
@@ -5805,16 +5828,6 @@ require_once __DIR__ . '/rbac_menu.php';
                     });
             }
 
-            // ── Mark one notification as read ─────────────────────────────────
-            window.staffMarkRead = function (id) {
-                if (id) {
-                    try {
-                        const fd = new FormData();
-                        fd.append('notification_id', id);
-                        fetch(API_LIST + '?action=mark_read', { method: 'POST', body: fd, credentials: 'same-origin' }).catch(e => {});
-                    } catch (e) {}
-                }
-            };
 
             // ── Mark all read ──────────────────────────────────────────────────
             const markAllBtn = document.getElementById('markAllReadBtn');

@@ -2,6 +2,7 @@
 ob_start();
 if (session_status() === PHP_SESSION_NONE) {
     @session_start();
+require_login();
 }
 
 require_once __DIR__ . '/../backend/lib.php';

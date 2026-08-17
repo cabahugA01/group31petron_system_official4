@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'mgr_inv_movement';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -62,10 +62,13 @@ if ($active_tab === 'merch') {
                 ip.sku AS prod_sku,
                 ip.category AS product_category,
                 il.action AS raw_action,
+                COALESCE(il.movement_type, CASE WHEN il.action IN ('stock_in','delivery','receive','po_receipt') THEN 'IN' ELSE 'OUT' END) AS movement_type,
+                COALESCE(il.reason, REPLACE(REPLACE(REPLACE(il.action, '_', ' '), 'stock in', 'Stock-In'), 'sale', 'Merchandise Sale')) AS reason,
+                il.reference_no,
                 il.quantity_change,
                 il.quantity_before,
                 il.quantity_after,
-                u.name AS performed_by,
+                COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))), ''), u.name, u.username, 'System') AS performed_by,
                 il.notes,
                 COALESCE(si.unit, 'pcs') AS unit
             FROM inventory_logs il
@@ -565,9 +568,8 @@ include __DIR__ . '/../partials/header.php';
                 <label style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; display:block; margin-bottom:5px;">Movement Type</label>
                 <select id="movTypeFilter" onchange="filterMovTable()" style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:100%;">
                     <option value="">All Types</option>
-                    <option value="delivery">Delivery</option>
-                    <option value="release">Release/Sale</option>
-                    <option value="adjustment">Adjustment</option>
+                    <option value="in">IN (Stock-In / Reversals / Returns)</option>
+                    <option value="out">OUT (Sales / Job Orders)</option>
                 </select>
             </div>
 
@@ -582,16 +584,16 @@ include __DIR__ . '/../partials/header.php';
         <table class="table" id="mgrMovTable">
             <thead>
                 <tr>
-                    <th style="width:90px;">Movement ID</th>
-                    <th>Date</th>
-                    <th>Product Name</th>
+                    <th style="width:80px;">ID</th>
+                    <th>Date & Time</th>
+                    <th>Product / SKU</th>
                     <th>Category</th>
-                    <th style="text-align:center;">Movement Type</th>
-                    <th style="text-align:right;">Quantity</th>
-                    <th style="text-align:right;">Previous Stock</th>
+                    <th style="text-align:center;">Direction</th>
+                    <th>Reason / Reference</th>
+                    <th style="text-align:right;">Qty Change</th>
+                    <th style="text-align:right;">Prev Stock</th>
                     <th style="text-align:right;">New Stock</th>
                     <th>Performed By</th>
-                    <th style="text-align:center;">Status</th>
                 </tr>
             </thead>
             <tbody id="movTableBody">
@@ -605,62 +607,39 @@ include __DIR__ . '/../partials/header.php';
             <?php else: ?>
                 <?php foreach ($movements_list as $m):
                     $date_str = $m['created_at'] ? date('M d, Y h:i A', strtotime($m['created_at'])) : '—';
-                    $raw_act = strtolower($m['raw_action']);
-                    
-                    // Categorize action
-                    if (in_array($raw_act, ['stock_in', 'delivery', 'receive', 'po_receipt'])) {
-                        $mov_type = 'delivery';
-                        $mov_label = 'ðŸ“¥ Delivery';
-                        $badge_class = 'badge-delivery';
-                        $qty_prefix = '+';
-                        $qty_style = 'color:#137333; font-weight:700;';
-                    } elseif (in_array($raw_act, ['sale', 'release', 'sold', 'manual_release', 'stock_out'])) {
-                        $mov_type = 'release';
-                        $mov_label = 'ðŸ“¤ Release/Sale';
-                        $badge_class = 'badge-release';
-                        $qty_prefix = '-';
-                        $qty_style = 'color:#c5221f; font-weight:700;';
-                    } else {
-                        $mov_type = 'adjustment';
-                        $mov_label = 'âš–ï¸ Adjustment';
-                        $badge_class = 'badge-adjustment';
-                        
-                        $qty_val = (float)$m['quantity_change'];
-                        if ($qty_val > 0) {
-                            $qty_prefix = '+';
-                            $qty_style = 'color:#137333; font-weight:700;';
-                        } elseif ($qty_val < 0) {
-                            $qty_prefix = '';
-                            $qty_style = 'color:#c5221f; font-weight:700;';
-                        } else {
-                            $qty_prefix = '';
-                            $qty_style = 'color:#475569; font-weight:700;';
-                        }
-                    }
+                    $m_type = strtoupper($m['movement_type'] ?? 'OUT');
+                    $is_in = ($m_type === 'IN');
+                    $badge_class = $is_in ? 'badge-delivery' : 'badge-release';
+                    $dir_label = $is_in ? '<span style="background:#e6f4ea;color:#137333;font-weight:800;padding:3px 8px;border-radius:12px;font-size:11px;"><i class="fas fa-arrow-down"></i> IN</span>' : '<span style="background:#fce8e6;color:#c5221f;font-weight:800;padding:3px 8px;border-radius:12px;font-size:11px;"><i class="fas fa-arrow-up"></i> OUT</span>';
+                    $qty_prefix = $is_in ? '+' : '-';
+                    $qty_style = $is_in ? 'color:#137333; font-weight:700;' : 'color:#c5221f; font-weight:700;';
+                    $reason_disp = htmlspecialchars($m['reason'] ?? 'Movement');
+                    $ref_disp = !empty($m['reference_no']) ? htmlspecialchars($m['reference_no']) : '';
                 ?>
                     <tr class="mov-row"
                         data-category="<?= strtolower(htmlspecialchars($m['product_category'] ?? '')) ?>"
-                        data-type="<?= $mov_type ?>"
+                        data-type="<?= strtolower($m_type) ?>"
                         data-performed-by="<?= strtolower(htmlspecialchars($m['performed_by'] ?? '')) ?>"
                         data-date="<?= date('Y-m-d', strtotime($m['created_at'])) ?>"
-                        data-search="<?= strtolower(htmlspecialchars($m['movement_id'] . ' ' . $m['product_name'] . ' ' . ($m['prod_sku'] ?? '') . ' ' . ($m['performed_by'] ?? '') . ' ' . ($m['notes'] ?? ''))) ?>">
+                        data-search="<?= strtolower(htmlspecialchars($m['movement_id'] . ' ' . $m['product_name'] . ' ' . ($m['prod_sku'] ?? '') . ' ' . ($m['performed_by'] ?? '') . ' ' . ($m['reason'] ?? '') . ' ' . ($m['reference_no'] ?? '') . ' ' . ($m['notes'] ?? ''))) ?>">
                         <td><code style="font-weight:700;">#<?= $m['movement_id'] ?></code></td>
-                        <td style="font-size:11px;color:#64748b;"><?= $date_str ?></td>
+                        <td style="font-size:11px;color:#64748b;white-space:nowrap;"><?= $date_str ?></td>
                         <td>
                             <strong><?= htmlspecialchars($m['product_name']) ?></strong><br>
                             <small style="color:#64748b;">SKU: <?= htmlspecialchars($m['prod_sku'] ?? '—') ?></small>
                         </td>
                         <td><?= htmlspecialchars($m['product_category'] ?? '—') ?></td>
-                        <td style="text-align:center;">
-                            <span class="<?= $badge_class ?>"><?= $mov_label ?></span>
+                        <td style="text-align:center;"><?= $dir_label ?></td>
+                        <td>
+                            <span style="font-weight:600;color:#1e293b;"><?= $reason_disp ?></span>
+                            <?php if ($ref_disp): ?>
+                                <br><small style="color:#002F70;font-weight:600;"><i class="fas fa-receipt"></i> <?= $ref_disp ?></small>
+                            <?php endif; ?>
                         </td>
                         <td style="text-align:right;<?= $qty_style ?>"><?= $qty_prefix . number_format($m['quantity_change']) ?> <span style="font-size:10px;color:#64748b;"><?= htmlspecialchars($m['unit'] ?? 'pcs') ?></span></td>
                         <td style="text-align:right;color:#64748b;"><?= number_format($m['quantity_before']) ?></td>
-                        <td style="text-align:right;font-weight:600;"><?= number_format($m['quantity_after']) ?></td>
-                        <td><?= htmlspecialchars($m['performed_by'] ?? '—') ?></td>
-                        <td style="text-align:center;">
-                            <span class="badge-approved">Completed</span>
-                        </td>
+                        <td style="text-align:right;font-weight:700;color:#002F70;"><?= number_format($m['quantity_after']) ?></td>
+                        <td style="font-size:12px;color:#334155;"><?= htmlspecialchars($m['performed_by'] ?? '—') ?></td>
                     </tr>
                 <?php endforeach; ?>
             <?php endif; ?>

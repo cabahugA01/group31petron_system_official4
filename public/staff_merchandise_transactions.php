@@ -411,7 +411,7 @@ include __DIR__ . '/../partials/header.php';
             </div>
         <?php endif; ?>
 
-        <form id="merchandiseForm">
+        <form id="merchandiseForm" data-draft-module="merchandise_transaction">
             <!-- Product Selection -->
             <div class="form-group">
                 <label class="form-label">Product Search</label>

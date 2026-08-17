@@ -100,6 +100,7 @@ $categories = [
             'transaction_logs'     => 'Transaction Logs',
             'inventory_logs'       => 'Inventory Logs',
             'approval_logs'        => 'Approval Logs',
+            'login_history'        => 'Login History',
             'archived_deactivated' => 'Archived & Deactivated Logs',
         ]
     ],
@@ -227,19 +228,21 @@ if ($active_tab === 'fuel_sales') {
     if (!empty($_GET['filter_plate']))          $active_filters['plate']          = $_GET['filter_plate'];
     if (!empty($_GET['filter_search']))         $active_filters['search']         = $_GET['filter_search'];
 } elseif ($active_tab === 'transaction_logs') {
-    if (!empty($_GET['filter_module']))  $active_filters['module']  = $_GET['filter_module'];
-    if (!empty($_GET['filter_search'])) $active_filters['search']  = $_GET['filter_search'];
+    if (!empty($_GET['filter_module']))   $active_filters['module']   = $_GET['filter_module'];
+    if (!empty($_GET['filter_staff_id'])) $active_filters['staff_id'] = (int)$_GET['filter_staff_id'];
+    if (!empty($_GET['filter_status']))   $active_filters['status']   = $_GET['filter_status'];
+    if (!empty($_GET['filter_search']))   $active_filters['search']   = $_GET['filter_search'];
 } elseif ($active_tab === 'inventory_logs') {
     if (!empty($_GET['filter_action']))   $active_filters['action']   = $_GET['filter_action'];
-    if (!empty($_GET['filter_product']))  $active_filters['product']  = $_GET['filter_product'];
     if (!empty($_GET['filter_search']))   $active_filters['search']   = $_GET['filter_search'];
 } elseif ($active_tab === 'approval_logs') {
     if (!empty($_GET['filter_status']))   $active_filters['status']   = $_GET['filter_status'];
     if (!empty($_GET['filter_search']))   $active_filters['search']   = $_GET['filter_search'];
+} elseif ($active_tab === 'login_history') {
+    if (!empty($_GET['filter_status']))   $active_filters['status']   = $_GET['filter_status'];
+    if (!empty($_GET['filter_search']))   $active_filters['search']   = $_GET['filter_search'];
 } elseif ($active_tab === 'archived_deactivated') {
-    if (!empty($_GET['filter_action']))  $active_filters['action']  = $_GET['filter_action'];
-    if (!empty($_GET['filter_module']))  $active_filters['module']  = $_GET['filter_module'];
-    if (!empty($_GET['filter_search'])) $active_filters['search']  = $_GET['filter_search'];
+    if (!empty($_GET['filter_search']))   $active_filters['search']   = $_GET['filter_search'];
 }
 
 // Fetch report data
@@ -948,41 +951,77 @@ require_once __DIR__ . '/../partials/header.php';
 
                 <?php elseif ($active_tab === 'transaction_logs'): ?>
                     <?php
-                    $sel_module = htmlspecialchars($active_filters['module'] ?? '');
-                    $sel_search = htmlspecialchars($active_filters['search'] ?? '');
+                    $sel_module  = htmlspecialchars($active_filters['module'] ?? '');
+                    $sel_staff   = (int)($active_filters['staff_id'] ?? 0);
+                    $sel_status  = htmlspecialchars($active_filters['status'] ?? '');
+                    $sel_search  = htmlspecialchars($active_filters['search'] ?? '');
+                    $staff_list  = $report_data['staff_list'] ?? [];
                     ?>
                     <label class="ms-1"><i class="fas fa-filter me-1"></i> Module</label>
-                    <select name="filter_module" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
+                    <select name="filter_module" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:11.5px;color:#334155;">
                         <option value="">All Modules</option>
-                        <option value="Merchandise Sale" <?= $sel_module === 'Merchandise Sale' ? 'selected' : '' ?>>Merchandise Sale</option>
-                        <option value="Job Order" <?= $sel_module === 'Job Order' ? 'selected' : '' ?>>Job Order</option>
-                        <option value="Return" <?= $sel_module === 'Return' ? 'selected' : '' ?>>Return</option>
-                        <option value="Void" <?= $sel_module === 'Void' ? 'selected' : '' ?>>Void Transaction</option>
-                        <option value="Refund" <?= $sel_module === 'Refund' ? 'selected' : '' ?>>Refund</option>
+                        <?php foreach (['Merchandise','Fuel Management','Job Orders','Fuel Sales Closing','Sales Adjustments','Reports'] as $m): ?>
+                            <option value="<?= $m ?>" <?= strtolower($sel_module) === strtolower($m) ? 'selected' : '' ?>><?= $m ?></option>
+                        <?php endforeach; ?>
+                    </select>
+
+                    <?php if (!empty($staff_list)): ?>
+                    <label class="ms-1"><i class="fas fa-user me-1"></i> Personnel</label>
+                    <select name="filter_staff_id" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:11.5px;color:#334155;">
+                        <option value="0">All Personnel</option>
+                        <?php foreach ($staff_list as $sl): ?>
+                            <option value="<?= (int)$sl['id'] ?>" <?= $sel_staff === (int)$sl['id'] ? 'selected' : '' ?>><?= htmlspecialchars(trim($sl['full_name'] ?? $sl['name'] ?? ('User #'.$sl['id']))) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php endif; ?>
+
+                    <label class="ms-1"><i class="fas fa-info-circle me-1"></i> Status</label>
+                    <select name="filter_status" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:11.5px;color:#334155;">
+                        <option value="">All Statuses</option>
+                        <option value="Completed" <?= strtolower($sel_status) === 'completed' ? 'selected' : '' ?>>Completed</option>
+                        <option value="Pending" <?= strtolower($sel_status) === 'pending' ? 'selected' : '' ?>>Pending</option>
+                        <option value="Cancelled" <?= strtolower($sel_status) === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
                     </select>
 
                     <label class="ms-1"><i class="fas fa-search me-1"></i> Search</label>
-                    <input type="text" name="filter_search" value="<?= $sel_search ?>" placeholder="Search transaction..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;width:120px;color:#334155;">
+                    <input type="text" name="filter_search" value="<?= $sel_search ?>" placeholder="Search ref, actor, details..." style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:11.5px;width:130px;color:#334155;">
 
                 <?php elseif ($active_tab === 'inventory_logs'): ?>
                     <?php
                     $sel_action  = htmlspecialchars($active_filters['action'] ?? '');
-                    $sel_product = htmlspecialchars($active_filters['product'] ?? '');
                     $sel_search  = htmlspecialchars($active_filters['search'] ?? '');
                     ?>
-                    <label class="ms-1"><i class="fas fa-filter me-1"></i> Action Type</label>
-                    <select name="filter_action" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
-                        <option value="">All Actions</option>
+                    <label class="ms-1"><i class="fas fa-filter me-1"></i> Movement Type</label>
+                    <select name="filter_action" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:11.5px;color:#334155;">
+                        <option value="">All Movements</option>
                         <option value="Stock In" <?= $sel_action === 'Stock In' ? 'selected' : '' ?>>Stock In</option>
                         <option value="Stock Out" <?= $sel_action === 'Stock Out' ? 'selected' : '' ?>>Stock Out</option>
+                        <option value="Stock Request" <?= $sel_action === 'Stock Request' ? 'selected' : '' ?>>Stock Request</option>
+                        <option value="Stock-In Approved" <?= $sel_action === 'Stock-In Approved' ? 'selected' : '' ?>>Stock-In Approved</option>
+                        <option value="Fuel Delivery" <?= $sel_action === 'Fuel Delivery' ? 'selected' : '' ?>>Fuel Delivery</option>
                         <option value="Inventory Adjustment" <?= $sel_action === 'Inventory Adjustment' ? 'selected' : '' ?>>Inventory Adjustment</option>
-                        <option value="Expired Adjustment" <?= $sel_action === 'Expired Adjustment' ? 'selected' : '' ?>>Expired Products</option>
-                        <option value="Damaged Adjustment" <?= $sel_action === 'Damaged Adjustment' ? 'selected' : '' ?>>Damaged Products</option>
+                        <option value="Expired Products" <?= $sel_action === 'Expired Products' ? 'selected' : '' ?>>Expired Products</option>
+                        <option value="Damaged Products" <?= $sel_action === 'Damaged Products' ? 'selected' : '' ?>>Damaged Products</option>
                         <option value="Physical Count" <?= $sel_action === 'Physical Count' ? 'selected' : '' ?>>Physical Count</option>
                     </select>
 
                     <label class="ms-1"><i class="fas fa-search me-1"></i> Search</label>
-                    <input type="text" name="filter_search" value="<?= $sel_search ?>" placeholder="Search product/SKU..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;width:120px;color:#334155;">
+                    <input type="text" name="filter_search" value="<?= $sel_search ?>" placeholder="Search product/ref..." style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:11.5px;width:130px;color:#334155;">
+
+                <?php elseif ($active_tab === 'login_history'): ?>
+                    <?php
+                    $sel_status = htmlspecialchars($active_filters['status'] ?? '');
+                    $sel_search = htmlspecialchars($active_filters['search'] ?? '');
+                    ?>
+                    <label class="ms-1"><i class="fas fa-info-circle me-1"></i> Status</label>
+                    <select name="filter_status" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:11.5px;color:#334155;">
+                        <option value="">All Statuses</option>
+                        <option value="Success" <?= strtolower($sel_status) === 'success' ? 'selected' : '' ?>>Success</option>
+                        <option value="Failed" <?= strtolower($sel_status) === 'failed' ? 'selected' : '' ?>>Failed</option>
+                    </select>
+
+                    <label class="ms-1"><i class="fas fa-search me-1"></i> Search</label>
+                    <input type="text" name="filter_search" value="<?= $sel_search ?>" placeholder="Search user/action/IP..." style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;font-size:11.5px;width:130px;color:#334155;">
 
                 <?php elseif ($active_tab === 'approval_logs'): ?>
                     <?php
@@ -1069,6 +1108,7 @@ require_once __DIR__ . '/../partials/header.php';
             'transaction_logs'     => 'fas fa-exchange-alt',
             'inventory_logs'       => 'fas fa-boxes',
             'approval_logs'        => 'fas fa-check-circle',
+            'login_history'        => 'fas fa-sign-in-alt',
             'archived_deactivated' => 'fas fa-archive',
         ];
         ?>

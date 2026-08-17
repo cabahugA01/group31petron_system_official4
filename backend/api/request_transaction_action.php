@@ -97,18 +97,18 @@ try {
     $customer_name = $txn['customer_name'] ?? ('TXN #'.$transaction_id);
     $staff_name    = $me['name'] ?? $me['username'] ?? 'Staff';
     $notif_msg     = "{$staff_name} requested a {$request_type} for {$customer_name}. Reason: {$full_reason}";
-    try {
-        $cols  = $pdo->query("SHOW COLUMNS FROM notifications")->fetchAll(PDO::FETCH_COLUMN);
-        $has_s = in_array('station_id',$cols);
-        $has_r = in_array('target_role',$cols);
-        $has_l = in_array('link',$cols);
-        $f='title,message,type,is_read,created_at'; $v='?,?,?,0,NOW()';
-        $p=["Staff {$request_type} Request",$notif_msg,'transaction_request'];
-        if($has_s){$f.=',station_id';$v.=',?';$p[]=$station_id;}
-        if($has_r){$f.=',target_role';$v.=',?';$p[]='manager';}
-        if($has_l){$f.=',link';$v.=',?';$p[]='manager_job_orders.php';}
-        $pdo->prepare("INSERT INTO notifications ({$f}) VALUES ({$v})")->execute($p);
-    } catch(Exception $ne){ error_log('notif error: '.$ne->getMessage()); }
+    // ── Notify manager(s) — event-driven ────────────────────────
+    $ref_t = ($request_type === 'Void') ? 'void_request' : 'transaction_adjustment';
+    $redirect_p = ($ref_t === 'void_request') ? 'manager_voided_transactions.php?id=' . $request_id : 'manager_shift_transactions.php?id=' . $request_id;
+    notify_manager(
+        $pdo, $station_id,
+        'warning', $ref_t, 'high',
+        "New {$request_type} Request",
+        "{$staff_name} requested {$request_type} for {$customer_name}. Reason: {$full_reason}",
+        "txn_req_{$request_type}_{$request_id}",
+        $redirect_p,
+        $ref_t, (int)$request_id
+    );
 
     if(function_exists('log_activity')) {
         log_activity($pdo,$user_id,"Request {$request_type}","Req#{$request_id}|{$request_type}|TXN#{$transaction_id}|{$full_reason}");

@@ -4,6 +4,7 @@
  */
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
+require_login();
 }
 require_once __DIR__ . '/db_connect.php';
 
@@ -256,6 +257,34 @@ if ($action === 'save_closing') {
         ")->execute([$station_id, $report_date, $shift_key, $shift, $shift]);
 
         $pdo->commit();
+
+        // ── Include lib.php for notification helpers ───────────────
+        require_once __DIR__ . '/../backend/lib.php';
+
+        $shift_label = !empty($shift) ? $shift : ($shift_key === 'second' ? 'Shift 2' : 'Shift 1');
+
+        // 1. Notify staff: Closing saved successfully
+        notify(
+            $pdo, $user_id, 'staff', 'success', 'fuel_sales_closing', 'medium',
+            "Fuel Sales Closing Saved ({$shift_label})",
+            "Your fuel sales closing for {$report_date} ({$shift_label}) has been saved successfully.",
+            "fuel_closing_staff_{$saved_id}",
+            'staff_fuel_sales_closing.php',
+            'fuel_sales_closing', (int)$saved_id,
+            $shift_label
+        );
+
+        // 2. Notify manager: Closing submitted for review
+        notify_manager(
+            $pdo, $station_id,
+            'info', 'fuel_sales_closing', 'medium',
+            "Fuel Sales Closing Submitted ({$shift_label})",
+            "Fuel sales closing for {$report_date} ({$shift_label}) is ready for manager review.",
+            "fuel_closing_mgr_{$saved_id}",
+            'staff_fuel_sales_closing.php',
+            'fuel_sales_closing', (int)$saved_id,
+            $shift_label
+        );
 
         $report_url = 'staff_transactions_hub.php?section=fuel&closing_saved=1';
 

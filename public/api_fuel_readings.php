@@ -13,6 +13,7 @@ ini_set('log_errors', '1');
 // Start session exactly the same way login.php does
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
+require_login();
 }
 
 require_once __DIR__ . '/../backend/lib.php';

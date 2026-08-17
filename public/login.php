@@ -41,6 +41,12 @@ if (isset($_GET['reset_success']) && $_GET['reset_success'] === '1') {
     $success_msg = 'Password reset successful. Please log in with your new password.';
 }
 
+// Check for session timeout due to inactivity
+$timeout_msg = '';
+if (isset($_GET['timeout']) && $_GET['timeout'] === '1') {
+    $timeout_msg = 'Your session has expired due to inactivity. Please log in again.';
+}
+
 // Check for login error from auth/login.php
 if (isset($_SESSION['login_error'])) {
     $error = $_SESSION['login_error'];
@@ -223,9 +229,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Direct login - Set session and redirect to dashboard
                 unset($user[$s_pass]); // Remove password from session
-                $_SESSION['user']    = $user;
-                $_SESSION['user_id'] = $user['user_id'];
-                $_SESSION['role']    = $user['role'];
+                $_SESSION['user']          = $user;
+                $_SESSION['user_id']       = $user['user_id'];
+                $_SESSION['role']          = $user['role'];
+                $_SESSION['last_activity'] = time();
 
                 // Update last login timestamp
                 try {
@@ -1604,6 +1611,14 @@ $_asset_base = $_login_base . '/assets';
                 }, 1100);
                 </script>
                 <?php else: ?>
+
+                <!-- Inactivity Timeout Banner -->
+                <?php if (!empty($timeout_msg)): ?>
+                <div class="alert-info" role="alert" style="display:flex;align-items:center;gap:12px;padding:14px 18px;background:rgba(0,47,108,0.55);border:1.5px solid rgba(147,197,253,0.6);border-radius:14px;color:#dbeafe;font-size:13.5px;font-weight:600;margin:16px 0;line-height:1.45;box-shadow:0 4px 14px rgba(0,0,0,0.25);">
+                    <i class="fas fa-clock" style="font-size:18px;color:#93c5fd;flex-shrink:0;"></i>
+                    <span><?php echo htmlspecialchars($timeout_msg); ?></span>
+                </div>
+                <?php endif; ?>
 
                 <!-- Error Banner -->
                 <?php if ($error): ?>

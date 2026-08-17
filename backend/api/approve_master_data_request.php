@@ -163,46 +163,29 @@ try {
 
     $pdo->commit();
 
-    // ── Notify the requester ──────────────────────────────────────────────────
+    // ── Notify the requester — event-driven ─────────────────────────────────
     try {
         $requestedBy = (int)$req['requested_by'];
         $requestNo   = $req['request_no'] ?? "#$id";
         $category    = $req['category'];
 
-        $reviewerName = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
-        if (empty($reviewerName)) $reviewerName = $me['name'] ?? 'Manager';
-
         if ($action === 'approve') {
-            $notifTitle   = "Request Approved: $requestNo";
-            $notifMessage = "Your Master Data Request ($requestNo) has been Approved.";
-            $notifType    = 'success';
+            notify($pdo, $requestedBy, 'staff', 'success', 'master_data_request', 'medium',
+                "Master Data Request Approved: {$requestNo}",
+                "Your {$category} request ({$requestNo}) has been Approved.",
+                "mdr_approved_{$id}",
+                'staff_requests.php?id=' . $id,
+                'master_data_request', $id
+            );
         } else {
-            $notifTitle   = "Request Rejected: $requestNo";
-            $notifMessage = "Your Master Data Request ($requestNo) has been Rejected." . (!empty($rejectionReason) ? " Reason: $rejectionReason" : "");
-            $notifType    = 'warning';
+            notify($pdo, $requestedBy, 'staff', 'error', 'master_data_request', 'medium',
+                "Master Data Request Rejected: {$requestNo}",
+                "Your {$category} request ({$requestNo}) was Rejected." . (!empty($rejectionReason) ? " Reason: {$rejectionReason}" : ''),
+                "mdr_rejected_{$id}",
+                'staff_requests.php?id=' . $id,
+                'master_data_request', $id
+            );
         }
-
-        $redirectUrl = 'staff_transactions_hub.php';
-        if ($category === 'Merchandise Product') {
-            $redirectUrl = 'staff_transactions_hub.php?section=merchandise';
-        } elseif ($category === 'Service Type' || $category === 'Vehicle') {
-            $redirectUrl = 'staff_transactions_hub.php?section=job_order';
-        }
-
-        $nStmt = $pdo->prepare("
-            INSERT INTO notifications
-                (user_id, type, event_type, severity, title, message, source_key, redirect_url, status, created_at)
-            VALUES
-                (?, ?, 'master_data_request_result', 'medium', ?, ?, ?, ?, 'unread', NOW())
-        ");
-        $nStmt->execute([
-            $requestedBy,
-            $notifType,
-            $notifTitle,
-            $notifMessage,
-            "mdr_result_{$id}_{$requestedBy}",
-            $redirectUrl
-        ]);
     } catch (Exception $notifErr) {
         error_log("Approval notification error: " . $notifErr->getMessage());
     }

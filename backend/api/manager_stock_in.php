@@ -269,13 +269,13 @@ function approve_merchandise_stock_in(PDO $pdo, array $me, int $station_id, arra
                 } catch (Exception $ignored) {}
             }
 
-            // Insert inventory log (optional - don't fail the entire transaction if this fails)
+            // Insert inventory log with Global Movement Engine standards
             try {
                 $pdo->prepare("
                     INSERT INTO inventory_logs
-                        (station_id, product_id, user_id, action, quantity_before, quantity_after,
-                         quantity_change, reference_type, reference_id, notes, created_at)
-                    VALUES (?, ?, ?, 'stock_in', ?, ?, ?, 'deliveries_oversight', ?, ?, NOW())
+                        (station_id, product_id, user_id, action, movement_type, reason, quantity_before, quantity_after,
+                         quantity_change, reference_type, reference_id, reference_no, notes, created_at)
+                    VALUES (?, ?, ?, 'stock_in', 'IN', 'Stock-In', ?, ?, ?, 'deliveries_oversight', ?, ?, ?, NOW())
                 ")->execute([
                     $station_id,
                     $product_id,
@@ -284,6 +284,7 @@ function approve_merchandise_stock_in(PDO $pdo, array $me, int $station_id, arra
                     (int)$stock_after,
                     (int)$qty_received,
                     (int)$delivery_id,
+                    $po_key ?: $batch_id,
                     "Manager Stock-In | Batch: {$batch_id} | PO: {$po_key}"
                 ]);
             } catch (Exception $log_error) {

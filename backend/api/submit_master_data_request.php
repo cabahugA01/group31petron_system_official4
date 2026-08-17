@@ -148,24 +148,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $requesterName = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
             if (empty($requesterName)) $requesterName = $me['name'] ?? 'Staff';
 
-            $notif_stmt = $pdo->prepare("
-                INSERT INTO notifications 
-                    (user_id, type, event_type, severity, title, message, source_key, redirect_url, status, created_at)
-                VALUES 
-                    (?, 'info', 'master_data_request', 'medium', ?, ?, ?, 'manager_request_data_management.php', 'unread', NOW())
-            ");
-
-            foreach ($managers as $mgr_id) {
-                $notif_stmt->execute([
-                    $mgr_id,
-                    "New Master Data Request: " . $category,
-                    "{$requesterName} requested to add {$requestedItem}.",
-                    "mdr_" . $requestId . "_" . $mgr_id
-                ]);
-            }
-        } catch (Exception $notif_err) {
-            // Non-blocking notification error
-            error_log("Master data request notification error: " . $notif_err->getMessage());
+        // ── Notify manager(s) — event-driven ────────────────────────
+        if ($stationId) {
+            notify_manager(
+                $pdo, $stationId,
+                'info', 'master_data_request', 'medium',
+                'New Master Data Request: ' . $category,
+                "{$requesterName} requested to add {$requestedItem}. Review required.",
+                "mdr_submitted_{$requestId}",
+                'manager_review_stock_requests.php?id=' . $requestId,
+                'master_data_request', $requestId
+            );
         }
 
         echo json_encode([

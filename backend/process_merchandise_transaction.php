@@ -442,13 +442,19 @@ try {
     $item_stmt = $pdo->prepare("INSERT INTO merchandise_transaction_items ($item_column_list) VALUES ($item_placeholders)");
     $item_stmt->execute($item_vals);
 
-    $deduct_stmt = $pdo->prepare("
-        UPDATE station_inventory
-        SET stock_level = stock_level - ?,
-            last_updated = NOW()
-        WHERE station_id = ? AND product_id = ?
-    ");
-    $deduct_stmt->execute([$quantity, $station_id, $product_id]);
+    // Deduct stock and record movement via Global Movement Engine
+    try {
+        record_merchandise_sale_movement(
+            $pdo,
+            $station_id,
+            $product_id,
+            (float)$quantity,
+            $transaction_id,
+            (int)($user_id ?: ($me['id'] ?? 0))
+        );
+    } catch (Exception $eStock) {
+        error_log("Merchandise sale stock movement failed: " . $eStock->getMessage());
+    }
 
     if ($is_credit && $credit_customer_id) {
         $pdo->prepare("

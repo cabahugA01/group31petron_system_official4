@@ -5,6 +5,7 @@
  */
 
 session_start();
+require_login();
 require_once __DIR__ . '/db_connect.php';
 
 // Check if user is admin

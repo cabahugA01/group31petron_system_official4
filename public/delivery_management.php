@@ -9,6 +9,7 @@
  */
 
 session_start();
+require_login();
 require_once '../config/database_config.php';
 require_once '../public/db_connect.php';
 require_once '../backend/lib.php';

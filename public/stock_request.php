@@ -7,7 +7,7 @@
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
-            <form method="post" id="stockRequestForm">
+            <form method="post" id="stockRequestForm" data-draft-module="stock_request_form">
                 <div class="modal-body">
                     <?php if ($product_info): ?>
                         <div style="background: #f8fafc; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; border-left: 3px solid var(--petron-blue);">

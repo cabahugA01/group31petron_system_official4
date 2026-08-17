@@ -1,4 +1,9 @@
-<?php /* Transaction History section — included by staff_transactions_hub.php */ ?>
+<?php
+if (session_status() === PHP_SESSION_NONE) session_start();
+require_once __DIR__ . '/../backend/lib.php';
+require_login();
+
+/* Transaction History section — included by staff_transactions_hub.php */ ?>
 <style>
 .th-kpi-grid {
   display: grid;
