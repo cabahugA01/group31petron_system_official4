@@ -113,6 +113,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception('Invalid email address format.');
                 }
 
+                // Philippine Phone Validation
+                if (!empty($contact_input)) {
+                    $clean_contact = preg_replace('/[\s\-\(\)\.]/', '', $contact_input);
+                    if (!preg_match('/^(09\d{9}|\+639\d{9}|639\d{9})$/', $clean_contact)) {
+                        throw new Exception('Invalid Philippine contact number. Must be an 11-digit mobile number starting with 09 (e.g. 09171234567 or +639171234567).');
+                    }
+                    if (str_starts_with($clean_contact, '+639')) {
+                        $contact_input = '09' . substr($clean_contact, 4);
+                    } elseif (str_starts_with($clean_contact, '639')) {
+                        $contact_input = '09' . substr($clean_contact, 3);
+                    } else {
+                        $contact_input = $clean_contact;
+                    }
+                }
+
                 if (empty($first_name_input)) throw new Exception('First Name is required.');
                 if (empty($last_name_input))  throw new Exception('Last Name is required.');
                 if (empty($username))         throw new Exception('Username or Email is required.');
@@ -230,6 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $first_name    = trim($_POST['first_name'] ?? '');
                 $last_name     = trim($_POST['last_name'] ?? '');
                 $login_id      = trim($_POST['login_id'] ?? '');
+                $contact_input = trim($_POST['contact_number'] ?? '');
                 $role          = strtolower(trim($_POST['role'] ?? 'staff'));
                 $assigned_shift= trim($_POST['assigned_shift'] ?? '');
 
@@ -242,6 +258,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (strpos($login_id, '@') !== false) {
                     $email = $login_id;
                     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception('Invalid email address format.');
+                }
+
+                // Philippine Phone Validation
+                if (!empty($contact_input)) {
+                    $clean_contact = preg_replace('/[\s\-\(\)\.]/', '', $contact_input);
+                    if (!preg_match('/^(09\d{9}|\+639\d{9}|639\d{9})$/', $clean_contact)) {
+                        throw new Exception('Invalid Philippine contact number. Must be an 11-digit mobile number starting with 09 (e.g. 09171234567 or +639171234567).');
+                    }
+                    if (str_starts_with($clean_contact, '+639')) {
+                        $contact_input = '09' . substr($clean_contact, 4);
+                    } elseif (str_starts_with($clean_contact, '639')) {
+                        $contact_input = '09' . substr($clean_contact, 3);
+                    } else {
+                        $contact_input = $clean_contact;
+                    }
                 }
                 
                 if (!in_array($role, ['staff', 'manager', 'admin', 'superadmin'])) {
@@ -280,6 +311,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $stmt = $pdo->prepare("UPDATE users SET first_name = ?, last_name = ?, role = ?, username = ?, email = ?, updated_at = NOW() WHERE id = ?");
                 $stmt->execute([$first_name, $last_name, $role, $username, $email, $id]);
+
+                if (in_array('phone_number', $user_cols)) {
+                    $pdo->prepare("UPDATE users SET phone_number = ? WHERE id = ?")->execute([$contact_input ?: null, $id]);
+                }
 
                 if (in_array('assigned_shift', $user_cols)) {
                     $pdo->prepare("UPDATE users SET assigned_shift = ? WHERE id = ?")->execute([$assigned_shift, $id]);
@@ -418,6 +453,7 @@ $user_list_columns = "
     u.username,
     u.role,
     u.email,
+    u.phone_number,
     u.station_id,
     u.assigned_shift,
     u.status,
@@ -485,7 +521,7 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-/* --- CLEAN MODAL OVERLAY & CONTAINER BOX (No cutoff at top/bottom) --- */
+/* --- CLEAN MODAL OVERLAY & CONTAINER BOX (With Ample Header & Footer Space) --- */
 .modal {
     position: fixed !important;
     top: 0 !important;
@@ -500,31 +536,42 @@ include __DIR__ . '/../partials/header.php';
     display: none;
     align-items: center !important;
     justify-content: center !important;
-    padding-top: 75px !important;   /* Clear top header bar + 15px top gap */
-    padding-bottom: 65px !important;/* Clear bottom footer bar + 25px bottom gap */
-    padding-left: 16px !important;
-    padding-right: 16px !important;
+    padding-top: 85px !important;   /* Clear top navbar with clean visible space */
+    padding-bottom: 75px !important;/* Clear bottom footer */
+    padding-left: 20px !important;
+    padding-right: 20px !important;
     box-sizing: border-box !important;
 }
 
 .modal-content {
     background: #ffffff !important;
-    border-radius: 12px !important;
+    border-radius: 14px !important;
     width: 100% !important;
-    max-width: 620px !important;
-    max-height: calc(100vh - 140px) !important;
+    max-width: 580px !important;
+    max-height: calc(100vh - 170px) !important;
     display: flex !important;
     flex-direction: column !important;
-    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35) !important;
-    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.3) !important;
+    border: 1px solid #cbd5e1 !important;
     overflow: hidden !important;
     margin: auto !important;
+    animation: modalSlideUp .2s ease-out;
+}
+
+@keyframes modalSlideUp {
+    from { transform: translateY(14px); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes toastSlideIn {
+    from { transform: translateX(50px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
 }
 
 .modal-header {
-    background: #ffffff !important;
+    background: #f8fafc !important;
     border-bottom: 1px solid #e2e8f0 !important;
-    padding: 20px 24px !important;
+    padding: 14px 20px !important;
     flex-shrink: 0 !important;
     display: flex !important;
     align-items: center !important;
@@ -532,37 +579,50 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .modal-title {
-    color: #0f172a !important;
-    font-weight: 700 !important;
-    font-size: 16px !important;
+    color: #002F70 !important;
+    font-weight: 800 !important;
+    font-size: 15px !important;
     margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
 }
 
 .modal-close {
-    background: transparent !important;
-    border: none !important;
-    font-size: 24px !important;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    width: 28px !important;
+    height: 28px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 18px !important;
     color: #64748b !important;
     cursor: pointer !important;
     line-height: 1 !important;
-    padding: 0 4px !important;
-    transition: color 0.2s !important;
+    padding: 0 !important;
+    transition: all 0.15s !important;
 }
 .modal-close:hover {
-    color: #0f172a !important;
+    background: #fee2e2 !important;
+    color: #dc2626 !important;
+    border-color: #fca5a5 !important;
 }
 
 .modal-body {
-    padding: 24px !important;
+    padding: 20px 22px !important;
     overflow-y: auto !important;
     flex: 1 !important;
     min-height: 0 !important;
 }
 
 .modal-footer {
-    background: #ffffff !important;
-    border-top: 1px solid #e2e8f0 !important;
-    padding: 16px 24px !important;
+    background: #f8fafc !important;
+    border-top: 1px solid #f1f5f9 !important;
+    padding: 12px 20px !important;
     flex-shrink: 0 !important;
     display: flex !important;
     align-items: center !important;
@@ -570,44 +630,173 @@ include __DIR__ . '/../partials/header.php';
     gap: 10px !important;
 }
 
-/* --- PLAIN & CLEAN BUTTON STYLES (No heavy filled dark background) --- */
-.btn-plain-cancel {
-    background: transparent !important;
-    border: 1px solid #cbd5e1 !important;
+/* --- FORM & INPUT STYLES --- */
+.form-section-title {
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.6px !important;
+    color: #002F70 !important;
+    margin: 16px 0 10px !important;
+    padding-bottom: 4px !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+.form-section-title:first-child {
+    margin-top: 0 !important;
+}
+
+.form-grid-2 {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12px !important;
+    margin-bottom: 10px !important;
+}
+@media(max-width: 520px) {
+    .form-grid-2 { grid-template-columns: 1fr !important; }
+}
+
+.form-group {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+    margin-bottom: 10px !important;
+}
+
+.form-group .lbl,
+.lbl {
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
     color: #475569 !important;
-    font-size: 12px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.4px !important;
+    margin-bottom: 2px !important;
+}
+
+.form-group input.inp,
+.form-group select.inp,
+.inp {
+    height: 38px !important;
+    padding: 0 12px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+    color: #1e293b !important;
+    background: #ffffff !important;
+    outline: none !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    transition: border-color 0.15s, box-shadow 0.15s !important;
+}
+
+.form-group input.inp:focus,
+.form-group select.inp:focus,
+.inp:focus {
+    border-color: #002F70 !important;
+    box-shadow: 0 0 0 3px rgba(0, 47, 112, 0.1) !important;
+}
+
+.btn-dice {
+    height: 38px !important;
+    width: 38px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    color: #002F70 !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+    transition: all 0.15s !important;
+}
+.btn-dice:hover {
+    background: #002F70 !important;
+    color: #ffffff !important;
+    border-color: #002F70 !important;
+}
+
+/* --- BUTTON STYLES --- */
+.btn-plain-cancel {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #334155 !important;
+    font-size: 13px !important;
     font-weight: 600 !important;
-    padding: 8px 18px !important;
-    border-radius: 6px !important;
+    padding: 0 16px !important;
+    height: 36px !important;
+    border-radius: 7px !important;
     cursor: pointer !important;
     display: inline-flex !important;
     align-items: center !important;
     gap: 6px !important;
-    transition: all 0.2s !important;
+    transition: all 0.15s !important;
 }
 .btn-plain-cancel:hover {
-    background: #f1f5f9 !important;
+    background: #f8fafc !important;
     color: #0f172a !important;
     border-color: #94a3b8 !important;
 }
 
-.btn-plain-submit {
-    background: transparent !important;
-    border: 1.5px solid #00264D !important;
-    color: #00264D !important;
-    font-size: 12px !important;
+.btn-header-add {
+    background: #002F70 !important;
+    background-color: #002F70 !important;
+    color: #ffffff !important;
+    border: 1px solid #002F70 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 7px !important;
+    padding: 0 18px !important;
+    height: 36px !important;
+    border-radius: 7px !important;
+    font-size: 13px !important;
     font-weight: 700 !important;
-    padding: 8px 20px !important;
-    border-radius: 6px !important;
+    cursor: pointer !important;
+    transition: all .15s ease-in-out !important;
+    white-space: nowrap !important;
+    box-shadow: 0 2px 5px rgba(0,47,112,0.2) !important;
+    text-decoration: none !important;
+}
+.btn-header-add i,
+.btn-header-add span {
+    color: #ffffff !important;
+}
+.btn-header-add:hover {
+    background: #001f4d !important;
+    background-color: #001f4d !important;
+    color: #ffffff !important;
+    border-color: #001f4d !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 8px rgba(0,47,112,0.3) !important;
+}
+
+.btn-plain-submit {
+    background: #002F70 !important;
+    background-color: #002F70 !important;
+    border: 1px solid #002F70 !important;
+    color: #ffffff !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    padding: 9px 20px !important;
+    border-radius: 7px !important;
     cursor: pointer !important;
     display: inline-flex !important;
     align-items: center !important;
-    gap: 6px !important;
-    transition: all 0.2s !important;
+    gap: 7px !important;
+    transition: all 0.15s !important;
+}
+.btn-plain-submit i,
+.btn-plain-submit span {
+    color: #ffffff !important;
 }
 .btn-plain-submit:hover {
-    background: #00264D !important;
+    background: #001f4d !important;
+    background-color: #001f4d !important;
     color: #ffffff !important;
+    border-color: #001f4d !important;
 }
 
 .btn-plain-danger {
@@ -786,19 +975,42 @@ include __DIR__ . '/../partials/header.php';
     </div>
     <?php if ($my_role === 'admin' || $my_role === 'superadmin'): ?>
     <div class="actions">
-        <button onclick="openAddModal()"
-                style="display:inline-flex !important;align-items:center;gap:6px;padding:8px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid #00264D !important;background:white !important;color:#00264D !important;transition:all .2s;box-shadow: 0 2px 4px rgba(0,0,0,0.05);"
-                onmouseover="this.style.background='#00264D';this.style.color='#fff'"
-                onmouseout="this.style.background='white';this.style.color='#00264D'">
-            <i class="fas fa-user-plus"></i> Add User
+        <button type="button" onclick="openAddModal()" class="btn-header-add">
+            <i class="fas fa-plus"></i> <span>Add New User</span>
         </button>
     </div>
     <?php endif; ?>
 </div>
 
 <?php if ($msg): ?>
-<div class="card" style="padding:14px 18px; margin-bottom:20px; border-radius: 8px; font-weight: 500; background: <?php echo $is_error ? '#fef2f2' : '#f0fdf4'; ?>; color: <?php echo $is_error ? '#991b1b' : '#166534'; ?>; border: 1px solid <?php echo $is_error ? '#fecaca' : '#bbf7d0'; ?>;">
-    <?php echo $msg; ?>
+<!-- Floating Top-Right Toast Notification (Clear of Navbar) -->
+<div id="floatingToastMsg" style="position: fixed; top: 82px; right: 24px; z-index: 100002; max-width: 450px; background: #ffffff; border: 1.5px solid <?php echo $is_error ? '#fca5a5' : '#86efac'; ?>; border-left: 5px solid <?php echo $is_error ? '#dc2626' : '#16a34a'; ?>; border-radius: 10px; box-shadow: 0 12px 35px rgba(0,0,0,0.18); padding: 14px 18px; display: flex; align-items: flex-start; gap: 12px; animation: toastSlideIn .3s ease-out;">
+    <div style="font-size: 20px; color: <?php echo $is_error ? '#dc2626' : '#16a34a'; ?>; line-height: 1; flex-shrink: 0; margin-top: 2px;">
+        <i class="fas <?php echo $is_error ? 'fa-exclamation-circle' : 'fa-check-circle'; ?>"></i>
+    </div>
+    <div style="flex: 1; font-size: 13px; line-height: 1.5; color: <?php echo $is_error ? '#991b1b' : '#166534'; ?>;">
+        <div style="font-weight: 800; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; color: <?php echo $is_error ? '#dc2626' : '#16a34a'; ?>;">
+            <?php echo $is_error ? 'System Notice / Error' : 'Success Notification'; ?>
+        </div>
+        <?php echo $msg; ?>
+    </div>
+    <button type="button" onclick="document.getElementById('floatingToastMsg').remove()" style="background: transparent; border: none; font-size: 18px; color: #94a3b8; cursor: pointer; line-height: 1; padding: 0 4px;" title="Dismiss">&times;</button>
+</div>
+<script>
+setTimeout(function() {
+    var toast = document.getElementById('floatingToastMsg');
+    if (toast) {
+        toast.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(20px)';
+        setTimeout(function() { toast.remove(); }, 500);
+    }
+}, 8000);
+</script>
+
+<div class="card" style="padding:14px 18px; margin-bottom:20px; border-radius: 8px; font-weight: 500; background: <?php echo $is_error ? '#fef2f2' : '#f0fdf4'; ?>; color: <?php echo $is_error ? '#991b1b' : '#166534'; ?>; border: 1px solid <?php echo $is_error ? '#fecaca' : '#bbf7d0'; ?>; display: flex; align-items: center; gap: 10px;">
+    <i class="fas <?php echo $is_error ? 'fa-exclamation-circle' : 'fa-check-circle'; ?>" style="font-size: 16px;"></i>
+    <div><?php echo $msg; ?></div>
 </div>
 <?php endif; ?>
 
@@ -921,50 +1133,51 @@ include __DIR__ . '/../partials/header.php';
 <div class="modal" id="addModal">
     <div class="modal-content">
         <div class="modal-header">
-            <div>
-                <h3 class="modal-title">ADD NEW USER</h3>
-            </div>
+            <span class="modal-title"><i class="fas fa-user-plus"></i> Add New User</span>
             <button class="modal-close" onclick="closeModal('addModal')">&times;</button>
         </div>
-        <form method="post" onsubmit="return validateAddForm();" autocomplete="off" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+        <form method="post" id="addUserForm" onsubmit="return validateAddForm();" autocomplete="off" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
             <div class="modal-body">
                 <input type="hidden" name="action" value="add_user">
 
-                <div style="font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 14px;">PERSONAL DETAILS</div>
+                <div class="form-section-title"><i class="fas fa-id-card"></i> Personal Details</div>
 
-                <div class="grid-2 gap-3" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                <div class="form-grid-2">
                     <div class="form-group">
-                        <label class="lbl">First Name <span style="color:red;">*</span></label>
-                        <input type="text" name="first_name" class="inp full" required placeholder="e.g. Judy">
+                        <label class="lbl">First Name <span style="color:#dc2626;">*</span></label>
+                        <input type="text" name="first_name" id="add_first_name" class="inp" required placeholder="e.g. Judy" autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label class="lbl">Last Name <span style="color:red;">*</span></label>
-                        <input type="text" name="last_name" class="inp full" required placeholder="e.g. Lastimosa">
+                        <label class="lbl">Last Name <span style="color:#dc2626;">*</span></label>
+                        <input type="text" name="last_name" id="add_last_name" class="inp" required placeholder="e.g. Lastimosa" autocomplete="off">
                     </div>
                 </div>
 
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label class="lbl">Contact Number <span class="muted">(optional)</span></label>
-                    <input type="text" name="contact_number" class="inp full" placeholder="e.g. 0917xxxxxxx">
+                <div class="form-grid-2">
+                    <div class="form-group">
+                        <label class="lbl">Contact Number <span class="muted">(PH Format)</span></label>
+                        <input type="tel" name="contact_number" id="add_contact_number" class="inp"
+                               placeholder="e.g. 0917xxxxxxx" maxlength="13"
+                               oninput="validatePhoneRealtime(this, 'add_phone_hint')"
+                               autocomplete="off">
+                        <small id="add_phone_hint" style="font-size: 11px; color: #64748b; margin-top: 2px; display: block;">Format: 09XXXXXXXXX</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="lbl">Email Address <span style="color:#dc2626;">*</span></label>
+                        <input type="email" name="email" id="add_email" class="inp" required placeholder="e.g. judy@email.com" autocomplete="new-password">
+                    </div>
                 </div>
 
-                <div style="font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 14px; margin-top: 22px;">ACCOUNT & ROLE</div>
+                <div class="form-section-title"><i class="fas fa-shield-alt"></i> Account & Role</div>
 
-                <div class="grid-2 gap-3" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
-                    <div class="form-group">
-                        <label class="lbl">Email Address <span style="color:red;">*</span></label>
-                        <input type="email" name="email" class="inp full" required placeholder="e.g. judy@email.com">
-                    </div>
+                <div class="form-grid-2">
                     <div class="form-group">
                         <label class="lbl">Username <span class="muted">(optional)</span></label>
-                        <input type="text" name="username" class="inp full" placeholder="e.g. judy.lastimosa">
+                        <input type="text" name="username" id="add_username" class="inp" placeholder="e.g. judy.lastimosa" autocomplete="off">
                     </div>
-                </div>
-
-                <div class="grid-2 gap-3" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
                     <div class="form-group">
-                        <label class="lbl">Role <span style="color:red;">*</span></label>
-                        <select name="role" id="user_role_add" class="inp full" required onchange="toggleShiftField('add')">
+                        <label class="lbl">Role <span style="color:#dc2626;">*</span></label>
+                        <select name="role" id="user_role_add" class="inp" required onchange="toggleShiftField('add')">
                             <option value="">Select role</option>
                             <?php if ($my_role === 'superadmin'): ?>
                                 <option value="staff">Staff</option>
@@ -976,51 +1189,55 @@ include __DIR__ . '/../partials/header.php';
                             <?php endif; ?>
                         </select>
                     </div>
+                </div>
+
+                <div class="form-grid-2" id="dynamic_role_fields_add">
                     <div class="form-group" id="shift_field_group_add" style="display: none;">
-                        <label class="lbl">Assigned Shift <span style="color:red;">*</span></label>
-                        <select name="assigned_shift" id="add_assigned_shift" class="inp full">
+                        <label class="lbl">Assigned Shift <span style="color:#dc2626;">*</span></label>
+                        <select name="assigned_shift" id="add_assigned_shift" class="inp">
                             <option value="">Select shift</option>
                             <option value="Shift 1">Shift 1 (6:00 AM – 2:00 PM)</option>
                             <option value="Shift 2">Shift 2 (2:00 PM – 12:00 AM)</option>
                         </select>
                     </div>
+                    <?php if ($my_role === 'superadmin'): ?>
+                    <div class="form-group" id="station_field_group_add">
+                        <label class="lbl">Station Assignment <span style="color:#dc2626;">*</span></label>
+                        <select name="station_id" id="add_station_id" class="inp" required>
+                            <option value="">Select station</option>
+                            <?php 
+                            $stns = $pdo->query("SELECT id, name FROM stations WHERE status='active' ORDER BY name")->fetchAll();
+                            foreach($stns as $stn) {
+                                echo '<option value="' . $stn['id'] . '">' . htmlspecialchars($stn['name']) . '</option>';
+                            }
+                            ?>
+                        </select>
+                    </div>
+                    <?php endif; ?>
                 </div>
 
-                <?php if ($my_role === 'superadmin'): ?>
-                <div class="form-group mb-3">
-                    <label class="lbl">Station Assignment <span class="required">*</span></label>
-                    <select name="station_id" class="inp full" required>
-                        <option value="">Select station</option>
-                        <?php 
-                        $stns = $pdo->query("SELECT id, name FROM stations WHERE status='active' ORDER BY name")->fetchAll();
-                        foreach($stns as $stn) {
-                            echo '<option value="' . $stn['id'] . '">' . htmlspecialchars($stn['name']) . '</option>';
-                        }
-                        ?>
-                    </select>
-                </div>
-                <?php endif; ?>
+                <div class="form-section-title"><i class="fas fa-lock"></i> Temporary Password</div>
 
-                <div class="grid-2 gap-3" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px; margin-bottom: 15px;">
+                <div class="form-grid-2">
                     <div class="form-group">
-                        <label class="lbl">Temporary Password <span class="muted">(optional)</span></label>
-                        <div style="display:flex; gap:10px; align-items:flex-start;">
-                            <input type="text" name="new_password" id="new_password" class="inp full" placeholder="Auto-generate if empty">
-                            <button type="button" onclick="generateSimplePassword()" title="Generate password" style="margin-top: 2px; flex-shrink: 0; background: #f8fafc; border: 1px solid #cbd5e1; color: #64748b; border-radius: 6px; padding: 7px 10px; cursor: pointer; font-size: 13px; transition: all 0.2s;" onmouseover="this.style.background='#f1f5f9';this.style.color='#334155';" onmouseout="this.style.background='#f8fafc';this.style.color='#64748b';">
+                        <label class="lbl">Password <span class="muted">(auto if empty)</span></label>
+                        <div style="display: flex; gap: 6px; align-items: center;">
+                            <input type="text" name="new_password" id="new_password" class="inp" placeholder="Leave empty to generate" autocomplete="new-password">
+                            <button type="button" class="btn-dice" onclick="generateSimplePassword()" title="Generate secure password">
                                 <i class="fas fa-dice"></i>
                             </button>
                         </div>
                     </div>
                     <div class="form-group">
                         <label class="lbl">Confirm Password</label>
-                        <input type="password" name="confirm_password" id="confirm_password" class="inp full" placeholder="Re-enter password">
+                        <input type="password" name="confirm_password" id="confirm_password" class="inp" placeholder="Re-enter password" autocomplete="new-password">
                     </div>
                 </div>
 
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn-plain-cancel" onclick="closeModal('addModal')"> Cancel</button>
-                <button type="submit" class="btn-plain-submit"><i class="fas fa-paper-plane"></i> Create & Send Credentials</button>
+                <button type="button" class="btn-plain-cancel" onclick="closeModal('addModal')">Cancel</button>
+                <button type="submit" id="btnSubmitAddUser" class="btn-header-add" style="height:36px;padding:0 18px;"><i class="fas fa-paper-plane"></i> <span>Create & Send Credentials</span></button>
             </div>
         </form>
     </div>
@@ -1028,36 +1245,50 @@ include __DIR__ . '/../partials/header.php';
 
 <!-- MODAL: Edit User -->
 <div class="modal" id="editModal">
-    <div class="modal-content" style="max-width: 550px;">
+    <div class="modal-content">
         <div class="modal-header">
-            <h3 class="modal-title"><i class="fas fa-user-edit"></i> Edit User Details</h3>
+            <span class="modal-title"><i class="fas fa-user-edit"></i> Edit User Details</span>
             <button class="modal-close" onclick="closeModal('editModal')">&times;</button>
         </div>
-        <form method="post" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+        <form method="post" onsubmit="return validateEditForm();" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
             <div class="modal-body">
                 <input type="hidden" name="action" value="edit_user">
                 <input type="hidden" name="user_id" id="edit_user_id">
                 
-                <div class="grid-2 gap-3" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                <div class="form-section-title"><i class="fas fa-id-card"></i> Personal Details</div>
+
+                <div class="form-grid-2">
                     <div class="form-group">
-                        <label class="lbl">First Name <span style="color:red;">*</span></label>
-                        <input type="text" name="first_name" id="edit_first_name" class="inp full" required placeholder="e.g. Judy">
+                        <label class="lbl">First Name <span style="color:#dc2626;">*</span></label>
+                        <input type="text" name="first_name" id="edit_first_name" class="inp" required placeholder="e.g. Judy">
                     </div>
                     <div class="form-group">
-                        <label class="lbl">Last Name <span style="color:red;">*</span></label>
-                        <input type="text" name="last_name" id="edit_last_name" class="inp full" required placeholder="e.g. Lastimosa">
+                        <label class="lbl">Last Name <span style="color:#dc2626;">*</span></label>
+                        <input type="text" name="last_name" id="edit_last_name" class="inp" required placeholder="e.g. Lastimosa">
                     </div>
                 </div>
                 
-                <div class="form-group mb-3">
-                    <label class="lbl">Login ID / Email <span style="color:red;">*</span></label>
-                    <input type="text" name="login_id" id="edit_login_id" class="inp full" required placeholder="Email or Username">
+                <div class="form-grid-2">
+                    <div class="form-group">
+                        <label class="lbl">Login ID / Email <span style="color:#dc2626;">*</span></label>
+                        <input type="text" name="login_id" id="edit_login_id" class="inp" required placeholder="Email or Username">
+                    </div>
+                    <div class="form-group">
+                        <label class="lbl">Contact Number <span class="muted">(PH format)</span></label>
+                        <input type="tel" name="contact_number" id="edit_contact_number" class="inp"
+                               placeholder="e.g. 0917xxxxxxx" maxlength="13"
+                               oninput="validatePhoneRealtime(this, 'edit_phone_hint')"
+                               autocomplete="off">
+                        <small id="edit_phone_hint" style="font-size: 11px; color: #64748b; margin-top: 2px; display: block;">Format: 09XXXXXXXXX</small>
+                    </div>
                 </div>
 
-                <div class="grid-2 gap-3" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                <div class="form-section-title"><i class="fas fa-shield-alt"></i> Account & Role</div>
+
+                <div class="form-grid-2">
                     <div class="form-group">
-                        <label class="lbl">Role <span style="color:red;">*</span></label>
-                        <select name="role" id="user_role_edit" class="inp full" required onchange="toggleShiftField('edit')">
+                        <label class="lbl">Role <span style="color:#dc2626;">*</span></label>
+                        <select name="role" id="user_role_edit" class="inp" required onchange="toggleShiftField('edit')">
                             <?php if ($my_role === 'superadmin'): ?>
                                 <option value="staff">Staff</option>
                                 <option value="manager">Manager</option>
@@ -1070,7 +1301,7 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                     <div class="form-group" id="shift_field_group_edit">
                         <label class="lbl">Assigned Shift</label>
-                        <select name="assigned_shift" id="edit_assigned_shift" class="inp full">
+                        <select name="assigned_shift" id="edit_assigned_shift" class="inp">
                             <option value="">Select shift</option>
                             <option value="Shift 1">Shift 1 (6:00 AM – 2:00 PM)</option>
                             <option value="Shift 2">Shift 2 (2:00 PM – 12:00 AM)</option>
@@ -1079,8 +1310,8 @@ include __DIR__ . '/../partials/header.php';
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn-plain-cancel" onclick="closeModal('editModal')"> Cancel</button>
-                <button type="submit" class="btn-plain-submit"><i class="fas fa-save"></i> Save Changes</button>
+                <button type="button" class="btn-plain-cancel" onclick="closeModal('editModal')">Cancel</button>
+                <button type="submit" class="btn-header-add" style="height:36px;padding:0 18px;"><i class="fas fa-save"></i> <span>Save Changes</span></button>
             </div>
         </form>
     </div>
@@ -1090,28 +1321,28 @@ include __DIR__ . '/../partials/header.php';
 <div class="modal" id="resetModal">
     <div class="modal-content" style="max-width: 440px;">
         <div class="modal-header">
-            <h3 class="modal-title"><i class="fas fa-key"></i> Reset User Password</h3>
+            <span class="modal-title"><i class="fas fa-key"></i> Reset Password</span>
             <button class="modal-close" onclick="closeModal('resetModal')">&times;</button>
         </div>
         <form method="post" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
             <div class="modal-body">
                 <input type="hidden" name="action" value="reset_password">
                 <input type="hidden" name="user_id" id="reset_user_id">
-                <p style="font-size:14px; color:#334155; margin-bottom:15px;">Reset password for user <strong id="reset_username" style="color:#0f172a;"></strong>?</p>
+                <p style="font-size:13.5px; color:#334155; margin-bottom:14px;">Reset password for user <strong id="reset_username" style="color:#002F70;"></strong>?</p>
                 <div class="form-group">
-                    <label class="lbl">New Password</label>
-                    <div style="display:flex; gap:10px; align-items:center;">
-                        <input type="text" name="new_password" id="reset_password_field" class="inp full" placeholder="Enter password or generate">
-                        <button type="button" class="btn small ghost" onclick="generateResetPassword()" title="Generate password" style="flex-shrink:0;">
-                            <i class="fas fa-dice"></i> Generate
+                    <label class="lbl">New Password <span class="muted">(optional)</span></label>
+                    <div style="display:flex; gap:6px; align-items:center;">
+                        <input type="text" name="new_password" id="reset_password_field" class="inp" placeholder="Auto-generate if empty">
+                        <button type="button" class="btn-dice" onclick="generateResetPassword()" title="Generate password">
+                            <i class="fas fa-dice"></i>
                         </button>
                     </div>
-                    <small class="muted" style="font-size:11px; margin-top:4px; display:block;">Leave empty to auto-generate a secure temporary password. Instructions will be emailed automatically if email is configured.</small>
+                    <small style="font-size:11px; color:#64748b; margin-top:4px; display:block;">Leave empty to auto-generate a secure password. Credentials will be sent via email.</small>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn-plain-cancel" onclick="closeModal('resetModal')"> Cancel</button>
-                <button type="submit" class="btn-plain-submit"><i class="fas fa-key"></i> Reset & Send Email</button>
+                <button type="button" class="btn-plain-cancel" onclick="closeModal('resetModal')">Cancel</button>
+                <button type="submit" class="btn-header-add" style="height:36px;padding:0 18px;"><i class="fas fa-key"></i> <span>Reset Password</span></button>
             </div>
         </form>
     </div>
@@ -1121,21 +1352,21 @@ include __DIR__ . '/../partials/header.php';
 <div class="modal" id="archiveModal">
     <div class="modal-content" style="max-width: 440px;">
         <div class="modal-header">
-            <h3 class="modal-title" style="color:#dc3545!important;"><i class="fas fa-archive"></i> Archive User</h3>
+            <span class="modal-title" style="color:#dc2626!important;"><i class="fas fa-archive"></i> Archive User</span>
             <button class="modal-close" onclick="closeModal('archiveModal')">&times;</button>
         </div>
         <form method="post" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
             <div class="modal-body">
                 <input type="hidden" name="action" value="archive_user">
                 <input type="hidden" name="user_id" id="archive_user_id">
-                <p style="font-size:14px; color:#334155; margin-bottom:10px;">Are you sure you want to archive user <strong id="archive_user_name" style="color:#0f172a;"></strong>?</p>
-                <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:6px; padding:10px 12px; font-size:12px; color:#991b1b; display:flex; gap:8px; align-items:flex-start;">
+                <p style="font-size:13.5px; color:#334155; margin-bottom:12px;">Are you sure you want to archive user <strong id="archive_user_name" style="color:#0f172a;"></strong>?</p>
+                <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 12px; font-size:12px; color:#991b1b; display:flex; gap:8px; align-items:flex-start;">
                     <i class="fas fa-info-circle" style="margin-top:2px;"></i>
                     <span>This user will no longer be able to log in. All activity records and history will be saved forever (No permanent deletion). You can restore this account anytime.</span>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn-plain-cancel" onclick="closeModal('archiveModal')"> Cancel</button>
+                <button type="button" class="btn-plain-cancel" onclick="closeModal('archiveModal')">Cancel</button>
                 <button type="submit" class="btn-plain-danger"><i class="fas fa-archive"></i> Yes, Archive User</button>
             </div>
         </form>
@@ -1146,20 +1377,20 @@ include __DIR__ . '/../partials/header.php';
 <div class="modal" id="restoreModal">
     <div class="modal-content" style="max-width: 440px;">
         <div class="modal-header">
-            <h3 class="modal-title" style="color:#16a34a!important;"><i class="fas fa-undo"></i> Restore User</h3>
+            <span class="modal-title" style="color:#16a34a!important;"><i class="fas fa-undo"></i> Restore User</span>
             <button class="modal-close" onclick="closeModal('restoreModal')">&times;</button>
         </div>
         <form method="post" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
             <div class="modal-body">
                 <input type="hidden" name="action" value="restore_user">
                 <input type="hidden" name="user_id" id="restore_user_id">
-                <p style="font-size:14px; color:#334155; margin-bottom:10px;">Bring <strong id="restore_user_name" style="color:#0f172a;"></strong> back to Active status?</p>
-                <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:10px 12px; font-size:12px; color:#166534;">
+                <p style="font-size:13.5px; color:#334155; margin-bottom:12px;">Bring <strong id="restore_user_name" style="color:#0f172a;"></strong> back to Active status?</p>
+                <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:10px 12px; font-size:12px; color:#166534;">
                     <i class="fas fa-check-circle"></i> Once restored, this user will be able to log in and access their account again.
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn-plain-cancel" onclick="closeModal('restoreModal')"> Cancel</button>
+                <button type="button" class="btn-plain-cancel" onclick="closeModal('restoreModal')">Cancel</button>
                 <button type="submit" class="btn-plain-success"><i class="fas fa-undo"></i> Yes, Restore Account</button>
             </div>
         </form>
@@ -1170,13 +1401,13 @@ include __DIR__ . '/../partials/header.php';
 <div class="modal" id="viewModal">
     <div class="modal-content" style="max-width: 480px;">
         <div class="modal-header">
-            <h3 class="modal-title" id="view_modal_title"><i class="fas fa-user-circle"></i> User Profile</h3>
+            <span class="modal-title" id="view_modal_title"><i class="fas fa-user-circle"></i> User Profile</span>
             <button class="modal-close" onclick="closeModal('viewModal')">&times;</button>
         </div>
         <div class="modal-body">
 
-            <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #e2e8f0;">
-                <div id="view_avatar" style="width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0;background:#002F6C;"></div>
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid #e2e8f0;">
+                <div id="view_avatar" style="width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0;background:#002F70;"></div>
                 <div>
                     <div id="view_name" style="font-size:16px;font-weight:700;color:#0f172a;"></div>
                     <div id="view_username" style="font-size:12px;color:#64748b;margin-top:2px;"></div>
@@ -1184,21 +1415,25 @@ include __DIR__ . '/../partials/header.php';
                 </div>
             </div>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-                <div>
-                    <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Employee ID</div>
-                    <div id="view_employee_id" style="font-size:13px;color:#0f172a;font-weight:700;font-family:monospace;"></div>
+            <div class="form-grid-2" style="gap: 14px;">
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">
+                    <div style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Employee ID</div>
+                    <div id="view_employee_id" style="font-size:13px;color:#002F70;font-weight:700;font-family:monospace;"></div>
                 </div>
-                <div>
-                    <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Assigned Shift</div>
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">
+                    <div style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Assigned Shift</div>
                     <div id="view_assigned_shift" style="font-size:13px;color:#0f172a;font-weight:600;"></div>
                 </div>
-                <div>
-                    <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Email</div>
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">
+                    <div style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Email</div>
                     <div id="view_email" style="font-size:13px;color:#0f172a;word-break:break-all;"></div>
                 </div>
-                <div>
-                    <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Status</div>
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">
+                    <div style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Contact Number</div>
+                    <div id="view_contact_number" style="font-size:13px;color:#0f172a;font-weight:600;"></div>
+                </div>
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; grid-column: 1 / -1;">
+                    <div style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Account Status</div>
                     <div id="view_status"></div>
                 </div>
             </div>
@@ -1223,6 +1458,38 @@ function toggleShiftField(context) {
             shiftGroup.style.display = 'none';
         }
     }
+}
+
+function validatePhoneRealtime(input, hintId) {
+    input.value = input.value.replace(/[^0-9+\s\-]/g, '');
+    const val = input.value.replace(/[\s\-]/g, '');
+    const hint = document.getElementById(hintId);
+    if (!hint) return;
+
+    if (val === '') {
+        hint.style.color = '#64748b';
+        hint.textContent = 'Format: 11-digit PH mobile number starting with 09 (e.g. 0917xxxxxxx) or +639';
+        input.style.borderColor = '#cbd5e1';
+        return;
+    }
+
+    const isValid = /^(09\d{9}|\+639\d{9}|639\d{9})$/.test(val);
+    if (isValid) {
+        hint.style.color = '#16a34a';
+        hint.innerHTML = '<i class="fas fa-check-circle"></i> Valid Philippine mobile number';
+        input.style.borderColor = '#16a34a';
+    } else {
+        hint.style.color = '#dc2626';
+        hint.innerHTML = '<i class="fas fa-exclamation-circle"></i> Must be 11 digits starting with 09 (e.g. 09171234567) or +639';
+        input.style.borderColor = '#dc2626';
+    }
+}
+
+function isValidPhilippineNumber(val) {
+    if (!val) return true;
+    const clean = val.replace(/[\s\-\(\)\.]/g, '');
+    if (clean === '') return true;
+    return /^(09\d{9}|\+639\d{9}|639\d{9})$/.test(clean);
 }
 
 function generateSimplePassword() {
@@ -1252,7 +1519,7 @@ function generateSimplePassword() {
     const newPassInp = document.getElementById('new_password');
     const confPassInp = document.getElementById('confirm_password');
     if (newPassInp) newPassInp.value = pass;
-    if (confPassInp) confPassInp.value = ''; // Keep Confirm Password empty as requested
+    if (confPassInp) confPassInp.value = pass;
 }
 
 function generateResetPassword() {
@@ -1284,10 +1551,22 @@ function generateResetPassword() {
 }
 
 function validateAddForm() {
+    const contact = document.getElementById('add_contact_number').value.trim();
+    if (contact !== '' && !isValidPhilippineNumber(contact)) {
+        alert('Invalid Contact Number: Please enter a valid Philippine mobile number.\n\nExample formats:\n• 09171234567 (11 digits)\n• +639171234567');
+        document.getElementById('add_contact_number').focus();
+        return false;
+    }
+
     const password = document.getElementById('new_password').value;
     const confirmPassword = document.getElementById('confirm_password').value;
 
     if (password === '' && confirmPassword === '') {
+        const submitBtn = document.getElementById('btnSubmitAddUser');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Creating & Sending...</span>';
+        }
         return true;
     }
 
@@ -1301,15 +1580,57 @@ function validateAddForm() {
         return false;
     }
 
+    const submitBtn = document.getElementById('btnSubmitAddUser');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Creating & Sending...</span>';
+    }
+
     return true;
 }
 
+function validateEditForm() {
+    const contact = document.getElementById('edit_contact_number').value.trim();
+    if (contact !== '' && !isValidPhilippineNumber(contact)) {
+        alert('Invalid Contact Number: Please enter a valid Philippine mobile number.\n\nExample formats:\n• 09171234567 (11 digits)\n• +639171234567');
+        document.getElementById('edit_contact_number').focus();
+        return false;
+    }
+    return true;
+}
+
+function clearAddUserForm() {
+    const form = document.getElementById('addUserForm');
+    if (form) form.reset();
+
+    const ids = [
+        'add_first_name', 'add_last_name', 'add_contact_number',
+        'add_email', 'add_username', 'user_role_add',
+        'add_assigned_shift', 'add_station_id', 'new_password', 'confirm_password'
+    ];
+    ids.forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.value = '';
+            el.style.borderColor = '#cbd5e1';
+        }
+    });
+
+    const hint = document.getElementById('add_phone_hint');
+    if (hint) {
+        hint.style.color = '#64748b';
+        hint.textContent = 'Format: 11-digit PH mobile number starting with 09 (e.g. 0917xxxxxxx) or +639';
+    }
+
+    const shiftGroup = document.getElementById('shift_field_group_add');
+    if (shiftGroup) shiftGroup.style.display = 'none';
+}
+
 function openAddModal() {
-    const newPass = document.getElementById('new_password');
-    const confPass = document.getElementById('confirm_password');
-    if (newPass) newPass.value = '';
-    if (confPass) confPass.value = '';
+    clearAddUserForm();
     document.getElementById('addModal').style.display = 'flex';
+    setTimeout(clearAddUserForm, 50);
+    setTimeout(clearAddUserForm, 150);
 }
 
 function openEditModal(user) {
@@ -1318,6 +1639,12 @@ function openEditModal(user) {
     document.getElementById('edit_last_name').value = (user.last_name || '').trim();
     document.getElementById('edit_login_id').value = user.email || user.username || '';
     
+    const contactInp = document.getElementById('edit_contact_number');
+    if (contactInp) {
+        contactInp.value = user.phone_number || '';
+        validatePhoneRealtime(contactInp, 'edit_phone_hint');
+    }
+
     var roleSel = document.getElementById('user_role_edit');
     if (roleSel) {
         roleSel.value = (user.role || 'staff').toLowerCase();
@@ -1362,6 +1689,11 @@ function openViewModal(user) {
     document.getElementById('view_assigned_shift').innerText = user.assigned_shift || '—';
     document.getElementById('view_email').innerText = user.email || 'Not set';
     
+    const viewPhone = document.getElementById('view_contact_number');
+    if (viewPhone) {
+        viewPhone.innerText = user.phone_number || 'Not set';
+    }
+
     var roleStr = (user.role || 'staff').toUpperCase();
     document.getElementById('view_role_badge').innerHTML = '<span class="badge bg-primary">' + roleStr + '</span>';
     
@@ -1377,6 +1709,9 @@ function openViewModal(user) {
 }
 
 function closeModal(modalId) {
+    if (modalId === 'addModal') {
+        clearAddUserForm();
+    }
     document.getElementById(modalId).style.display = 'none';
 }
 

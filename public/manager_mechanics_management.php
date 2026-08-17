@@ -244,8 +244,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($first_name))     { $error_msg = 'First Name is required.'; }
         elseif (empty($last_name))  { $error_msg = 'Last Name is required.'; }
         elseif (empty($contact_no)) { $error_msg = 'Contact Number is required.'; }
+        elseif (!preg_match('/^(09\d{9}|\+639\d{9}|639\d{9})$/', preg_replace('/[\s\-\(\)\.]/', '', $contact_no))) {
+            $error_msg = 'Invalid Philippine contact number. Must be an 11-digit mobile number starting with 09 (e.g. 09171234567 or +639171234567).';
+        }
         elseif (empty($specialization)) { $error_msg = 'Specialty is required.'; }
         else {
+            $clean_c = preg_replace('/[\s\-\(\)\.]/', '', $contact_no);
+            if (str_starts_with($clean_c, '+639')) { $contact_no = '09' . substr($clean_c, 4); }
+            elseif (str_starts_with($clean_c, '639')) { $contact_no = '09' . substr($clean_c, 3); }
+            else { $contact_no = $clean_c; }
+
             try {
                 $pdo->prepare("INSERT INTO mechanics (first_name,middle_name,last_name,full_name,specialization,shift_assignment,date_hired,contact_no,address,status,station_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
                     ->execute([$first_name,$middle_name,$last_name,$full_name,$specialization,$shift_assignment,$date_hired,$contact_no,$address,$status,$station_id]);
@@ -271,8 +279,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($first_name))     { $error_msg = 'First Name is required.'; }
         elseif (empty($last_name))  { $error_msg = 'Last Name is required.'; }
         elseif (empty($contact_no)) { $error_msg = 'Contact Number is required.'; }
+        elseif (!preg_match('/^(09\d{9}|\+639\d{9}|639\d{9})$/', preg_replace('/[\s\-\(\)\.]/', '', $contact_no))) {
+            $error_msg = 'Invalid Philippine contact number. Must be an 11-digit mobile number starting with 09 (e.g. 09171234567 or +639171234567).';
+        }
         elseif (empty($specialization)) { $error_msg = 'Specialty is required.'; }
         else {
+            $clean_c = preg_replace('/[\s\-\(\)\.]/', '', $contact_no);
+            if (str_starts_with($clean_c, '+639')) { $contact_no = '09' . substr($clean_c, 4); }
+            elseif (str_starts_with($clean_c, '639')) { $contact_no = '09' . substr($clean_c, 3); }
+            else { $contact_no = $clean_c; }
             $can_update = true;
             if ($status === 'inactive') {
                 try {
