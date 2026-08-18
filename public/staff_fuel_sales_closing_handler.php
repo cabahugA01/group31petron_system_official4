@@ -4,9 +4,10 @@
  */
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
-require_login();
 }
+require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
+require_login();
 
 header('Content-Type: application/json');
 
@@ -40,11 +41,12 @@ if ($action === 'get_summary') {
     // Shift period key matching helper
     $shift_key = '';
     $shift_lower = strtolower($shift);
-    if (strpos($shift_lower, '1') !== false || strpos($shift_lower, 'first') !== false) {
-        $shift_key = 'first';
-    } elseif (strpos($shift_lower, '2') !== false || strpos($shift_lower, 'second') !== false) {
+    if (strpos($shift_lower, 'second') !== false || strpos($shift_lower, 'shift 2') !== false || strpos($shift_lower, 'shift2') !== false || strpos($shift_lower, '2nd') !== false) {
         $shift_key = 'second';
+    } elseif (strpos($shift_lower, 'first') !== false || strpos($shift_lower, 'shift 1') !== false || strpos($shift_lower, 'shift1') !== false || strpos($shift_lower, '1st') !== false) {
+        $shift_key = 'first';
     }
+    $shift_like = $shift_key ? "%{$shift_key}%" : "%";
 
     // Deduplicated query: fetch only the latest transaction entry per pump/nozzle for Section A
     $sql = "
@@ -65,14 +67,23 @@ if ($action === 'get_summary') {
             FROM fuel_transactions
             WHERE station_id = ? 
               AND (DATE(transaction_date) = ? OR (transaction_date IS NULL AND DATE(created_at) = ?))
-              AND (? = '' OR shift_period = ? OR shift_name = ?)
+              AND (
+                  ? = '' 
+                  OR shift_period = ? 
+                  OR shift_name = ? 
+                  OR shift_period = ?
+                  OR LOWER(shift_name) LIKE ?
+              )
               AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
             GROUP BY COALESCE(pump_id, fuel_type)
         ) latest ON ft.id = latest.max_id
         ORDER BY ft.id ASC
     ";
     $stmt = $pdo->prepare($sql);
-    $stmt->execute([$station_id, $report_date, $report_date, $shift, $shift_key, $shift]);
+    $stmt->execute([
+        $station_id, $report_date, $report_date,
+        $shift, $shift, $shift, $shift_key, $shift_like
+    ]);
     $meter_rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     // Summaries per fuel type
@@ -202,10 +213,10 @@ if ($action === 'save_closing') {
 
     $shift_key = '';
     $shift_lower = strtolower($shift);
-    if (strpos($shift_lower, '1') !== false || strpos($shift_lower, 'first') !== false) {
-        $shift_key = 'first';
-    } elseif (strpos($shift_lower, '2') !== false || strpos($shift_lower, 'second') !== false) {
+    if (strpos($shift_lower, 'second') !== false || strpos($shift_lower, 'shift 2') !== false || strpos($shift_lower, 'shift2') !== false || strpos($shift_lower, '2nd') !== false) {
         $shift_key = 'second';
+    } elseif (strpos($shift_lower, 'first') !== false || strpos($shift_lower, 'shift 1') !== false || strpos($shift_lower, 'shift1') !== false || strpos($shift_lower, '1st') !== false) {
+        $shift_key = 'first';
     }
 
     try {
@@ -247,14 +258,15 @@ if ($action === 'save_closing') {
         }
 
         // Update corresponding fuel_transactions status to CLOSING_COMPLETED
+        $shift_like = $shift_key ? "%{$shift_key}%" : "%";
         $pdo->prepare("
             UPDATE fuel_transactions
             SET status = 'CLOSING_COMPLETED'
             WHERE station_id = ?
-              AND DATE(transaction_date) = ?
-              AND (shift_period = ? OR shift_name = ? OR ? = '')
+              AND (DATE(transaction_date) = ? OR (transaction_date IS NULL AND DATE(created_at) = ?))
+              AND (shift_period = ? OR shift_name = ? OR ? = '' OR LOWER(shift_name) LIKE ?)
               AND LOWER(COALESCE(status,'')) NOT IN ('rejected','voided','cancelled','canceled')
-        ")->execute([$station_id, $report_date, $shift_key, $shift, $shift]);
+        ")->execute([$station_id, $report_date, $report_date, $shift_key, $shift, $shift, $shift_like]);
 
         $pdo->commit();
 

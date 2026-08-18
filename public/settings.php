@@ -1862,6 +1862,7 @@ setTimeout(function() {
     <?php endif; ?>
 }, 2500);
 <?php endif; ?>
+</script>
 
 <script src="../assets/js/data_helper.js"></script>
 

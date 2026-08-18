@@ -1498,6 +1498,7 @@ document.addEventListener('DOMContentLoaded', function() {
         setupTablePagination('adminFuelAlertTable', null, 'adminFuelAlertPagination', 20);
     }
 });
+</script>
 </div> <!-- /.main-content -->
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -4421,11 +4421,13 @@ setTimeout(function() {
 
             // ── Beginning reading validation for manual input (first shift) ──
             const beginningEl = document.getElementById('beginning_' + ftId);
-            const beginningRaw = ((formData.get('beginning_reading') !== null ? formData.get('beginning_reading') : (beginningEl ? beginningEl.value : '')) || '').replace(/,/g, '');
+            let beginningRaw = ((formData.get('beginning_reading') !== null ? formData.get('beginning_reading') : (beginningEl ? beginningEl.value : '')) || '').replace(/,/g, '');
 
+            // If first-shift editable and empty, default to 0 (valid for new pump / first entry)
             if (beginningEl && !beginningEl.readOnly && (beginningRaw === '' || isNaN(parseFloat(beginningRaw)))) {
-                showRowMsg(msgEl, 'error', 'Please enter the Beginning meter reading.');
-                return false;
+                beginningRaw = '0';
+                formData.set('beginning_reading', '0');
+                if (beginningEl) beginningEl.value = '0.00';
             }
 
             // Validate: ending_reading must be filled (strip commas before parsing)
@@ -4711,11 +4713,11 @@ setTimeout(function() {
                     return;
                 }
 
-                // 2. Check beginning reading requirement if manual (first shift / editable)
+                // 2. If beginning reading is editable (first shift) and empty, default to 0
+                //    (valid for new pump installation or first-ever shift entry)
                 if (beginningEl && !beginningEl.readOnly && (!beginningRaw || beginningRaw === '')) {
-                    skippedForms.push({ ftId, reason: 'Missing Beginning Reading' });
-                    if (msgEl) showRowMsg(msgEl, 'error', 'Please enter Beginning meter reading — skipped.');
-                    return;
+                    beginningEl.value = '0.00';
+                    // beginningRaw stays '' but we treat beginningVal as 0 — already handled below
                 }
 
                 // 3. Ending must be >= Beginning
@@ -4737,9 +4739,9 @@ setTimeout(function() {
 
             if (formsToSubmit.length === 0) {
                 if (skippedForms.length > 0) {
-                    showToast('Cannot submit readings. Please fix the errors highlighted in red.', 'error');
+                    showToast('Some readings have errors (e.g., Ending < Beginning). Please correct the highlighted rows before submitting.', 'error');
                 } else {
-                    showToast('Please enter the Ending meter reading for at least one fuel pump before submitting.', 'info');
+                    showToast('Please enter the Ending meter reading for at least one fuel pump before clicking Submit All Readings.', 'info');
                 }
                 return;
             }

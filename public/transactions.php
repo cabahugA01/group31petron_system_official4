@@ -2160,7 +2160,7 @@ try {
     </div>
 </div>
 
-// â”€â”€ Print Receipt (Popup-Immune) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+<script>
 function printReceiptPopupImmune(id, type) {
     var url = `receipt.php?id=${encodeURIComponent(id)}&type=${encodeURIComponent(type)}`;
     window.open(url, '_blank');

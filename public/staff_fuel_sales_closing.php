@@ -5,10 +5,10 @@
  */
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
-require_login();
 }
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
+require_login();
 
 // Authentication check
 if (!isset($_SESSION['user_id'])) {
@@ -21,11 +21,11 @@ $station_id = (int)($_SESSION['station_id'] ?? $me['station_id'] ?? 1);
 $user_id    = (int)$_SESSION['user_id'];
 $user_name  = $_SESSION['full_name'] ?? $_SESSION['username'] ?? 'JUDY LASTIMOSA';
 
-$report_date = $_GET['date'] ?? date('Y-m-d');
-$shift       = $_GET['shift'] ?? 'Second Shift';
-
 $page_title = "Fuel Sales Closing";
 include __DIR__ . '/../partials/header.php';
+
+$report_date = $_GET['date'] ?? date('Y-m-d');
+$shift       = $_GET['shift'] ?? 'Second Shift';
 ?>
 
 <div class="main-content" style="padding: 24px; background: #f8fafc; min-height: 100vh;">

@@ -154,7 +154,7 @@ $badges = [];
 $station_name = '';
 $current_date = date('Y-m-d');
 $hour = (int)date('H');
-$shift = ($hour >= 6 && $hour < 14) ? 'First Shift' : 'Second Shift';
+$header_shift = ($hour >= 6 && $hour < 14) ? 'First Shift' : 'Second Shift';
 
 // Get station name for all non-superadmin users
 if ($myStationId && in_array($role, ['admin', 'manager', 'staff'])) {
@@ -372,7 +372,7 @@ $badges = [];
 $station_name = '';
 $current_date = date('Y-m-d');
 $hour = (int)date('H');
-$shift = ($hour >= 6 && $hour < 14) ? 'First Shift' : 'Second Shift';
+$header_shift = ($hour >= 6 && $hour < 14) ? 'First Shift' : 'Second Shift';
 
 // Get station name for all non-superadmin users
 if ($myStationId && in_array($role, ['admin', 'manager', 'staff'])) {
@@ -3941,6 +3941,7 @@ require_once __DIR__ . '/rbac_menu.php';
             $show_notifications_widget = (bool) (get_module_setting('dashboard', 'enable_notifications_widget', true) && get_module_setting('notifications', 'enable_notifications', true));
         }
         ?>
+        </div><!-- /.header-left -->
         <div class="header-center" style="display: flex; align-items: center; justify-content: center; flex: 1; margin: 0 20px; <?php if (!$show_search_bar) echo 'visibility: hidden; pointer-events: none; opacity: 0;'; ?>">
             <div id="searchWrapper" style="position: relative; width: 100%; max-width: 440px; pointer-events: auto;">
                 <div style="position: relative; display: flex; align-items: center;">
