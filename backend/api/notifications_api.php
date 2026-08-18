@@ -165,9 +165,6 @@ function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', i
             "SELECT COUNT(*) FROM stock_requests WHERE station_id = ? AND status IN ('Pending','Pending Manager Review')",
             [$station_id]
         ) + $safe_count(
-            "SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id = ? AND status IN ('Pending','Pending Manager Review')",
-            [$station_id]
-        ) + $safe_count(
             "SELECT COUNT(*) FROM purchase_orders WHERE station_id = ? AND status IN ('Approved','Pending Stock-In')",
             [$station_id]
         );
@@ -213,27 +210,14 @@ function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', i
         $counts['reports']       = $admin_system_alerts;
         $counts['admin_reports'] = $admin_system_alerts;
 
-        // 4. Fuel Management Oversight: Manager-verified/approved fuel transactions + fuel deliveries + fuel stock requests + fuel adjustments
-        $admin_fuel_txns = $safe_count(
-            "SELECT COUNT(*) FROM fuel_transactions WHERE {$stn_where2}LOWER(COALESCE(status,'')) IN ('verified','validated','approved','adjusted','pending')",
+        // 4. Fuel Management Oversight: Pending Fuel Transactions requiring admin attention
+        $admin_fuel_pending = $safe_count(
+            "SELECT COUNT(*) FROM fuel_transactions WHERE {$stn_where2}LOWER(COALESCE(status,'')) IN ('pending','pending validation')",
             $stn_param2
         );
-        $admin_fuel_deliv = $safe_count(
-            "SELECT COUNT(*) FROM purchase_orders WHERE {$stn_where2}(type = 'fuel' OR LOWER(COALESCE(item_category,'')) IN ('fuel','fuels')) AND (delivery_validated = 1 OR status IN ('Validated','Delivered','Pending Admin Review','Submitted'))",
-            $stn_param2
-        );
-        $admin_fuel_reqs = $safe_count(
-            "SELECT COUNT(*) FROM fuel_stock_requests WHERE {$stn_where2}LOWER(COALESCE(status,'')) IN ('pending','pending manager review','pending admin review','approved','submitted')",
-            $stn_param2
-        );
-        $admin_fuel_adj = $safe_count(
-            "SELECT COUNT(*) FROM fuel_adjustments WHERE {$stn_where2}LOWER(COALESCE(status,'')) IN ('pending','verified','reviewed','approved')",
-            $stn_param2
-        );
-        $admin_fuel_total = $admin_fuel_txns + $admin_fuel_deliv + $admin_fuel_reqs + $admin_fuel_adj;
-        $counts['fuel']                  = $admin_fuel_total;
-        $counts['admin_fuel']            = $admin_fuel_total;
-        $counts['admin_fuel_management'] = $admin_fuel_total;
+        $counts['fuel']                  = $admin_fuel_pending;
+        $counts['admin_fuel']            = $admin_fuel_pending;
+        $counts['admin_fuel_management'] = $admin_fuel_pending;
     }
 
     return $counts;
@@ -264,17 +248,8 @@ try {
                 $where  = 'WHERE n.user_id = ?';
                 $params = [$user_id];
 
-                // Staff Shift Isolation
-                $assigned_shift = trim($me['assigned_shift'] ?? '');
-                if ($role === 'staff') {
-                    if ($shift_req !== 'all' && $shift_req !== '') {
-                        $where   .= ' AND (n.shift_period = ? OR n.shift_period IS NULL OR n.shift_period = "")';
-                        $params[] = $shift_req;
-                    } elseif (!empty($assigned_shift) && $assigned_shift !== 'All Shifts') {
-                        $where   .= ' AND (n.shift_period = ? OR n.shift_period IS NULL OR n.shift_period = "")';
-                        $params[] = $assigned_shift;
-                    }
-                } elseif ($shift_req !== 'all' && $shift_req !== '') {
+                // Shift filtering — only apply when explicitly requested (e.g. from a filter dropdown)
+                if ($shift_req !== 'all' && $shift_req !== '') {
                     $where   .= ' AND (n.shift_period = ? OR n.shift_period IS NULL OR n.shift_period = "")';
                     $params[] = $shift_req;
                 }

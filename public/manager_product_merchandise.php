@@ -1,6 +1,6 @@
 <?php
 /**
- * Merchandise Products — Product Management
+ * Merchandise Products â€” Product Management
  * Manager/Admin view: list, add, edit, activate/deactivate merchandise products.
  * Batch IDs are auto-generated from approved deliveries (no manual batch creation here).
  */
@@ -26,7 +26,7 @@ try { $pdo->exec("ALTER TABLE inventory_products ADD COLUMN created_at DATETIME 
 try { $pdo->exec("ALTER TABLE inventory_products ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"); } catch (Exception $e) {}
 try { $pdo->exec("ALTER TABLE inventory_products ADD COLUMN station_id INT NOT NULL DEFAULT 1"); } catch (Exception $e) {}
 
-// ── Ensure merchandise_batches table exists ────────────────────────────────
+// â”€â”€ Ensure merchandise_batches table exists â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS merchandise_batches (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -49,7 +49,7 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (Exception $e) {}
 
-// ── Backfill station_inventory for existing products ──────────────────────
+// â”€â”€ Backfill station_inventory for existing products â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Any product with ip.stock > 0 but no station_inventory row gets a row inserted
 try {
     $pdo->prepare("
@@ -58,15 +58,16 @@ try {
         FROM inventory_products ip
         LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
         WHERE si.id IS NULL
+          AND ip.station_id = ?
           AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
-    ")->execute([$station_id, $station_id]);
+    ")->execute([$station_id, $station_id, $station_id]);
 } catch (Exception $e) {}
 
-// ── POST handlers ──────────────────────────────────────────────────────────
+// â”€â”€ POST handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
-    // ── Add product ──────────────────────────────────────────────────────
+    // â”€â”€ Add product â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($action === 'add_product') {
         $name       = trim($_POST['product_name'] ?? '');
         $category   = trim($_POST['category']     ?? '');
@@ -87,11 +88,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['error'] = 'Unit price cannot be less than unit cost.';
         } else {
             try {
-                // Check duplicate
-                $chk = $pdo->prepare("SELECT id FROM inventory_products WHERE LOWER(TRIM(product_name))=LOWER(TRIM(?)) AND LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products') LIMIT 1");
-                $chk->execute([$name]);
+                // Check duplicate (scoped to this station)
+                $chk = $pdo->prepare("SELECT id FROM inventory_products WHERE station_id = ? AND LOWER(TRIM(product_name))=LOWER(TRIM(?)) AND LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products') LIMIT 1");
+                $chk->execute([$station_id, $name]);
                 if ($chk->fetchColumn()) {
-                    $_SESSION['error'] = "Product '$name' already exists.";
+                    $_SESSION['error'] = "Product '$name' already exists for this station.";
                 } else {
                     $initial_stock = (int)($_POST['initial_stock'] ?? 0);
                     $initial_batch = trim($_POST['initial_batch'] ?? '');
@@ -134,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: manager_product_merchandise.php'); exit;
     }
 
-    // ── Update product ───────────────────────────────────────────────────
+    // â”€â”€ Update product â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($action === 'update_product') {
         $id         = (int)($_POST['product_id']   ?? 0);
         $name       = trim($_POST['product_name']  ?? '');
@@ -186,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: manager_product_merchandise.php'); exit;
     }
 
-    // ── Manual Stock In ──────────────────────────────────────────────────
+    // â”€â”€ Manual Stock In â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($action === 'manual_stock_in') {
         $product_id = (int)($_POST['product_id'] ?? 0);
         $qty_to_add = (int)($_POST['qty_to_add'] ?? 0);
@@ -269,7 +270,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: manager_product_merchandise.php'); exit;
     }
 
-    // ── Toggle status (uses proper status column) ────────────────────────
+    // â”€â”€ Toggle status (uses proper status column) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($action === 'toggle_status') {
         $id        = (int)($_POST['product_id'] ?? 0);
         $newStatus = ($_POST['new_status'] ?? '') === 'inactive' ? 'inactive' : 'active';
@@ -285,7 +286,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: manager_product_merchandise.php'); exit;
     }
 
-    // ── Validate product ────────────────────────────────────────────────
+    // â”€â”€ Validate product â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if ($action === 'validate_product') {
         $id = (int)($_POST['product_id'] ?? 0);
         if ($id) {
@@ -306,7 +307,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ── Load products with batch summary ──────────────────────────────────────
+// â”€â”€ Load products with batch summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $products = [];
 $msg      = '';
 try {
@@ -347,7 +348,7 @@ try {
     $msg = 'Error loading products: ' . $e->getMessage();
 }
 
-// ── Load batch IDs per product (for Batch ID column) ──────────────────────
+// â”€â”€ Load batch IDs per product (for Batch ID column) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $product_batches = [];
 try {
     $bStmt = $pdo->prepare("
@@ -362,10 +363,11 @@ try {
     }
 } catch (Exception $e) {}
 
-// ── Dynamic categories from DB ─────────────────────────────────────────────
+// â”€â”€ Dynamic categories from DB â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $categories = [];
 try {
-    $catStmt = $pdo->query("SELECT DISTINCT category FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products') AND category IS NOT NULL AND category <> '' ORDER BY category");
+    $catStmt = $pdo->prepare("SELECT DISTINCT category FROM inventory_products WHERE station_id = ? AND LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products') AND category IS NOT NULL AND category <> '' ORDER BY category");
+    $catStmt->execute([$station_id]);
     $categories = $catStmt->fetchAll(PDO::FETCH_COLUMN);
 } catch (Exception $e) {}
 
@@ -631,7 +633,7 @@ include __DIR__ . '/../partials/header.php';
                     <td style="font-weight:600;color:#64748b;"><?php echo $uom; ?></td>
 
                     <!-- 6. Default Selling Price -->
-                    <td style="color:#28a745;font-weight:700;">₱<?php echo number_format((float)$p['unit_price'], 2); ?></td>
+                    <td style="color:#28a745;font-weight:700;">â‚±<?php echo number_format((float)$p['unit_price'], 2); ?></td>
 
                     </td>
 
@@ -703,7 +705,7 @@ include __DIR__ . '/../partials/header.php';
                                     <tr>
                                         <td><strong style="font-family:monospace;"><?php echo htmlspecialchars($pb['batch_number']); ?></strong></td>
                                         <td><?php echo htmlspecialchars($pb['date_received']); ?></td>
-                                        <td>₱<?php echo number_format((float)$pb['unit_cost'], 2); ?></td>
+                                        <td>â‚±<?php echo number_format((float)$pb['unit_cost'], 2); ?></td>
                                         <td><?php echo number_format((int)$pb['remaining_qty']); ?> pcs</td>
                                         <td><strong><?php echo number_format((int)$pb['remaining_qty']); ?> pcs</strong></td>
                                         <td><span class="<?php echo $statusClass; ?>"><?php echo ucfirst($bStatus); ?></span></td>
@@ -730,7 +732,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- ══ ADD PRODUCT MODAL ══════════════════════════════════════════════════════ -->
+<!-- â•â• ADD PRODUCT MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div id="addModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
@@ -747,7 +749,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="form-group">
                     <label>Category <span style="color:#dc3545;">*</span></label>
                     <select name="category" id="addCatSelect" class="form-control" onchange="toggleNewCat('add')" required>
-                        <option value="">— Select category —</option>
+                        <option value="">â€” Select category â€”</option>
                         <?php foreach ($categories as $cat): ?>
                         <option value="<?php echo htmlspecialchars($cat); ?>"><?php echo htmlspecialchars($cat); ?></option>
                         <?php endforeach; ?>
@@ -764,11 +766,11 @@ include __DIR__ . '/../partials/header.php';
                 </div>
                 <div class="fg2">
                     <div class="form-group">
-                        <label>Unit Cost (₱) <span style="color:#dc3545;">*</span></label>
+                        <label>Unit Cost (â‚±) <span style="color:#dc3545;">*</span></label>
                         <input type="number" name="unit_cost" class="form-control" step="0.01" min="0" required placeholder="0.00">
                     </div>
                     <div class="form-group">
-                        <label>Unit Price (₱) <span style="color:#dc3545;">*</span></label>
+                        <label>Unit Price (â‚±) <span style="color:#dc3545;">*</span></label>
                         <input type="number" name="unit_price" class="form-control" step="0.01" min="0" required placeholder="0.00">
                     </div>
                 </div>
@@ -804,7 +806,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- ══ EDIT PRODUCT MODAL ════════════════════════════════════════════════════ -->
+<!-- â•â• EDIT PRODUCT MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div id="editModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
@@ -822,7 +824,7 @@ include __DIR__ . '/../partials/header.php';
                 <div class="form-group">
                     <label>Category <span style="color:#dc3545;">*</span></label>
                     <select name="category" id="editCatSelect" class="form-control" onchange="toggleNewCat('edit')" required>
-                        <option value="">— Select category —</option>
+                        <option value="">â€” Select category â€”</option>
                         <?php foreach ($categories as $cat): ?>
                         <option value="<?php echo htmlspecialchars($cat); ?>"><?php echo htmlspecialchars($cat); ?></option>
                         <?php endforeach; ?>
@@ -839,11 +841,11 @@ include __DIR__ . '/../partials/header.php';
                 </div>
                 <div class="fg2">
                     <div class="form-group">
-                        <label>Unit Cost (₱) <span style="color:#dc3545;">*</span></label>
+                        <label>Unit Cost (â‚±) <span style="color:#dc3545;">*</span></label>
                         <input type="number" name="unit_cost" id="editProductCost" class="form-control" step="0.01" min="0" required>
                     </div>
                     <div class="form-group">
-                        <label>Unit Price (₱) <span style="color:#dc3545;">*</span></label>
+                        <label>Unit Price (â‚±) <span style="color:#dc3545;">*</span></label>
                         <input type="number" name="unit_price" id="editProductPrice" class="form-control" step="0.01" min="0" required>
                     </div>
                 </div>
@@ -869,7 +871,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
-<!-- ══ VIEW PRODUCT MODAL ════════════════════════════════════════════════════ -->
+<!-- â•â• VIEW PRODUCT MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div id="viewModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
@@ -912,7 +914,7 @@ include __DIR__ . '/../partials/header.php';
     <input type="hidden" name="new_status" id="tNewStatus">
 </form>
 
-<!-- ══ MANUAL STOCK IN MODAL ══════════════════════════════════════════════════ -->
+<!-- â•â• MANUAL STOCK IN MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div id="stockInModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
@@ -933,7 +935,7 @@ include __DIR__ . '/../partials/header.php';
                         <input type="number" name="qty_to_add" id="siQty" class="form-control" min="1" required placeholder="e.g. 10">
                     </div>
                     <div class="form-group">
-                        <label>Unit Cost (₱) <span style="color:#dc3545;">*</span></label>
+                        <label>Unit Cost (â‚±) <span style="color:#dc3545;">*</span></label>
                         <input type="number" name="unit_cost" id="siProductCost" class="form-control" step="0.01" min="0" required>
                     </div>
                 </div>
@@ -1090,8 +1092,8 @@ function viewProduct(id) {
     document.getElementById('vSku').textContent = p.sku || 'N/A';
     document.getElementById('vName').textContent = p.product_name;
     document.getElementById('vCat').textContent = p.category || 'N/A';
-    document.getElementById('vCost').textContent = '₱' + parseFloat(p.unit_cost).toFixed(2);
-    document.getElementById('vPrice').textContent = '₱' + parseFloat(p.unit_price).toFixed(2);
+    document.getElementById('vCost').textContent = 'â‚±' + parseFloat(p.unit_cost).toFixed(2);
+    document.getElementById('vPrice').textContent = 'â‚±' + parseFloat(p.unit_price).toFixed(2);
     document.getElementById('vMin').textContent = p.min_stock || 0;
     document.getElementById('vMax').textContent = p.max_stock || 0;
     document.getElementById('vStock').textContent = p.stock || 0;
@@ -1145,3 +1147,4 @@ document.addEventListener('keydown', e => {
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
+

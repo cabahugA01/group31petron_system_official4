@@ -78,12 +78,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ");
                 $stmt->execute([$station_id, $fuel_type_id, $fuel_type, $price_per_liter, $current_level, $capacity]);
 
-                // Also add to inventory_products so it appears in product catalog
-                $ip_chk = $pdo->prepare("SELECT id FROM inventory_products WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(?)) AND category = 'Fuel'");
-                $ip_chk->execute([$fuel_type]);
+                // Also add to inventory_products so it appears in product catalog (scoped to station)
+                $ip_chk = $pdo->prepare("SELECT id FROM inventory_products WHERE station_id = ? AND LOWER(TRIM(product_name)) = LOWER(TRIM(?)) AND category = 'Fuel'");
+                $ip_chk->execute([$station_id, $fuel_type]);
                 if (!$ip_chk->fetchColumn()) {
-                    $ip_stmt = $pdo->prepare("INSERT INTO inventory_products (product_name, category, unit_cost, unit_price, sku, stock, created_at) VALUES (?, 'Fuel', ?, ?, ?, 0, NOW())");
-                    $ip_stmt->execute([$fuel_type, $price_per_liter, $price_per_liter, strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $fuel_type), 0, 6))]);
+                    $ip_stmt = $pdo->prepare("INSERT INTO inventory_products (station_id, product_name, category, unit_cost, unit_price, sku, stock, created_at) VALUES (?, ?, 'Fuel', ?, ?, ?, 0, NOW())");
+                    $ip_stmt->execute([$station_id, $fuel_type, $price_per_liter, $price_per_liter, strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $fuel_type), 0, 6))]);
                 }
 
 
@@ -101,9 +101,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (empty($category)) $category = 'Merchandise';
 
             try {
-                // Check if product already exists in inventory_products (global catalog)
-                $ip_chk = $pdo->prepare("SELECT id FROM inventory_products WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(?)) AND LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products') LIMIT 1");
-                $ip_chk->execute([$name]);
+                // Check if product already exists in inventory_products for THIS station
+                $ip_chk = $pdo->prepare("SELECT id FROM inventory_products WHERE station_id = ? AND LOWER(TRIM(product_name)) = LOWER(TRIM(?)) AND LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products') LIMIT 1");
+                $ip_chk->execute([$station_id, $name]);
                 $existing_ip_id = $ip_chk->fetchColumn();
 
                 // Check if already linked to THIS station

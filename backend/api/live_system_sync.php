@@ -166,9 +166,7 @@ if ($role === 'staff') {
             [$station_id]
         );
     }
-
-    // --- MANAGER ---
-    if (in_array($role, ['manager', 'supervisor'])) {
+} elseif (in_array($role, ['manager', 'supervisor'])) {
         // Transactions: Pending JOs + Pending Merch + Fuel Adjustments
         $response['sidebar_badges']['transactions'] = (
             ($station_id ? $safe_count("SELECT COUNT(*) FROM job_orders WHERE station_id=? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation','reviewed')", [$station_id])
@@ -189,10 +187,8 @@ if ($role === 'staff') {
         $response['sidebar_badges']['inventory'] = (
             ($station_id ? $safe_count("SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id=si.product_id WHERE si.station_id=? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.reorder_level,ip.min_stock,24)", [$station_id])
                         : $safe_count("SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id=si.product_id WHERE (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.reorder_level,ip.min_stock,24)"))
-            + ($station_id ? ($safe_count("SELECT COUNT(*) FROM stock_requests WHERE station_id=? AND status IN ('Pending','Pending Manager Review')", [$station_id])
-                             + $safe_count("SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id=? AND status IN ('Pending','Pending Manager Review')", [$station_id]))
-                           : ($safe_count("SELECT COUNT(*) FROM stock_requests WHERE status IN ('Pending','Pending Manager Review')")
-                             + $safe_count("SELECT COUNT(*) FROM fuel_stock_requests WHERE status IN ('Pending','Pending Manager Review')")))
+            + ($station_id ? $safe_count("SELECT COUNT(*) FROM stock_requests WHERE station_id=? AND status IN ('Pending','Pending Manager Review')", [$station_id])
+                           : $safe_count("SELECT COUNT(*) FROM stock_requests WHERE status IN ('Pending','Pending Manager Review')"))
             + ($station_id ? $safe_count("SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND status IN ('Approved','Pending Stock-In')", [$station_id])
                            : $safe_count("SELECT COUNT(*) FROM purchase_orders WHERE status IN ('Approved','Pending Stock-In')"))
         );
@@ -222,16 +218,13 @@ if ($role === 'staff') {
         $response['sidebar_badges']['pricing'] = $pending_prices;
         $response['sidebar_badges']['prod_pricing'] = $pending_prices;
 
-        // Fuel: Pending Fuel Stock Requests + Pending Fuel Adjustments only
-        $admin_fuel_reqs = ($station_id
-            ? $safe_count("SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id=? AND LOWER(COALESCE(status,'')) IN ('pending','pending manager review','pending admin review')", [$station_id])
-            : $safe_count("SELECT COUNT(*) FROM fuel_stock_requests WHERE LOWER(COALESCE(status,'')) IN ('pending','pending manager review','pending admin review')"));
-        $admin_fuel_adj = ($station_id
-            ? $safe_count("SELECT COUNT(*) FROM fuel_adjustments WHERE station_id=? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation')", [$station_id])
-            : $safe_count("SELECT COUNT(*) FROM fuel_adjustments WHERE LOWER(COALESCE(status,'')) IN ('pending','pending validation')"));
-        $response['sidebar_badges']['fuel']               = $admin_fuel_reqs + $admin_fuel_adj;
-        $response['sidebar_badges']['admin_fuel']         = $admin_fuel_reqs + $admin_fuel_adj;
-        $response['sidebar_badges']['admin_fuel_management'] = $admin_fuel_reqs + $admin_fuel_adj;
+        // Fuel: Pending Fuel Transactions requiring admin review
+        $admin_fuel_pending = ($station_id
+            ? $safe_count("SELECT COUNT(*) FROM fuel_transactions WHERE station_id=? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation')", [$station_id])
+            : $safe_count("SELECT COUNT(*) FROM fuel_transactions WHERE LOWER(COALESCE(status,'')) IN ('pending','pending validation')"));
+        $response['sidebar_badges']['fuel']                  = $admin_fuel_pending;
+        $response['sidebar_badges']['admin_fuel']            = $admin_fuel_pending;
+        $response['sidebar_badges']['admin_fuel_management'] = $admin_fuel_pending;
 
         // Users
         $response['sidebar_badges']['users'] = ($station_id

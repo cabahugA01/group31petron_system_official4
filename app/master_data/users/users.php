@@ -136,9 +136,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!in_array($assigned_shift, ['Shift 1', 'Shift 2'])) {
                     throw new Exception("Invalid shift assignment for staff. Please select Shift 1 or Shift 2.");
                 }
-            } elseif (in_array($role, ['manager', 'admin'], true)) {
-                // Managers and Admins automatically get 'All Shifts'
-                $assigned_shift = 'All Shifts';
+            } else {
+                $assigned_shift = null;
             }
             
             // Generate employee ID

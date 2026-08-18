@@ -250,7 +250,11 @@ require_once __DIR__ . '/../partials/header.php';
 }
 
 .pf-avatar-container {
-    margin-bottom: 6px;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 10px;
 }
 
 .pf-avatar-frame {
@@ -703,22 +707,36 @@ require_once __DIR__ . '/../partials/header.php';
 }
 
 /* Alert Notification */
+/* Floating Alert Notification on Right Side */
 .pf-alert {
-    padding: 14px 20px;
-    border-radius: 14px;
-    margin-bottom: 22px;
+    position: fixed;
+    top: 84px;
+    right: 24px;
+    z-index: 999999;
+    min-width: 280px;
+    max-width: 420px;
+    padding: 14px 18px;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     gap: 12px;
-    font-size: 14px;
+    font-size: 13.5px;
     font-weight: 600;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+    animation: pfSlideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: opacity 0.3s ease, transform 0.3s ease;
 }
-.pf-alert.success { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
-.pf-alert.error   { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+.pf-alert.success { background: #ffffff; color: #15803d; border: 1px solid #bbf7d0; }
+.pf-alert.error   { background: #ffffff; color: #b91c1c; border: 1px solid #fecaca; }
+
+@keyframes pfSlideInRight {
+    from { opacity: 0; transform: translateX(50px); }
+    to { opacity: 1; transform: translateX(0); }
+}
 
 @media (max-width: 650px) {
     .pf-form-grid { grid-template-columns: 1fr; }
+    .pf-alert { right: 12px; left: 12px; max-width: none; }
 }
 </style>
 
@@ -726,9 +744,19 @@ require_once __DIR__ . '/../partials/header.php';
 
     <?php if ($msg): ?>
     <div class="pf-alert <?php echo $msg_type; ?>" id="pfAlert">
-        <i class="fas fa-<?php echo $msg_type === 'success' ? 'check-circle' : 'exclamation-circle'; ?>"></i>
-        <span><?php echo htmlspecialchars($msg); ?></span>
+        <i class="fas fa-<?php echo $msg_type === 'success' ? 'check-circle' : 'exclamation-circle'; ?>" style="font-size:18px; flex-shrink:0;"></i>
+        <span style="flex:1;"><?php echo htmlspecialchars($msg); ?></span>
     </div>
+    <script>
+    setTimeout(function() {
+        var a = document.getElementById('pfAlert');
+        if (a) {
+            a.style.opacity = '0';
+            a.style.transform = 'translateX(50px)';
+            setTimeout(function() { if (a && a.parentNode) a.remove(); }, 300);
+        }
+    }, 4500);
+    </script>
     <?php endif; ?>
 
     <!-- ── 1. HERO PROFILE HEADER CARD ── -->
@@ -1057,11 +1085,8 @@ require_once __DIR__ . '/../partials/header.php';
                 </div>
             </div>
 
-            <div class="pf-actions">
-                <a href="update_password.php" class="pf-btn pf-btn-primary">
-                    <i class="fas fa-key"></i> Change Account Password
-                </a>
-            </div>
+
+
         </div>
     </div>
 
@@ -1123,20 +1148,16 @@ function handlePhotoSelected(input) {
     }
 }
 
-document.getElementById('photoPreviewModal').addEventListener('click', function(e) {
-    if (e.target === this) {
-        closePreviewModal();
+document.addEventListener('DOMContentLoaded', function() {
+    var modal = document.getElementById('photoPreviewModal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                closePreviewModal();
+            }
+        });
     }
 });
-
-setTimeout(function() {
-    var a = document.getElementById('pfAlert');
-    if (a) {
-        a.style.transition = 'opacity 0.5s ease';
-        a.style.opacity = '0';
-        setTimeout(function(){ a.remove(); }, 500);
-    }
-}, 4000);
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -71,18 +71,16 @@ try {
 $where  = ['n.user_id = ?'];
 $params = [$me['id']];
 
-// Staff Shift Isolation
-if ($role === 'staff') {
-    if ($filter_shift !== 'all' && $filter_shift !== '') {
+// Shift filter (only apply when a specific shift is requested)
+if ($filter_shift !== 'all' && $filter_shift !== '') {
+    if (in_array(strtolower($filter_shift), ['shift 1', 'first shift', 'first'])) {
+        $where[] = '(LOWER(n.shift_period) IN ("shift 1", "first shift", "first") OR n.shift_period IS NULL OR n.shift_period = "")';
+    } elseif (in_array(strtolower($filter_shift), ['shift 2', 'second shift', 'second'])) {
+        $where[] = '(LOWER(n.shift_period) IN ("shift 2", "second shift", "second") OR n.shift_period IS NULL OR n.shift_period = "")';
+    } else {
         $where[]  = '(n.shift_period = ? OR n.shift_period IS NULL OR n.shift_period = "")';
         $params[] = $filter_shift;
-    } elseif (!empty($assigned_shift) && $assigned_shift !== 'All Shifts') {
-        $where[]  = '(n.shift_period = ? OR n.shift_period IS NULL OR n.shift_period = "")';
-        $params[] = $assigned_shift;
     }
-} elseif ($filter_shift !== 'all' && $filter_shift !== '') {
-    $where[]  = '(n.shift_period = ? OR n.shift_period IS NULL OR n.shift_period = "")';
-    $params[] = $filter_shift;
 }
 
 // Category filter
@@ -175,9 +173,8 @@ $total_pages = max(1, ceil($total_rows / $per_page));
 
 include __DIR__ . '/../partials/header.php';
 ?>
-
 <style>
-/* ── Notifications Page Styling ── */
+/* ── Modern Notification Hub Feed Styling ── */
 .notif-wrapper {
     padding: 0 !important;
     background: #f8fafc;
@@ -189,7 +186,7 @@ include __DIR__ . '/../partials/header.php';
     align-items: center;
     justify-content: space-between;
     margin-top: 0 !important;
-    margin-bottom: 25px !important;
+    margin-bottom: 24px !important;
     padding: 0 !important;
     border: none !important;
     width: 100%;
@@ -200,11 +197,10 @@ include __DIR__ . '/../partials/header.php';
 .notif-title-area h1 {
     margin: 0 !important;
     color: #002f70 !important;
-    font-size: 24px !important;
+    font-size: 22px !important;
     font-weight: 700 !important;
     text-transform: uppercase !important;
     letter-spacing: 0.5px !important;
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
     display: flex !important;
     align-items: center !important;
     gap: 10px !important;
@@ -212,91 +208,21 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .notif-title-area p {
-    margin: 0;
+    margin: 4px 0 0 0;
     color: #64748b;
-    font-size: 14px;
+    font-size: 13.5px;
 }
 
-/* Dashboard Cards */
-.notif-cards-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
-    margin-bottom: 24px;
-}
 
-@media (max-width: 992px) {
-    .notif-cards-grid { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 576px) {
-    .notif-cards-grid { grid-template-columns: 1fr; }
-}
-
-.notif-card {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-    cursor: pointer;
-    text-decoration: none !important;
-}
-
-.notif-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-}
-
-.notif-card-val {
-    font-size: 28px;
-    font-weight: 800;
-    line-height: 1.1;
-}
-
-.notif-card-lbl {
-    font-size: 13px;
-    font-weight: 600;
-    color: #64748b;
-    margin-top: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.notif-card-ico {
-    width: 50px;
-    height: 50px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 22px;
-}
-
-/* Card Variations */
-.notif-card.card-total .notif-card-val { color: #0f172a; }
-.notif-card.card-total .notif-card-ico { background: #e2e8f0; color: #475569; }
-
-.notif-card.card-unread .notif-card-val { color: #ef4444; }
-.notif-card.card-unread .notif-card-ico { background: #fee2e2; color: #dc2626; }
-
-.notif-card.card-read .notif-card-val { color: #10b981; }
-.notif-card.card-read .notif-card-ico { background: #d1fae5; color: #059669; }
-
-.notif-card.card-archived .notif-card-val { color: #6366f1; }
-.notif-card.card-archived .notif-card-ico { background: #e0e7ff; color: #4f46e5; }
 
 /* Filter Container */
 .notif-filter-box {
     background: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 24px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    padding: 16px 20px;
+    margin-bottom: 22px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
 .notif-filter-form {
@@ -320,17 +246,19 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .filter-group label {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
-    color: #475569;
+    color: #64748b;
     text-transform: uppercase;
+    letter-spacing: 0.3px;
 }
 
 .filter-group input, .filter-group select {
-    padding: 9px 12px;
+    height: 36px;
+    padding: 0 10px;
     border: 1px solid #cbd5e1;
     border-radius: 8px;
-    font-size: 13px;
+    font-size: 12.5px;
     color: #1e293b;
     outline: none;
     transition: border-color 0.15s ease;
@@ -343,29 +271,31 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .btn-filter-submit {
-    padding: 9px 18px;
-    background: #0f172a;
+    height: 36px;
+    padding: 0 16px;
+    background: #002F6C;
     color: #ffffff;
-    border: 1px solid #0f172a;
+    border: 1px solid #002F6C;
     border-radius: 8px;
     font-weight: 600;
-    font-size: 13px;
+    font-size: 12.5px;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 6px;
     transition: all 0.15s ease;
 }
-.btn-filter-submit:hover { background: #1e293b; border-color: #1e293b; }
+.btn-filter-submit:hover { background: #001f4d; border-color: #001f4d; }
 
 .btn-filter-reset {
-    padding: 9px 14px;
+    height: 36px;
+    padding: 0 14px;
     background: #ffffff;
     color: #475569;
     border: 1px solid #cbd5e1;
     border-radius: 8px;
     font-weight: 600;
-    font-size: 13px;
+    font-size: 12.5px;
     text-decoration: none !important;
     display: flex;
     align-items: center;
@@ -374,146 +304,258 @@ include __DIR__ . '/../partials/header.php';
 }
 .btn-filter-reset:hover { background: #f8fafc; color: #0f172a; border-color: #94a3b8; }
 
-/* Table Container */
-.notif-table-card {
+/* ── Modern Notification Feed List ── */
+.notif-feed-container {
     background: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     overflow: hidden;
 }
 
-.notif-table {
-    width: 100%;
-    border-collapse: collapse;
-    text-align: left;
-}
-
-.notif-table th {
-    background: #f8fafc;
-    padding: 14px 18px;
-    font-size: 12px;
-    font-weight: 700;
-    color: #475569;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 1px solid #e2e8f0;
-}
-
-.notif-table td {
-    padding: 16px 18px;
-    border-bottom: 1px solid #f1f5f9;
-    font-size: 13px;
-    color: #334155;
-    vertical-align: middle;
-}
-
-.notif-table tbody tr {
-    transition: background 0.15s ease;
-}
-
-.notif-table tbody tr.unread-row {
-    background: rgba(0, 47, 108, 0.025);
-}
-
-.notif-table tbody tr:hover {
-    background: #f8fafc;
-}
-
-/* Priority Badges */
-.prio-badge {
-    padding: 4px 10px;
-    border-radius: 20px;
+.notif-date-divider {
+    padding: 10px 20px;
     font-size: 11px;
     font-weight: 700;
+    color: #64748b;
     text-transform: uppercase;
+    letter-spacing: 0.6px;
+    background: #f8fafc;
+    border-bottom: 1px solid #f1f5f9;
+    border-top: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.notif-date-divider:first-child {
+    border-top: none;
+}
+
+.notif-feed-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    border-bottom: 1px solid #f1f5f9;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+    position: relative;
+    text-decoration: none !important;
+}
+
+.notif-feed-item:last-child {
+    border-bottom: none;
+}
+
+.notif-feed-item:hover {
+    background: #f8fafc !important;
+}
+
+.notif-feed-item.is-unread {
+    background: #f0f7ff;
+}
+
+.notif-feed-item.is-read {
+    background: #ffffff;
+}
+
+.notif-item-icon-wrap {
+    flex-shrink: 0;
+}
+
+.notif-type-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+}
+
+.icon-fuel { background: #eff6ff; color: #2563eb; }
+.icon-inventory { background: #fef3c7; color: #d97706; }
+.icon-transaction { background: #f0fdf4; color: #16a34a; }
+.icon-job_order { background: #f5f3ff; color: #7c3aed; }
+.icon-delivery { background: #ecfeff; color: #0891b2; }
+.icon-customer { background: #fdf2f8; color: #db2777; }
+.icon-system { background: #fee2e2; color: #dc2626; }
+.icon-general { background: #f1f5f9; color: #475569; }
+
+.notif-item-content {
+    flex-grow: 1;
+    min-width: 0;
+}
+
+.notif-item-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 3px;
+}
+
+.notif-item-title {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1.3;
+}
+
+.notif-feed-item.is-unread .notif-item-title {
+    font-size: 14.5px;
+    font-weight: 700;
+    color: #002244;
+}
+
+.notif-feed-item.is-read .notif-item-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #334155;
+}
+
+.unread-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #2563eb;
+    margin-right: 8px;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.notif-item-time {
+    font-size: 11.5px;
+    color: #94a3b8;
+    white-space: nowrap;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.notif-item-msg {
+    margin: 2px 0 6px;
+    font-size: 13px;
+    color: #64748b;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.notif-feed-item.is-unread .notif-item-msg {
+    color: #334155;
+}
+
+.notif-item-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.notif-tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: #f1f5f9;
+    color: #475569;
+    text-transform: capitalize;
+}
+
+.prio-tag {
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 6px;
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    text-transform: uppercase;
 }
-
 .prio-low { background: #e0f2fe; color: #0369a1; }
 .prio-medium { background: #ffedd5; color: #c2410c; }
 .prio-high { background: #fee2e2; color: #b91c1c; }
 .prio-critical { background: #7f1d1d; color: #ffffff; }
 
-/* Status Badges */
-.stat-badge {
-    padding: 4px 10px;
-    border-radius: 20px;
+.shift-tag {
     font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-}
-
-.stat-unread { background: #ef4444; color: #fff; }
-.stat-read { background: #e2e8f0; color: #475569; }
-.stat-archived { background: #e0e7ff; color: #4f46e5; }
-
-/* Action Buttons */
-.action-btn-group {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.tbl-btn {
-    padding: 6px 12px;
+    font-weight: 500;
+    padding: 2px 8px;
     border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    border: 1px solid transparent;
-    cursor: pointer;
+    background: #faf5ff;
+    color: #6b21a8;
+    border: 1px solid #f3e8ff;
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: none;
-    text-decoration: none !important;
-    transition: all 0.15s ease;
 }
 
-.tbl-btn-open { background-color: #eff6ff !important; color: #2563eb !important; border: 1px solid #bfdbfe !important; }
-.tbl-btn-open:hover { background-color: #dbeafe !important; color: #1d4ed8 !important; border-color: #93c5fd !important; }
+.notif-item-arrow {
+    flex-shrink: 0;
+    color: #cbd5e1;
+    font-size: 13px;
+    transition: transform 0.15s ease, color 0.15s ease;
+    margin-left: 8px;
+}
 
-.tbl-btn-read { background-color: #f1f5f9 !important; color: #475569 !important; border: 1px solid #cbd5e1 !important; }
-.tbl-btn-read:hover { background-color: #e2e8f0 !important; color: #0f172a !important; border-color: #94a3b8 !important; }
+.notif-feed-item:hover .notif-item-arrow {
+    color: #002F6C;
+    transform: translateX(3px);
+}
 
-.tbl-btn-archive { background-color: #ffffff !important; color: #64748b !important; border: 1px solid #e2e8f0 !important; }
-.tbl-btn-archive:hover { background-color: #fef2f2 !important; color: #dc2626 !important; border-color: #fca5a5 !important; }
+.notif-empty-state {
+    text-align: center;
+    padding: 56px 20px;
+    color: #94a3b8;
+}
 
-/* Pagination */
+.notif-empty-state i {
+    font-size: 40px;
+    margin-bottom: 14px;
+    display: block;
+    color: #cbd5e1;
+}
+
 .notif-pagination {
-    padding: 16px 20px;
-    background: #f8fafc;
-    border-top: 1px solid #e2e8f0;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    padding: 14px 20px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
 }
 
-/* Modal Styling */
+/* Modal Dialog */
 .modal-backdrop-custom {
     position: fixed;
-    top: 0; left: 0; width: 100vw; height: 100vh;
-    background: rgba(15, 23, 42, 0.6);
-    backdrop-filter: blur(2px);
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,15,35,0.6);
+    backdrop-filter: blur(3px);
     display: none;
     align-items: center;
     justify-content: center;
-    z-index: 9999;
+    z-index: 999999;
+    padding: 16px;
 }
 
 .modal-content-custom {
     background: #fff;
-    border-radius: 16px;
+    border-radius: 12px;
     width: 100%;
-    max-width: 550px;
-    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+    max-width: 480px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.2);
     overflow: hidden;
+    animation: modalPop 0.2s cubic-bezier(0.16,1,0.3,1);
+    border: 1px solid #e2e8f0;
 }
 
 .modal-hdr {
-    padding: 20px 24px;
+    padding: 16px 20px;
     background: #f8fafc;
     border-bottom: 1px solid #e2e8f0;
     display: flex;
@@ -522,24 +564,24 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .modal-hdr h3 {
-    font-size: 18px;
+    font-size: 15px;
     font-weight: 700;
-    color: #0f172a;
+    color: #002244;
     margin: 0;
 }
 
 .modal-body {
-    padding: 24px;
+    padding: 20px;
 }
 
 .modal-ftr {
-    padding: 16px 24px;
+    padding: 12px 20px;
     background: #f8fafc;
     border-top: 1px solid #e2e8f0;
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 12px;
+    gap: 10px;
 }
 </style>
 
@@ -554,7 +596,7 @@ include __DIR__ . '/../partials/header.php';
         <div>
             <form method="POST" style="display:inline;">
                 <input type="hidden" name="action" value="mark_all_read">
-                <button type="submit" class="btn-filter-reset" style="background-color: #f0fdf4 !important; color: #166534 !important; border: 1px solid #bbf7d0 !important;">
+                <button type="submit" class="btn-filter-reset" style="background-color: #f0fdf4 !important; color: #166534 !important; border: 1px solid #bbf7d0 !important; font-weight: 700;">
                     <i class="fas fa-check-double"></i> Mark All as Read
                 </button>
             </form>
@@ -562,97 +604,14 @@ include __DIR__ . '/../partials/header.php';
     </div>
 
     <?php if ($notice): ?>
-        <div style="padding:12px 18px; background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; border-radius:8px; margin-bottom:20px; font-weight:600; font-size:14px;">
+        <div style="padding:12px 18px; background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; border-radius:8px; margin-bottom:20px; font-weight:600; font-size:13.5px;">
             <?= htmlspecialchars($notice) ?>
         </div>
     <?php endif; ?>
 
-    <!-- Dashboard Cards -->
-    <div class="notif-cards-grid">
-        <a href="notifications.php?status=all" class="notif-card card-total">
-            <div>
-                <div class="notif-card-val"><?= number_format($counts['total']) ?></div>
-                <div class="notif-card-lbl">Total Notifications</div>
-            </div>
-            <div class="notif-card-ico"><i class="fas fa-layer-group"></i></div>
-        </a>
 
-        <a href="notifications.php?status=unread" class="notif-card card-unread">
-            <div>
-                <div class="notif-card-val"><?= number_format($counts['unread']) ?></div>
-                <div class="notif-card-lbl">Unread</div>
-            </div>
-            <div class="notif-card-ico"><i class="fas fa-bell"></i></div>
-        </a>
 
-        <a href="notifications.php?status=read" class="notif-card card-read">
-            <div>
-                <div class="notif-card-val"><?= number_format($counts['read']) ?></div>
-                <div class="notif-card-lbl">Read</div>
-            </div>
-            <div class="notif-card-ico"><i class="fas fa-check-circle"></i></div>
-        </a>
 
-        <a href="notifications.php?status=archived" class="notif-card card-archived">
-            <div>
-                <div class="notif-card-val"><?= number_format($counts['archived']) ?></div>
-                <div class="notif-card-lbl">Archived</div>
-            </div>
-            <div class="notif-card-ico"><i class="fas fa-archive"></i></div>
-        </a>
-    </div>
-
-    <!-- Workflow & Category Navigation Tabs -->
-    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px;">
-        <?php
-        $curr_cat = $category ?: 'all';
-        $curr_stat = $filter_stat ?: 'all';
-        $curr_shift = $filter_shift ?: 'all';
-
-        $tabs = [
-            ['id' => 'all',          'label' => 'All',          'icon' => 'fa-layer-group', 'url' => 'notifications.php?category=all&status=all'],
-            ['id' => 'unread',       'label' => 'Unread',       'icon' => 'fa-bell',        'url' => 'notifications.php?status=unread'],
-            ['id' => 'read',         'label' => 'Read',         'icon' => 'fa-check-circle','url' => 'notifications.php?status=read'],
-            ['id' => 'approvals',    'label' => 'Approvals',    'icon' => 'fa-stamp',       'url' => 'notifications.php?category=approvals'],
-            ['id' => 'inventory',    'label' => 'Inventory',    'icon' => 'fa-boxes',       'url' => 'notifications.php?category=inventory'],
-            ['id' => 'transactions', 'label' => 'Transactions', 'icon' => 'fa-receipt',     'url' => 'notifications.php?category=transactions'],
-            ['id' => 'fuel',         'label' => 'Fuel',         'icon' => 'fa-gas-pump',    'url' => 'notifications.php?category=fuel'],
-            ['id' => 'master_data',  'label' => 'Master Data',  'icon' => 'fa-database',    'url' => 'notifications.php?category=master_data'],
-            ['id' => 'system',       'label' => 'System',       'icon' => 'fa-server',      'url' => 'notifications.php?category=system'],
-        ];
-
-        // Staff Shift Tabs
-        if ($role === 'staff') {
-            if ($assigned_shift === 'Shift 1' || $assigned_shift === 'All Shifts' || empty($assigned_shift)) {
-                $tabs[] = ['id' => 'shift1', 'label' => 'Shift 1 Only', 'icon' => 'fa-clock', 'url' => 'notifications.php?shift=' . urlencode('Shift 1')];
-            }
-            if ($assigned_shift === 'Shift 2' || $assigned_shift === 'All Shifts' || empty($assigned_shift)) {
-                $tabs[] = ['id' => 'shift2', 'label' => 'Shift 2 Only', 'icon' => 'fa-moon',  'url' => 'notifications.php?shift=' . urlencode('Shift 2')];
-            }
-        } elseif (in_array($role, ['manager', 'admin', 'superadmin'])) {
-            $tabs[] = ['id' => 'shift1', 'label' => 'Shift 1', 'icon' => 'fa-clock', 'url' => 'notifications.php?shift=' . urlencode('Shift 1')];
-            $tabs[] = ['id' => 'shift2', 'label' => 'Shift 2', 'icon' => 'fa-moon',  'url' => 'notifications.php?shift=' . urlencode('Shift 2')];
-        }
-
-        foreach ($tabs as $t) {
-            $is_active = false;
-            if ($t['id'] === 'all' && $curr_cat === 'all' && $curr_stat === 'all' && $curr_shift === 'all') $is_active = true;
-            elseif ($t['id'] === 'unread' && $curr_stat === 'unread') $is_active = true;
-            elseif ($t['id'] === 'read' && $curr_stat === 'read') $is_active = true;
-            elseif ($t['id'] === 'shift1' && $curr_shift === 'Shift 1') $is_active = true;
-            elseif ($t['id'] === 'shift2' && $curr_shift === 'Shift 2') $is_active = true;
-            elseif ($curr_cat === $t['id']) $is_active = true;
-
-            $active_style = $is_active 
-                ? 'background:#002F6C; color:#fff; font-weight:700; border-color:#002F6C;' 
-                : 'background:#fff; color:#475569; font-weight:600; border-color:#cbd5e1;';
-
-            echo '<a href="' . htmlspecialchars($t['url']) . '" style="padding: 8px 16px; border-radius: 20px; font-size: 13px; text-decoration: none !important; border: 1px solid #cbd5e1; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s ease; ' . $active_style . '">';
-            echo '<i class="fas ' . $t['icon'] . '"></i> ' . htmlspecialchars($t['label']);
-            echo '</a>';
-        }
-        ?>
-    </div>
 
     <!-- Filters Bar -->
     <div class="notif-filter-box">
@@ -675,11 +634,10 @@ include __DIR__ . '/../partials/header.php';
                     <option value="all">All Types</option>
                     <option value="transaction" <?= $filter_type === 'transaction' ? 'selected' : '' ?>>Transaction</option>
                     <option value="job_order" <?= $filter_type === 'job_order' ? 'selected' : '' ?>>Job Order</option>
-                    <option value="fuel_management" <?= $filter_type === 'fuel_management' ? 'selected' : '' ?>>Fuel Management</option>
+                    <option value="fuel_transaction" <?= in_array($filter_type, ['fuel_transaction','fuel_management','fuel']) ? 'selected' : '' ?>>Fuel Management</option>
                     <option value="inventory" <?= $filter_type === 'inventory' ? 'selected' : '' ?>>Inventory</option>
                     <option value="customer" <?= $filter_type === 'customer' ? 'selected' : '' ?>>Customer</option>
                     <option value="delivery" <?= $filter_type === 'delivery' ? 'selected' : '' ?>>Delivery</option>
-                    <option value="calendar" <?= $filter_type === 'calendar' ? 'selected' : '' ?>>Calendar</option>
                     <option value="report" <?= $filter_type === 'report' ? 'selected' : '' ?>>Report</option>
                 </select>
             </div>
@@ -719,125 +677,149 @@ include __DIR__ . '/../partials/header.php';
                 <button type="submit" class="btn-filter-submit"><i class="fas fa-filter"></i> Filter</button>
                 <a href="notifications.php" class="btn-filter-reset"><i class="fas fa-undo"></i> Reset</a>
             </div>
-
         </form>
     </div>
 
-    <!-- Data Table -->
-    <div class="notif-table-card">
-        <table class="notif-table">
-            <thead>
-                <tr>
-                    <th style="width: 170px;">Date & Time</th>
-                    <th style="width: 160px;">Notification Type</th>
-                    <th>Message</th>
-                    <th style="width: 110px;">Priority</th>
-                    <th style="width: 100px;">Status</th>
-                    <th style="width: 220px; text-align: right;">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (empty($notifications)): ?>
-                    <tr>
-                        <td colspan="6" style="text-align: center; padding: 48px; color: #94a3b8;">
-                            <i class="fas fa-bell-slash" style="font-size: 36px; margin-bottom: 12px; display: block; color: #cbd5e1;"></i>
-                            No notifications match your selected filters.
-                        </td>
-                    </tr>
-                <?php else: ?>
-                    <?php foreach ($notifications as $n): 
-                        $is_unread = ($n['status'] === 'unread');
-                        $prio = strtolower($n['severity'] ?? 'medium');
-                        $type_label = ucwords(str_replace('_', ' ', $n['event_type'] ?? 'General'));
-                        $redirect = $n['redirect_url'] ?? '';
-                    ?>
-                        <tr class="<?= $is_unread ? 'unread-row' : '' ?>" style="cursor: pointer;" onclick="handleNotifClick(event, <?= htmlspecialchars(json_encode($n)) ?>)">
-                            <td style="font-weight: 600; color: #1e293b;">
-                                <?= date('M d, Y', strtotime($n['created_at'])) ?><br>
-                                <span style="font-size: 11px; color: #64748b; font-weight: normal;"><?= date('h:i A', strtotime($n['created_at'])) ?></span>
-                            </td>
+    <!-- ── Modern Notification Feed Feed/Timeline Card ── -->
+    <div class="notif-feed-container">
+        <?php if (empty($notifications)): ?>
+            <div class="notif-empty-state">
+                <i class="fas fa-bell-slash"></i>
+                <div style="font-size: 15px; font-weight: 600; color: #475569; margin-bottom: 4px;">No notifications found</div>
+                <div style="font-size: 13px; color: #94a3b8;">No records match your selected filters or search keyword.</div>
+            </div>
+        <?php else: ?>
+            <?php 
+            // Helper function for smart relative time
+            $format_feed_time = function(string $dt): string {
+                $diff = max(0, time() - strtotime($dt));
+                if ($diff < 60)     return 'Just now';
+                if ($diff < 3600)   return floor($diff / 60) . ' min ago';
+                if ($diff < 86400)  return floor($diff / 3600) . ' hr ago';
+                if ($diff < 172800) return 'Yesterday';
+                if ($diff < 604800) return floor($diff / 86400) . ' days ago';
+                return date('M j, Y', strtotime($dt));
+            };
 
-                            <td>
-                                <strong style="color: #0f172a; font-size: 13px;"><?= htmlspecialchars($type_label) ?></strong>
-                            </td>
+            // Group notifications by Date (Today, Yesterday, or Specific Date)
+            $grouped_notifs = [];
+            foreach ($notifications as $n) {
+                $item_date = date('Y-m-d', strtotime($n['created_at']));
+                $today     = date('Y-m-d');
+                $yest      = date('Y-m-d', strtotime('-1 day'));
 
-                            <td>
-                                <div style="font-weight: 700; color: #002F6C; margin-bottom: 2px; font-size: 14px;">
-                                    <?= htmlspecialchars($n['title']) ?>
-                                    <?php if (!empty($redirect)): ?>
-                                        <i class="fas fa-external-link-alt" style="font-size: 11px; margin-left: 4px; color: #3b82f6;"></i>
-                                    <?php endif; ?>
-                                </div>
-                                <div style="color: #475569; line-height: 1.4;">
-                                    <?= htmlspecialchars($n['message']) ?>
-                                </div>
-                            </td>
+                if ($item_date === $today) {
+                    $grp = 'Today';
+                } elseif ($item_date === $yest) {
+                    $grp = 'Yesterday';
+                } else {
+                    $grp = date('F j, Y', strtotime($n['created_at']));
+                }
+                $grouped_notifs[$grp][] = $n;
+            }
 
-                            <td>
-                                <span class="prio-badge prio-<?= $prio ?>">
-                                    <i class="fas fa-circle" style="font-size:7px;"></i> <?= ucfirst($prio) ?>
-                                </span>
-                            </td>
+            foreach ($grouped_notifs as $group_label => $items):
+            ?>
+                <div class="notif-date-divider">
+                    <span><?= htmlspecialchars($group_label) ?></span>
+                </div>
 
-                            <td>
-                                <span class="stat-badge stat-<?= $n['status'] ?>">
-                                    <?= ucfirst($n['status']) ?>
-                                </span>
-                            </td>
+                <?php foreach ($items as $n): 
+                    $is_unread = ($n['status'] === 'unread');
+                    $prio = strtolower($n['severity'] ?? 'medium');
+                    $ev_type = strtolower($n['event_type'] ?? 'general');
+                    $type_label = ucwords(str_replace('_', ' ', $n['event_type'] ?? 'General'));
+                    $redirect = $n['redirect_url'] ?? '';
 
-                            <td style="text-align: right;" onclick="event.stopPropagation()">
-                                <div class="action-btn-group" style="justify-content: flex-end;">
-                                    
-                                    <!-- Open Action Button -->
-                                    <?php if (!empty($redirect)): ?>
-                                        <button type="button" class="tbl-btn tbl-btn-open"
-                                                onclick="handleNotifClick(event, <?= htmlspecialchars(json_encode($n)) ?>)">
-                                            <i class="fas fa-external-link-alt"></i> Open
-                                        </button>
-                                    <?php endif; ?>
+                    // Determine icon class
+                    $icon_class = 'icon-general';
+                    $fa_icon = 'fas fa-bell';
+                    if (strpos($ev_type, 'fuel') !== false) {
+                        $icon_class = 'icon-fuel'; $fa_icon = 'fas fa-gas-pump';
+                    } elseif (strpos($ev_type, 'inventory') !== false || strpos($ev_type, 'stock') !== false) {
+                        $icon_class = 'icon-inventory'; $fa_icon = 'fas fa-boxes';
+                    } elseif (strpos($ev_type, 'transaction') !== false) {
+                        $icon_class = 'icon-transaction'; $fa_icon = 'fas fa-receipt';
+                    } elseif (strpos($ev_type, 'job') !== false) {
+                        $icon_class = 'icon-job_order'; $fa_icon = 'fas fa-tools';
+                    } elseif (strpos($ev_type, 'delivery') !== false) {
+                        $icon_class = 'icon-delivery'; $fa_icon = 'fas fa-truck-loading';
+                    } elseif (strpos($ev_type, 'customer') !== false) {
+                        $icon_class = 'icon-customer'; $fa_icon = 'fas fa-users';
+                    } elseif (strpos($ev_type, 'system') !== false || strpos($ev_type, 'security') !== false) {
+                        $icon_class = 'icon-system'; $fa_icon = 'fas fa-shield-alt';
+                    }
+                ?>
+                    <div class="notif-feed-item <?= $is_unread ? 'is-unread' : 'is-read' ?>" 
+                         id="notif-row-<?= $n['id'] ?>"
+                         data-id="<?= $n['id'] ?>"
+                         data-redirect="<?= htmlspecialchars($redirect) ?>"
+                         data-unread="<?= $is_unread ? '1' : '0' ?>"
+                         onclick="handleFeedItemClick(this, <?= (int)$n['id'] ?>, '<?= htmlspecialchars(addslashes($redirect)) ?>', <?= htmlspecialchars(json_encode($n)) ?>)">
 
-                                    <!-- Mark Read Form -->
+                        <!-- Left Icon -->
+                        <div class="notif-item-icon-wrap">
+                            <div class="notif-type-icon <?= $icon_class ?>">
+                                <i class="<?= $fa_icon ?>"></i>
+                            </div>
+                        </div>
+
+                        <!-- Content Area -->
+                        <div class="notif-item-content">
+                            <div class="notif-item-header">
+                                <span class="notif-item-title">
                                     <?php if ($is_unread): ?>
-                                        <form method="POST" style="display:inline;">
-                                            <input type="hidden" name="action" value="mark_read">
-                                            <input type="hidden" name="notification_id" value="<?= $n['id'] ?>">
-                                            <button type="submit" class="tbl-btn tbl-btn-read" title="Mark as Read">
-                                                <i class="fas fa-check"></i> Read
-                                            </button>
-                                        </form>
+                                        <span class="unread-dot" title="Unread"></span>
                                     <?php endif; ?>
+                                    <?= htmlspecialchars($n['title']) ?>
+                                </span>
+                                <span class="notif-item-time">
+                                    <i class="far fa-clock"></i> <?= $format_feed_time($n['created_at']) ?>
+                                </span>
+                            </div>
 
-                                    <!-- Archive Form -->
-                                    <?php if ($n['status'] !== 'archived'): ?>
-                                        <form method="POST" style="display:inline;">
-                                            <input type="hidden" name="action" value="archive">
-                                            <input type="hidden" name="notification_id" value="<?= $n['id'] ?>">
-                                            <button type="submit" class="tbl-btn tbl-btn-archive" title="Archive Notification">
-                                                <i class="fas fa-archive"></i> Archive
-                                            </button>
-                                        </form>
-                                    <?php endif; ?>
+                            <p class="notif-item-msg">
+                                <?= htmlspecialchars($n['message']) ?>
+                            </p>
 
-                                </div>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
+                            <div class="notif-item-footer">
+                                <span class="notif-tag">
+                                    <?= htmlspecialchars($type_label) ?>
+                                </span>
+                                <?php if (!empty($prio) && $prio !== 'low'): ?>
+                                    <span class="prio-tag prio-<?= $prio ?>">
+                                        <i class="fas fa-circle" style="font-size:5px;"></i> <?= ucfirst($prio) ?>
+                                    </span>
+                                <?php endif; ?>
+                                <?php if (!empty($n['shift_period'])): ?>
+                                    <span class="shift-tag">
+                                        <i class="fas fa-user-clock" style="font-size:9.5px;"></i> <?= htmlspecialchars($n['shift_period']) ?>
+                                    </span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <!-- Right Chevron Arrow -->
+                        <div class="notif-item-arrow">
+                            <i class="fas fa-chevron-right"></i>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            <?php endforeach; ?>
+        <?php endif; ?>
 
         <!-- Pagination Bar -->
         <?php if ($total_pages > 1): ?>
             <div class="notif-pagination">
-                <div style="font-size: 13px; color: #64748b;">
+                <div style="font-size: 12.5px; color: #64748b;">
                     Showing page <strong><?= $page ?></strong> of <strong><?= $total_pages ?></strong> (<?= number_format($total_rows) ?> records)
                 </div>
                 <div style="display: flex; gap: 6px;">
                     <?php if ($page > 1): ?>
-                        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page - 1])) ?>" class="btn-filter-reset" style="padding: 6px 12px;">&laquo; Previous</a>
+                        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page - 1])) ?>" class="btn-filter-reset" style="height:32px; padding:0 12px; font-size:12px;">&laquo; Previous</a>
                     <?php endif; ?>
                     <?php if ($page < $total_pages): ?>
-                        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page + 1])) ?>" class="btn-filter-reset" style="padding: 6px 12px;">Next &raquo;</a>
+                        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page + 1])) ?>" class="btn-filter-reset" style="height:32px; padding:0 12px; font-size:12px;">Next &raquo;</a>
                     <?php endif; ?>
                 </div>
             </div>
@@ -852,47 +834,159 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-content-custom">
         <div class="modal-hdr">
             <h3 id="modalTitle">Notification Details</h3>
-            <button type="button" onclick="closeNotifModal()" style="background:none;border:none;font-size:20px;color:#64748b;cursor:pointer;">&times;</button>
+            <button type="button" onclick="closeNotifModal()" style="background:none;border:none;font-size:22px;color:#64748b;cursor:pointer;line-height:1;">&times;</button>
         </div>
         <div class="modal-body">
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
-                <span id="modalPriority" class="prio-badge prio-medium">Medium</span>
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+                <span id="modalPriority" class="prio-tag prio-medium">Medium</span>
                 <span id="modalDate" style="font-size:12px; color:#64748b;">Jul 29, 2026 12:00 PM</span>
             </div>
-            <h4 id="modalHeading" style="font-size:16px; font-weight:700; color:#0f172a; margin:0 0 10px;">Title</h4>
-            <p id="modalMessage" style="font-size:14px; color:#334155; line-height:1.5; margin:0 0 16px;">Message body...</p>
+            <h4 id="modalHeading" style="font-size:15px; font-weight:700; color:#002244; margin:0 0 8px;">Title</h4>
+            <p id="modalMessage" style="font-size:13.5px; color:#334155; line-height:1.5; margin:0 0 16px;">Message body...</p>
         </div>
         <div class="modal-ftr">
-            <button type="button" onclick="closeNotifModal()" class="btn-filter-reset">Close</button>
-            <a id="modalActionBtn" href="#" class="btn-filter-submit" style="display:none; text-decoration:none;">
-                <i class="fas fa-external-link-alt"></i> Open Related Action
+            <button type="button" onclick="closeNotifModal()" class="btn-filter-reset" style="height:34px; padding:0 14px; font-size:12px; cursor:pointer;">Close</button>
+            <a id="modalActionBtn" href="#" class="btn-filter-submit" style="display:none; text-decoration:none; height:34px; padding:0 14px; font-size:12px;">
+                <i class="fas fa-external-link-alt"></i> Open Related Record
             </a>
         </div>
     </div>
 </div>
 
 <script>
-function handleNotifClick(e, n) {
-    if (e) e.stopPropagation();
-    
-    // Mark as read asynchronously
-    if (n.status === 'unread') {
+function handleFeedItemClick(el, notifId, redirectUrl, nData) {
+    const isUnread = el && el.classList.contains('is-unread');
+
+    // 1. If currently unread, immediately mark as read in UI & database
+    if (isUnread) {
+        el.classList.remove('is-unread');
+        el.classList.add('is-read');
+
+        // Remove blue unread dot
+        const dot = el.querySelector('.unread-dot');
+        if (dot) dot.remove();
+
+        // Update title font styling
+        const titleEl = el.querySelector('.notif-item-title');
+        if (titleEl) {
+            titleEl.style.fontWeight = '500';
+            titleEl.style.color = '#334155';
+        }
+
+        // Decrement header bell badge — target the correct element by ID
+        document.querySelectorAll('#notificationBadge, .header-notif-badge, .notif-badge-count, #headerNotifBadge').forEach(b => {
+            let cnt = parseInt(b.textContent.replace(/\D/g, ''), 10) || 0;
+            cnt = Math.max(0, cnt - 1);
+            if (cnt > 0) {
+                b.textContent = cnt > 99 ? '99+' : cnt;
+                b.style.display = 'flex';
+            } else {
+                b.textContent = '';
+                b.style.display = 'none';
+            }
+        });
+
+        // Persist mark-as-read to DB using keepalive fetch (survives page navigation)
+        // + sendBeacon fallback for maximum reliability
+        const apiUrl = (window.pageData && window.pageData.appBasePath)
+            ? window.pageData.appBasePath + '/backend/api/notifications_api.php'
+            : '../backend/api/notifications_api.php';
+        const beaconUrl = apiUrl + '?action=mark_read';
         const formData = new FormData();
         formData.append('action', 'mark_read');
-        formData.append('notification_id', n.id);
-        fetch('backend/api/notifications_api.php?action=mark_read', {
-            method: 'POST',
-            body: formData
-        }).catch(err => {});
+        formData.append('notification_id', notifId);
+
+        let sent = false;
+        try {
+            // Primary: keepalive fetch — persists even when page navigates away
+            fetch(beaconUrl, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin',
+                keepalive: true
+            });
+            sent = true;
+        } catch (e) {}
+
+        // Fallback: sendBeacon (fire-and-forget, no credentials needed for same-origin)
+        if (!sent && navigator.sendBeacon) {
+            navigator.sendBeacon(beaconUrl, formData);
+        }
     }
 
-    if (n.redirect_url && n.redirect_url.trim() !== '' && n.redirect_url !== '#' && n.redirect_url !== 'null') {
-        const targetUrl = window.resolveRedirectUrl ? window.resolveRedirectUrl(n.redirect_url) : n.redirect_url;
-        window.location.href = targetUrl;
+    // 2. Navigate to the related module/record
+    // Smart fallback: if no redirect_url, guess based on event_type + role
+    const role = (window.pageData && window.pageData.role) ? window.pageData.role : 'staff';
+    const evType = (nData && nData.event_type) ? nData.event_type.toLowerCase() : '';
+    const notifTitle = (nData && nData.title) ? nData.title.toLowerCase() : '';
+
+    const managerFallback = {
+        'fuel_transaction'  : 'manager_fuel_transaction_validation.php',
+        'fuel_reading'      : 'manager_fuel_transaction_validation.php',
+        'fuel_management'   : 'manager_inventory_fuel.php',
+        'inventory'         : 'manager_inventory_merchandise.php',
+        'stock_request'     : 'manager_stock_request_review.php?tab=pending_requests',
+        'job_order'         : 'manager_validated_transactions.php',
+        'delivery'          : 'manager_merchandise_deliveries.php',
+        'customer'          : 'manager_customers.php',
+        'calendar'          : 'manager_calendar.php',
+        'report'            : 'manager_reports.php',
+        'transaction'       : 'manager_validated_transactions.php',
+        'general'           : 'manager_fuel_transaction_validation.php'
+    };
+    const adminFallback = {
+        'fuel_transaction'  : 'admin_fuel_management.php',
+        'fuel_management'   : 'admin_fuel_management.php',
+        'inventory'         : 'admin_stock_in.php',
+        'transaction'       : 'admin_transactions_oversight.php',
+        'job_order'         : 'admin_transactions_oversight.php',
+        'delivery'          : 'admin_deliveries_oversight.php',
+        'general'           : 'admin_fuel_management.php'
+    };
+    const staffFallback = {
+        'fuel_transaction'  : 'staff_fuel_sales_closing.php',
+        'fuel_management'   : 'staff_fuel_sales_closing.php',
+        'inventory'         : 'staff_inventory.php',
+        'stock_request'     : 'staff_my_requests.php',
+        'general'           : 'staff_fuel_sales_closing.php'
+    };
+
+    // Title-based overrides for the manager (handles "general" event_type with specific titles)
+    let titleFallback = null;
+    if (role === 'manager') {
+        if (notifTitle.includes('fuel reading') || notifTitle.includes('fuel meter') || notifTitle.includes('fuel transaction') || notifTitle.includes('pending validation')) {
+            titleFallback = 'manager_fuel_transaction_validation.php';
+        } else if (notifTitle.includes('stock request') || notifTitle.includes('new stock')) {
+            titleFallback = 'manager_stock_request_review.php?tab=pending_requests';
+        } else if (notifTitle.includes('adjustment') || notifTitle.includes('job order')) {
+            titleFallback = 'manager_validated_transactions.php';
+        } else if (notifTitle.includes('delivery')) {
+            titleFallback = 'manager_merchandise_deliveries.php';
+        } else if (notifTitle.includes('customer')) {
+            titleFallback = 'manager_customers.php';
+        } else if (notifTitle.includes('inventory') || notifTitle.includes('stock alert')) {
+            titleFallback = 'manager_inventory_merchandise.php';
+        } else if (notifTitle.includes('fuel') || notifTitle.includes('low fuel')) {
+            titleFallback = 'manager_inventory_fuel.php';
+        }
+    }
+
+    let finalUrl = redirectUrl && redirectUrl.trim() !== '' && redirectUrl !== '#' && redirectUrl !== 'null'
+        ? redirectUrl
+        : (titleFallback || (role === 'manager' ? managerFallback[evType] : (role === 'admin' ? adminFallback[evType] : staffFallback[evType])) || null);
+
+    if (finalUrl) {
+        const targetUrl = window.resolveRedirectUrl ? window.resolveRedirectUrl(finalUrl) : finalUrl;
+        // Small delay (150ms) ensures keepalive fetch has time to start before navigation
+        setTimeout(() => {
+            window.location.href = targetUrl;
+        }, 150);
     } else {
-        openNotifModal(n);
+        openNotifModal(nData);
     }
 }
+
+
 
 function openNotifModal(n) {
     document.getElementById('modalTitle').textContent = (n.event_type || 'Notification').toUpperCase().replace('_', ' ');
@@ -901,8 +995,8 @@ function openNotifModal(n) {
     
     const prioEl = document.getElementById('modalPriority');
     const prio = (n.severity || 'medium').toLowerCase();
-    prioEl.className = `prio-badge prio-${prio}`;
-    prioEl.innerHTML = `<i class="fas fa-circle" style="font-size:7px;"></i> ${prio.toUpperCase()}`;
+    prioEl.className = `prio-tag prio-${prio}`;
+    prioEl.innerHTML = `<i class="fas fa-circle" style="font-size:5px;"></i> ${prio.toUpperCase()}`;
 
     const d = new Date(n.created_at);
     document.getElementById('modalDate').textContent = d.toLocaleString();
@@ -916,22 +1010,20 @@ function openNotifModal(n) {
     }
 
     document.getElementById('notifModal').style.display = 'flex';
-
-    // Mark as read asynchronously
-    if (n.status === 'unread') {
-        const formData = new FormData();
-        formData.append('action', 'mark_read');
-        formData.append('notification_id', n.id);
-        fetch('backend/api/notifications_api.php?action=mark_read', {
-            method: 'POST',
-            body: formData
-        }).catch(err => {});
-    }
 }
 
 function closeNotifModal() {
     document.getElementById('notifModal').style.display = 'none';
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('notifModal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) closeNotifModal();
+        });
+    }
+});
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

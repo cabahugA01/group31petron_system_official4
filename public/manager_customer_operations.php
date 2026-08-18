@@ -1,13 +1,11 @@
 <?php
 ob_start();
-if (session_status() === PHP_SESSION_NONE) {
-    @session_start();
-require_login();
-}
-
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_once __DIR__ . '/../backend/customer_module_helpers.php';
+ob_end_clean();
+
+require_login();
 
 function manager_send_json(array $data): void {
     while (ob_get_level()) {

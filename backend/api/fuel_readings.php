@@ -150,7 +150,7 @@ try {
                 "Fuel Meter Reading Submitted ({$shift_period})",
                 "{$me['name']} submitted a {$fuel_type} reading: {$liters_sold}L for {$shift_period}. Pending validation.",
                 "fuel_reading_submitted_{$insert_id}",
-                'staff_fuel_sales_closing.php',
+                'manager_fuel_transaction_validation.php',
                 'fuel_transaction', $insert_id,
                 $shift_period
             );

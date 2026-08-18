@@ -95,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $contact_input     = trim($_POST['contact_number']  ?? '');
                 $email_input       = trim($_POST['email']           ?? '');
                 $username_input    = trim($_POST['username']        ?? '');
-                $assigned_shift    = trim($_POST['assigned_shift']  ?? '');
+                $assigned_shift    = ($role === 'staff') ? (trim($_POST['assigned_shift'] ?? '') ?: null) : null;
                 $status_input      = 'Active';
                 $raw_password      = trim($_POST['new_password']    ?? '');
                 $confirm_password  = trim($_POST['confirm_password']?? '');
@@ -172,17 +172,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $station_target = $my_station_id;
                 }
 
-                // Role & per-station uniqueness rules
+                // Role & per-station uniqueness rules: ONLY 1 Admin and ONLY 1 Manager per station (Staff is unlimited)
                 if ($my_role === 'admin') {
                     if (!in_array($role, ['staff', 'manager'])) {
                         throw new Exception('As Admin, you can only create Staff or Manager users.');
                     }
-                    if ($role === 'manager') {
-                        $cm = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role='manager' AND station_id=? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
-                        $cm->execute([$my_station_id]);
-                        if ((int)$cm->fetchColumn() > 0) {
-                            throw new Exception('Station already has an active Manager. Archive the existing Manager first.');
-                        }
+                }
+
+                if ($role === 'manager' && $station_target) {
+                    $cm = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role)='manager' AND station_id=? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
+                    $cm->execute([$station_target]);
+                    if ((int)$cm->fetchColumn() > 0) {
+                        throw new Exception('This station already has an active Manager. Each station is allowed ONLY 1 Manager.');
+                    }
+                }
+
+                if ($role === 'admin' && $station_target) {
+                    $ca = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role)='admin' AND station_id=? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
+                    $ca->execute([$station_target]);
+                    if ((int)$ca->fetchColumn() > 0) {
+                        throw new Exception('This station already has an active Admin. Each station is allowed ONLY 1 Admin.');
                     }
                 }
 
@@ -197,9 +206,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $extra_sets = []; $extra_vals = [];
                 if (!empty($employee_id_input) && in_array('employee_id',    $user_cols)) { $extra_sets[] = 'employee_id = ?';    $extra_vals[] = $employee_id_input; }
                 if (!empty($contact_input)     && in_array('phone_number',   $user_cols)) { $extra_sets[] = 'phone_number = ?';   $extra_vals[] = $contact_input; }
-                if (!empty($assigned_shift)    && in_array('assigned_shift', $user_cols)) {
+                if ($role === 'staff' && !empty($assigned_shift) && in_array('assigned_shift', $user_cols)) {
                     $extra_sets[] = 'assigned_shift = ?'; $extra_vals[] = $assigned_shift;
                     if (in_array('shift_assignment', $user_cols)) { $extra_sets[] = 'shift_assignment = ?'; $extra_vals[] = $assigned_shift; }
+                } else {
+                    if (in_array('assigned_shift', $user_cols)) { $extra_sets[] = 'assigned_shift = NULL'; }
+                    if (in_array('shift_assignment', $user_cols)) { $extra_sets[] = 'shift_assignment = NULL'; }
                 }
                 if ($extra_sets) {
                     $extra_vals[] = $new_user_id;
@@ -247,7 +259,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $login_id      = trim($_POST['login_id'] ?? '');
                 $contact_input = trim($_POST['contact_number'] ?? '');
                 $role          = strtolower(trim($_POST['role'] ?? 'staff'));
-                $assigned_shift= trim($_POST['assigned_shift'] ?? '');
+                $assigned_shift= ($role === 'staff') ? (trim($_POST['assigned_shift'] ?? '') ?: null) : null;
 
                 if (empty($first_name)) throw new Exception('First Name is required.');
                 if (empty($last_name))  throw new Exception('Last Name is required.');
@@ -291,14 +303,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (!can_manage_role($my_role, (string)($target_user['role'] ?? 'staff'))) {
                         throw new Exception("You cannot modify this user's role.");
                     }
-                    
-                    $old_role = strtolower($target_user['role'] ?? 'staff');
-                    if ($old_role !== 'manager' && $role === 'manager') {
-                        $checkManager = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role = 'manager' AND station_id = ? AND id != ? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
-                        $checkManager->execute([$my_station_id, $id]);
-                        if ((int)$checkManager->fetchColumn() > 0) {
-                            throw new Exception("Cannot change role to Manager. Station already has an active Manager.");
-                        }
+                } else {
+                    $chk = $pdo->prepare("SELECT id, station_id, role FROM users WHERE id = ?");
+                    $chk->execute([$id]);
+                    $target_user = $chk->fetch(PDO::FETCH_ASSOC);
+                    if (!$target_user) throw new Exception("Target user not found.");
+                }
+                
+                $target_stn = !empty($target_user['station_id']) ? (int)$target_user['station_id'] : ($my_role === 'admin' ? $my_station_id : 0);
+                if ($role === 'manager' && $target_stn > 0) {
+                    $checkManager = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role) = 'manager' AND station_id = ? AND id != ? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
+                    $checkManager->execute([$target_stn, $id]);
+                    if ((int)$checkManager->fetchColumn() > 0) {
+                        throw new Exception("Cannot assign Manager role. This station already has an active Manager (Only 1 Manager allowed per station).");
+                    }
+                }
+                if ($role === 'admin' && $target_stn > 0) {
+                    $checkAdmin = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role) = 'admin' AND station_id = ? AND id != ? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
+                    $checkAdmin->execute([$target_stn, $id]);
+                    if ((int)$checkAdmin->fetchColumn() > 0) {
+                        throw new Exception("Cannot assign Admin role. This station already has an active Admin (Only 1 Admin allowed per station).");
                     }
                 }
 
@@ -318,6 +342,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if (in_array('assigned_shift', $user_cols)) {
                     $pdo->prepare("UPDATE users SET assigned_shift = ? WHERE id = ?")->execute([$assigned_shift, $id]);
+                }
+                if (in_array('shift_assignment', $user_cols)) {
+                    $pdo->prepare("UPDATE users SET shift_assignment = ? WHERE id = ?")->execute([$assigned_shift, $id]);
                 }
                 
                 log_activity($pdo, $me['id'], 'Edit User', "Updated details & role for user #$id ($username, $role)");
@@ -416,11 +443,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $target_user = $chk->fetch(PDO::FETCH_ASSOC);
                 }
                 
-                if (strtolower($target_user['role']) === 'manager') {
-                    $chkMgr = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role = 'manager' AND station_id = ? AND id != ? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
-                    $chkMgr->execute([$target_user['station_id'], $id]);
+                $target_role = strtolower(trim($target_user['role'] ?? 'staff'));
+                $target_stn  = (int)($target_user['station_id'] ?? 0);
+
+                if ($target_role === 'manager' && $target_stn > 0) {
+                    $chkMgr = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role) = 'manager' AND station_id = ? AND id != ? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
+                    $chkMgr->execute([$target_stn, $id]);
                     if ((int)$chkMgr->fetchColumn() > 0) {
-                        throw new Exception("Cannot restore this Manager. Station already has an active Manager. Only ONE active Manager is allowed per station.");
+                        throw new Exception("Cannot restore this Manager. Station already has an active Manager (Only 1 Manager allowed per station).");
+                    }
+                }
+
+                if ($target_role === 'admin' && $target_stn > 0) {
+                    $chkAdm = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role) = 'admin' AND station_id = ? AND id != ? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
+                    $chkAdm->execute([$target_stn, $id]);
+                    if ((int)$chkAdm->fetchColumn() > 0) {
+                        throw new Exception("Cannot restore this Admin. Station already has an active Admin (Only 1 Admin allowed per station).");
                     }
                 }
 
@@ -1186,7 +1224,7 @@ setTimeout(function() {
                 </div>
 
                 <div class="form-grid-2" id="dynamic_role_fields_add">
-                    <div class="form-group" id="shift_field_group_add" style="display: none;">
+                    <div class="form-group" id="shift_field_group_add" style="display: none !important;" hidden>
                         <label class="lbl">Assigned Shift <span style="color:#dc2626;">*</span></label>
                         <select name="assigned_shift" id="add_assigned_shift" class="inp">
                             <option value="">Select shift</option>
@@ -1293,8 +1331,8 @@ setTimeout(function() {
                             <?php endif; ?>
                         </select>
                     </div>
-                    <div class="form-group" id="shift_field_group_edit">
-                        <label class="lbl">Assigned Shift</label>
+                    <div class="form-group" id="shift_field_group_edit" style="display: none !important;" hidden>
+                        <label class="lbl">Assigned Shift <span style="color:#dc2626;">*</span></label>
                         <select name="assigned_shift" id="edit_assigned_shift" class="inp">
                             <option value="">Select shift</option>
                             <option value="Shift 1">Shift 1 (6:00 AM – 2:00 PM)</option>
@@ -1414,7 +1452,7 @@ setTimeout(function() {
                     <div style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Employee ID</div>
                     <div id="view_employee_id" style="font-size:13px;color:#002F70;font-weight:700;font-family:monospace;"></div>
                 </div>
-                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">
+                <div id="view_shift_container" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; display: none;">
                     <div style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Assigned Shift</div>
                     <div id="view_assigned_shift" style="font-size:13px;color:#0f172a;font-weight:600;"></div>
                 </div>
@@ -1443,13 +1481,21 @@ setTimeout(function() {
 function toggleShiftField(context) {
     const roleSelect = document.getElementById(context === 'add' ? 'user_role_add' : 'user_role_edit');
     const shiftGroup = document.getElementById(context === 'add' ? 'shift_field_group_add' : 'shift_field_group_edit');
-    const selectedRole = roleSelect ? roleSelect.value : '';
+    const shiftInput = document.getElementById(context === 'add' ? 'add_assigned_shift' : 'edit_assigned_shift');
+    const selectedRole = roleSelect ? (roleSelect.value || '').toLowerCase().trim() : '';
 
     if (shiftGroup) {
         if (selectedRole === 'staff') {
-            shiftGroup.style.display = 'block';
+            shiftGroup.style.setProperty('display', 'block', 'important');
+            shiftGroup.removeAttribute('hidden');
+            if (shiftInput) shiftInput.required = true;
         } else {
-            shiftGroup.style.display = 'none';
+            shiftGroup.style.setProperty('display', 'none', 'important');
+            shiftGroup.setAttribute('hidden', 'hidden');
+            if (shiftInput) {
+                shiftInput.required = false;
+                shiftInput.value = '';
+            }
         }
     }
 }
@@ -1545,6 +1591,14 @@ function generateResetPassword() {
 }
 
 function validateAddForm() {
+    const roleVal = (document.getElementById('user_role_add').value || '').toLowerCase().trim();
+    const shiftVal = (document.getElementById('add_assigned_shift').value || '').trim();
+    if (roleVal === 'staff' && shiftVal === '') {
+        alert('Please select an Assigned Shift for the staff member.');
+        document.getElementById('add_assigned_shift').focus();
+        return false;
+    }
+
     const contact = document.getElementById('add_contact_number').value.trim();
     if (contact !== '' && !isValidPhilippineNumber(contact)) {
         alert('Invalid Contact Number: Please enter a valid Philippine mobile number.\n\nExample formats:\n• 09171234567 (11 digits)\n• +639171234567');
@@ -1584,6 +1638,14 @@ function validateAddForm() {
 }
 
 function validateEditForm() {
+    const roleVal = (document.getElementById('user_role_edit').value || '').toLowerCase().trim();
+    const shiftVal = (document.getElementById('edit_assigned_shift').value || '').trim();
+    if (roleVal === 'staff' && shiftVal === '') {
+        alert('Please select an Assigned Shift for the staff member.');
+        document.getElementById('edit_assigned_shift').focus();
+        return false;
+    }
+
     const contact = document.getElementById('edit_contact_number').value.trim();
     if (contact !== '' && !isValidPhilippineNumber(contact)) {
         alert('Invalid Contact Number: Please enter a valid Philippine mobile number.\n\nExample formats:\n• 09171234567 (11 digits)\n• +639171234567');
@@ -1622,9 +1684,15 @@ function clearAddUserForm() {
 
 function openAddModal() {
     clearAddUserForm();
+    toggleShiftField('add');
     document.getElementById('addModal').style.display = 'flex';
-    setTimeout(clearAddUserForm, 50);
-    setTimeout(clearAddUserForm, 150);
+    setTimeout(function() {
+        clearAddUserForm();
+        toggleShiftField('add');
+    }, 50);
+    setTimeout(function() {
+        toggleShiftField('add');
+    }, 150);
 }
 
 function openEditModal(user) {
@@ -1680,7 +1748,18 @@ function openViewModal(user) {
     document.getElementById('view_name').innerText = fullName;
     document.getElementById('view_username').innerText = '@' + (user.username || '—');
     document.getElementById('view_employee_id').innerText = user.employee_id || '—';
-    document.getElementById('view_assigned_shift').innerText = user.assigned_shift || '—';
+    
+    var roleKey = (user.role || 'staff').toLowerCase();
+    var shiftCont = document.getElementById('view_shift_container');
+    if (shiftCont) {
+        if (roleKey === 'staff') {
+            shiftCont.style.display = 'block';
+            document.getElementById('view_assigned_shift').innerText = user.assigned_shift || 'Unassigned';
+        } else {
+            shiftCont.style.display = 'none';
+        }
+    }
+    
     document.getElementById('view_email').innerText = user.email || 'Not set';
     
     const viewPhone = document.getElementById('view_contact_number');
@@ -1718,6 +1797,21 @@ window.onclick = function(event) {
         }
     });
 };
+
+document.addEventListener('DOMContentLoaded', function() {
+    var roleAdd = document.getElementById('user_role_add');
+    if (roleAdd) {
+        roleAdd.addEventListener('change', function() { toggleShiftField('add'); });
+        roleAdd.addEventListener('input', function() { toggleShiftField('add'); });
+    }
+    var roleEdit = document.getElementById('user_role_edit');
+    if (roleEdit) {
+        roleEdit.addEventListener('change', function() { toggleShiftField('edit'); });
+        roleEdit.addEventListener('input', function() { toggleShiftField('edit'); });
+    }
+    toggleShiftField('add');
+    toggleShiftField('edit');
+});
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

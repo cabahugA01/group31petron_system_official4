@@ -1063,54 +1063,57 @@
   </script>
 
   <!-- ── GLOBAL LOGOUT CONFIRMATION MODAL ── -->
-  <div id="globalLogoutModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:999999;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px);">
-      <div style="background:#ffffff;border-radius:16px;max-width:400px;width:100%;padding:28px 24px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.35);animation:logoutPop 0.2s ease;">
-          <div style="width:60px;height:60px;border-radius:50%;background:#fee2e2;color:#dc2626;display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 16px;">
+  <div id="globalLogoutModal" style="display:none;position:fixed;inset:0;background:rgba(0,15,35,0.6);backdrop-filter:blur(3px);z-index:999999;align-items:center;justify-content:center;padding:16px;">
+      <div style="background:#ffffff;border-radius:12px;max-width:320px;width:100%;padding:20px 18px 16px;text-align:center;box-shadow:0 12px 36px rgba(0,0,0,0.22);animation:modalPop 0.2s cubic-bezier(0.16,1,0.3,1);border:1px solid #e2e8f0;">
+          <div style="width:40px;height:40px;border-radius:50%;background:#fee2e2;color:#dc2626;display:flex;align-items:center;justify-content:center;font-size:18px;margin:0 auto 12px;">
               <i class="fas fa-sign-out-alt"></i>
           </div>
-          <h3 style="margin:0 0 8px;font-size:18px;font-weight:800;color:#002244;">Log Out Confirmation</h3>
-          <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.5;">Are you sure you want to log out?</p>
-          <div style="display:flex;gap:12px;justify-content:center;">
-              <button type="button" onclick="closeGlobalLogoutModal()" style="flex:1;padding:10px 16px;border:1px solid #cbd5e1;background:#f8fafc;color:#475569;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;transition:all 0.2s;">
+          <h3 style="margin:0 0 6px;font-size:15px;font-weight:700;color:#002244;">Log Out Confirmation</h3>
+          <p style="margin:0 0 16px;font-size:12.5px;color:#64748b;line-height:1.4;">Are you sure you want to end your session?</p>
+          <div style="display:flex;gap:8px;justify-content:center;">
+              <button type="button" onclick="closeGlobalLogoutModal()" style="flex:1;height:34px;padding:0 12px;border:1px solid #cbd5e1;background:#f8fafc;color:#475569;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s;">
                   Cancel
               </button>
-              <a href="<?= isset($public_base_url) ? htmlspecialchars($public_base_url . '/logout.php') : 'logout.php' ?>" style="flex:1;padding:10px 16px;border:none;background:#dc2626;color:#ffffff;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;">
-                  <i class="fas fa-sign-out-alt"></i> Logout
+              <a href="<?= isset($public_base_url) ? htmlspecialchars($public_base_url . '/logout.php') : 'logout.php' ?>" style="flex:1;height:34px;padding:0 12px;border:none;background:#dc2626;color:#ffffff;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:5px;transition:all 0.15s;">
+                  <i class="fas fa-sign-out-alt" style="font-size:11px;"></i> Log Out
               </a>
           </div>
       </div>
   </div>
 
-  <!-- Session Inactivity Warning Modal (25 min warning / 30 min timeout) -->
-  <div id="sessionTimeoutModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,15,35,0.72);backdrop-filter:blur(4px);z-index:999999;align-items:center;justify-content:center;">
-      <div style="background:#ffffff;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,0.25);width:92%;max-width:440px;padding:32px 28px 24px;text-align:center;animation:logoutPop 0.25s cubic-bezier(0.34,1.56,0.64,1);border:1px solid #e2e8f0;position:relative;">
-          <div style="width:60px;height:60px;border-radius:50%;background:#fef3c7;border:2px solid #fbbf24;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;">
-              <i class="fas fa-exclamation-triangle" style="font-size:26px;color:#d97706;"></i>
+  <!-- Session Inactivity Warning Modal (4 min warning / 5 min timeout) -->
+  <div id="sessionTimeoutModal" style="display:none;position:fixed;inset:0;background:rgba(0,15,35,0.6);backdrop-filter:blur(3px);z-index:999999;align-items:center;justify-content:center;padding:16px;">
+      <div style="background:#ffffff;border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,0.22);width:100%;max-width:320px;padding:20px 18px 16px;text-align:center;animation:modalPop 0.2s cubic-bezier(0.16,1,0.3,1);border:1px solid #e2e8f0;position:relative;">
+          <div style="width:40px;height:40px;border-radius:50%;background:#fef3c7;border:1px solid #fde68a;display:flex;align-items:center;justify-content:center;margin:0 auto 10px;">
+              <i class="fas fa-exclamation-triangle" style="font-size:18px;color:#d97706;"></i>
           </div>
-          <h3 style="margin:0 0 8px;font-size:18px;font-weight:800;color:#002244;">Session Timeout Warning</h3>
-          <p style="margin:0 0 12px;font-size:14px;color:#475569;line-height:1.5;">
-              You have been inactive. Your session will automatically expire in:
+          <h3 style="margin:0 0 4px;font-size:14px;font-weight:700;color:#002244;letter-spacing:0.3px;">Session Timeout Warning</h3>
+          <p style="margin:0 0 10px;font-size:12px;color:#64748b;line-height:1.4;">
+              Inactive session will expire automatically in:
           </p>
-          <div id="sessionCountdownDisplay" style="font-size:30px;font-weight:900;color:#d97706;letter-spacing:2px;font-family:monospace;margin:10px 0 20px;">
-              05:00
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:6px 12px;margin:0 auto 12px;display:inline-flex;align-items:center;gap:6px;">
+              <i class="fas fa-clock" style="color:#d97706;font-size:13px;"></i>
+              <span id="sessionCountdownDisplay" style="font-size:20px;font-weight:800;color:#b45309;letter-spacing:1.5px;font-family:monospace;">
+                  01:00
+              </span>
           </div>
-          <p style="margin:0 0 24px;font-size:12.5px;color:#64748b;line-height:1.4;">
-              Click <strong>Stay Logged In</strong> to continue your work, or <strong>Log Out</strong> to exit safely.
+          <p style="margin:0 0 14px;font-size:11.5px;color:#64748b;line-height:1.3;">
+              Stay active or save your work to prevent logout.
           </p>
-          <div style="display:flex;gap:12px;justify-content:center;">
-              <button type="button" id="btnStayLoggedIn" onclick="stayLoggedIn()" style="flex:1.2;padding:11px 18px;border:none;background:#002F6C;color:#ffffff;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 4px 12px rgba(0,47,108,0.25);transition:all 0.2s;">
-                  <i class="fas fa-redo-alt"></i> Stay Logged In
+          <div style="display:flex;gap:8px;justify-content:center;">
+              <button type="button" id="btnStayLoggedIn" onclick="stayLoggedIn()" style="flex:1.2;height:34px;padding:0 12px;border:none;background:#002F6C;color:#ffffff;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;box-shadow:0 2px 6px rgba(0,47,108,0.2);transition:all 0.15s;">
+                  <i class="fas fa-redo-alt" style="font-size:11px;"></i> Stay Logged In
               </button>
-              <a href="<?= isset($public_base_url) ? htmlspecialchars($public_base_url . '/logout.php?timeout=1') : 'logout.php?timeout=1' ?>" style="flex:0.8;padding:11px 16px;border:1px solid #cbd5e1;background:#f8fafc;color:#475569;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;">
-                  <i class="fas fa-sign-out-alt"></i> Log Out
+              <a href="<?= isset($public_base_url) ? htmlspecialchars($public_base_url . '/logout.php?timeout=1') : 'logout.php?timeout=1' ?>" style="flex:0.8;height:34px;padding:0 10px;border:1px solid #cbd5e1;background:#f8fafc;color:#475569;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:5px;transition:all 0.15s;">
+                  <i class="fas fa-sign-out-alt" style="font-size:11px;"></i> Log Out
               </a>
           </div>
       </div>
   </div>
 
   <style>
-  @keyframes logoutPop {
-      from { opacity: 0; transform: scale(0.92); }
+  @keyframes modalPop {
+      from { opacity: 0; transform: scale(0.94); }
       to   { opacity: 1; transform: scale(1); }
   }
   </style>
@@ -1133,10 +1136,10 @@
       }
   });
 
-  // ── INACTIVITY TIMEOUT CONTROLLER (30 min timeout, 25 min warning) ──
+  // ── INACTIVITY TIMEOUT CONTROLLER (5 min timeout, 4 min warning / 1 min remaining) ──
   (function() {
-      const TOTAL_TIMEOUT_SEC  = 1800; // 30 minutes total
-      const WARNING_TIME_SEC   = 1500; // 25 minutes before warning (5 min remaining)
+      const TOTAL_TIMEOUT_SEC  = 300; // 5 minutes total (300 seconds)
+      const WARNING_TIME_SEC   = 240; // 4 minutes before warning (60 seconds remaining)
       const KEEPALIVE_URL      = "<?= isset($app_base_path) ? $app_base_path : '' ?>/backend/api/session_keepalive.php";
       const LOGOUT_URL         = "<?= isset($public_base_url) ? htmlspecialchars($public_base_url . '/logout.php?timeout=1') : 'logout.php?timeout=1' ?>";
 
@@ -1226,7 +1229,7 @@
           });
       };
 
-      // Periodic check every 5 seconds
+      // Periodic check every 2 seconds
       setInterval(function() {
           const elapsedSec = Math.floor((Date.now() - lastActivityTime) / 1000);
 
@@ -1235,7 +1238,7 @@
           } else if (elapsedSec >= WARNING_TIME_SEC && !warningModalOpen) {
               showWarningModal();
           }
-      }, 5000);
+      }, 2000);
   })();
   </script>
 

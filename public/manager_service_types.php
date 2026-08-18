@@ -114,14 +114,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $service_key = strtolower(preg_replace('/[^a-z0-9]+/', '_', $name));
                 $service_key = trim($service_key, '_');
 
-                // Check duplicate
-                $chk = $pdo->prepare("SELECT id FROM job_order_service_types WHERE LOWER(TRIM(service_name))=LOWER(TRIM(?)) OR service_key=? LIMIT 1");
-                $chk->execute([$name, $service_key]);
+                // Check duplicate (scoped to this station)
+                $chk = $pdo->prepare("SELECT id FROM job_order_service_types WHERE station_id = ? AND (LOWER(TRIM(service_name))=LOWER(TRIM(?)) OR service_key=?) LIMIT 1");
+                $chk->execute([$station_id, $name, $service_key]);
                 if ($chk->fetchColumn()) {
-                    $_SESSION['error'] = "Service '$name' already exists.";
+                    $_SESSION['error'] = "Service '$name' already exists for this station.";
                 } else {
-                    // Get max sort_order
-                    $max_sort = $pdo->query("SELECT COALESCE(MAX(sort_order), 0) FROM job_order_service_types")->fetchColumn();
+                    // Get max sort_order for this station
+                    $max_sort = $pdo->prepare("SELECT COALESCE(MAX(sort_order), 0) FROM job_order_service_types WHERE station_id = ?")->execute([$station_id]) ? $pdo->query("SELECT COALESCE(MAX(sort_order), 0) FROM job_order_service_types WHERE station_id = $station_id")->fetchColumn() : 0;
                     $new_sort = $max_sort + 1;
 
                     $pdo->prepare("INSERT INTO job_order_service_types (station_id, service_key, service_name, category, service_price, min_price, max_price, price_description, pricing_notes, icon_class, color_class, sort_order, active, status, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,'active',?,NOW())")
@@ -239,9 +239,10 @@ try {
             s.active,
             s.created_at
         FROM job_order_service_types s
+        WHERE s.station_id = ?
         ORDER BY s.sort_order, s.service_name
     ");
-    $stmt->execute();
+    $stmt->execute([$station_id]);
     $services = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $msg = 'Error loading service types: ' . $e->getMessage();

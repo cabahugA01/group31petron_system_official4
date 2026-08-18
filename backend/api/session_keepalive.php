@@ -30,7 +30,7 @@ echo json_encode([
     'ok' => true,
     'message' => 'Session refreshed successfully',
     'timestamp' => time(),
-    'timeout_seconds' => 1800,
+    'timeout_seconds' => 300,
     'user' => [
         'id' => $_SESSION['user']['id'] ?? $_SESSION['user']['user_id'] ?? 0,
         'role' => $_SESSION['user']['role'] ?? ''

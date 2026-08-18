@@ -1127,14 +1127,15 @@ $weekly_chart_labels = array_keys($weekly_days);
 $weekly_chart_data = array_values($weekly_days);
 
 // Chart 6: Fuel Tank Levels — 7 physical underground storage tanks (UGTs)
-// Computes current level based on Beginning Inventory + Deliveries - Sales - Calibrations.
-$TANK_CONFIG = get_tank_config($station_id);
+$TANK_CONFIG_17 = get_tank_config((int)$station_id);
 
+$fi_raw = [];
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated FROM fuel_inventory WHERE station_id = ?");
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)");
     $s->execute([$station_id]);
-    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($fi_raw as $row) {
         $fi_lookup[strtolower(trim($row['fuel_type']))] = $row;
     }
 } catch (Exception $e) {}
@@ -1167,93 +1168,103 @@ try {
 } catch (Exception $e) {}
 
 $tank_levels = [];
-foreach ($TANK_CONFIG as $tc) {
-    $ft_key   = strtolower(trim($tc['fuel_type']));
-    $tank_key = strtolower(trim($tc['tank']));
-    $tank_num = (int)($tc['tanker_num'] ?? 0);
+foreach ($TANK_CONFIG_17 as $tc) {
+    $tank_num = $tc['tanker_num'];
+    $ugt_str  = 'UGT-' . str_pad($tank_num, 2, '0', STR_PAD_LEFT);
+    $fuel_type_base = $tc['fuel_type'];
+    $ft_key = strtolower(trim($fuel_type_base));
 
-    // Smart lookup for split fuel types in fuel_inventory (e.g. Diesel 1, Diesel 2, Xtra UNL 1, Xtra UNL 2)
+    // Smart match identical to staff_inventory_fuel.php
     $inv = null;
-    if ($ft_key === 'diesel') {
-        if ($tank_num === 1 && isset($fi_lookup['diesel 1'])) {
-            $inv = $fi_lookup['diesel 1'];
-        } elseif ($tank_num === 2 && isset($fi_lookup['diesel 2'])) {
-            $inv = $fi_lookup['diesel 2'];
-        } else {
-            $inv = $fi_lookup['diesel'] ?? null;
+    foreach ($fi_raw as $r) {
+        $r_ugt = strtolower(trim($r['ugt_no']));
+        $r_ft  = strtolower(trim($r['fuel_type']));
+        if (($r_ugt !== '' && ($r_ugt === strtolower($ugt_str) || $r_ugt === strtolower($tc['tank']))) || 
+            strpos($r_ft, '#' . $tank_num) !== false || 
+            strpos($r_ft, 'ugt-' . str_pad($tank_num, 2, '0', STR_PAD_LEFT)) !== false) {
+            $inv = $r;
+            break;
         }
-    } elseif ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
-        if ($tank_num === 4 && (isset($fi_lookup['xtra unl 1']) || isset($fi_lookup['xtr advance 1']))) {
-            $inv = $fi_lookup['xtra unl 1'] ?? $fi_lookup['xtr advance 1'];
-        } elseif ($tank_num === 6 && (isset($fi_lookup['xtra unl 2']) || isset($fi_lookup['xtr advance 2']))) {
-            $inv = $fi_lookup['xtra unl 2'] ?? $fi_lookup['xtr advance 2'];
-        } else {
-            $inv = $fi_lookup['xtra unl'] ?? $fi_lookup['xtr advance'] ?? null;
+    }
+    if (!$inv) {
+        if ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
+            $cand = '';
+            if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'xtra unl 1'; }
+            elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'xtra unl 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { $ft_key = $cand; }
+            else { $ft_key = 'xtra unl'; }
+        } elseif ($ft_key === 'diesel') {
+            $cand = '';
+            if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'diesel 1'; }
+            elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'diesel 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { $ft_key = $cand; }
+            else { $ft_key = 'diesel'; }
         }
-    } else {
         $inv = $fi_lookup[$ft_key] ?? null;
     }
 
+    $tank_key = strtolower(trim($tc['tank']));
     $capacity  = (float)$tc['capacity'];
-    $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
+    $cur_level = min(
+        $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0,
+        $capacity
+    );
 
-    // Deliveries per tank_assigned (or tank label)
-    $purchases = $del_lookup[$tank_key] ?? $del_lookup[strtolower($tc['label'])] ?? 0;
+    $same_type_count = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key, $fi_lookup) {
+        $k = strtolower(trim($t['fuel_type']));
+        if ($k === 'xtra unl' || $k === 'xtr advance') {
+            $cand = '';
+            if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'xtra unl 1'; }
+            elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'xtra unl 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { $k = $cand; }
+            else { $k = 'xtra unl'; }
+        } elseif ($k === 'diesel') {
+            $cand = '';
+            if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'diesel 1'; }
+            elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'diesel 2'; }
+            if ($cand && isset($fi_lookup[$cand])) { $k = $cand; }
+            else { $k = 'diesel'; }
+        }
+        return $k === $ft_key;
+    }));
 
-    // Number of tanks sharing this fuel type without dedicated split rows
-    $same_type_count = count(array_filter($TANK_CONFIG, fn($t) => strcasecmp(trim($t['fuel_type']), $tc['fuel_type']) === 0));
-
-    // If inv is directly matched to a specific split row (like Diesel 1), use exact level directly
-    $is_split_match = ($ft_key === 'diesel' && ($tank_num === 1 && isset($fi_lookup['diesel 1']) || $tank_num === 2 && isset($fi_lookup['diesel 2'])))
-                   || (($ft_key === 'xtra unl' || $ft_key === 'xtr advance') && ($tank_num === 4 && (isset($fi_lookup['xtra unl 1']) || isset($fi_lookup['xtr advance 1'])) || $tank_num === 6 && (isset($fi_lookup['xtra unl 2']) || isset($fi_lookup['xtr advance 2']))));
-
-    if ($is_split_match) {
-        $beginning = $cur_level;
-        $sales = $sales_lookup[strtolower(trim($inv['fuel_type'] ?? ''))] ?? 0;
-        $calibration_adj = $adj_lookup[strtolower(trim($inv['fuel_type'] ?? ''))] ?? 0;
-    } else {
-        $sales_total     = $sales_lookup[$ft_key] ?? 0;
-        $adj_total       = $adj_lookup[$ft_key] ?? 0;
-        $sales           = $same_type_count > 0 ? round($sales_total / $same_type_count, 2) : 0;
-        $calibration_adj = $same_type_count > 0 ? round($adj_total   / $same_type_count, 2) : 0;
-        $beginning       = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
-    }
+    $purchases = $del_lookup[$tank_key] ?? 0;
+    $sales_total = $sales_lookup[$ft_key] ?? 0;
+    $adj_total   = $adj_lookup[$ft_key] ?? 0;
+    $sales       = $same_type_count > 0 ? round($sales_total / $same_type_count, 2) : 0;
+    $calibration_adj = $same_type_count > 0 ? round($adj_total / $same_type_count, 2) : 0;
+    $beginning = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
 
     $total_available = $beginning + $purchases;
-    $ending_system   = $capacity > 0
-        ? min(max(0, $total_available - $sales - $calibration_adj), $capacity)
-        : max(0, $total_available - $sales - $calibration_adj);
-
+    $ending_system   = min(max(0, $total_available - $sales - $calibration_adj), $capacity);
     $current_level_tank = $ending_system;
 
-    // Reorder & Critical levels matching user's exact specification:
-    // 14,000L tank => Low (reorder) at <= 5,000L, Critical at <= 2,500L
-    // 7,000L tank => Low (reorder) at <= 2,000L, Critical at <= 1,000L
-    if ($capacity == 7000) {
-        $low_lvl      = 2000.0;
-        $critical_lvl = 1000.0;
-    } else {
-        $low_lvl      = 5000.0;
-        $critical_lvl = 2500.0;
-    }
+    $critical_lvl = (float)($tc['critical_level'] ?? 0);
+    $low_lvl      = (float)($tc['reorder_level']  ?? 0);
+    if ($critical_lvl <= 0) $critical_lvl = $capacity > 0 ? $capacity * 0.15 : 0;
+    if ($low_lvl <= 0)      $low_lvl      = $capacity > 0 ? $capacity * 0.30 : 0;
+    $fill_pct     = $capacity > 0 ? round(($current_level_tank / $capacity) * 100, 2) : 0;
+    $avail_space  = max(0, $capacity - $current_level_tank);
 
-    $fill_pct = $capacity > 0 ? round(($current_level_tank / $capacity) * 100, 2) : 0;
     if      ($current_level_tank <= 0)             { $status = 'Out of Stock'; $sc = '#dc3545'; }
     elseif  ($current_level_tank <= $critical_lvl) { $status = 'Critical';     $sc = '#dc3545'; }
-    elseif  ($current_level_tank <= $low_lvl)      { $status = 'Low';          $sc = '#fd7e14'; }
+    elseif  ($current_level_tank <= $low_lvl)      { $status = 'Low Fuel';     $sc = '#fd7e14'; }
     else                                           { $status = 'Normal';       $sc = '#28a745'; }
 
     $tank_levels[] = [
-        'tank_label'    => $tc['label'],
-        'tank_assign'   => $tc['tank'],
-        'fuel_type'     => $tc['fuel_type'],
-        'level'         => $current_level_tank,
-        'capacity'      => $capacity,
-        'status'        => $status,
-        'status_color'  => $sc,
-        'pct'           => min(100.0, round($fill_pct, 1)),
-        'reorder_level' => $low_lvl,
-        'last_updated'  => $inv['last_updated'] ?? null,
+        'ugt_str'         => $ugt_str,
+        'tank_label'      => $tc['label'],
+        'tank_assign'     => $tc['tank'],
+        'fuel_type'       => $tc['fuel_type'],
+        'level'           => $current_level_tank,
+        'capacity'        => $capacity,
+        'available_space' => $avail_space,
+        'critical_level'  => $critical_lvl,
+        'status'          => $status,
+        'status_color'    => $sc,
+        'pct'             => min(100.0, round($fill_pct, 1)),
+        'reorder_level'   => $low_lvl,
+        'last_updated'    => $inv['last_updated'] ?? null,
     ];
 }
 
@@ -2046,9 +2057,9 @@ $enable_quick_actions = function_exists('get_module_setting') ? (bool) get_modul
                     <tr style="background:#002F70;">
                         <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">UGT No.</th>
                         <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">Fuel Type</th>
-                        <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">Stock Level (L)</th>
                         <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">Capacity (L)</th>
-                        <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">Critical Level (L)</th>
+                        <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">Current Volume</th>
+                        <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">Available Space</th>
                         <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">Status</th>
                         <th style="padding:11px 14px; color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; text-align:left; white-space:nowrap;">Last Updated</th>
                     </tr>
@@ -2057,55 +2068,48 @@ $enable_quick_actions = function_exists('get_module_setting') ? (bool) get_modul
                     <?php foreach ($tank_levels as $tl):
                         $tl_current   = (float)$tl['level'];
                         $tl_capacity  = (float)$tl['capacity'];
+                        $tl_avail     = (float)($tl['available_space'] ?? max(0, $tl_capacity - $tl_current));
                         $tl_pct       = $tl['pct'];
                         $tl_status    = $tl['status'];
                         $tl_color     = $tl['status_color'];
-                        $tl_reorder   = (float)$tl['reorder_level'];
-
-                        // Critical level: derived from capacity (same logic as backend)
-                        $tl_critical  = ($tl_capacity == 7000) ? 1000.0 : 2500.0;
 
                         if ($tl_status === 'Normal') {
                             $tl_badge_bg   = '#dcfce7'; $tl_badge_color = '#15803d';
                             $tl_bar_color  = '#16a34a';
-                            $tl_badge_icon = '&#10003;';
-                        } elseif ($tl_status === 'Low') {
+                        } elseif ($tl_status === 'Low' || $tl_status === 'Low Fuel') {
                             $tl_badge_bg   = '#fef9c3'; $tl_badge_color = '#a16207';
                             $tl_bar_color  = '#eab308';
-                            $tl_badge_icon = '&#9888;';
                         } elseif ($tl_status === 'Critical') {
                             $tl_badge_bg   = '#fee2e2'; $tl_badge_color = '#b91c1c';
                             $tl_bar_color  = '#ef4444';
-                            $tl_badge_icon = '&#9888;';
                         } else {
-                            $tl_badge_bg   = '#fee2e2'; $tl_badge_color = '#b91c1c';
+                            $tl_badge_bg   = '#fee2e2'; $tl_badge_color = '#dc2626';
                             $tl_bar_color  = '#dc2626';
-                            $tl_badge_icon = '&#9888;';
                         }
                     ?>
                     <tr style="border-bottom:1px solid #f1f5f9;">
                         <td style="padding:11px 14px; color:#334155;">
-                            <strong style="font-family:monospace; color:#002F70; font-size:14px;"><?= htmlspecialchars($tl['tank_assign']) ?></strong>
+                            <strong style="font-family:monospace; color:#002F70; font-size:13.5px;"><?= htmlspecialchars($tl['ugt_str'] ?? $tl['tank_assign']) ?></strong>
                             <div style="font-size:11px; color:#64748b; margin-top:2px; font-weight:600;"><?= htmlspecialchars($tl['tank_label']) ?></div>
                         </td>
                         <td style="padding:11px 14px; color:#334155;">
                             <strong><?= htmlspecialchars($tl['fuel_type']) ?></strong>
                         </td>
-                        <td style="padding:11px 14px; color:#334155;">
-                            <?= number_format($tl_current, 2) ?>
+                        <td style="padding:11px 14px; color:#334155; font-weight:600;"><?= number_format($tl_capacity, 2) ?> L</td>
+                        <td style="padding:11px 14px; color:#334155; font-weight:700;">
+                            <?= number_format($tl_current, 2) ?> L
                             <div style="margin-top:5px; height:4px; background:#e2e8f0; border-radius:2px; width:100px;">
                                 <div style="height:4px; background:<?= $tl_bar_color ?>; border-radius:2px; width:<?= $tl_pct ?>%;"></div>
                             </div>
                         </td>
-                        <td style="padding:11px 14px; color:#334155;"><?= number_format($tl_capacity, 2) ?></td>
-                        <td style="padding:11px 14px; color:#334155;"><?= number_format($tl_critical, 2) ?></td>
+                        <td style="padding:11px 14px; color:#059669; font-weight:600;"><?= number_format($tl_avail, 2) ?> L</td>
                         <td style="padding:11px 14px;">
-                            <span style="display:inline-block; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:700; background:<?= $tl_badge_bg ?>; color:<?= $tl_badge_color ?>;">
-                                <?= $tl_badge_icon ?> <?= htmlspecialchars($tl_status) ?>
+                            <span style="display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; background:<?= $tl_badge_bg ?>; color:<?= $tl_badge_color ?>; border:1px solid rgba(0,0,0,0.05);">
+                                <?= htmlspecialchars($tl_status) ?>
                             </span>
                         </td>
                         <td style="padding:11px 14px; color:#64748b; font-size:12px;">
-                            <?= isset($tl['last_updated']) && $tl['last_updated'] ? htmlspecialchars(date('M d, Y H:i', strtotime($tl['last_updated']))) : '&mdash;' ?>
+                            <?= isset($tl['last_updated']) && $tl['last_updated'] ? htmlspecialchars(date('M d, Y h:i A', strtotime($tl['last_updated']))) : '&mdash;' ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>

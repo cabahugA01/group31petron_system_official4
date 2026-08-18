@@ -3547,16 +3547,13 @@ require_once __DIR__ . '/rbac_menu.php';
       );
       $badges['fuel'] = $mgr_fuel_validation + $mgr_calibration_review + $mgr_low_fuel;
 
-      // 3. Inventory: Low Stock + Critical Stock + Purchase Requests Waiting + Deliveries Waiting for Stock-In + Stock Variance/Damaged/Expired
+      // 3. Inventory: Low Stock + Critical Stock + Purchase Requests Waiting + Deliveries Waiting for Stock-In
       $mgr_low_stock = $__badge_count(
           "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.reorder_level, ip.min_stock, 24)",
           [$myStationId]
       );
       $mgr_purchase_reqs = $__badge_count(
           "SELECT COUNT(*) FROM stock_requests WHERE station_id = ? AND status IN ('Pending','Pending Manager Review')",
-          [$myStationId]
-      ) + $__badge_count(
-          "SELECT COUNT(*) FROM fuel_stock_requests WHERE station_id = ? AND status IN ('Pending','Pending Manager Review')",
           [$myStationId]
       );
       $mgr_deliv_waiting = $__badge_count(
@@ -3600,19 +3597,14 @@ require_once __DIR__ . '/rbac_menu.php';
       $badges['reports']       = 0;
       $badges['admin_reports'] = 0;
 
-      // 4. Fuel Management Oversight: Pending Fuel Stock Requests + Pending Fuel Adjustments
-      $admin_fuel_reqs = $__badge_count(
-          "SELECT COUNT(*) FROM fuel_stock_requests WHERE LOWER(COALESCE(status,'')) IN ('pending','pending manager review','pending admin review')",
+      // 4. Fuel Management Oversight: Pending Fuel Transactions requiring admin attention
+      $admin_fuel_pending = $__badge_count(
+          "SELECT COUNT(*) FROM fuel_transactions WHERE LOWER(COALESCE(status,'')) IN ('pending','pending validation')",
           []
       );
-      $admin_fuel_adj = $__badge_count(
-          "SELECT COUNT(*) FROM fuel_adjustments WHERE LOWER(COALESCE(status,'')) IN ('pending','pending validation')",
-          []
-      );
-      $admin_fuel_total = $admin_fuel_reqs + $admin_fuel_adj;
-      $badges['fuel']                  = $admin_fuel_total;
-      $badges['admin_fuel']            = $admin_fuel_total;
-      $badges['admin_fuel_management'] = $admin_fuel_total;
+      $badges['fuel']                  = $admin_fuel_pending;
+      $badges['admin_fuel']            = $admin_fuel_pending;
+      $badges['admin_fuel_management'] = $admin_fuel_pending;
   }
 
   // Calculate Header Bell Unread Count = sum of all visible sidebar badge counts
@@ -4000,7 +3992,9 @@ require_once __DIR__ . '/rbac_menu.php';
                                 ?>
                                 <a class="notif-item<?php echo $hn_unread ? ' unread' : ''; ?>"
                                    href="<?php echo htmlspecialchars($hn_href); ?>"
-                                   onclick="if(window.staffMarkRead || window.saMarkRead){event.preventDefault(); (window.staffMarkRead || window.saMarkRead)(<?php echo (int)$hn['id']; ?>, <?php echo htmlspecialchars($hn_js_url, ENT_QUOTES); ?>);}"
+                                   <?php if ($hn_unread): ?>
+                                   onclick="(window.staffMarkRead || window.saMarkRead)(<?php echo (int)$hn['id']; ?>);"
+                                   <?php endif; ?>
                                    style="padding:12px 16px;cursor:pointer;display:flex;align-items:flex-start;gap:12px;text-decoration:none;color:inherit;">
                                     <div style="width:48px;height:48px;border-radius:50%;background:<?php echo htmlspecialchars($hn_color); ?>15;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid <?php echo htmlspecialchars($hn_color); ?>30;">
                                         <i class="<?php echo htmlspecialchars($hn_icon); ?>" style="color:<?php echo htmlspecialchars($hn_color); ?>;font-size:20px;"></i>
@@ -5572,8 +5566,21 @@ require_once __DIR__ . '/rbac_menu.php';
             }
 
             // Expose mark-read globally so onclick works
-            window.saMarkRead = function(id) {
+            window.saMarkRead = function(id, redirectUrl) {
                 if (!id) return;
+                // ── Immediately decrement badge (optimistic UI) ─────────────
+                (function() {
+                    const badge = document.getElementById('notificationBadge');
+                    if (badge && badge.style.display !== 'none') {
+                        let cur = parseInt(badge.textContent.replace(/\D/g, ''), 10) || 0;
+                        cur = Math.max(0, cur - 1);
+                        if (cur > 0) {
+                            badge.textContent = cur > 99 ? '99+' : cur;
+                        } else {
+                            badge.style.display = 'none';
+                        }
+                    }
+                })();
                 try {
                     const fd = new FormData();
                     fd.append('notification_id', id);
@@ -5586,6 +5593,7 @@ require_once __DIR__ . '/rbac_menu.php';
                         })
                         .catch(() => {});
                 } catch (e) {}
+
             };
 
             // Mark all read button
@@ -5784,8 +5792,9 @@ require_once __DIR__ . '/rbac_menu.php';
                             const msg    = escapeHtml(n.message || '');
                             const ago    = escapeHtml(n.time_ago || timeAgo(n.created_at));
                             const hoverClass = unread ? 'notif-item unread' : 'notif-item';
+                            const onclickAttr = unread ? `onclick="staffMarkRead(${n.id})"` : '';
                             html += `<a href="${targetUrl}" class="${hoverClass}" style="padding:12px 16px;cursor:pointer;display:flex;align-items:flex-start;gap:12px;text-decoration:none !important;"
-                                          onclick="staffMarkRead(${n.id})">
+                                          ${onclickAttr}>
                                         <div style="width:48px;height:48px;border-radius:50%;background:${color}15;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid ${color}30;">
                                             <i class="${icon}" style="color:${color};font-size:20px;"></i>
                                         </div>
@@ -5820,6 +5829,19 @@ require_once __DIR__ . '/rbac_menu.php';
             // ── Mark one notification as read ─────────────────────────────────
             window.staffMarkRead = function (id) {
                 if (id) {
+                    // ── Immediately decrement badge (optimistic UI) ─────────
+                    (function() {
+                        const badge = document.getElementById('notificationBadge');
+                        if (badge && badge.style.display !== 'none') {
+                            let cur = parseInt(badge.textContent.replace(/\D/g, ''), 10) || 0;
+                            cur = Math.max(0, cur - 1);
+                            if (cur > 0) {
+                                badge.textContent = cur > 99 ? '99+' : cur;
+                            } else {
+                                badge.style.display = 'none';
+                            }
+                        }
+                    })();
                     try {
                         const fd = new FormData();
                         fd.append('notification_id', id);
@@ -5827,7 +5849,7 @@ require_once __DIR__ . '/rbac_menu.php';
                             .then(r => r.ok ? r.json() : null)
                             .then(data => {
                                 if (data && data.success) {
-                                    // Sync both header bell + sidebar badges immediately
+                                    // Sync both header bell + sidebar badges with server truth
                                     updateBadge(data.bell_unread_count ?? 0, data.category_counts);
                                 }
                             })

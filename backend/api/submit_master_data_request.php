@@ -67,14 +67,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['success' => false, 'error' => 'Service name is required.']);
             exit;
         }
-        if (empty($requestData['category'])) {
+        $svc_cat = $requestData['service_category'] ?? $requestData['category'] ?? '';
+        if (empty($svc_cat)) {
             http_response_code(400);
             echo json_encode(['success' => false, 'error' => 'Category is required.']);
             exit;
         }
-        if (!isset($requestData['suggested_price']) || $requestData['suggested_price'] <= 0) {
+        $svc_price = (float)($requestData['default_price'] ?? $requestData['suggested_price'] ?? 0);
+        if ($svc_price < 0) {
             http_response_code(400);
-            echo json_encode(['success' => false, 'error' => 'Valid suggested price is required.']);
+            echo json_encode(['success' => false, 'error' => 'Valid service fee is required.']);
             exit;
         }
     } elseif ($reqType === 'vehicle_type') {
@@ -133,32 +135,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Send notification to Managers
         try {
-            $m_stmt = $pdo->prepare("SELECT id FROM users WHERE LOWER(role) = 'manager' AND (station_id = ? OR station_id IS NULL OR station_id = 0)");
-            $m_stmt->execute([$stationId]);
-            $managers = $m_stmt->fetchAll(PDO::FETCH_COLUMN);
-            if (empty($managers)) {
-                $managers = $pdo->query("SELECT id FROM users WHERE LOWER(role) = 'manager'")->fetchAll(PDO::FETCH_COLUMN);
-            }
-
             $requestedItem = '';
-            if ($reqType === 'product') $requestedItem = $requestData['product_name'];
-            elseif ($reqType === 'service_type') $requestedItem = $requestData['service_name'];
-            else $requestedItem = $requestData['vehicle_brand'] . ' ' . $requestData['vehicle_model'];
+            if ($reqType === 'product') $requestedItem = $requestData['product_name'] ?? '';
+            elseif ($reqType === 'service_type') $requestedItem = $requestData['service_name'] ?? '';
+            else $requestedItem = ($requestData['vehicle_brand'] ?? '') . ' ' . ($requestData['vehicle_model'] ?? '');
 
             $requesterName = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
             if (empty($requesterName)) $requesterName = $me['name'] ?? 'Staff';
 
-        // ── Notify manager(s) — event-driven ────────────────────────
-        if ($stationId) {
-            notify_manager(
-                $pdo, $stationId,
-                'info', 'master_data_request', 'medium',
-                'New Master Data Request: ' . $category,
-                "{$requesterName} requested to add {$requestedItem}. Review required.",
-                "mdr_submitted_{$requestId}",
-                'manager_review_stock_requests.php?id=' . $requestId,
-                'master_data_request', $requestId
-            );
+            // ── Notify manager(s) — event-driven ────────────────────────
+            if ($stationId && function_exists('notify_manager')) {
+                notify_manager(
+                    $pdo, $stationId,
+                    'info', 'master_data_request', 'medium',
+                    'New Master Data Request: ' . $category,
+                    "{$requesterName} requested to add {$requestedItem}. Review required.",
+                    "mdr_submitted_{$requestId}",
+                    'manager_request_data_management.php',
+                    'master_data_request', $requestId
+                );
+            }
+        } catch (Exception $e) {
+            // Non-critical notification failure
         }
 
         echo json_encode([

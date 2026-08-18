@@ -121,12 +121,52 @@ function adm_count(PDO $pdo, string $sql, array $p = []): int {
     }
 }
 
+// Station clause helper for admin queries
+$stn_sql  = $station_id > 0 ? "station_id = ? AND " : "";
+$stn_p    = $station_id > 0 ? [$station_id] : [];
+
 // ════════════════════════════════════════════════════════════
-// 1. DELIVERIES AWAITING ADMIN OVERSIGHT
+// 1. FUEL ADJUSTMENTS REQUIRING ADMIN APPROVAL
+// ════════════════════════════════════════════════════════════
+$fuel_adj_pending = adm_count($pdo,
+    "SELECT COUNT(*) FROM fuel_adjustments WHERE {$stn_sql}LOWER(COALESCE(status,'')) IN ('pending admin approv','pending admin approval','pending admin review','pending validation','pending')",
+    $stn_p);
+if ($fuel_adj_pending > 0) {
+    $generated += upsert_notif($pdo, $user_id, [
+        'type'        => 'warning',
+        'title'       => 'Fuel Adjustments Awaiting Approval',
+        'message'     => "{$fuel_adj_pending} physical tank dip / fuel reading adjustment(s) require Admin review and approval.",
+        'event_type'  => 'fuel_transaction',
+        'severity'    => 'high',
+        'source_key'  => "fuel_adj_pending_{$station_id}",
+        'redirect_url'=> '/public/admin_fuel_transactions_oversight.php',
+    ]);
+}
+
+// ════════════════════════════════════════════════════════════
+// 2. FUEL TRANSACTIONS OVERSIGHT
+// ════════════════════════════════════════════════════════════
+$fuel_txns_recent = adm_count($pdo,
+    "SELECT COUNT(*) FROM fuel_transactions WHERE {$stn_sql}DATE(COALESCE(transaction_date, created_at)) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)",
+    $stn_p);
+if ($fuel_txns_recent > 0) {
+    $generated += upsert_notif($pdo, $user_id, [
+        'type'        => 'info',
+        'title'       => 'Fuel Transactions Oversight',
+        'message'     => "{$fuel_txns_recent} fuel transaction record(s) logged in the last 7 days are available for oversight audit.",
+        'event_type'  => 'fuel_transaction',
+        'severity'    => 'low',
+        'source_key'  => "fuel_txns_recent_{$station_id}_" . date('Y-m-d'),
+        'redirect_url'=> '/public/admin_fuel_transactions_oversight.php',
+    ]);
+}
+
+// ════════════════════════════════════════════════════════════
+// 3. DELIVERIES AWAITING ADMIN OVERSIGHT
 // ════════════════════════════════════════════════════════════
 $pending_admin_del = adm_count($pdo,
-    "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status='Pending Admin Oversight'",
-    [$station_id]);
+    "SELECT COUNT(*) FROM deliveries_oversight WHERE {$stn_sql}status='Pending Admin Oversight'",
+    $stn_p);
 if ($pending_admin_del > 0) {
     $generated += upsert_notif($pdo, $user_id, [
         'type'        => 'warning',
@@ -139,10 +179,10 @@ if ($pending_admin_del > 0) {
     ]);
 }
 
-// ── 1b. Flagged Deliveries ────────────────────────────────
+// ── 3b. Flagged Deliveries ────────────────────────────────
 $flagged_del = adm_count($pdo,
-    "SELECT COUNT(*) FROM deliveries_oversight WHERE station_id=? AND status IN ('Flagged','Discrepancy')",
-    [$station_id]);
+    "SELECT COUNT(*) FROM deliveries_oversight WHERE {$stn_sql}status IN ('Flagged','Discrepancy')",
+    $stn_p);
 if ($flagged_del > 0) {
     $generated += upsert_notif($pdo, $user_id, [
         'type'        => 'error',
@@ -156,15 +196,15 @@ if ($flagged_del > 0) {
 }
 
 // ════════════════════════════════════════════════════════════
-// 2. OFFICIAL TRANSACTIONS TODAY
+// 4. OFFICIAL TRANSACTIONS
 // ════════════════════════════════════════════════════════════
 $admin_tx = adm_count($pdo,
-    "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status IN ('Official','Completed','Approved','Adjusted') AND DATE(COALESCE(transaction_date,created_at))=CURDATE()",
-    [$station_id]);
+    "SELECT COUNT(*) FROM merchandise_transactions WHERE {$stn_sql}validation_status IN ('Official','Completed','Approved','Adjusted') AND DATE(COALESCE(transaction_date,created_at)) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)",
+    $stn_p);
 if ($admin_tx > 0) {
     $generated += upsert_notif($pdo, $user_id, [
         'type'        => 'info',
-        'title'       => 'Official Transactions Today',
+        'title'       => 'Official Transactions',
         'message'     => "{$admin_tx} official transaction(s) are available for oversight review.",
         'event_type'  => 'transaction',
         'severity'    => 'low',
@@ -174,11 +214,11 @@ if ($admin_tx > 0) {
 }
 
 // ════════════════════════════════════════════════════════════
-// 3. PENDING PURCHASE ORDERS
+// 5. PENDING PURCHASE ORDERS
 // ════════════════════════════════════════════════════════════
 $pending_po = adm_count($pdo,
-    "SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND status IN ('Pending','Pending Approval','Pending Admin Validation')",
-    [$station_id]);
+    "SELECT COUNT(*) FROM purchase_orders WHERE {$stn_sql}status IN ('Pending','Pending Approval','Pending Admin Validation')",
+    $stn_p);
 if ($pending_po > 0) {
     $generated += upsert_notif($pdo, $user_id, [
         'type'        => 'warning',
@@ -192,15 +232,15 @@ if ($pending_po > 0) {
 }
 
 // ════════════════════════════════════════════════════════════
-// 4. OFFICIAL JOB ORDERS TODAY
+// 6. OFFICIAL JOB ORDERS
 // ════════════════════════════════════════════════════════════
 $admin_jo = adm_count($pdo,
-    "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND validation_status IN ('Official','Completed','Approved','Adjusted') AND DATE(created_at)=CURDATE()",
-    [$station_id]);
+    "SELECT COUNT(*) FROM job_orders WHERE {$stn_sql}validation_status IN ('Official','Completed','Approved','Adjusted') AND DATE(created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)",
+    $stn_p);
 if ($admin_jo > 0) {
     $generated += upsert_notif($pdo, $user_id, [
         'type'        => 'info',
-        'title'       => 'Official Job Orders Today',
+        'title'       => 'Official Job Orders',
         'message'     => "{$admin_jo} job order(s) are available for oversight review.",
         'event_type'  => 'job_order',
         'severity'    => 'low',
@@ -210,16 +250,16 @@ if ($admin_jo > 0) {
 }
 
 // ════════════════════════════════════════════════════════════
-// 5. FUEL VARIANCE ALERTS
+// 7. FUEL VARIANCE ALERTS
 // ════════════════════════════════════════════════════════════
 $variance_open = adm_count($pdo,
-    "SELECT COUNT(*) FROM variance_alerts WHERE station_id=? AND status='open'",
-    [$station_id]);
+    "SELECT COUNT(*) FROM variance_alerts WHERE {$stn_sql}status='open'",
+    $stn_p);
 if ($variance_open > 0) {
     $var_liters = 0;
     try {
-        $vs = $pdo->prepare("SELECT COALESCE(SUM(ABS(variance_liters)),0) FROM fuel_variance_reports WHERE station_id=? AND DATE(created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)");
-        $vs->execute([$station_id]);
+        $vs = $pdo->prepare("SELECT COALESCE(SUM(ABS(variance_liters)),0) FROM fuel_variance_reports WHERE {$stn_sql}DATE(created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)");
+        $vs->execute($stn_p);
         $var_liters = (float)$vs->fetchColumn();
     } catch (Exception $e) {}
     $generated += upsert_notif($pdo, $user_id, [
@@ -234,16 +274,16 @@ if ($variance_open > 0) {
 }
 
 // ════════════════════════════════════════════════════════════
-// 6. ACCOUNTS RECEIVABLE OUTSTANDING
+// 8. ACCOUNTS RECEIVABLE OUTSTANDING
 // ════════════════════════════════════════════════════════════
 $ar_overdue = adm_count($pdo,
-    "SELECT COUNT(*) FROM customers WHERE station_id=? AND COALESCE(current_balance, balance, 0) > 0",
-    [$station_id]);
+    "SELECT COUNT(*) FROM customers WHERE {$stn_sql}COALESCE(current_balance, balance, 0) > 0",
+    $stn_p);
 if ($ar_overdue > 0) {
     $ar_total = 0;
     try {
-        $as = $pdo->prepare("SELECT COALESCE(SUM(COALESCE(current_balance, balance, 0)),0) FROM customers WHERE station_id=? AND COALESCE(current_balance, balance, 0) > 0");
-        $as->execute([$station_id]);
+        $as = $pdo->prepare("SELECT COALESCE(SUM(COALESCE(current_balance, balance, 0)),0) FROM customers WHERE {$stn_sql}COALESCE(current_balance, balance, 0) > 0");
+        $as->execute($stn_p);
         $ar_total = (float)$as->fetchColumn();
     } catch (Exception $e) {}
     $generated += upsert_notif($pdo, $user_id, [

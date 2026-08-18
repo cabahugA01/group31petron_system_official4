@@ -1,33 +1,93 @@
 <?php
-// session_start() MUST come before ob_start() — ob_end_clean() would discard the Set-Cookie header
-session_start();
+// ── Session Hardening: Strict Cookie Params before session_start() ──
+if (session_status() === PHP_SESSION_NONE) {
+    $is_secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443);
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path'     => '/',
+        'domain'   => '',
+        'secure'   => $is_secure,
+        'httponly' => true,
+        'samesite' => 'Strict'  // Upgraded from Lax → Strict (blocks CSRF via cross-site nav)
+    ]);
+    session_start();
+}
 ob_start(); // Buffer output to prevent "headers already sent" errors
 
 // Include database connection
 require_once __DIR__ . '/db_connect.php';
 require_once __DIR__ . '/../backend/lib.php';
 
-// 0. Force HTTPS for security (except local development)
+// ── Force HTTPS (skip on localhost) ──
 if (empty($_SERVER['HTTPS']) || $_SERVER['HTTPS'] === 'off') {
     $host = $_SERVER['HTTP_HOST'] ?? '';
-    // Do not force HTTPS on localhost
     if (strpos($host, 'localhost') === false && strpos($host, '127.0.0.1') === false && $host !== '::1') {
         header("Location: https://" . $host . $_SERVER['REQUEST_URI']);
         exit;
     }
 }
 
+// ── Security HTTP Headers ──
+header("X-Frame-Options: DENY");
+header("X-Content-Type-Options: nosniff");
+header("X-XSS-Protection: 1; mode=block");
+header("Referrer-Policy: strict-origin-when-cross-origin");
+header("Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()");
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0, private");
+header("Pragma: no-cache");
+// Strict-Transport-Security (only on HTTPS)
+if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+    header("Strict-Transport-Security: max-age=31536000; includeSubDomains");
+}
+// Content-Security-Policy — blocks clickjacking, form hijacking, unwanted external sources
+// Note: 'unsafe-inline' for scripts is needed because the page uses many inline <script> blocks.
+// The critical protections are: frame-ancestors (clickjacking), form-action (CSRF), base-uri (base injection).
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://fonts.gstatic.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self';");
+
+// ── Generate / Rotate CSRF Token ──
+// Rotate the token on each GET so each page load has a fresh token
+if (empty($_SESSION['csrf_token']) || $_SERVER['REQUEST_METHOD'] === 'GET') {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+
 // Configuration variables
 $system_name = "Petron Station & Service Center Management System";
 $current_year = date("Y");
 $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
 
-// 2. Generate Math CAPTCHA (always fresh on every page load)
+// Helper to generate strong math captcha
+if (!function_exists('generate_strong_captcha')) {
+    function generate_strong_captcha() {
+        $operations = ['+', '-', 'x'];
+        $op = $operations[random_int(0, count($operations) - 1)];
+
+        if ($op === '+') {
+            $a = random_int(5, 35);
+            $b = random_int(3, 25);
+            $answer = $a + $b;
+            $question = "{$a} + {$b}";
+        } elseif ($op === '-') {
+            $a = random_int(12, 45);
+            $b = random_int(2, $a - 1);
+            $answer = $a - $b;
+            $question = "{$a} - {$b}";
+        } else {
+            $a = random_int(2, 9);
+            $b = random_int(2, 9);
+            $answer = $a * $b;
+            $question = "{$a} × {$b}";
+        }
+
+        $_SESSION['captcha_answer'] = $answer;
+        $_SESSION['captcha_question'] = $question;
+        return ['question' => $question, 'answer' => $answer];
+    }
+}
+
+// 2. Generate Math CAPTCHA (always fresh on every page load or when missing)
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_SESSION['captcha_answer'])) {
-    $captcha_a = random_int(1, 12);
-    $captcha_b = random_int(1, 12);
-    $_SESSION['captcha_answer'] = $captcha_a + $captcha_b;
-    $_SESSION['captcha_question'] = "{$captcha_a} + {$captcha_b}";
+    generate_strong_captcha();
 }
 $captcha_question = $_SESSION['captcha_question'] ?? '? + ?';
 
@@ -35,6 +95,22 @@ $error = '';
 $success_msg = '';
 $login_success = false;
 $dashboard_url = '';
+$is_locked_out = false;
+$lockout_remaining_sec = 0;
+$lockout_duration = 5; // 5 seconds lockout
+$max_attempts = 5;
+
+// Check if currently locked out on page load / session
+if (!empty($_SESSION['login_fail_count']) && $_SESSION['login_fail_count'] >= $max_attempts) {
+    $sec_since = time() - (int)($_SESSION['last_fail_time'] ?? 0);
+    if ($sec_since < $lockout_duration) {
+        $is_locked_out = true;
+        $lockout_remaining_sec = max(1, $lockout_duration - $sec_since);
+        $error = "Too many failed login attempts. Your account is temporarily locked. Please try again after {$lockout_remaining_sec} seconds.";
+    } else {
+        $_SESSION['login_fail_count'] = 0;
+    }
+}
 
 // Check for password reset success
 if (isset($_GET['reset_success']) && $_GET['reset_success'] === '1') {
@@ -52,11 +128,6 @@ if (isset($_SESSION['login_error'])) {
     $error = $_SESSION['login_error'];
     unset($_SESSION['login_error']);
 }
-
-// Prevent caching
-header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
-header("Cache-Control: post-check=0, pre-check=0", false);
-header("Pragma: no-cache");
 
 // 1. Check if already logged in (only on GET requests)
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' && isset($_SESSION['user'])) {
@@ -83,20 +154,102 @@ if (isset($_GET['logout'])) {
 }
 // 2. Handle Login Logic
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $login_input = trim($_POST['username'] ?? $_POST['account_id'] ?? '');
-    $password = $_POST['password'] ?? $_POST['password_hash'] ?? '';
-    $captcha_input = trim($_POST['captcha'] ?? '');
+    $csrf_token = $_POST['csrf_token'] ?? '';
 
-    if (empty($login_input) || empty($password)) {
-        $error = "Please enter both Email/Phone/Username and password.";
-        // Regenerate CAPTCHA on any error
-        $captcha_a = random_int(1, 12); $captcha_b = random_int(1, 12);
-        $_SESSION['captcha_answer'] = $captcha_a + $captcha_b;
-        $_SESSION['captcha_question'] = "{$captcha_a} + {$captcha_b}";
+    // ── Honeypot bot trap: bots usually fill hidden fields ──
+    if (!empty($_POST['_email_confirm'])) {
+        // Silently reject - looks like a successful page to bots
+        http_response_code(200);
+        exit;
+    }
+
+    // ── Strip null bytes and sanitize inputs ──
+    $login_input   = trim(str_replace(["\0", "\r", "\n"], '', strip_tags($_POST['username'] ?? $_POST['account_id'] ?? '')));
+    $password      = $_POST['password'] ?? $_POST['password_hash'] ?? '';
+    $captcha_input = trim(preg_replace('/[^0-9]/', '', $_POST['captcha'] ?? ''));
+    $ip_address    = filter_var($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0', FILTER_VALIDATE_IP) ?: '0.0.0.0';
+
+    // ── Reject obviously bad input early ──
+    if (mb_strlen($login_input) > 120 || mb_strlen($password) > 256 || mb_strlen($captcha_input) > 4) {
+        $error = "Invalid input.";
+        generate_strong_captcha();
         $captcha_question = $_SESSION['captcha_question'];
-    } elseif (empty($captcha_input) || !is_numeric($captcha_input) || ((int)$captcha_input !== (int)($_SESSION['captcha_answer'] ?? -1) && (int)$captcha_input !== 999)) {
+        goto end_post;
+    }
+
+    // ── Check Pre-Existing Lockout before checking credentials ──
+    if (!$is_locked_out) {
+        // Check session
+        if (!empty($_SESSION['login_fail_count']) && $_SESSION['login_fail_count'] >= $max_attempts) {
+            $sec_since = time() - (int)($_SESSION['last_fail_time'] ?? 0);
+            if ($sec_since < $lockout_duration) {
+                $is_locked_out = true;
+                $lockout_remaining_sec = max(1, $lockout_duration - $sec_since);
+                $error = "Too many failed login attempts. Your account is temporarily locked. Please try again after {$lockout_remaining_sec} seconds.";
+            } else {
+                $_SESSION['login_fail_count'] = 0;
+            }
+        }
+        // Check DB login_attempts
+        if (!$is_locked_out) {
+            try {
+                $tables = $pdo->query("SHOW TABLES LIKE 'login_attempts'")->fetchAll();
+                if (!empty($tables)) {
+                    $stmtLock = $pdo->prepare("
+                        SELECT COUNT(*) as fail_count, 
+                               TIMESTAMPDIFF(SECOND, MAX(attempt_time), NOW()) as sec_since_last 
+                        FROM login_attempts 
+                        WHERE (username = ? OR ip_address = ?) 
+                          AND status = 'failed' 
+                          AND attempt_time > NOW() - INTERVAL 10 MINUTE
+                    ");
+                    $stmtLock->execute([$login_input, $ip_address]);
+                    $lockInfo = $stmtLock->fetch(PDO::FETCH_ASSOC);
+                    if ($lockInfo && (int)$lockInfo['fail_count'] >= $max_attempts) {
+                        $sec_since = (int)$lockInfo['sec_since_last'];
+                        if ($sec_since < $lockout_duration) {
+                            $is_locked_out = true;
+                            $lockout_remaining_sec = max(1, $lockout_duration - $sec_since);
+                            $error = "Too many failed login attempts. Your account is temporarily locked. Please try again after {$lockout_remaining_sec} seconds.";
+                        }
+                    }
+                }
+            } catch (Exception $e) {}
+        }
+    }
+
+    // If currently locked out, reject immediately
+    if ($is_locked_out) {
+        generate_strong_captcha();
+        $captcha_question = $_SESSION['captcha_question'];
+    }
+    // 2a. Validate CSRF Token
+    elseif (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrf_token)) {
+        $error = "Invalid or expired security token. Please try again.";
+        generate_strong_captcha();
+        $captcha_question = $_SESSION['captcha_question'];
+    } elseif (strlen($login_input) > 120 || strlen($password) > 256) {
+        $error = "Invalid credentials or input length exceeds maximum allowed.";
+        generate_strong_captcha();
+        $captcha_question = $_SESSION['captcha_question'];
+    } elseif (empty($login_input) || empty($password)) {
+        $error = "Please enter both Email/Phone/Username and password.";
+        // Regenerate CAPTCHA on error
+        generate_strong_captcha();
+        $captcha_question = $_SESSION['captcha_question'];
+    } elseif ($captcha_input === '' || !preg_match('/^\d+$/', $captcha_input) || (int)$captcha_input !== (int)($_SESSION['captcha_answer'] ?? -1)) {
         $error = "Incorrect CAPTCHA answer. Please try again.";
         
+        // Record failed attempt
+        $_SESSION['login_fail_count'] = ($_SESSION['login_fail_count'] ?? 0) + 1;
+        $_SESSION['last_fail_time'] = time();
+
+        if ($_SESSION['login_fail_count'] >= $max_attempts) {
+            $is_locked_out = true;
+            $lockout_remaining_sec = $lockout_duration;
+            $error = "Too many failed login attempts. Your account is temporarily locked. Please try again after {$lockout_duration} seconds.";
+        }
+
         // Audit Logging for CAPTCHA Failure
         try {
             $check_user = null;
@@ -144,33 +297,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {}
 
         // Always regenerate CAPTCHA after a failed attempt
-        $captcha_a = random_int(1, 12); $captcha_b = random_int(1, 12);
-        $_SESSION['captcha_answer'] = $captcha_a + $captcha_b;
-        $_SESSION['captcha_question'] = "{$captcha_a} + {$captcha_b}";
+        generate_strong_captcha();
         $captcha_question = $_SESSION['captcha_question'];
     } else {
         try {
-            // --- Account Lockout Policy ---
-            $lockout_time = 15; // minutes
-            $max_attempts = 5;
-            $ip_address = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-            
-            try {
-                $tables = $pdo->query("SHOW TABLES LIKE 'login_attempts'")->fetchAll();
-                if (!empty($tables)) {
-                    $stmtLock = $pdo->prepare("
-                        SELECT COUNT(*) FROM login_attempts 
-                        WHERE (username = ? OR ip_address = ?) 
-                          AND status = 'failed' 
-                          AND attempt_time > NOW() - INTERVAL ? MINUTE
-                    ");
-                    $stmtLock->execute([$login_input, $ip_address, $lockout_time]);
-                    if ($stmtLock->fetchColumn() >= $max_attempts) {
-                        $error = "Too many failed login attempts. Your account is temporarily locked. Please try again after {$lockout_time} minutes.";
-                    }
-                }
-            } catch (Exception $e) { /* Ignore if table missing */ }
-
             if (empty($error)) {
                 // Auto-detect credential type:
                 // Input contains @ -> Email login.
@@ -213,6 +343,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif (password_verify($password, $user[$s_pass])) {
                     $valid_login = true;
                 }
+            } else {
+                // Dummy verify to eliminate timing discrepancies between existing and non-existing accounts
+                password_verify($password, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi');
             }
 
             if ($valid_login) {
@@ -226,6 +359,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ->execute([$login_input, $_SERVER['REMOTE_ADDR']]);
                     }
                 } catch (Exception $e) {}
+
+                // Reset failed attempts counter
+                $_SESSION['login_fail_count'] = 0;
+                unset($_SESSION['last_fail_time']);
 
                 // Direct login - Set session and redirect to dashboard
                 unset($user[$s_pass]); // Remove password from session
@@ -374,8 +511,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 } catch (Exception $e) { /* Fail silently */ }
 
-                if (empty($error)) {
-                    $error = "Invalid credentials or password.";
+                // Increment session-level fail counter
+                $_SESSION['login_fail_count'] = ($_SESSION['login_fail_count'] ?? 0) + 1;
+                $_SESSION['last_fail_time'] = time();
+
+                if ($_SESSION['login_fail_count'] >= $max_attempts) {
+                    $is_locked_out = true;
+                    $lockout_remaining_sec = $lockout_duration;
+                    $error = "Too many failed login attempts. Your account is temporarily locked. Please try again after {$lockout_duration} seconds.";
+                } elseif (empty($error)) {
+                    $attempts_left = $max_attempts - (int)$_SESSION['login_fail_count'];
+                    $error = "Invalid credentials or password. {$attempts_left} attempt(s) remaining before temporary lockout.";
                 }
             }
             } // End of if (empty($error)) wrapper for lockout
@@ -388,12 +534,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Always regenerate a brand new CAPTCHA on every failed attempt
     if (!$login_success) {
-        $captcha_a = random_int(1, 12);
-        $captcha_b = random_int(1, 12);
-        $_SESSION['captcha_answer'] = $captcha_a + $captcha_b;
-        $_SESSION['captcha_question'] = "{$captcha_a} + {$captcha_b}";
+        generate_strong_captcha();
         $captcha_question = $_SESSION['captcha_question'];
+        // Rotate CSRF token after each failed attempt (prevents replay attacks)
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     }
+
+    end_post: // goto target for early exit on bad input
+    (function(){})(); // no-op statement required after label in PHP
 }
 ?>
 <?php
@@ -1637,7 +1785,13 @@ $_asset_base = $_login_base . '/assets';
                 <?php endif; ?>
 
                 <!-- Login Form -->
-                <form method="POST" action="<?= htmlspecialchars($_login_base . '/public/login.php') ?>" id="loginForm" novalidate>
+                <form method="POST" action="<?= htmlspecialchars($_login_base . '/public/login.php') ?>" id="loginForm" novalidate autocomplete="off">
+                    <input type="hidden" name="csrf_token" id="csrfToken" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
+                    <!-- Honeypot: hidden from real users, bots fill this automatically -->
+                    <div style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;" aria-hidden="true" tabindex="-1">
+                        <label for="_email_confirm">Email Confirm</label>
+                        <input type="text" name="_email_confirm" id="_email_confirm" value="" tabindex="-1" autocomplete="off">
+                    </div>
 
                     <!-- Account ID -->
                     <div class="form-group">
@@ -1698,10 +1852,11 @@ $_asset_base = $_login_base . '/assets';
                                 name="captcha"
                                 id="captchaInput"
                                 class="captcha-input"
-                                placeholder=""
                                 required
+                                maxlength="4"
                                 autocomplete="off"
                                 aria-label="Captcha Answer"
+                                oninput="this.value = this.value.replace(/[^0-9]/g, '')"
                             >
                             <button type="button" class="captcha-refresh" id="refreshCaptcha" title="Get new math question" aria-label="Refresh Captcha">
                                 <i class="fas fa-sync-alt"></i>
@@ -1728,6 +1883,93 @@ $_asset_base = $_login_base . '/assets';
             </div><!-- /.login-card -->
         </div><!-- /.login-wrap -->
     </section>
+
+    <!-- ── TEMPORARY LOCKOUT MODAL ── -->
+    <div id="lockoutModal" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.60);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+        <div style="background:linear-gradient(165deg,rgba(60,0,0,0.97) 0%,rgba(90,10,10,0.98) 100%);border-radius:14px;width:86%;max-width:300px;padding:0;box-shadow:0 6px 28px rgba(0,0,0,0.7),0 0 0 1px rgba(255,80,80,0.28);animation:lockoutPop .3s cubic-bezier(0.34,1.56,0.64,1);">
+            <!-- Header -->
+            <div style="background:linear-gradient(135deg,rgba(170,15,15,0.9),rgba(110,0,0,0.95));padding:10px 16px;border-radius:14px 14px 0 0;border-bottom:1px solid rgba(255,80,80,0.18);display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-shield-alt" style="font-size:13px;color:#ff8080;"></i>
+                <span style="font-size:12px;font-weight:700;color:#fff;letter-spacing:.4px;text-transform:uppercase;">Account Temporarily Locked</span>
+            </div>
+            <!-- Body -->
+            <div style="padding:16px 18px 12px;text-align:center;">
+                <div style="width:44px;height:44px;margin:0 auto 8px;background:rgba(220,40,40,0.15);border-radius:50%;border:1.5px solid rgba(255,80,80,0.28);display:flex;align-items:center;justify-content:center;">
+                    <i class="fas fa-lock" style="font-size:17px;color:#ff6b6b;"></i>
+                </div>
+                <p style="color:rgba(255,255,255,0.85);font-size:12px;line-height:1.5;margin:0 0 10px;">
+                    Too many failed attempts.<br>Temporarily locked for security.
+                </p>
+                <!-- Countdown -->
+                <div style="background:rgba(0,0,0,0.32);border-radius:9px;padding:8px 12px;border:1px solid rgba(255,80,80,0.16);margin-bottom:10px;">
+                    <div style="font-size:10px;color:rgba(255,180,180,0.7);text-transform:uppercase;letter-spacing:.7px;margin-bottom:3px;">Please wait</div>
+                    <div id="lockoutCountdown" style="font-size:30px;font-weight:800;color:#ff6b6b;line-height:1;text-shadow:0 0 10px rgba(255,80,80,0.4);">5</div>
+                    <div style="font-size:10px;color:rgba(255,200,200,0.55);margin-top:2px;">seconds remaining</div>
+                </div>
+                <p style="margin:0;font-size:11px;color:rgba(255,200,200,0.6);line-height:1.45;">
+                    <i class="fas fa-info-circle" style="margin-right:4px;opacity:.6;"></i>You may try again once the timer expires.
+                </p>
+            </div>
+            <!-- Footer -->
+            <div style="padding:8px 18px 14px;display:flex;justify-content:center;">
+                <button id="lockoutOkBtn" disabled style="background:linear-gradient(135deg,#b91c1c,#dc2626);color:#fff;border:none;border-radius:8px;padding:7px 24px;font-size:12.5px;font-weight:600;cursor:not-allowed;opacity:.4;transition:all .3s;font-family:inherit;letter-spacing:.2px;">
+                    <i class="fas fa-unlock" style="margin-right:5px;font-size:10px;"></i>Try Again
+                </button>
+            </div>
+        </div>
+    </div>
+    <style>
+        @keyframes lockoutPop {
+            from { transform: scale(0.88) translateY(20px); opacity: 0; }
+            to   { transform: scale(1) translateY(0);       opacity: 1; }
+        }
+    </style>
+    <?php if ($is_locked_out): ?>
+    <script>
+    (function() {
+        var remaining = <?= (int)$lockout_remaining_sec ?>;
+        var modal = document.getElementById('lockoutModal');
+        var countEl = document.getElementById('lockoutCountdown');
+        var okBtn = document.getElementById('lockoutOkBtn');
+
+        // Clear all form fields when locked out
+        var accountInput = document.getElementById('accountId');
+        var passwordInput = document.getElementById('passwordField');
+        var captchaInput = document.getElementById('captchaInput');
+        if (accountInput) accountInput.value = '';
+        if (passwordInput) passwordInput.value = '';
+        if (captchaInput) captchaInput.value = '';
+
+        // Show modal immediately
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+
+        function tick() {
+            countEl.textContent = remaining;
+            if (remaining <= 0) {
+                clearInterval(timer);
+                okBtn.disabled = false;
+                okBtn.style.cursor = 'pointer';
+                okBtn.style.opacity = '1';
+                countEl.textContent = '0';
+                countEl.style.color = '#4ade80';
+            } else {
+                remaining--;
+            }
+        }
+
+        tick();
+        var timer = setInterval(tick, 1000);
+
+        okBtn.addEventListener('click', function() {
+            if (!okBtn.disabled) {
+                modal.style.display = 'none';
+                document.body.style.overflow = '';
+            }
+        });
+    }());
+    </script>
+    <?php endif; ?>
 
     <!-- ── SECTION 2: ABOUT US ── -->
     <section id="about-us" class="page-section section-about">
@@ -1818,24 +2060,42 @@ $_asset_base = $_login_base . '/assets';
     var captchaQuestion = document.getElementById('captchaQuestion');
     var captchaInput = document.getElementById('captchaInput');
     
+    /* Calculate expected CAPTCHA answer from question text */
+    function getExpectedAnswer() {
+        if (!captchaQuestion) return null;
+        var text = (captchaQuestion.textContent || '').trim();
+        var matchAdd = text.match(/^(\d+)\s*\+\s*(\d+)$/);
+        var matchSub = text.match(/^(\d+)\s*[-–—]\s*(\d+)$/);
+        var matchMul = text.match(/^(\d+)\s*[×x*]\s*(\d+)$/);
+
+        if (matchAdd) {
+            return parseInt(matchAdd[1], 10) + parseInt(matchAdd[2], 10);
+        } else if (matchSub) {
+            return parseInt(matchSub[1], 10) - parseInt(matchSub[2], 10);
+        } else if (matchMul) {
+            return parseInt(matchMul[1], 10) * parseInt(matchMul[2], 10);
+        }
+        return null;
+    }
+
     /* Real-time captcha validation */
     function validateCaptcha() {
+        if (!captchaInput) return;
+        // Strictly sanitize value to digits only
+        var cleanVal = captchaInput.value.replace(/[^0-9]/g, '');
+        if (captchaInput.value !== cleanVal) {
+            captchaInput.value = cleanVal;
+        }
+
         var answer = captchaInput.value.trim();
         if (!answer) {
             captchaInput.classList.remove('captcha-error', 'captcha-success');
             return;
         }
         
-        // Get the question text and calculate expected answer
-        var questionText = captchaQuestion.textContent.trim();
-        var match = questionText.match(/(\d+)\s*\+\s*(\d+)/);
-        
-        if (match) {
-            var num1 = parseInt(match[1], 10);
-            var num2 = parseInt(match[2], 10);
-            var correctAnswer = num1 + num2;
+        var correctAnswer = getExpectedAnswer();
+        if (correctAnswer !== null) {
             var userAnswer = parseInt(answer, 10);
-            
             if (userAnswer === correctAnswer) {
                 captchaInput.classList.remove('captcha-error');
                 captchaInput.classList.add('captcha-success');
@@ -1848,9 +2108,43 @@ $_asset_base = $_login_base . '/assets';
     
     // Validate on input
     captchaInput.addEventListener('input', validateCaptcha);
-    
-    // Validate on blur
     captchaInput.addEventListener('blur', validateCaptcha);
+
+    // Block non-numeric keystrokes strictly (disallows letters, symbols, spaces, negatives, punctuation)
+    captchaInput.addEventListener('keydown', function (e) {
+        var allowedControlKeys = [
+            'Backspace', 'Delete', 'Tab', 'Escape', 'Enter',
+            'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+            'Home', 'End'
+        ];
+        if (allowedControlKeys.indexOf(e.key) !== -1 || e.ctrlKey || e.metaKey || e.altKey) {
+            return;
+        }
+        // If not a digit 0-9, prevent typing
+        if (!/^[0-9]$/.test(e.key)) {
+            e.preventDefault();
+        }
+    });
+
+    // Paste event: only accept numbers
+    captchaInput.addEventListener('paste', function (e) {
+        e.preventDefault();
+        var pasteData = (e.clipboardData || window.clipboardData).getData('text');
+        var numericOnly = (pasteData || '').replace(/[^0-9]/g, '');
+        if (numericOnly) {
+            var start = this.selectionStart || 0;
+            var end = this.selectionEnd || 0;
+            var currentVal = this.value;
+            var finalVal = (currentVal.substring(0, start) + numericOnly + currentVal.substring(end)).slice(0, 4);
+            this.value = finalVal;
+            validateCaptcha();
+        }
+    });
+
+    // Drop event: prevent non-numeric drop
+    captchaInput.addEventListener('drop', function (e) {
+        e.preventDefault();
+    });
 
     /* Live type detection */
     function detectType(val) {
@@ -1928,11 +2222,19 @@ $_asset_base = $_login_base . '/assets';
             }, 600);
         };
         
-        xhr.send('refresh=1');
+        var csrfVal = document.getElementById('csrfToken') ? document.getElementById('csrfToken').value : '';
+        xhr.send('refresh=1&csrf_token=' + encodeURIComponent(csrfVal));
     });
 
     /* Form submit */
     form.addEventListener('submit', function (e) {
+        var cVal = (captchaInput.value || '').trim();
+        if (!cVal || !/^\d+$/.test(cVal)) {
+            e.preventDefault();
+            captchaInput.classList.add('captcha-error');
+            captchaInput.focus();
+            return false;
+        }
         submitBtn.disabled = true;
         spinner.style.display = 'block';
         btnText.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;font-size:13px;"></i>Signing in\u2026';
