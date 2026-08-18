@@ -440,6 +440,12 @@ include __DIR__ . '/../partials/header.php';
         </form>
     </div>
 
+    <?php 
+    $enable_kpi_cards     = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_kpi_cards', true) : true;
+    $enable_quick_actions = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_quick_actions', true) : true;
+    ?>
+
+    <?php if ($enable_kpi_cards): ?>
     <!-- ── Summary Cards (6 cards, 3×2) ────────────────────────────── -->
     <div class="dev-cards-grid">
 
@@ -533,6 +539,7 @@ include __DIR__ . '/../partials/header.php';
         </div>
 
     </div>
+    <?php endif; ?>
 
     <!-- ── Row 1: System Health + Resource Usage ──────────────────── -->
     <div class="dev-row dev-row-2">
@@ -734,6 +741,7 @@ include __DIR__ . '/../partials/header.php';
             </table>
         </div>
 
+        <?php if ($enable_quick_actions): ?>
         <!-- Quick Actions -->
         <div class="dev-panel">
             <div class="dev-panel-header">
@@ -766,6 +774,7 @@ include __DIR__ . '/../partials/header.php';
                 </a>
             </div>
         </div>
+        <?php endif; ?>
 
     </div>
 

@@ -1789,6 +1789,14 @@ include __DIR__ . '/../partials/header.php';
         </form>
     </div>
 
+    <?php 
+    $enable_kpi_cards        = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_kpi_cards', true) : true;
+    $enable_charts           = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_charts', true) : true;
+    $enable_quick_actions    = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_quick_actions', true) : true;
+    $enable_calendar_widget  = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_calendar_widget', true) : true;
+    ?>
+
+    <?php if ($enable_kpi_cards): ?>
     <div class="mgr-summary-grid">
         <div class="mgr-card" data-tone="blue">
             <div>
@@ -1866,7 +1874,9 @@ include __DIR__ . '/../partials/header.php';
             <div class="mgr-icon"><i class="fas fa-users"></i></div>
         </div>
     </div>
+    <?php endif; ?>
 
+    <?php if ($enable_charts): ?>
     <div class="mgr-charts-grid">
         <div class="mgr-panel">
             <div class="mgr-panel-header">
@@ -1946,6 +1956,7 @@ include __DIR__ . '/../partials/header.php';
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
     <div class="mgr-panel">
         <div class="mgr-panel-header">
@@ -2245,7 +2256,9 @@ include __DIR__ . '/../partials/header.php';
         </div>
     </div>
 
-    <div class="mgr-split">
+    <?php if ($enable_quick_actions || $enable_calendar_widget): ?>
+    <div class="mgr-split" style="<?= (!$enable_quick_actions || !$enable_calendar_widget) ? 'grid-template-columns: 1fr;' : '' ?>">
+        <?php if ($enable_quick_actions): ?>
         <div class="mgr-panel">
             <div class="mgr-panel-header">
                 <div>
@@ -2268,7 +2281,9 @@ include __DIR__ . '/../partials/header.php';
                 <?php endforeach; ?>
             </div>
         </div>
+        <?php endif; ?>
 
+        <?php if ($enable_calendar_widget): ?>
         <div class="mgr-panel">
             <div class="mgr-panel-header">
                 <div>
@@ -2298,7 +2313,9 @@ include __DIR__ . '/../partials/header.php';
                 <div class="mgr-empty"><i class="fas fa-calendar-check"></i>No upcoming calendar entries.</div>
             <?php endif; ?>
         </div>
+        <?php endif; ?>
     </div>
+    <?php endif; ?>
 </section>
 
 <script>

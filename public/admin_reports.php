@@ -1108,19 +1108,30 @@ require_once __DIR__ . '/../partials/header.php';
             </div>
 
             <!-- Export Buttons -->
+            <?php 
+            $enable_pdf_export   = function_exists('get_module_setting') ? (bool) get_module_setting('reports', 'enable_pdf_export', true) : true;
+            $enable_excel_export = function_exists('get_module_setting') ? (bool) get_module_setting('reports', 'enable_excel_export', true) : true;
+            $enable_csv_export   = function_exists('get_module_setting') ? (bool) get_module_setting('reports', 'enable_csv_export', true) : true;
+            ?>
             <div class="rpt-export-group">
                 <button type="button" class="rpt-export-btn rpt-btn-print" onclick="printReport()">
                     <i class="fas fa-print"></i> Print
                 </button>
+                <?php if ($enable_pdf_export): ?>
                 <button type="button" class="rpt-export-btn rpt-btn-pdf" onclick="exportReport('pdf')">
                     <i class="fas fa-file-pdf"></i> PDF
                 </button>
+                <?php endif; ?>
+                <?php if ($enable_excel_export): ?>
                 <button type="button" class="rpt-export-btn rpt-btn-excel" onclick="exportReport('excel')">
                     <i class="fas fa-file-excel"></i> Excel
                 </button>
+                <?php endif; ?>
+                <?php if ($enable_csv_export): ?>
                 <button type="button" class="rpt-export-btn rpt-btn-csv" onclick="exportReport('csv')">
                     <i class="fas fa-file-csv"></i> CSV
                 </button>
+                <?php endif; ?>
             </div>
         </form>
 

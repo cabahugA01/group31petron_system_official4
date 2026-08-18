@@ -1872,6 +1872,13 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
+<?php 
+$enable_kpi_cards     = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_kpi_cards', true) : true;
+$enable_charts        = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_charts', true) : true;
+$enable_quick_actions = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_quick_actions', true) : true;
+?>
+
+<?php if ($enable_kpi_cards): ?>
 <!-- Staff Dashboard Metrics Grid -->
 <div class="summary-cards-grid">
     <!-- 1. Today's Transactions -->
@@ -2108,6 +2115,7 @@ include __DIR__ . '/../partials/header.php';
         <?php endif; ?>
     </div>
 </div>
+<?php endif; ?>
 
 <!-- Operational Tables Tabbed Container -->
 <div class="tables-panel-card">
@@ -2315,6 +2323,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 </div>
 
+<?php if ($enable_quick_actions): ?>
 <!-- Quick Actions -->
 <div class="quick-actions-panel">
     <h3 class="quick-actions-title"><i class="fas fa-bolt"></i> Quick Actions</h3>
@@ -2341,6 +2350,7 @@ include __DIR__ . '/../partials/header.php';
         </a>
     </div>
 </div>
+<?php endif; ?>
 
 </section>
 

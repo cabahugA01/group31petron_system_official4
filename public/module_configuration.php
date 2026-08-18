@@ -92,7 +92,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($stationId === 'all' || !$stationId) {
                         foreach ($configArray as $cKey => $cVal) {
                             $strVal = is_bool($cVal) ? ($cVal ? '1' : '0') : (string)$cVal;
-                            ModuleConfig::updateModuleSetting($moduleKey, $cKey, $strVal, $me['id'], $my_role);
+                            $cType  = is_bool($cVal) ? 'boolean' : (is_numeric($cVal) ? 'integer' : 'string');
+                            try {
+                                $insStmt = $pdo->prepare("
+                                    INSERT INTO module_config (module_key, config_key, config_value, config_type, config_category, description)
+                                    VALUES (?, ?, ?, ?, 'General', ?)
+                                    ON DUPLICATE KEY UPDATE
+                                        config_value = VALUES(config_value),
+                                        updated_at   = NOW()
+                                ");
+                                $insStmt->execute([
+                                    $moduleKey,
+                                    $cKey,
+                                    $strVal,
+                                    $cType,
+                                    ucwords(str_replace('_', ' ', $cKey))
+                                ]);
+                            } catch (Exception $e) {
+                                ModuleConfig::updateModuleSetting($moduleKey, $cKey, $strVal, $me['id'], $my_role);
+                            }
                         }
                     }
                     
@@ -1738,36 +1756,63 @@ let defaultConfigValues = {};
 
 function populateModalInputs(moduleKey, stationId) {
     const modal = document.getElementById('moduleConfigModal');
+    if (!modal) return;
     const sId = (stationId && stationId !== 'all') ? String(stationId) : 'all';
     
-    // Retrieve configs
+    // Retrieve configs from stationConfigs or activeConfigs
     let configSource = {};
     if (stationConfigs[moduleKey] && stationConfigs[moduleKey][sId]) {
         configSource = stationConfigs[moduleKey][sId];
-    } else if (sId === 'all' && activeConfigs[moduleKey]) {
+    } else if (stationConfigs[moduleKey] && stationConfigs[moduleKey]['all']) {
+        configSource = stationConfigs[moduleKey]['all'];
+    } else if (activeConfigs[moduleKey]) {
         configSource = activeConfigs[moduleKey];
     }
     
-    console.log('Populating inputs for module:', moduleKey, 'station:', sId, 'values:', configSource);
+    // Aliases map for flexible key lookups
+    const aliases = {
+        'enable_pdf': 'enable_pdf_export',
+        'enable_pdf_export': 'enable_pdf',
+        'enable_excel': 'enable_excel_export',
+        'enable_excel_export': 'enable_excel',
+        'enable_csv': 'enable_csv_export',
+        'enable_csv_export': 'enable_csv',
+        'paper_size': 'default_paper_size',
+        'default_paper_size': 'paper_size',
+        'enable_low_stock_alerts': 'enable_low_stock_alert',
+        'enable_low_stock_alert': 'enable_low_stock_alerts',
+        'enable_expiration': 'enable_expiration_monitoring',
+        'enable_expiration_monitoring': 'enable_expiration'
+    };
     
     modal.querySelectorAll('input[name], select[name], textarea[name]').forEach(input => {
         if (input.id === 'modalStationSelect' || input.name === 'modalStationSelect') return;
         const key = input.name;
+        const altKey = aliases[key] || '';
         
         // Default value from data-default attribute
         let val = input.dataset.default;
         
-        // If configSource has the key, use it
-        if (configSource.hasOwnProperty(key)) {
+        // If configSource has the key or alias, use it
+        if (configSource && configSource.hasOwnProperty(key)) {
             val = configSource[key];
-        } else if (sId !== 'all' && activeConfigs[moduleKey] && activeConfigs[moduleKey].hasOwnProperty(key)) {
-            // fallback to global activeConfigs if station override is missing
-            val = activeConfigs[moduleKey][key];
+        } else if (altKey && configSource && configSource.hasOwnProperty(altKey)) {
+            val = configSource[altKey];
+        } else if (activeConfigs[moduleKey]) {
+            if (activeConfigs[moduleKey].hasOwnProperty(key)) {
+                val = activeConfigs[moduleKey][key];
+            } else if (altKey && activeConfigs[moduleKey].hasOwnProperty(altKey)) {
+                val = activeConfigs[moduleKey][altKey];
+            }
         }
         
         if (input.type === 'checkbox') {
             const boolVal = (val === true || val === 'true' || val === 1 || val === '1');
             input.checked = boolVal;
+        } else if (input.type === 'radio') {
+            if (input.value === String(val)) {
+                input.checked = true;
+            }
         } else if (input.tagName === 'SELECT') {
             input.value = val;
             const options = input.querySelectorAll('option');
@@ -1777,7 +1822,9 @@ function populateModalInputs(moduleKey, stationId) {
                 }
             });
         } else {
-            input.value = val;
+            if (val !== undefined && val !== null) {
+                input.value = val;
+            }
         }
     });
 }
@@ -2093,6 +2140,7 @@ function showModuleSettings(moduleKey) {
     document.getElementById('configModuleTitle').textContent = moduleName + ' Configuration';
     
     storeDefaultValues();
+    populateModalInputs(moduleKey, currentConfigStation);
     
     document.getElementById('moduleConfigModal').style.display = 'flex';
     document.body.style.overflow = 'hidden';

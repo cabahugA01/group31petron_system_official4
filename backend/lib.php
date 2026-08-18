@@ -450,22 +450,98 @@ function hasModuleAccess(int $user_id, string $module_key): bool {
 
 /**
  * Get a specific module config value.
+ * Supports station overrides (module_station_config), global settings (station_id = 'all'),
+ * and module_config table with type conversion.
  */
-function get_module_setting(string $module_key, string $config_key, $default = null) {
+function get_module_setting(string $module_key, string $config_key, $default = null, $station_id = null) {
     global $pdo;
     if (!isset($pdo)) return $default;
+
+    // Resolve station_id if not explicitly provided
+    if ($station_id === null && function_exists('current_user')) {
+        $u = current_user();
+        if (!empty($u['station_id'])) {
+            $station_id = (string)$u['station_id'];
+        }
+    }
+
+    // Alias helper for component setting names
+    $aliases = [
+        'enable_pdf' => 'enable_pdf_export',
+        'enable_excel' => 'enable_excel_export',
+        'enable_csv' => 'enable_csv_export',
+        'paper_size' => 'default_paper_size',
+        'enable_low_stock_alerts' => 'enable_low_stock_alert',
+        'enable_expiration' => 'enable_expiration_monitoring',
+    ];
+    $alt_key = $aliases[$config_key] ?? null;
+
     try {
-        $stmt = $pdo->prepare("SELECT config_value, config_type FROM module_config WHERE module_key=? AND config_key=? LIMIT 1");
-        $stmt->execute([$module_key, $config_key]);
+        // 1. Check station-specific override in module_station_config
+        if ($station_id && $station_id !== 'all') {
+            $stStmt = $pdo->prepare("SELECT config_data FROM module_station_config WHERE module_key = ? AND station_id = ? LIMIT 1");
+            $stStmt->execute([$module_key, (string)$station_id]);
+            $sData = $stStmt->fetchColumn();
+            if ($sData) {
+                $decoded = json_decode($sData, true);
+                if (is_array($decoded)) {
+                    if (array_key_exists($config_key, $decoded)) {
+                        $v = $decoded[$config_key];
+                        if ($v === 'true' || $v === true || $v === '1' || $v === 1) return true;
+                        if ($v === 'false' || $v === false || $v === '0' || $v === 0) return false;
+                        return $v;
+                    }
+                    if ($alt_key && array_key_exists($alt_key, $decoded)) {
+                        $v = $decoded[$alt_key];
+                        if ($v === 'true' || $v === true || $v === '1' || $v === 1) return true;
+                        if ($v === 'false' || $v === false || $v === '0' || $v === 0) return false;
+                        return $v;
+                    }
+                }
+            }
+        }
+
+        // 2. Check global station config (station_id = 'all')
+        $allStmt = $pdo->prepare("SELECT config_data FROM module_station_config WHERE module_key = ? AND station_id = 'all' LIMIT 1");
+        $allStmt->execute([$module_key]);
+        $allData = $allStmt->fetchColumn();
+        if ($allData) {
+            $decoded = json_decode($allData, true);
+            if (is_array($decoded)) {
+                if (array_key_exists($config_key, $decoded)) {
+                    $v = $decoded[$config_key];
+                    if ($v === 'true' || $v === true || $v === '1' || $v === 1) return true;
+                    if ($v === 'false' || $v === false || $v === '0' || $v === 0) return false;
+                    return $v;
+                }
+                if ($alt_key && array_key_exists($alt_key, $decoded)) {
+                    $v = $decoded[$alt_key];
+                    if ($v === 'true' || $v === true || $v === '1' || $v === 1) return true;
+                    if ($v === 'false' || $v === false || $v === '0' || $v === 0) return false;
+                    return $v;
+                }
+            }
+        }
+
+        // 3. Fallback to module_config table
+        $stmt = $pdo->prepare("SELECT config_value, config_type FROM module_config WHERE module_key=? AND (config_key=? OR config_key=?) LIMIT 1");
+        $stmt->execute([$module_key, $config_key, $alt_key ?: $config_key]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$row) return $default;
-        switch ($row['config_type']) {
-            case 'boolean': return (bool)(int)$row['config_value'];
-            case 'integer': return (int)$row['config_value'];
-            case 'decimal': return (float)$row['config_value'];
-            default:        return $row['config_value'];
+        if ($row) {
+            switch ($row['config_type']) {
+                case 'boolean': return (bool)(int)$row['config_value'];
+                case 'integer': return (int)$row['config_value'];
+                case 'decimal': return (float)$row['config_value'];
+                default:
+                    $val = $row['config_value'];
+                    if ($val === 'true' || $val === '1') return true;
+                    if ($val === 'false' || $val === '0') return false;
+                    return $val;
+            }
         }
     } catch (Exception $e) { return $default; }
+
+    return $default;
 }
 
 /**

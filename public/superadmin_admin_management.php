@@ -79,6 +79,7 @@ header("Pragma: no-cache");
 header("Expires: 0");
 
 include __DIR__ . '/../partials/header.php';
+require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <style>
@@ -321,7 +322,7 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
 
 <!-- Toolbar -->
 <div class="am-toolbar">
-    <input type="text" id="searchInput" placeholder="Search by first name, last name, email or station—¦" oninput="filterTable()">
+    <input type="text" id="adminSearchInput" placeholder="Search by first name, last name, email or station..." oninput="filterTable()">
     <select id="filterStatus" onchange="filterTable()">
         <option value="">All Status</option>
         <option value="active">Active</option>
@@ -697,14 +698,22 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
               onblur="this.style.borderColor='#ddd'">
               <option value="">— Select Region —</option>
               <option value="NCR">NCR (National Capital Region)</option>
-              <option value="NORTH LUZON">North Luzon</option>
-              <option value="SOUTH LUZON">South Luzon</option>
-              <option value="VISAYAS">Visayas</option>
-              <option value="MINDANAO">Mindanao</option>
               <option value="CAR">CAR (Cordillera Administrative Region)</option>
-              <option value="BARMM">BARMM</option>
-              <option value="CARAGA">CARAGA</option>
-              <option value="MIMAROPA">MIMAROPA</option>
+              <option value="Region I">Region I (Ilocos Region)</option>
+              <option value="Region II">Region II (Cagayan Valley)</option>
+              <option value="Region III">Region III (Central Luzon)</option>
+              <option value="Region IV-A">Region IV-A (CALABARZON)</option>
+              <option value="Region IV-B">Region IV-B (MIMAROPA)</option>
+              <option value="Region V">Region V (Bicol Region)</option>
+              <option value="Region VI">Region VI (Western Visayas)</option>
+              <option value="Region VII">Region VII (Central Visayas)</option>
+              <option value="Region VIII">Region VIII (Eastern Visayas)</option>
+              <option value="Region IX">Region IX (Zamboanga Peninsula)</option>
+              <option value="Region X">Region X (Northern Mindanao)</option>
+              <option value="Region XI">Region XI (Davao Region)</option>
+              <option value="Region XII">Region XII (SOCCSKSARGEN)</option>
+              <option value="Region XIII">Region XIII (Caraga)</option>
+              <option value="BARMM">BARMM (Bangsamoro Autonomous Region)</option>
             </select>
           </div>
           <div class="am-form-group">
@@ -981,27 +990,63 @@ document.addEventListener('DOMContentLoaded', () => {
     initCombo('e_station_combo', 'e_station_search', 'e_station_list', 'e_station_display', 'e_station_id', 'e_station_clear');
     // Toolbar station filter using the new virtual/searchable combobox
     initVirtualStationFilter();
+
+    // Listen to adminSearchInput
+    const searchEl = document.getElementById('adminSearchInput');
+    if (searchEl) {
+        searchEl.addEventListener('input', filterTable);
+    }
+
+    // Connect top header search if user types into it
+    const headerSearch = document.getElementById('searchInput');
+    if (headerSearch && headerSearch !== searchEl) {
+        headerSearch.addEventListener('input', () => {
+            if (searchEl) searchEl.value = headerSearch.value;
+            filterTable();
+        });
+    }
+
     filterTable();
 });
 
-// â”€â”€ Table filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Table filter ─────────────────────────────────────────────────────────────
 function filterTable() {
-    const q       = document.getElementById('searchInput').value.toLowerCase().trim();
-    const status  = document.getElementById('filterStatus').value.toLowerCase();
-    const region  = document.getElementById('filterRegion').value.toLowerCase();
-    const station = (document.getElementById('tb_station_val').value || '').toLowerCase();
+    const searchEl = document.getElementById('adminSearchInput') || document.querySelector('.am-toolbar input[type="text"]');
+    const q       = searchEl ? searchEl.value.toLowerCase().trim() : '';
+    const status  = (document.getElementById('filterStatus') ? document.getElementById('filterStatus').value : '').toLowerCase();
+    const region  = (document.getElementById('filterRegion') ? document.getElementById('filterRegion').value : '').toLowerCase();
+    const station = (document.getElementById('tb_station_val') ? document.getElementById('tb_station_val').value : '').toLowerCase();
     const rows    = document.querySelectorAll('#adminTableBody tr[data-firstname]');
+    const tbody   = document.getElementById('adminTableBody');
     let visible   = 0;
+
+    // Split search query into individual search tokens for flexible multi-word matching
+    const tokens = q ? q.split(/\s+/).filter(t => t.length > 0) : [];
 
     rows.forEach(row => {
         const firstName = row.dataset.firstname || '';
         const lastName  = row.dataset.lastname  || '';
+        const fullName  = (firstName + ' ' + lastName).trim();
         const email     = row.dataset.email     || '';
         const st        = (row.dataset.station || '').toLowerCase();
         const rowStat   = row.dataset.status    || '';
         const reg       = (row.dataset.region   || '').toLowerCase();
+        const fullRowText = (row.textContent || '').toLowerCase();
 
-        const matchQ  = !q || firstName.includes(q) || lastName.includes(q) || email.includes(q) || st.includes(q);
+        // Match all tokens across name, email, station, region, or row text
+        let matchQ = true;
+        if (tokens.length > 0) {
+            matchQ = tokens.every(tok => 
+                firstName.includes(tok) || 
+                lastName.includes(tok) || 
+                fullName.includes(tok) || 
+                email.includes(tok) || 
+                st.includes(tok) || 
+                reg.includes(tok) || 
+                fullRowText.includes(tok)
+            );
+        }
+
         const matchSt = !status || (status === 'inactive' && (rowStat === 'disabled' || rowStat === 'inactive')) || (status === 'active' && rowStat === 'active');
         const matchStn= !station || st.includes(station);
         const matchReg= !region || reg === region;
@@ -1011,10 +1056,32 @@ function filterTable() {
         if (show) visible++;
     });
 
+    // Handle empty state row
+    let noMatchRow = document.getElementById('amNoMatchRow');
+    if (visible === 0 && rows.length > 0) {
+        if (!noMatchRow) {
+            noMatchRow = document.createElement('tr');
+            noMatchRow.id = 'amNoMatchRow';
+            noMatchRow.innerHTML = `<td colspan="8" style="text-align:center;padding:36px 20px;color:#888;">
+                <i class="fas fa-search" style="font-size:28px;color:#ccc;margin-bottom:10px;display:block;"></i>
+                <strong style="color:#555;font-size:14px;">No admin accounts matching your filter</strong>
+                <div style="font-size:12px;margin-top:4px;">Try checking for spelling errors or clearing some filters.</div>
+            </td>`;
+            if (tbody) tbody.appendChild(noMatchRow);
+        } else {
+            noMatchRow.style.display = '';
+        }
+    } else if (noMatchRow) {
+        noMatchRow.style.display = 'none';
+    }
+
     const total = rows.length;
-    document.getElementById('rowCount').textContent = visible === total
-        ? `Showing all ${total} admin${total !== 1 ? 's' : ''}`
-        : `Showing ${visible} of ${total}`;
+    const rowCountEl = document.getElementById('rowCount');
+    if (rowCountEl) {
+        rowCountEl.textContent = visible === total
+            ? `Showing all ${total} admin${total !== 1 ? 's' : ''}`
+            : `Showing ${visible} of ${total} admin${total !== 1 ? 's' : ''}`;
+    }
 }
 
 // â”€â”€ Modal helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1078,8 +1145,9 @@ async function submitCreate(e) {
         const data = await res.json();
         if (data.ok) {
             closeModal('createModal');
-            showPageFlash('success', data.message || 'Admin account created successfully.');
-            setTimeout(() => location.reload(), 1200);
+            const msg = data.message || 'Admin account created successfully.';
+            showPageFlash('success', msg, true);
+            setTimeout(() => location.reload(), 600);
         } else {
             alert.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + (data.error || 'Failed to create admin.');
             alert.style.display = 'flex';
@@ -1093,7 +1161,7 @@ async function submitCreate(e) {
     btn.innerHTML = '<i class="fas fa-user-plus"></i> Create Admin';
 }
 
-// â”€â”€ Edit modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Edit modal ─────────────────────────────────────────────────────────────
 function openEditModal(adm) {
     document.getElementById('editAlert').style.display = 'none';
     
@@ -1158,7 +1226,7 @@ async function submitEdit(e) {
     }
 
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving—¦';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
 
     const fd = new FormData(document.getElementById('editForm'));
     fd.set('first_name', firstName);
@@ -1171,8 +1239,9 @@ async function submitEdit(e) {
         const data = await res.json();
         if (data.ok) {
             closeModal('editModal');
-            showPageFlash('success', data.message || 'Admin account updated.');
-            setTimeout(() => location.reload(), 1200);
+            const msg = data.message || 'Admin account updated successfully.';
+            showPageFlash('success', msg, true);
+            setTimeout(() => location.reload(), 600);
         } else {
             alert.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + (data.error || 'Failed to update admin.');
             alert.style.display = 'flex';
@@ -1186,7 +1255,7 @@ async function submitEdit(e) {
     btn.innerHTML = '<i class="fas fa-save"></i> Save Changes';
 }
 
-// â”€â”€ Confirm status change â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Confirm status change ───────────────────────────────────────────────────
 let _pendingId = null, _pendingAction = null;
 
 function confirmDeactivate(id, name) {
@@ -1233,8 +1302,9 @@ async function executeStatusChange() {
         const data = await res.json();
         closeModal('confirmModal');
         if (data.ok) {
-            showPageFlash('success', data.message || 'Status updated.');
-            setTimeout(() => location.reload(), 1200);
+            const msg = data.message || 'Status updated successfully.';
+            showPageFlash('success', msg, true);
+            setTimeout(() => location.reload(), 600);
         } else {
             showPageFlash('error', data.error || 'Action failed.');
         }
@@ -1244,23 +1314,67 @@ async function executeStatusChange() {
     }
 }
 
-// â”€â”€ Page flash â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function showPageFlash(type, msg) {
-    let el = document.getElementById('pageFlash');
-    if (!el) {
-        el = document.createElement('div');
-        el.id = 'pageFlash';
-        el.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;max-width:600px;';
-        document.body.appendChild(el);
+// ── Page Right-Side Toast / Flash Notification ──────────────────────────────
+function showPageFlash(type, msg, persist = false) {
+    if (persist) {
+        try {
+            sessionStorage.setItem('admin_mgmt_flash', JSON.stringify({ type: type, msg: msg }));
+        } catch(e) {}
     }
-    el.className = 'am-flash ' + type;
-    el.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i> ${msg}`;
-    el.style.display = 'flex';
-    clearTimeout(el._t);
-    el._t = setTimeout(() => { el.style.display = 'none'; }, 4000);
+    
+    // Prefer shared top-right toast system
+    if (typeof window.showToast === 'function') {
+        window.showToast(msg, type, 5000, type === 'success' ? 'Success' : 'Notice');
+    } else if (typeof window.showPetronFlash === 'function') {
+        window.showPetronFlash(msg, type, 5000);
+    } else {
+        // Fallback top-right toast banner
+        let container = document.getElementById('petron-toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'petron-toast-container';
+            container.style.cssText = 'position:fixed;top:84px;right:22px;z-index:2147483000;display:flex;flex-direction:column;gap:10px;width:min(390px,calc(100vw - 32px));pointer-events:none;';
+            document.body.appendChild(container);
+        }
+        container.style.display = 'flex';
+        const toast = document.createElement('div');
+        const isSuccess = type === 'success';
+        toast.className = 'petron-toast toast-' + type;
+        toast.style.cssText = 'position:relative;width:100%;padding:14px 18px;border-radius:10px;border:1px solid ' + (isSuccess ? '#bbf7d0' : '#fecaca') + ';background:' + (isSuccess ? '#ffffff' : '#ffffff') + ';color:#0f172a;font:600 13px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 12px 28px rgba(15,23,42,.14);pointer-events:auto;display:flex;align-items:flex-start;gap:12px;border-left:4px solid ' + (isSuccess ? '#16a34a' : '#dc2626') + ';animation:slideInRight .3s ease;';
+        toast.innerHTML = `
+            <i class="fas fa-${isSuccess ? 'check-circle' : 'exclamation-circle'}" style="color:${isSuccess ? '#16a34a' : '#dc2626'};font-size:18px;margin-top:2px;"></i>
+            <div style="flex:1;">
+                <strong style="display:block;font-size:13px;color:#0f172a;margin-bottom:2px;">${isSuccess ? 'Success' : 'Notice'}</strong>
+                <span style="font-size:12px;color:#475569;font-weight:400;">${msg}</span>
+            </div>
+        `;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(40px)';
+            toast.style.transition = 'all .35s ease';
+            setTimeout(() => toast.remove(), 400);
+        }, 4500);
+    }
 }
 
-// â”€â”€ Add Station Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Automatically check and display persisted flash messages on page load
+document.addEventListener('DOMContentLoaded', () => {
+    const savedFlash = sessionStorage.getItem('admin_mgmt_flash');
+    if (savedFlash) {
+        sessionStorage.removeItem('admin_mgmt_flash');
+        try {
+            const parsed = JSON.parse(savedFlash);
+            if (parsed && parsed.msg) {
+                setTimeout(() => {
+                    showPageFlash(parsed.type || 'success', parsed.msg);
+                }, 100);
+            }
+        } catch(e) {}
+    }
+});
+
+// ── Add Station Modal ──────────────────────────────────────────────────────
 function openAddStationModal() {
     document.getElementById('addStationAlert').style.display = 'none';
     document.getElementById('addStationForm').reset();
@@ -1307,8 +1421,9 @@ async function submitAddStation(e) {
                 STATION_DATA.sort((a, b) => a.name.localeCompare(b.name));
             }
             closeModal('addStationModal');
-            showPageFlash('success', data.message || 'Station created successfully.');
-            setTimeout(() => location.reload(), 1500);
+            const msg = data.message || 'Station created successfully.';
+            showPageFlash('success', msg, true);
+            setTimeout(() => location.reload(), 600);
         } else {
             alertEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + (data.error || 'Failed to create station.');
             alertEl.style.display = 'flex';

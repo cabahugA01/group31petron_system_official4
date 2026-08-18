@@ -3933,8 +3933,15 @@ require_once __DIR__ . '/rbac_menu.php';
                     <i class="far fa-clock"></i> Loading time...
                 </div>
             </div>
-        </div>
-        <div class="header-center" style="display: flex; align-items: center; justify-content: center; flex: 1; margin: 0 20px;">
+        <?php 
+        $show_search_bar = true;
+        $show_notifications_widget = true;
+        if (function_exists('get_module_setting')) {
+            $show_search_bar = (bool) get_module_setting('dashboard', 'enable_search_bar', true);
+            $show_notifications_widget = (bool) (get_module_setting('dashboard', 'enable_notifications_widget', true) && get_module_setting('notifications', 'enable_notifications', true));
+        }
+        ?>
+        <div class="header-center" style="display: flex; align-items: center; justify-content: center; flex: 1; margin: 0 20px; <?php if (!$show_search_bar) echo 'visibility: hidden; pointer-events: none; opacity: 0;'; ?>">
             <div id="searchWrapper" style="position: relative; width: 100%; max-width: 440px; pointer-events: auto;">
                 <div style="position: relative; display: flex; align-items: center;">
                     <i class="fas fa-search" style="position: absolute; left: 14px; color: #94a3b8; font-size: 14px; pointer-events: none;"></i>
@@ -3947,7 +3954,7 @@ require_once __DIR__ . '/rbac_menu.php';
         </div>
         <div class="header-right">
             <!-- Notification Bell -->
-            <?php if(in_array($role, ['staff','admin','manager','superadmin','developer'])): ?>
+            <?php if(in_array($role, ['staff','admin','manager','superadmin','developer']) && $show_notifications_widget): ?>
             <div class="notification-bell" id="notificationBell" onclick="petronToggleNotif(event)" style="z-index: 99999 !important; pointer-events: auto !important; position: relative !important; cursor: pointer !important;">
                 <i class="fas fa-bell" style="pointer-events: none !important;"></i>
                 <span class="badge" id="notificationBadge" data-server-count="<?php echo (int)$header_unread_count; ?>" style="display: <?php echo $header_unread_count > 0 ? 'flex' : 'none'; ?>; pointer-events: none !important;"><?php echo $header_unread_count > 99 ? '99+' : (int)$header_unread_count; ?></span>

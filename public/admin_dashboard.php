@@ -1875,9 +1875,15 @@ include __DIR__ . '/../partials/header.php';
             <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin:0 4px;">To</label>
             <input class="admin-date-input" type="date" name="date_to" value="<?= adm_h($date_to) ?>">
             <button class="admin-btn primary" type="submit"><i class="fas fa-filter"></i>Filter</button>
-        </form>
     </section>
 
+    <?php 
+    $enable_kpi_cards     = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_kpi_cards', true) : true;
+    $enable_charts        = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_charts', true) : true;
+    $enable_quick_actions = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_quick_actions', true) : true;
+    ?>
+
+    <?php if ($enable_kpi_cards): ?>
     <section class="mgr-summary-grid" aria-label="Admin summary cards">
         <div class="mgr-card" data-tone="blue">
             <div>
@@ -1946,7 +1952,9 @@ include __DIR__ . '/../partials/header.php';
             <div class="mgr-icon" style="background: #f1f5f9; color: #64748b;"><i class="fas fa-server"></i></div>
         </div>
     </section>
+    <?php endif; ?>
 
+    <?php if ($enable_charts): ?>
     <section class="chart-grid" aria-label="Admin charts">
         <article class="admin-panel chart-card">
             <div class="chart-head">
@@ -2168,11 +2176,6 @@ include __DIR__ . '/../partials/header.php';
 
         <article class="admin-panel">
             <div class="panel-head">
-                <h3 class="panel-title"><i class="fas fa-truck-ramp-box"></i>Recent Deliveries</h3>
-                <a class="tiny-btn" href="admin_merchandise_deliveries_oversight.php">Delivery Oversight</a>
-            </div>
-            <div class="panel-body">
-                <?php if (!$recent_deliveries): ?>
                     <div class="empty-state">No delivery records yet.</div>
                 <?php else: ?>
                     <div class="data-table-wrap">

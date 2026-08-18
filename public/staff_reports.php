@@ -2488,12 +2488,15 @@ require_once __DIR__ . '/../partials/header.php';
     $_pdf_title = trim(ucwords(str_replace('_', ' ', ($sub_tabs_def[$section][$sub_tab]['label'] ?? ($section . ' ' . $sub_tab)))));
     $_pdf_title_js = htmlspecialchars($_pdf_title, ENT_QUOTES);
     $_pdf_file_js = htmlspecialchars('staff_' . ($sub_tab ?: $section) . '_report_' . date('Ymd', strtotime($date_start)) . '_' . date('Ymd', strtotime($date_end)), ENT_QUOTES);
-    $card_btns = '<div class="card-actions">
-        <a href="'.$_exp_url.'" class="btn-act btn-act-excel" title="Export Excel"><i class="fa-solid fa-file-excel"></i> Excel</a>
-        <a href="'.$_csv_url.'" class="btn-act btn-act-csv"   title="Export CSV"><i class="fa-solid fa-file-csv"></i> CSV</a>
-        <button type="button" onclick="exportPrintableAreaToPDF(\'.stock-page\', \''.$_pdf_title_js.'\', \''.$_pdf_file_js.'\', this)" class="btn-act btn-act-pdf" title="Export PDF"><i class="fa-solid fa-file-pdf"></i> Export PDF</button>
-        <button type="button" onclick="printReportArea()" class="btn-act btn-act-print" title="Print report"><i class="fa-solid fa-print"></i> Print</button>
-    </div>';
+    $_enable_pdf_export   = function_exists('get_module_setting') ? (bool) get_module_setting('reports', 'enable_pdf_export', true) : true;
+    $_enable_excel_export = function_exists('get_module_setting') ? (bool) get_module_setting('reports', 'enable_excel_export', true) : true;
+    $_enable_csv_export   = function_exists('get_module_setting') ? (bool) get_module_setting('reports', 'enable_csv_export', true) : true;
+    $card_btns = '<div class="card-actions">'
+        . ($_enable_excel_export ? '<a href="'.$_exp_url.'" class="btn-act btn-act-excel" title="Export Excel"><i class="fa-solid fa-file-excel"></i> Excel</a>' : '')
+        . ($_enable_csv_export   ? '<a href="'.$_csv_url.'" class="btn-act btn-act-csv"   title="Export CSV"><i class="fa-solid fa-file-csv"></i> CSV</a>' : '')
+        . ($_enable_pdf_export   ? '<button type="button" onclick="exportPrintableAreaToPDF(\'.stock-page\', \''.$_pdf_title_js.'\', \''.$_pdf_file_js.'\', this)" class="btn-act btn-act-pdf" title="Export PDF"><i class="fa-solid fa-file-pdf"></i> Export PDF</button>' : '')
+        . '<button type="button" onclick="printReportArea()" class="btn-act btn-act-print" title="Print report"><i class="fa-solid fa-print"></i> Print</button>'
+        . '</div>';
     ?>
 
     <?php if ($report_error): ?>
