@@ -19,7 +19,9 @@ function write_json($file, $data){
 
 function json_response($data, $code=200){
   http_response_code($code);
-  header('Content-Type: application/json; charset=utf-8');
+  if (!headers_sent()) {
+    header('Content-Type: application/json; charset=utf-8');
+  }
   echo json_encode($data);
   exit;
 }
@@ -42,24 +44,30 @@ function require_login(){
       if ($inactive_time >= $timeout) {
         // Destroy session data
         $_SESSION = [];
-        if (ini_get('session.use_cookies')) {
+        if (ini_get('session.use_cookies') && !headers_sent()) {
           $p = session_get_cookie_params();
           setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], $p['secure'], $p['httponly']);
         }
         session_destroy();
 
         // Prevent browser caching
-        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-        header('Cache-Control: post-check=0, pre-check=0', false);
-        header('Pragma: no-cache');
-        header('Expires: 0');
+        if (!headers_sent()) {
+          header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+          header('Cache-Control: post-check=0, pre-check=0', false);
+          header('Pragma: no-cache');
+          header('Expires: 0');
+        }
 
         // If called from /backend/* API, return JSON 401
         if (strpos($script, '/backend/') !== false) {
           json_response(['ok' => false, 'error' => 'Session expired due to inactivity', 'timeout' => true], 401);
         }
 
-        header('Location: ' . $loginUrl . '?timeout=1');
+        if (!headers_sent()) {
+          header('Location: ' . $loginUrl . '?timeout=1');
+        } else {
+          echo '<script>window.location.href="' . htmlspecialchars($loginUrl . '?timeout=1') . '";</script>';
+        }
         exit;
       }
     }
@@ -74,28 +82,33 @@ function require_login(){
     }
     // Destroy any partial session remnants
     $_SESSION = [];
-    if(ini_get('session.use_cookies')){
+    if(ini_get('session.use_cookies') && !headers_sent()){
       $p = session_get_cookie_params();
       setcookie(session_name(),'',time()-42000,$p['path'],$p['domain'],$p['secure'],$p['httponly']);
     }
     session_destroy();
 
     // Prevent browser/proxy from caching the protected page
-    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-    header('Cache-Control: post-check=0, pre-check=0', false);
-    header('Pragma: no-cache');
-    header('Expires: 0');
-
-    header('Location: ' . $loginUrl);
+    if (!headers_sent()) {
+      header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+      header('Cache-Control: post-check=0, pre-check=0', false);
+      header('Pragma: no-cache');
+      header('Expires: 0');
+      header('Location: ' . $loginUrl);
+    } else {
+      echo '<script>window.location.href="' . htmlspecialchars($loginUrl) . '";</script>';
+    }
     exit;
   }
 
   // Active session: still send no-cache headers so protected pages are
   // never stored in browser history cache (prevents Back-button bypass after logout)
-  header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-  header('Cache-Control: post-check=0, pre-check=0', false);
-  header('Pragma: no-cache');
-  header('Expires: 0');
+  if (!headers_sent()) {
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Cache-Control: post-check=0, pre-check=0', false);
+    header('Pragma: no-cache');
+    header('Expires: 0');
+  }
 }
 
 

@@ -26,11 +26,15 @@ if (isset($_GET['ajax_action'])) {
         try {
             $stmt = $pdo->prepare("SELECT ft.*, 
                 COALESCE(NULLIF(CONCAT(TRIM(COALESCE(staff.first_name,'')), ' ', TRIM(COALESCE(staff.last_name,''))), ' '), staff.username, 'Unknown') AS staff_name,
-                COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, '—') AS manager_name,
+                COALESCE(
+                    NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username,
+                    NULLIF(CONCAT(TRIM(COALESCE(mgr2.first_name,'')), ' ', TRIM(COALESCE(mgr2.last_name,''))), ' '), mgr2.username, '—'
+                ) AS manager_name,
                 fp.pump_number, s.name AS station_name
                 FROM fuel_transactions ft
                 LEFT JOIN users staff ON ft.staff_id = staff.id
                 LEFT JOIN users mgr   ON ft.validated_by = mgr.id
+                LEFT JOIN users mgr2  ON ft.manager_id = mgr2.id
                 LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
                 LEFT JOIN stations s ON ft.station_id = s.id
                 WHERE ft.id = ?");
@@ -121,11 +125,15 @@ if (isset($_GET['single_id']) && $export === 'pdf') {
     try {
         $stmt = $pdo->prepare("SELECT ft.*, 
             COALESCE(NULLIF(CONCAT(TRIM(COALESCE(staff.first_name,'')), ' ', TRIM(COALESCE(staff.last_name,''))), ' '), staff.username, 'Unknown') AS staff_name,
-            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username, '—') AS manager_name,
+            COALESCE(
+                NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '), mgr.username,
+                NULLIF(CONCAT(TRIM(COALESCE(mgr2.first_name,'')), ' ', TRIM(COALESCE(mgr2.last_name,''))), ' '), mgr2.username, '—'
+            ) AS manager_name,
             fp.pump_number, s.name AS station_name
             FROM fuel_transactions ft
             LEFT JOIN users staff ON ft.staff_id = staff.id
             LEFT JOIN users mgr   ON ft.validated_by = mgr.id
+            LEFT JOIN users mgr2  ON ft.manager_id = mgr2.id
             LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
             LEFT JOIN stations s ON ft.station_id = s.id
             WHERE ft.id = ?");
@@ -134,7 +142,8 @@ if (isset($_GET['single_id']) && $export === 'pdf') {
         if ($tx) {
             $pump_display = !empty($tx['pump_number']) ? $tx['pump_number'] : (!empty($tx['pump_id']) ? 'P'.$tx['pump_id'] : '—');
             $shift_label = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
-            $remarks = !empty($tx['notes']) ? $tx['notes'] : (!empty($tx['reject_reason']) ? $tx['reject_reason'] : '—');
+            // Remarks: validation writes to reject_reason; notes is staff comment. Prioritize reject_reason.
+            $remarks = !empty($tx['reject_reason']) ? $tx['reject_reason'] : (!empty($tx['notes']) ? $tx['notes'] : '—');
             
             echo '<!DOCTYPE html>
             <html>
@@ -272,18 +281,22 @@ try {
         ft.present_reading, ft.previous_reading, ft.liters_sold, ft.calibration,
         ft.price_per_liter, ft.total_amount, ft.payment_method, ft.shift_period,
         ft.shift_name, ft.status, ft.transaction_date, ft.validated_at, ft.notes, ft.reject_reason,
+        ft.validated_by, ft.manager_id,
         COALESCE(
             NULLIF(CONCAT(TRIM(COALESCE(staff.first_name,'')), ' ', TRIM(COALESCE(staff.last_name,''))), ' '),
             staff.username, 'Unknown'
         ) AS staff_name,
         COALESCE(
             NULLIF(CONCAT(TRIM(COALESCE(mgr.first_name,'')), ' ', TRIM(COALESCE(mgr.last_name,''))), ' '),
-            mgr.username, '—'
+            mgr.username,
+            NULLIF(CONCAT(TRIM(COALESCE(mgr2.first_name,'')), ' ', TRIM(COALESCE(mgr2.last_name,''))), ' '),
+            mgr2.username, '—'
         ) AS manager_name,
         fp.pump_number, s.name AS station_name
         FROM fuel_transactions ft
         LEFT JOIN users staff ON ft.staff_id = staff.id
         LEFT JOIN users mgr   ON ft.validated_by = mgr.id
+        LEFT JOIN users mgr2  ON ft.manager_id = mgr2.id
         LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
         LEFT JOIN stations s ON ft.station_id = s.id
         WHERE " . implode(' AND ', $where) . "
@@ -884,7 +897,8 @@ require_once __DIR__ . '/../partials/header.php';
                         $badge = 'bg-gray'; $st_label = ucfirst($tx['status'] ?? '—');
                     }
                     $shift_label = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
-                    $remarks = !empty($tx['notes']) ? $tx['notes'] : (!empty($tx['reject_reason']) ? $tx['reject_reason'] : '—');
+                    // Remarks: validation writes to reject_reason; notes is staff comment. Prioritize reject_reason.
+                    $remarks = !empty($tx['reject_reason']) ? $tx['reject_reason'] : (!empty($tx['notes']) ? $tx['notes'] : '—');
                 ?>
                 <tr>
                     <td style="font-weight:600;color:#00264D;" title="<?= htmlspecialchars($tx['transaction_id']) ?>"><?= htmlspecialchars($tx['transaction_id']) ?></td>
@@ -997,7 +1011,11 @@ function viewTxnDetails(id) {
         .then(res => {
             if (res.success) {
                 const data = res.data;
-                const remarks = data.notes || data.reject_reason || '—';
+                // Validator: prefer validated_by name, fall back to manager_id name
+                const validatorName = data.manager_name && data.manager_name !== '—' ? data.manager_name : '—';
+                // Remarks: validation flow writes to reject_reason; notes is staff comment
+                const remarks = (data.reject_reason && data.reject_reason.trim()) ? data.reject_reason
+                              : (data.notes && data.notes.trim()) ? data.notes : '—';
                 const gridHtml = `
                     <div class="details-item"><label>Transaction ID</label><span>${data.transaction_id || '—'}</span></div>
                     <div class="details-item"><label>Date / Time</label><span>${data.transaction_date || '—'}</span></div>
@@ -1012,7 +1030,7 @@ function viewTxnDetails(id) {
                     <div class="details-item"><label>Total Amount</label><span>₱${parseFloat(data.total_amount).toLocaleString('en-US', {minimumFractionDigits:2})}</span></div>
                     <div class="details-item"><label>Payment Method</label><span>${data.payment_method || '—'}</span></div>
                     <div class="details-item"><label>Staff Encoder</label><span>${data.staff_name || '—'}</span></div>
-                    <div class="details-item"><label>Manager Validator</label><span>${data.manager_name || '—'}</span></div>
+                    <div class="details-item"><label>Manager Validator</label><span>${validatorName}</span></div>
                     <div class="details-item"><label>Status</label><span>${data.status || '—'}</span></div>
                     <div class="details-item"><label>Validation Date</label><span>${data.validated_at || '—'}</span></div>
                     <div class="details-item" style="grid-column: span 2;"><label>Remarks</label><span>${remarks}</span></div>

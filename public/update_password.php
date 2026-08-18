@@ -189,11 +189,24 @@ include __DIR__ . '/../partials/header.php';
 
 .cp-eye {
     position: absolute; right: 12px;
-    background: none; border: none; cursor: pointer;
-    color: #888; font-size: 14px; padding: 4px;
+    background: none !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    cursor: pointer;
+    color: #aab4c0;
+    font-size: 14px;
+    padding: 4px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-appearance: none;
+    appearance: none;
     transition: color 0.2s;
+    z-index: 2;
 }
-.cp-eye:hover { color: #00264D; }
+.cp-eye:hover { color: #00264D !important; background: none !important; }
 
 /* ── Strength bar ── */
 .cp-strength { margin-top: 8px; }

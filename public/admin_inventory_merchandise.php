@@ -27,6 +27,71 @@ if ($station_id <= 0 && $role === 'admin') {
     render_no_station_page('admin_dashboard.php'); 
 }
 
+// ── Handle Product Information Update (POST) ────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_product') {
+    $prod_id  = (int)($_POST['product_id'] ?? 0);
+    $name     = trim($_POST['product_name'] ?? '');
+    $reorder  = (float)($_POST['reorder_level'] ?? 24);
+    $critical = (float)($_POST['critical_level'] ?? 10);
+    $capacity = (float)($_POST['capacity'] ?? 480);
+    $price    = (float)($_POST['price'] ?? 0);
+    $cost     = (float)($_POST['cost'] ?? 0);
+    $unit     = trim($_POST['unit'] ?? 'pcs');
+
+    if ($prod_id > 0 && !empty($name)) {
+        try {
+            $pdo->beginTransaction();
+
+            // 1. Update station_inventory
+            $stmt_si = $pdo->prepare("
+                UPDATE station_inventory 
+                SET reorder_level = ?, critical_level = ?, capacity = ?, unit = ?, price = ?, cost = ?, last_updated = NOW() 
+                WHERE product_id = ? AND (station_id = ? OR station_id = 0 OR station_id IS NULL)
+            ");
+            $stmt_si->execute([$reorder, $critical, $capacity, $unit, $price, $cost, $prod_id, $station_id]);
+
+            // 2. Update inventory_products
+            try {
+                $stmt_ip = $pdo->prepare("
+                    UPDATE inventory_products 
+                    SET product_name = ?, min_stock = ?, max_stock = ?, unit_price = ?, unit_cost = ?, size = ?, updated_at = NOW() 
+                    WHERE id = ?
+                ");
+                $stmt_ip->execute([$name, $reorder, $capacity, $price, $cost, $unit, $prod_id]);
+            } catch (Exception $e_ip) {}
+
+            // 3. Update products table
+            try {
+                $stmt_p = $pdo->prepare("
+                    UPDATE products 
+                    SET name = ?, price = ?, cost = ?, min_stock_level = ?, max_stock_level = ?, capacity = ?, unit = ?, updated_at = NOW() 
+                    WHERE id = ?
+                ");
+                $stmt_p->execute([$name, $price, $cost, $reorder, $capacity, $capacity, $unit, $prod_id]);
+            } catch (Exception $e_p) {}
+
+            // 4. Log the action
+            try {
+                $log_stmt = $pdo->prepare("
+                    INSERT INTO inventory_logs (product_id, station_id, user_id, action, quantity_change, previous_stock, new_stock, notes, created_at)
+                    VALUES (?, ?, ?, 'PRODUCT_UPDATE', 0, 0, 0, ?, NOW())
+                ");
+                $log_stmt->execute([$prod_id, $station_id, $me['id'], "Admin updated product settings: {$name}"]);
+            } catch (Exception $e_log) {}
+
+            $pdo->commit();
+            $_SESSION['success'] = 'Product updated successfully.';
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $_SESSION['error'] = 'Error updating product: ' . $e->getMessage();
+        }
+    } else {
+        $_SESSION['error'] = 'Invalid product data.';
+    }
+    header('Location: admin_inventory_merchandise.php?tab=' . urlencode($_POST['tab'] ?? 'overview'));
+    exit;
+}
+
 // â”€â”€ Status Badge Styles / Helper Functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (!function_exists('getStatusBadgeClass')) {
     function getStatusBadgeClass($status) {
@@ -2032,9 +2097,101 @@ body, html {
     </div>
 </div>
 
+<!-- ════ EDIT PRODUCT MODAL (ADMIN) ════ -->
+<div class="modal-overlay" id="adminEditProdModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:10000; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
+    <div class="modal-box" style="max-width:620px; width:95%; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.25);">
+        <div class="modal-head" style="background:#002F70; padding:16px 20px; color:#fff; display:flex; align-items:center; justify-content:space-between;">
+            <div class="modal-title" style="font-size:16px; font-weight:700; color:#fff !important; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-edit"></i> Edit Product Information
+            </div>
+            <button type="button" onclick="closeAdminEditModal()" style="background:none; border:none; color:#fff; font-size:18px; cursor:pointer;"><i class="fas fa-times"></i></button>
+        </div>
+        <form method="post" action="admin_inventory_merchandise.php" style="padding:20px;">
+            <input type="hidden" name="action" value="update_product">
+            <input type="hidden" name="tab" value="<?= htmlspecialchars($active_tab) ?>">
+            <input type="hidden" name="product_id" id="adminEditProdId">
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;">
+                <div class="form-group" style="grid-column: span 2;">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Product Name <span style="color:red;">*</span></label>
+                    <input type="text" name="product_name" id="adminEditProdName" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#0f172a;">
+                </div>
+                <div class="form-group">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Category</label>
+                    <input type="text" id="adminEditProdCategory" readonly style="width:100%; padding:8px 12px; border:1px solid #e2e8f0; border-radius:6px; font-size:13px; background:#f8fafc; color:#64748b;">
+                </div>
+                <div class="form-group">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Unit of Measure <span style="color:red;">*</span></label>
+                    <input type="text" name="unit" id="adminEditProdUnit" required placeholder="e.g. pcs, Liter, Bottle" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#0f172a;">
+                </div>
+                <div class="form-group">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Reorder Level <span style="color:red;">*</span></label>
+                    <input type="number" name="reorder_level" id="adminEditProdReorder" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#ea580c;">
+                </div>
+                <div class="form-group">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Critical Level <span style="color:red;">*</span></label>
+                    <input type="number" name="critical_level" id="adminEditProdCritical" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#dc2626;">
+                </div>
+                <div class="form-group">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Max Capacity <span style="color:red;">*</span></label>
+                    <input type="number" name="capacity" id="adminEditProdCapacity" min="1" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#002F70;">
+                </div>
+                <div class="form-group">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Selling Price (₱) <span style="color:red;">*</span></label>
+                    <input type="number" step="0.01" name="price" id="adminEditProdPrice" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#16a34a;">
+                </div>
+                <div class="form-group" style="grid-column: span 2;">
+                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Unit Cost (₱)</label>
+                    <input type="number" step="0.01" name="cost" id="adminEditProdCost" min="0" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#475569;">
+                </div>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #e2e8f0; padding-top:16px;">
+                <button type="button" onclick="closeAdminEditModal()" style="padding:8px 20px; border:1.5px solid #00264D !important; background:#ffffff !important; color:#00264D !important; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">Cancel</button>
+                <button type="submit" class="ato-btn" style="background:#002F70 !important; color:#fff !important; padding:8px 20px; border:none; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;"><i class="fas fa-save"></i> Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
-// â”€â”€ Modal JS Functions â”€â”€
 var _adminCurrentProd = null;
+
+function openAdminEditModal(item) {
+    if (!item) return;
+    var modal = document.getElementById('adminEditProdModal');
+    if (!modal) return;
+    if (modal.parentNode !== document.body) {
+        document.body.appendChild(modal);
+    }
+
+    document.getElementById('adminEditProdId').value = item.id || '';
+    document.getElementById('adminEditProdName').value = item.name || '';
+    document.getElementById('adminEditProdCategory').value = item.category_name || item.category || 'General';
+    document.getElementById('adminEditProdUnit').value = item.unit || 'pcs';
+    document.getElementById('adminEditProdReorder').value = parseFloat(item.reorder_level) || 24;
+    document.getElementById('adminEditProdCritical').value = parseFloat(item.critical_level) || 10;
+    document.getElementById('adminEditProdCapacity').value = parseFloat(item.capacity) || 480;
+    document.getElementById('adminEditProdPrice').value = parseFloat(item.price) || 0;
+    document.getElementById('adminEditProdCost').value = parseFloat(item.cost) || 0;
+
+    modal.classList.add('open');
+    modal.style.display = 'flex';
+    modal.style.position = 'fixed';
+    modal.style.top = '0';
+    modal.style.left = '0';
+    modal.style.right = '0';
+    modal.style.bottom = '0';
+    modal.style.zIndex = '10000';
+}
+
+function closeAdminEditModal() {
+    var modal = document.getElementById('adminEditProdModal');
+    if (modal) {
+        modal.classList.remove('open');
+        modal.style.display = 'none';
+    }
+}
 
 function adminViewProduct(item) {
     _adminCurrentProd = item;
@@ -2396,10 +2553,25 @@ function acddSetLabel(cddId, val, label) {
     });
 }
 
-function setupDownwardFilterSelects(selects) {
-    Array.from(selects || []).forEach(function(select) {
-        if (!select || select.dataset.forceDownReady === '1') return;
-        select.dataset.forceDownReady = '1';
+function setupDownwardFilterSelects(selectors) {
+    if (!selectors) return;
+    var rawList = Array.isArray(selectors) ? selectors : (selectors instanceof NodeList ? Array.from(selectors) : [selectors]);
+    var selects = [];
+    rawList.forEach(function(item) {
+        if (typeof item === 'string') {
+            document.querySelectorAll(item).forEach(function(el) { if (el) selects.push(el); });
+        } else if (item instanceof NodeList || (item && item.length && item[0])) {
+            Array.from(item).forEach(function(el) { if (el) selects.push(el); });
+        } else if (item && item.nodeType === 1) {
+            selects.push(item);
+        }
+    });
+
+    selects.forEach(function(select) {
+        if (!select || !select.tagName || select.tagName.toLowerCase() !== 'select') return;
+        if (select.dataset && select.dataset.forceDownReady === '1') return;
+        if (select.dataset) select.dataset.forceDownReady = '1';
+        else select.setAttribute('data-force-down-ready', '1');
 
         var wrap = document.createElement('div');
         wrap.className = 'fd-select';

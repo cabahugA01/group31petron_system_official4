@@ -56,6 +56,31 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (Throwable $e) {}
 
+/**
+ * Returns the bell unread count from the notifications table,
+ * respecting the per-user 5-minute snooze set by mark_all_read.
+ * The snooze expires automatically — no DB writes needed.
+ */
+function get_bell_count(PDO $pdo, int $user_id): int {
+    // Check session snooze: if user clicked mark_all_read within last 5 min, return 0
+    $snooze_key = 'notif_bell_snoozed_' . $user_id;
+    if (!empty($_SESSION[$snooze_key])) {
+        $snoozed_at = (int)$_SESSION[$snooze_key];
+        if (time() - $snoozed_at < 300) { // 5 minutes snooze
+            return 0;
+        } else {
+            unset($_SESSION[$snooze_key]); // snooze expired
+        }
+    }
+    try {
+        $s = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'");
+        $s->execute([$user_id]);
+        return (int)$s->fetchColumn();
+    } catch (Throwable $e) {
+        return 0;
+    }
+}
+
 if (!function_exists('time_ago')) {
 function time_ago(string $datetime): string {
     $diff = max(0, time() - strtotime($datetime));
@@ -154,50 +179,56 @@ function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', i
         $counts['mgr_customers'] = $counts['customers'];
 
     } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
-        // ADMIN
+        // ADMIN — scope to station_id where possible
+        $stn_where  = $station_id > 0 ? "si.station_id = ? AND " : "";
+        $stn_param  = $station_id > 0 ? [$station_id] : [];
+        $stn_where2 = $station_id > 0 ? "station_id = ? AND " : "";
+        $stn_param2 = $station_id > 0 ? [$station_id] : [];
+
         $admin_crit_stock = $safe_count(
-            "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.critical_level, ip.critical_level, 10)",
-            []
+            "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE {$stn_where}(LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.critical_level, ip.critical_level, 10)",
+            $stn_param
         );
         $admin_pos = $safe_count(
-            "SELECT COUNT(*) FROM purchase_orders WHERE status IN ('Pending Admin Review', 'Submitted', 'Pending Approval')",
-            []
+            "SELECT COUNT(*) FROM purchase_orders WHERE {$stn_where2}status IN ('Pending Admin Review', 'Submitted', 'Pending Approval')",
+            $stn_param2
         );
         $admin_inv_total = $admin_crit_stock + $admin_pos;
         $counts['inventory']       = $admin_inv_total;
         $counts['admin_inventory'] = $admin_inv_total;
 
         $admin_price_change = $safe_count(
-            "SELECT COUNT(*) FROM pending_price_approvals WHERE status = 'pending'",
-            []
+            "SELECT COUNT(*) FROM pending_price_approvals WHERE {$stn_where2}status = 'pending'",
+            $stn_param2
         );
         $counts['prod_pricing']          = $admin_price_change;
         $counts['mgr_product_pricing']   = $admin_price_change;
         $counts['admin_product_pricing'] = $admin_price_change;
 
+        // Reports badge = this user's own unread critical/error notifications only
         $admin_system_alerts = $safe_count(
-            "SELECT COUNT(*) FROM notifications WHERE severity IN ('critical','error') AND status = 'unread'",
-            []
+            "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND severity IN ('critical','error') AND status = 'unread'",
+            [$user_id]
         );
         $counts['reports']       = $admin_system_alerts;
         $counts['admin_reports'] = $admin_system_alerts;
 
         // 4. Fuel Management Oversight: Manager-verified/approved fuel transactions + fuel deliveries + fuel stock requests + fuel adjustments
         $admin_fuel_txns = $safe_count(
-            "SELECT COUNT(*) FROM fuel_transactions WHERE LOWER(COALESCE(status,'')) IN ('verified','validated','approved','adjusted','pending')",
-            []
+            "SELECT COUNT(*) FROM fuel_transactions WHERE {$stn_where2}LOWER(COALESCE(status,'')) IN ('verified','validated','approved','adjusted','pending')",
+            $stn_param2
         );
         $admin_fuel_deliv = $safe_count(
-            "SELECT COUNT(*) FROM purchase_orders WHERE (type = 'fuel' OR LOWER(COALESCE(item_category,'')) IN ('fuel','fuels')) AND (delivery_validated = 1 OR status IN ('Validated','Delivered','Pending Admin Review','Submitted'))",
-            []
+            "SELECT COUNT(*) FROM purchase_orders WHERE {$stn_where2}(type = 'fuel' OR LOWER(COALESCE(item_category,'')) IN ('fuel','fuels')) AND (delivery_validated = 1 OR status IN ('Validated','Delivered','Pending Admin Review','Submitted'))",
+            $stn_param2
         );
         $admin_fuel_reqs = $safe_count(
-            "SELECT COUNT(*) FROM fuel_stock_requests WHERE LOWER(COALESCE(status,'')) IN ('pending','pending manager review','pending admin review','approved','submitted')",
-            []
+            "SELECT COUNT(*) FROM fuel_stock_requests WHERE {$stn_where2}LOWER(COALESCE(status,'')) IN ('pending','pending manager review','pending admin review','approved','submitted')",
+            $stn_param2
         );
         $admin_fuel_adj = $safe_count(
-            "SELECT COUNT(*) FROM fuel_adjustments WHERE LOWER(COALESCE(status,'')) IN ('pending','verified','reviewed','approved')",
-            []
+            "SELECT COUNT(*) FROM fuel_adjustments WHERE {$stn_where2}LOWER(COALESCE(status,'')) IN ('pending','verified','reviewed','approved')",
+            $stn_param2
         );
         $admin_fuel_total = $admin_fuel_txns + $admin_fuel_deliv + $admin_fuel_reqs + $admin_fuel_adj;
         $counts['fuel']                  = $admin_fuel_total;
@@ -321,20 +352,8 @@ try {
                 $myStationId = (int)($me['station_id'] ?? 0);
                 $cat_counts  = get_category_unread_counts($pdo, $user_id, $role, $myStationId);
 
-                // Bell count = sum of all visible sidebar navigation badge counts (e.g. Transactions 6 + Inventory 41 = 47)
-                $bell_unread_count = ($cat_counts['transactions'] ?? 0)
-                                   + ($cat_counts['fuel']         ?? 0)
-                                   + ($cat_counts['inventory']    ?? 0)
-                                   + ($cat_counts['customers']    ?? 0)
-                                   + ($cat_counts['prod_pricing'] ?? 0)
-                                   + ($cat_counts['reports']      ?? 0);
-
-                // Notification-table unread count (for stats cards)
-                $cnt_stmt = $pdo->prepare(
-                    "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'"
-                );
-                $cnt_stmt->execute([$user_id]);
-                $notif_unread = (int)$cnt_stmt->fetchColumn();
+                // Bell count = actual unread rows in notifications table (with snooze support)
+                $bell_unread_count = get_bell_count($pdo, $user_id);
 
                 // Overall Stats breakdown for cards
                 $stats_stmt = $pdo->prepare(
@@ -351,8 +370,8 @@ try {
                 echo json_encode([
                     'success'           => true,
                     'notifications'     => $rows,
-                    'unread_count'      => $bell_unread_count,   // total of all sidebar badges
-                    'bell_unread_count' => $bell_unread_count,   // header bell == sidebar total
+                    'unread_count'      => $bell_unread_count,
+                    'bell_unread_count' => $bell_unread_count,
                     'total'             => (int)($stats['total'] ?? count($rows)),
                     'stats'             => [
                         'total'    => (int)($stats['total']      ?? 0),
@@ -484,21 +503,25 @@ try {
                     );
                 }
 
-                // Compute category counts (shared source for sidebar + bell)
+                // Compute category counts (shared source for sidebar badges only)
                 $cat_counts = get_category_unread_counts($pdo, $user_id, $role, $myStationId);
 
-                // Bell count = sum of all visible sidebar navigation badge counts
-                $bell_unread_count = ($cat_counts['transactions'] ?? 0)
-                                   + ($cat_counts['fuel']         ?? 0)
-                                   + ($cat_counts['inventory']    ?? 0)
-                                   + ($cat_counts['customers']    ?? 0)
-                                   + ($cat_counts['prod_pricing'] ?? 0)
-                                   + ($cat_counts['reports']      ?? 0);
+                // Bell count = actual unread rows in the notifications table for this user.
+                // This keeps the bell in sync with the dropdown list — sidebar badges are separate.
+                try {
+                    $bell_stmt = $pdo->prepare(
+                        "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'"
+                    );
+                    $bell_stmt->execute([$user_id]);
+                    $bell_unread_count = (int)$bell_stmt->fetchColumn();
+                } catch (Throwable $_e) {
+                    $bell_unread_count = 0;
+                }
 
                 echo json_encode([
                     'success'           => true,
-                    'unread_count'      => $bell_unread_count,  // total sidebar badges
-                    'bell_unread_count' => $bell_unread_count,  // header bell == sidebar total
+                    'unread_count'      => $bell_unread_count,  // actual notification rows unread
+                    'bell_unread_count' => $bell_unread_count,  // header bell = dropdown count
                     'category_counts'   => $cat_counts,         // per-section sidebar badges
                 ]);
                 break;
@@ -524,12 +547,7 @@ try {
                 }
                 $myStationId = (int)($me['station_id'] ?? 0);
                 $cat_counts = get_category_unread_counts($pdo, $user_id, $role, $myStationId);
-                $bell_unread_count = ($cat_counts['transactions'] ?? 0)
-                                   + ($cat_counts['fuel']         ?? 0)
-                                   + ($cat_counts['inventory']    ?? 0)
-                                   + ($cat_counts['customers']    ?? 0)
-                                   + ($cat_counts['prod_pricing'] ?? 0)
-                                   + ($cat_counts['reports']      ?? 0);
+                $bell_unread_count = get_bell_count($pdo, $user_id);
 
                 echo json_encode([
                     'success'           => true,
@@ -552,12 +570,7 @@ try {
                 }
                 $myStationId = (int)($me['station_id'] ?? 0);
                 $cat_counts = get_category_unread_counts($pdo, $user_id, $role, $myStationId);
-                $bell_unread_count = ($cat_counts['transactions'] ?? 0)
-                                   + ($cat_counts['fuel']         ?? 0)
-                                   + ($cat_counts['inventory']    ?? 0)
-                                   + ($cat_counts['customers']    ?? 0)
-                                   + ($cat_counts['prod_pricing'] ?? 0)
-                                   + ($cat_counts['reports']      ?? 0);
+                $bell_unread_count = get_bell_count($pdo, $user_id);
 
                 echo json_encode([
                     'success'           => true,
@@ -569,27 +582,26 @@ try {
 
             // ── Mark all as read ──────────────────────────────
             case 'mark_all_read':
+                // Mark all notification rows as read
                 $stmt = $pdo->prepare(
                     "UPDATE notifications
                      SET status = 'read', read_at = NOW()
                      WHERE user_id = ? AND status = 'unread'"
                 );
                 $stmt->execute([$user_id]);
+
+                // Set a 5-minute session snooze so the bell stays at 0
+                // even if the generator re-creates notifications on next poll
+                $_SESSION['notif_bell_snoozed_' . $user_id] = time();
+
                 $myStationId = (int)($me['station_id'] ?? 0);
                 $cat_counts_mar = get_category_unread_counts($pdo, $user_id, $role, $myStationId);
-                $cat_counts_mar['notifications'] = 0; // bell entries all read
-
-                $bell_unread_count = ($cat_counts_mar['transactions'] ?? 0)
-                                   + ($cat_counts_mar['fuel']         ?? 0)
-                                   + ($cat_counts_mar['inventory']    ?? 0)
-                                   + ($cat_counts_mar['customers']    ?? 0)
-                                   + ($cat_counts_mar['prod_pricing'] ?? 0)
-                                   + ($cat_counts_mar['reports']      ?? 0);
+                $cat_counts_mar['notifications'] = 0;
 
                 echo json_encode([
                     'success'           => true,
-                    'unread_count'      => $bell_unread_count,
-                    'bell_unread_count' => $bell_unread_count,
+                    'unread_count'      => 0,
+                    'bell_unread_count' => 0,
                     'category_counts'   => $cat_counts_mar,
                 ]);
                 break;

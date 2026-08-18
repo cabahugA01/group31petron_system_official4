@@ -4632,6 +4632,11 @@ setTimeout(function() {
                 console.error('Reset shift API error:', e);
             }
 
+            if (window.PetronDraft) {
+                window.PetronDraft.clear('fuel_meter_readings');
+                window.PetronDraft.clear('fuel_meter_readings_fuel');
+            }
+
             showToast('All fuel readings have been reset.', 'info');
         }
         
@@ -4831,6 +4836,11 @@ setTimeout(function() {
                 if (remarksTextarea) remarksTextarea.value = '';
                 const remarksBtnLbl = document.getElementById('remarksButtonLabel');
                 if (remarksBtnLbl) remarksBtnLbl.textContent = 'Add Remarks';
+
+                if (window.PetronDraft) {
+                    window.PetronDraft.clear('fuel_meter_readings');
+                    window.PetronDraft.clear('fuel_meter_readings_fuel');
+                }
 
                 showToast('Meter readings submitted! Redirecting to Fuel Sales Closing...', 'success');
                 setTimeout(() => {
@@ -7291,6 +7301,17 @@ setTimeout(function() {
         <script>
         // ── State ────────────────────────────────────────────────────────────
         let cart = [];
+        window.cart = cart;
+        window.getPetronCart = function() { return cart; };
+        window.setPetronCart = function(c) {
+            if (Array.isArray(c)) {
+                cart = c;
+                window.cart = c;
+                if (typeof renderCart === 'function') renderCart();
+                if (typeof updateCheckoutBtn === 'function') updateCheckoutBtn();
+                if (typeof onPaymentChange === 'function') onPaymentChange();
+            }
+        };
         let selectedProduct = null;
         const pointsPerAmount = <?= (float)$points_per_amount ?>;
         const redemptionValue  = <?= (float)$redemption_value ?>;
@@ -10110,6 +10131,9 @@ setTimeout(function() {
             // Keep product checkboxes in sync with cart
             if (typeof syncProductCheckboxes === 'function') syncProductCheckboxes();
             if (typeof syncServiceCheckboxes === 'function') syncServiceCheckboxes();
+
+            window.cart = cart;
+            if (window.PetronDraft) window.PetronDraft.flushAll();
         }
 
         function cartQty(idx, delta) {

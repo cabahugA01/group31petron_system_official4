@@ -2,7 +2,9 @@
  * Petron Station Management System
  * Global Draft & Autosave Engine — assets/js/global_draft_engine.js
  *
- * Provides non-destructive auto-saving and recovery across all data-entry forms.
+ * Fully automatic non-destructive auto-saving and auto-restoration across all data-entry forms.
+ * Runs completely in the background without any visual banners, badges, or buttons.
+ * Supports standard forms, dynamic tables, POS carts, Job Orders, and Product/Pricing modals.
  * Drafts do not trigger any database transactions, inventory deductions, or financial reports.
  */
 (function(window, document) {
@@ -17,82 +19,116 @@
 
     const PetronDraft = {
         timers: {},
-        activeDrafts: {},
+        activeContainers: [],
 
         /**
-         * Initialize draft autosave on a specific form or elements
-         * @param {string} moduleKey - Unique module key (e.g., 'merchandise_sale', 'job_order')
-         * @param {string|HTMLFormElement} formSelector - Form selector or element
-         * @param {Object} options - Custom options (customCollector, customRestorer, onSave)
+         * Initialize draft autosave on a specific form or container element
+         * @param {string} moduleKey - Unique module key
+         * @param {string|HTMLElement} containerSelector - Form or container element
+         * @param {Object} options - Custom options
          */
-        init: function(moduleKey, formSelector, options) {
+        init: function(moduleKey, containerSelector, options) {
             options = options || {};
-            const form = typeof formSelector === 'string' ? document.querySelector(formSelector) : formSelector;
-            if (!form) return;
+            const container = typeof containerSelector === 'string' ? document.querySelector(containerSelector) : containerSelector;
+            if (!container) return;
 
-            form.setAttribute('data-petron-draft-module', moduleKey);
+            container.setAttribute('data-petron-draft-module', moduleKey);
 
-            // 1. Check for existing draft on load
-            this.checkForDraft(moduleKey, form, options);
+            if (!this.activeContainers.some(item => item.container === container && item.moduleKey === moduleKey)) {
+                this.activeContainers.push({ container: container, moduleKey: moduleKey, options: options });
+            }
 
-            // 2. Attach input listeners with debounce
+            // Clean up any residual banner elements from past versions
+            const oldBanner = document.getElementById(`draftBanner_${moduleKey}`);
+            if (oldBanner) oldBanner.remove();
+            container.querySelectorAll('.petron-draft-status-badge').forEach(function(b) { b.remove(); });
+
+            // 1. Check and automatically restore existing draft on load
+            this.checkForDraft(moduleKey, container, options);
+
+            // 2. Attach instant synchronous input listeners (0ms LocalStorage write)
             const self = this;
             const inputHandler = function(e) {
-                // Ignore submit buttons, passwords, and tokens
                 if (e.target && (e.target.type === 'password' || e.target.type === 'submit')) return;
-                self.scheduleSave(moduleKey, form, options);
+                self.saveToLocalStorage(moduleKey, container, options);
+                self.scheduleServerSave(moduleKey, container, options);
             };
 
-            form.addEventListener('input', inputHandler, { passive: true });
-            form.addEventListener('change', inputHandler, { passive: true });
+            container.addEventListener('input', inputHandler, { passive: true });
+            container.addEventListener('change', inputHandler, { passive: true });
 
-            // 3. Save on beforeunload if dirty
-            window.addEventListener('beforeunload', function() {
-                self.saveNow(moduleKey, form, options, true);
-            });
+            // 3. Save immediately on field blur or focusout
+            container.addEventListener('focusout', function(e) {
+                if (e.target && (e.target.type === 'password' || e.target.type === 'submit')) return;
+                self.saveNow(moduleKey, container, options, false);
+            }, { passive: true });
 
-            // 4. Auto-clear draft when form is successfully submitted
-            form.addEventListener('submit', function(e) {
-                // Let the submit proceed, then clear draft
-                setTimeout(function() {
-                    self.clear(moduleKey);
-                }, 500);
+            // 4. Clear draft when form is submitted
+            if (container.tagName && container.tagName.toLowerCase() === 'form') {
+                container.addEventListener('submit', function() {
+                    setTimeout(function() { self.clear(moduleKey); }, 600);
+                });
+            }
+
+            // Hook reset/cancel/close buttons inside container
+            container.querySelectorAll('button[type="reset"], .fet-reset-btn, .btn-discard, .btn-cancel, #clearCartBtn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    if (btn.classList.contains('btn-discard')) {
+                        setTimeout(function() { self.clear(moduleKey); }, 100);
+                    }
+                });
             });
         },
 
         /**
-         * Collect form data into a serializable JSON object
+         * Collect all input data from a form or container
          */
-        collectFormData: function(form, options) {
+        collectFormData: function(container, options) {
             if (typeof options.customCollector === 'function') {
-                return options.customCollector(form);
+                return options.customCollector(container);
             }
 
             const data = {};
-            const elements = form.querySelectorAll('input, select, textarea');
             let hasMeaningfulContent = false;
+
+            // Collect all inputs within container AND any external inputs referencing forms inside container
+            let elements = Array.from(container.querySelectorAll('input, select, textarea'));
+
+            if (container.tagName && container.tagName.toLowerCase() === 'form' && container.id) {
+                const outsideElements = Array.from(document.querySelectorAll(`[form="${container.id}"]`));
+                elements = Array.from(new Set([...elements, ...outsideElements]));
+            }
 
             elements.forEach(function(el) {
                 const name = el.name || el.id;
                 if (!name || el.type === 'password' || el.type === 'submit' || el.type === 'button') return;
 
+                // Use ID if available to ensure unique keying across table rows or complex layouts
+                const key = el.id ? el.id : name;
+
                 if (el.type === 'checkbox') {
-                    data[name] = el.checked;
+                    data[key] = el.checked;
                 } else if (el.type === 'radio') {
-                    if (el.checked) data[name] = el.value;
+                    if (el.checked) data[key] = el.value;
                 } else {
-                    data[name] = el.value;
-                    if (el.value && String(el.value).trim() !== '' && el.value !== '0') {
+                    const val = el.value !== undefined ? String(el.value).trim() : '';
+                    data[key] = val;
+
+                    // Meaningful content check: not empty and not just default zero
+                    if (val !== '' && val !== '0' && val !== '0.00' && !el.readOnly && !el.disabled) {
                         hasMeaningfulContent = true;
                     }
                 }
             });
 
-            // If there's an active cart or dynamic item table, collect it
-            if (window.activeCart && Array.isArray(window.activeCart) && window.activeCart.length > 0) {
-                data._activeCart = window.activeCart;
+            // 1. Check for POS Cart array (Job Order & Merchandise)
+            const currentCart = (typeof window.getPetronCart === 'function') ? window.getPetronCart() : (window.cart || window.activeCart);
+            if (Array.isArray(currentCart) && currentCart.length > 0) {
+                data._cart = currentCart;
                 hasMeaningfulContent = true;
             }
+
+            // 2. Custom job order items
             if (window.jobOrderItems && Array.isArray(window.jobOrderItems) && window.jobOrderItems.length > 0) {
                 data._jobOrderItems = window.jobOrderItems;
                 hasMeaningfulContent = true;
@@ -102,39 +138,75 @@
         },
 
         /**
-         * Restore form data from draft object
+         * Automatically restore form data from draft object
          */
-        restoreFormData: function(form, data, options) {
+        restoreFormData: function(container, data, options) {
             if (typeof options.customRestorer === 'function') {
-                options.customRestorer(form, data);
+                options.customRestorer(container, data);
                 return;
             }
 
             if (!data || typeof data !== 'object') return;
 
-            Object.keys(data).forEach(function(name) {
-                if (name.startsWith('_')) return; // Metadata or custom array
+            Object.keys(data).forEach(function(key) {
+                if (key.startsWith('_')) return; // Custom arrays or metadata
 
-                const el = form.querySelector(`[name="${name}"], #${name}`);
+                let el = document.getElementById(key);
+                if (!el && container.querySelector) {
+                    el = container.querySelector(`[name="${key}"], #${key}`);
+                }
                 if (!el) return;
 
+                const val = data[key];
+                if (val === undefined || val === null) return;
+
                 if (el.type === 'checkbox') {
-                    el.checked = !!data[name];
+                    el.checked = !!val;
                 } else if (el.type === 'radio') {
-                    const radio = form.querySelector(`[name="${name}"][value="${data[name]}"]`);
+                    const radio = document.querySelector(`[name="${el.name}"][value="${val}"]`);
                     if (radio) radio.checked = true;
                 } else {
-                    el.value = data[name];
+                    el.value = val;
                 }
 
-                // Dispatch event so reactive UI calculations update
-                try {
-                    el.dispatchEvent(new Event('input', { bubbles: true }));
-                    el.dispatchEvent(new Event('change', { bubbles: true }));
-                } catch (e) {}
+                // Dispatch events so calculations/reactive listeners recalculate.
+                // Each event is individually guarded: inline onchange handlers
+                // referencing undefined functions (from other pages) must not throw.
+                try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+                try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+                try { el.dispatchEvent(new Event('blur',  { bubbles: true })); } catch (e) {}
+
+                // Meter reading calculation trigger
+                if (key.startsWith('ending_') || key.startsWith('beginning_') || key.startsWith('cal_')) {
+                    const ft_id = key.replace(/^(ending_|beginning_|cal_)/, '');
+                    if (typeof window.updateFuelCalc === 'function') {
+                        try { window.updateFuelCalc(ft_id); } catch (err) {}
+                    }
+                }
             });
 
-            // Restore custom cart arrays if present
+            // If custom category was restored, show custom input wrapper if applicable
+            if (data.addSvcCategory === 'Custom Services' || data.editSvcCategory === 'Custom Services') {
+                const wrap = document.getElementById('addSvcCustomWrap') || document.getElementById('editSvcCustomWrap');
+                if (wrap) wrap.style.display = 'block';
+            }
+            if (data.newMerchCategory === 'Custom Category' || data.editMerchCategory === 'Custom Category') {
+                const wrap = document.getElementById('newMerchCustomWrap') || document.getElementById('editMerchCustomWrap');
+                if (wrap) wrap.style.display = 'block';
+            }
+
+            // 1. Restore POS Cart array (Job Order & Merchandise)
+            if (data._cart && Array.isArray(data._cart) && data._cart.length > 0) {
+                if (typeof window.setPetronCart === 'function') {
+                    window.setPetronCart(data._cart);
+                } else {
+                    window.cart = data._cart;
+                    if (typeof window.renderCart === 'function') window.renderCart();
+                    if (typeof window.updateCheckoutBtn === 'function') window.updateCheckoutBtn();
+                }
+            }
+
+            // 2. Restore custom cart arrays if present
             if (data._activeCart && Array.isArray(data._activeCart) && typeof window.renderCartTable === 'function') {
                 window.activeCart = data._activeCart;
                 window.renderCartTable();
@@ -143,30 +215,60 @@
                 window.jobOrderItems = data._jobOrderItems;
                 window.renderJobOrderItems();
             }
+
+            // Global re-calculation triggers if defined on the page
+            if (typeof window.recalcAllFuelRows === 'function') {
+                try { window.recalcAllFuelRows(); } catch (err) {}
+            }
+            if (typeof window.onPaymentChange === 'function') {
+                try { window.onPaymentChange(); } catch (err) {}
+            }
+            if (typeof window.onLoyaltyChange === 'function') {
+                try { window.onLoyaltyChange(); } catch (err) {}
+            }
         },
 
         /**
-         * Schedule debounced autosave (1.5s)
+         * Instant synchronous save to LocalStorage (0ms latency)
          */
-        scheduleSave: function(moduleKey, form, options) {
+        saveToLocalStorage: function(moduleKey, container, options) {
+            const data = this.collectFormData(container, options);
+            const storageKey = `petron_draft_${USER_ID}_${moduleKey}`;
+
+            if (data) {
+                const draftPayload = {
+                    module: moduleKey,
+                    data: data,
+                    timestamp: Date.now(),
+                    formatted_time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                };
+                try {
+                    localStorage.setItem(storageKey, JSON.stringify(draftPayload));
+                } catch (e) {}
+            }
+        },
+
+        /**
+         * Schedule debounced server save (1.0s)
+         */
+        scheduleServerSave: function(moduleKey, container, options) {
             const self = this;
             if (this.timers[moduleKey]) clearTimeout(this.timers[moduleKey]);
 
-            this.updateBadge(form, 'saving');
-
             this.timers[moduleKey] = setTimeout(function() {
-                self.saveNow(moduleKey, form, options, false);
-            }, 1200);
+                self.saveNow(moduleKey, container, options, false);
+            }, 1000);
         },
 
         /**
          * Save draft immediately to LocalStorage and Server API
          */
-        saveNow: function(moduleKey, form, options, isSync) {
-            const data = this.collectFormData(form, options);
+        saveNow: function(moduleKey, container, options, isSync) {
+            const data = this.collectFormData(container, options);
+            const storageKey = `petron_draft_${USER_ID}_${moduleKey}`;
+
             if (!data) return;
 
-            const storageKey = `petron_draft_${USER_ID}_${moduleKey}`;
             const draftPayload = {
                 module: moduleKey,
                 data: data,
@@ -180,7 +282,6 @@
             } catch (e) {}
 
             // 2. Server-side async save
-            const self = this;
             if (navigator.onLine) {
                 const url = DRAFTS_API + '?action=save';
                 const body = JSON.stringify({ module: moduleKey, form_data: data });
@@ -196,144 +297,65 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: body,
                         credentials: 'same-origin'
-                    })
-                    .then(function(res) { return res.json(); })
-                    .then(function(resData) {
-                        if (resData && resData.ok) {
-                            self.updateBadge(form, 'saved', resData.formatted_time || draftPayload.formatted_time);
-                        }
-                    })
-                    .catch(function() {
-                        self.updateBadge(form, 'saved_local', draftPayload.formatted_time);
-                    });
+                    }).catch(function() {});
                 }
-            } else {
-                self.updateBadge(form, 'saved_local', draftPayload.formatted_time);
             }
         },
 
         /**
-         * Check for existing draft on page load
+         * Flush all active draft modules on the page immediately
          */
-        checkForDraft: function(moduleKey, form, options) {
+        flushAll: function() {
+            const self = this;
+            this.activeContainers.forEach(function(item) {
+                self.saveNow(item.moduleKey, item.container, item.options, true);
+            });
+        },
+
+        /**
+         * Check for existing draft on page load and automatically restore it silently
+         */
+        checkForDraft: function(moduleKey, container, options) {
             const self = this;
             const storageKey = `petron_draft_${USER_ID}_${moduleKey}`;
 
-            // Check LocalStorage first for instant response
+            // 1. Instant recovery from LocalStorage
             let localDraft = null;
             try {
                 const stored = localStorage.getItem(storageKey);
                 if (stored) localDraft = JSON.parse(stored);
             } catch (e) {}
 
-            // Also check Server DB
+            if (localDraft && localDraft.data) {
+                self.restoreFormData(container, localDraft.data, options);
+            }
+
+            // 2. Fallback check for alternate keys (e.g. without section suffix)
+            if (!localDraft && moduleKey.includes('_')) {
+                const baseKey = moduleKey.replace(/_[^_]+$/, '');
+                const altStorageKey = `petron_draft_${USER_ID}_${baseKey}`;
+                try {
+                    const altStored = localStorage.getItem(altStorageKey);
+                    if (altStored) {
+                        const altDraft = JSON.parse(altStored);
+                        if (altDraft && altDraft.data) {
+                            self.restoreFormData(container, altDraft.data, options);
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            // 3. Cross-device / after-logout recovery from Server DB
             fetch(DRAFTS_API + '?action=get&module=' + encodeURIComponent(moduleKey), {
                 credentials: 'same-origin'
             })
             .then(function(res) { return res.json(); })
             .then(function(resData) {
-                let candidateDraft = null;
-                if (resData && resData.ok && resData.has_draft && resData.draft) {
-                    candidateDraft = {
-                        data: resData.draft.data,
-                        formatted_time: resData.draft.formatted_time || resData.draft.time_ago,
-                        source: 'server'
-                    };
-                } else if (localDraft && localDraft.data) {
-                    candidateDraft = {
-                        data: localDraft.data,
-                        formatted_time: localDraft.formatted_time || 'Earlier today',
-                        source: 'local'
-                    };
-                }
-
-                if (candidateDraft && candidateDraft.data) {
-                    self.showDraftRecoveryBanner(moduleKey, form, candidateDraft, options);
+                if (resData && resData.ok && resData.has_draft && resData.draft && resData.draft.data) {
+                    self.restoreFormData(container, resData.draft.data, options);
                 }
             })
-            .catch(function() {
-                if (localDraft && localDraft.data) {
-                    self.showDraftRecoveryBanner(moduleKey, form, {
-                        data: localDraft.data,
-                        formatted_time: localDraft.formatted_time || 'Earlier today',
-                        source: 'local'
-                    }, options);
-                }
-            });
-        },
-
-        /**
-         * Render non-intrusive Draft Recovery Banner above form
-         */
-        showDraftRecoveryBanner: function(moduleKey, form, draft, options) {
-            const self = this;
-            const existingBanner = document.getElementById(`draftBanner_${moduleKey}`);
-            if (existingBanner) existingBanner.remove();
-
-            const banner = document.createElement('div');
-            banner.id = `draftBanner_${moduleKey}`;
-            banner.style.cssText = 'background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 10px; padding: 12px 18px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 14px; box-shadow: 0 4px 12px rgba(0,47,108,0.06); animation: toastSlideIn .3s ease;';
-
-            banner.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px; color: #1e40af; font-size: 13.5px; font-weight: 600;">
-                    <i class="fas fa-history" style="font-size: 18px; color: #3b82f6;"></i>
-                    <span><strong>Unsaved Draft Found</strong> — Saved automatically at <em>${draft.formatted_time}</em>.</span>
-                </div>
-                <div style="display: flex; gap: 8px; flex-shrink: 0;">
-                    <button type="button" id="btnContinueDraft_${moduleKey}" style="padding: 6px 14px; background: #002F6C; color: #fff; border: none; border-radius: 6px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; box-shadow: 0 2px 6px rgba(0,47,108,0.2);">
-                        <i class="fas fa-check"></i> Continue Draft
-                    </button>
-                    <button type="button" id="btnDiscardDraft_${moduleKey}" style="padding: 6px 12px; background: #fff; color: #dc2626; border: 1px solid #fca5a5; border-radius: 6px; font-size: 12.5px; font-weight: 600; cursor: pointer;">
-                        Discard Draft
-                    </button>
-                </div>
-            `;
-
-            form.parentNode.insertBefore(banner, form);
-
-            // Continue Draft Action
-            document.getElementById(`btnContinueDraft_${moduleKey}`).addEventListener('click', function() {
-                self.restoreFormData(form, draft.data, options);
-                banner.remove();
-                self.showNotificationToast('Draft restored successfully! You can continue editing.');
-                self.updateBadge(form, 'saved', draft.formatted_time);
-            });
-
-            // Discard Draft Action
-            document.getElementById(`btnDiscardDraft_${moduleKey}`).addEventListener('click', function() {
-                self.clear(moduleKey);
-                banner.remove();
-                self.showNotificationToast('Draft discarded. Starting with blank form.', 'info');
-                self.updateBadge(form, 'cleared');
-            });
-        },
-
-        /**
-         * Visual Autosave status indicator
-         */
-        updateBadge: function(form, status, timeStr) {
-            let badge = form.querySelector('.petron-draft-status-badge');
-            if (!badge) {
-                badge = document.createElement('div');
-                badge.className = 'petron-draft-status-badge';
-                badge.style.cssText = 'font-size: 12px; color: #64748b; margin-top: 6px; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;';
-                const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
-                if (submitBtn && submitBtn.parentNode) {
-                    submitBtn.parentNode.appendChild(badge);
-                } else {
-                    form.appendChild(badge);
-                }
-            }
-
-            if (status === 'saving') {
-                badge.innerHTML = '<i class="fas fa-circle-notch fa-spin" style="color:#3b82f6;"></i> Autosaving draft...';
-                badge.style.color = '#3b82f6';
-            } else if (status === 'saved' || status === 'saved_local') {
-                badge.innerHTML = `<i class="fas fa-check-circle" style="color:#16a34a;"></i> Draft autosaved ${timeStr ? 'at ' + timeStr : ''}`;
-                badge.style.color = '#16a34a';
-            } else if (status === 'cleared') {
-                badge.innerHTML = '';
-            }
+            .catch(function() {});
         },
 
         /**
@@ -343,45 +365,61 @@
             const storageKey = `petron_draft_${USER_ID}_${moduleKey}`;
             try { localStorage.removeItem(storageKey); } catch (e) {}
 
-            fetch(DRAFTS_API + '?action=discard', {
+            fetch(DRAFTS_API + '?action=clear', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ module: moduleKey }),
                 credentials: 'same-origin'
             }).catch(function() {});
+
+            const banner = document.getElementById(`draftBanner_${moduleKey}`);
+            if (banner) banner.remove();
         },
 
         /**
-         * Lightweight feedback toast
-         */
-        showNotificationToast: function(message, type) {
-            const toast = document.createElement('div');
-            const isInfo = type === 'info';
-            toast.style.cssText = `position: fixed; top: 82px; right: 24px; z-index: 100005; background: #fff; border: 1.5px solid ${isInfo ? '#93c5fd' : '#86efac'}; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); padding: 12px 18px; display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; color: ${isInfo ? '#1e40af' : '#166534'}; animation: toastSlideIn .3s ease;`;
-            toast.innerHTML = `<i class="fas ${isInfo ? 'fa-info-circle' : 'fa-check-circle'}" style="font-size: 16px; color: ${isInfo ? '#3b82f6' : '#16a34a'};"></i> <span>${message}</span>`;
-            document.body.appendChild(toast);
-            setTimeout(function() {
-                toast.style.opacity = '0';
-                toast.style.transition = 'opacity 0.4s ease';
-                setTimeout(function() { toast.remove(); }, 400);
-            }, 4000);
-        },
-
-        /**
-         * Auto-scan and initialize forms with [data-draft-module] or standard form IDs/pages
+         * Auto-scan and initialize all data-entry forms, interactive tables, and modals
          */
         autoScan: function() {
             const self = this;
             const pathname = window.location.pathname.split('/').pop().replace(/\.php$/, '');
+            const searchParams = new URLSearchParams(window.location.search);
+            const section = searchParams.get('section') || searchParams.get('tab') || searchParams.get('active_tab') || '';
 
-            // 1. Explicit data-draft-module forms
-            document.querySelectorAll('form[data-draft-module]').forEach(function(f) {
-                const mod = f.getAttribute('data-draft-module');
-                if (mod) self.init(mod, f);
+            // Clean up any residual banner elements
+            document.querySelectorAll('[id^="draftBanner_"], .petron-draft-status-badge').forEach(function(b) { b.remove(); });
+
+            // 1. Explicit data-draft-module containers
+            document.querySelectorAll('[data-draft-module]').forEach(function(el) {
+                const mod = el.getAttribute('data-draft-module');
+                if (mod) self.init(mod, el);
             });
 
-            // 2. Standard ID mappings
-            const knownFormMap = {
+            // 2. Transactions Hub: Job Order & Merchandise / POS encoding section
+            const merchJoSection = document.querySelector('#merchandiseSection, #joCard, #cartCard, .txn-grid');
+            if (merchJoSection && !merchJoSection.hasAttribute('data-petron-draft-module')) {
+                const merchModuleKey = 'pos_merchandise_joborder' + (section ? '_' + section : '');
+                self.init(merchModuleKey, merchJoSection.closest('.txn-container') || document.body);
+            }
+
+            // 3. Fuel Meter Readings encoding grid / table
+            const meterTable = document.querySelector('#encodeCard, #fuelReadingTable, table.fuel-encode-table, #fuelHistoryTable');
+            if (meterTable && !meterTable.hasAttribute('data-petron-draft-module')) {
+                const meterModuleKey = 'fuel_meter_readings' + (section ? '_' + section : '');
+                self.init(meterModuleKey, meterTable);
+            }
+
+            // 4. Product & Pricing Management Form & Modal Mappings (Fuel, Merchandise, Services)
+            const pricingProductForms = {
+                // Product & Pricing Management (Fuel, Merchandise, Services)
+                'addProductForm': 'add_fuel_product_modal',
+                'addMerchandiseForm': 'add_merchandise_product_modal',
+                'addServiceForm': 'add_service_modal',
+                'editPriceForm': 'edit_fuel_price_modal',
+                'editPriceFormAdmin': 'edit_fuel_price_admin_modal',
+                'editMerchandiseForm': 'edit_merchandise_modal',
+                'editServiceForm': 'edit_service_modal',
+
+                // Standard known form IDs across all user roles
                 'merchandiseForm': 'merchandise_transaction',
                 'jobOrderForm': 'job_order',
                 'addUserForm': 'user_creation_form',
@@ -391,43 +429,76 @@
                 'deliveryForm': 'delivery_receipt',
                 'poForm': 'purchase_order',
                 'adjustmentForm': 'transaction_adjustment',
-                'voidForm': 'void_request'
+                'voidForm': 'void_request',
+                'adminAddUserForm': 'admin_user_creation',
+                'editUserForm': 'edit_user_form',
+                'adminEditProdModal': 'admin_edit_product_form'
             };
 
-            Object.keys(knownFormMap).forEach(function(formId) {
+            Object.keys(pricingProductForms).forEach(function(formId) {
                 const formEl = document.getElementById(formId);
                 if (formEl && !formEl.hasAttribute('data-petron-draft-module')) {
-                    self.init(knownFormMap[formId], formEl);
+                    self.init(pricingProductForms[formId], formEl);
                 }
             });
 
-            // 3. Fallback: Intelligent detection for primary data-entry forms on encoding pages
-            const encodingPages = [
-                'pos', 'transactions', 'job_orders', 'joborder_create', 'staff_fuel_reading',
-                'fuel_sales_closing', 'stock_request', 'staff_stock_requests', 'manager_purchase_orders',
-                'staff_merchandise_transactions', 'users'
-            ];
+            // 5. Universal scan: Every data-entry form across all pages and roles
+            document.querySelectorAll('form').forEach(function(f, idx) {
+                if (f.hasAttribute('data-petron-draft-module')) return;
+                if (f.method && f.method.toUpperCase() === 'GET') return; // skip all GET forms (search/filter)
+                if (f.id === 'loginForm' || f.id === 'logoutForm') return;
+                // Skip forms that are purely filter/search (no meaningful data-entry inputs)
+                if (f.classList.contains('filters') || f.classList.contains('search-form') ||
+                    f.getAttribute('role') === 'search') return;
 
-            if (encodingPages.includes(pathname)) {
-                document.querySelectorAll('form').forEach(function(f, idx) {
-                    if (f.hasAttribute('data-petron-draft-module')) return;
-                    if (f.method && f.method.toUpperCase() === 'GET' && f.classList.contains('filters')) return;
-                    if (f.id === 'loginForm' || f.id === 'logoutForm') return;
+                const formId = f.id;
+                const insideInputs = Array.from(f.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]), select, textarea'));
+                const outsideInputs = formId ? Array.from(document.querySelectorAll(`input[form="${formId}"]:not([type="hidden"]):not([type="submit"]), select[form="${formId}"], textarea[form="${formId}"]`)) : [];
+                const allInputs = [...insideInputs, ...outsideInputs];
 
-                    // Must have meaningful input fields
-                    const inputs = f.querySelectorAll('input:not([type="hidden"]):not([type="submit"]), select, textarea');
-                    if (inputs.length >= 2) {
-                        const autoKey = 'page_' + pathname + (idx > 0 ? '_' + idx : '');
-                        self.init(autoKey, f);
-                    }
+                // Skip forms whose elements have inline event handlers (onchange/oninput attributes).
+                // These are page-specific and may reference functions not defined on the current page,
+                // causing ReferenceErrors when the draft engine fires change events during restore.
+                const hasInlineHandlers = allInputs.some(function(el) {
+                    return el.hasAttribute('onchange') || el.hasAttribute('oninput') || el.hasAttribute('onkeyup');
                 });
-            }
+                if (hasInlineHandlers) return;
+
+                if (allInputs.length >= 1) {
+                    const autoKey = 'form_' + pathname + (section ? '_' + section : '') + (formId ? '_' + formId : '_' + idx);
+                    self.init(autoKey, f);
+                }
+            });
         }
     };
 
     window.PetronDraft = PetronDraft;
 
-    document.addEventListener('DOMContentLoaded', function() {
+    // Flush all drafts immediately whenever user clicks ANY link or sidebar item
+    document.addEventListener('click', function(e) {
+        const navTarget = e.target.closest('a[href], .sidebar a, .nav-link, button[onclick*="location"], [data-nav]');
+        if (navTarget) {
+            PetronDraft.flushAll();
+        }
+    }, true);
+
+    // Save on beforeunload & pagehide
+    window.addEventListener('beforeunload', function() {
+        PetronDraft.flushAll();
+    });
+    window.addEventListener('pagehide', function() {
+        PetronDraft.flushAll();
+    });
+
+    // Run on DOMContentLoaded and on window load
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            PetronDraft.autoScan();
+        });
+    } else {
+        PetronDraft.autoScan();
+    }
+    window.addEventListener('load', function() {
         PetronDraft.autoScan();
     });
 

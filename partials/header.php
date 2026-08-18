@@ -206,10 +206,11 @@ try {
         $pending_jo_count = (int)$stmt->fetchColumn();
         $badges['joborder'] = $pending_jo_count; // manager
 
-        // Inventory Shortages
-        $stmtInv = $pdo->prepare("SELECT COUNT(*) FROM inventory WHERE station_id = ? AND stock_level <= 20");
-        $stmtInv->execute([$myStationId]);
-        $badges['inventory'] = (int)$stmtInv->fetchColumn();
+        // NOTE: inventory, reports, and fuel badges for manager/admin are computed
+        // authoritatively in the $__badge_count block below (~line 3490).
+        // Do NOT set them here to avoid double-counting or contamination.
+        $badges['inventory'] = 0; // placeholder; overwritten below
+        $badges['reports']   = 0; // placeholder; overwritten below
 
         if ($role === 'admin') {
             // Admin-specific badge keys matching sidebar item IDs
@@ -225,16 +226,11 @@ try {
             } catch (Exception $e) { $pending_po = 0; }
             $badges['admin_transactions_oversight'] = $pending_tx + $pending_jo_count;
             $badges['purchase_orders_admin']        = $pending_po;
-            // Badge for Stock-In: POs admin-finalized AND manager-validated, awaiting stock-in
             try {
                 $s2 = $pdo->prepare("SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND admin_finalized=1 AND delivery_validated=1 AND stock_in_done=0 AND type='merch'");
                 $s2->execute([$myStationId]);
                 $badges['admin_stock_in'] = (int)$s2->fetchColumn();
             } catch (Exception $e) { $badges['admin_stock_in'] = 0; }
-            $badges['reports_admin'] = $pending_tx + $pending_jo_count + ($badges['inventory'] ?? 0);
-        } else {
-            // Reports Aggregate for manager
-            $badges['reports'] = ($badges['pos'] ?? 0) + $pending_jo_count + ($badges['inventory'] ?? 0);
         }
     } elseif ($role === 'staff') {
         // Staff badges are dynamically computed via $__badge_add in the layout section below
@@ -723,6 +719,34 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     }
     button, .btn, .ss-btn-primary {
         background-color: <?php echo htmlspecialchars($theme_button_color); ?> !important;
+    }
+    /* ── Calendar modal buttons: preserve their own white/blue backgrounds ── */
+    #eventModal button,
+    #detailsModal button,
+    #calendarDetailsModal button,
+    #eventModal .btn,
+    #detailsModal .btn {
+        background-color: unset !important;
+    }
+    #eventModal button[type="button"],
+    #detailsModal button[type="button"],
+    #calendarDetailsModal button[type="button"] {
+        background-color: #ffffff !important;
+        color: #3c4043 !important;
+        border: 1px solid #dadce0 !important;
+    }
+    #eventModal button[type="submit"],
+    #detailsModal button[type="submit"],
+    #calendarDetailsModal button[type="submit"],
+    #eventModal button.cal-btn-save,
+    #detailsModal button.cal-btn-save {
+        background-color: #1a73e8 !important;
+        color: #ffffff !important;
+        border: none !important;
+    }
+    /* ── Dynamically-injected detail action buttons (JS-generated) ── */
+    #detailsActions button {
+        background-color: unset !important;
     }
     /* Sub-tabs & Navigation tabs styling fix: ensure inactive tab text is crisp, clear, and visible with white background */
     .tab-btn:not(.active),
@@ -3572,32 +3596,20 @@ require_once __DIR__ . '/rbac_menu.php';
       $badges['mgr_product_pricing']   = $admin_price_change;
       $badges['admin_product_pricing'] = $admin_price_change;
 
-      // 3. Reports: System Alerts
-      $admin_system_alerts = $__badge_count(
-          "SELECT COUNT(*) FROM notifications WHERE severity IN ('critical','error') AND status = 'unread'",
-          []
-      );
-      $badges['reports']       = $admin_system_alerts;
-      $badges['admin_reports'] = $admin_system_alerts;
+      // 3. Reports: No action badges (Reports is an analytical inquiry module)
+      $badges['reports']       = 0;
+      $badges['admin_reports'] = 0;
 
-      // 4. Fuel Management Oversight: Manager-verified/approved fuel transactions + fuel deliveries + fuel stock requests + fuel adjustments
-      $admin_fuel_txns = $__badge_count(
-          "SELECT COUNT(*) FROM fuel_transactions WHERE LOWER(COALESCE(status,'')) IN ('verified','validated','approved','adjusted','pending')",
-          []
-      );
-      $admin_fuel_deliv = $__badge_count(
-          "SELECT COUNT(*) FROM purchase_orders WHERE (type = 'fuel' OR LOWER(COALESCE(item_category,'')) IN ('fuel','fuels')) AND (delivery_validated = 1 OR status IN ('Validated','Delivered','Pending Admin Review','Submitted'))",
-          []
-      );
+      // 4. Fuel Management Oversight: Pending Fuel Stock Requests + Pending Fuel Adjustments
       $admin_fuel_reqs = $__badge_count(
-          "SELECT COUNT(*) FROM fuel_stock_requests WHERE LOWER(COALESCE(status,'')) IN ('pending','pending manager review','pending admin review','approved','submitted')",
+          "SELECT COUNT(*) FROM fuel_stock_requests WHERE LOWER(COALESCE(status,'')) IN ('pending','pending manager review','pending admin review')",
           []
       );
       $admin_fuel_adj = $__badge_count(
-          "SELECT COUNT(*) FROM fuel_adjustments WHERE LOWER(COALESCE(status,'')) IN ('pending','verified','reviewed','approved')",
+          "SELECT COUNT(*) FROM fuel_adjustments WHERE LOWER(COALESCE(status,'')) IN ('pending','pending validation')",
           []
       );
-      $admin_fuel_total = $admin_fuel_txns + $admin_fuel_deliv + $admin_fuel_reqs + $admin_fuel_adj;
+      $admin_fuel_total = $admin_fuel_reqs + $admin_fuel_adj;
       $badges['fuel']                  = $admin_fuel_total;
       $badges['admin_fuel']            = $admin_fuel_total;
       $badges['admin_fuel_management'] = $admin_fuel_total;
@@ -5481,27 +5493,53 @@ require_once __DIR__ . '/rbac_menu.php';
                 }).join('');
             }
 
-            function updateBadge(count) {
-                const badge = document.getElementById('notificationBadge');
-                if (!badge) return;
-                if (count > 0) {
-                    badge.textContent = count > 99 ? '99+' : count;
-                    badge.style.display = 'block';
-                    badge.style.background = count > 0 ? '#dc3545' : '#6c757d';
-                } else {
-                    badge.style.display = 'none';
+            function updateSidebarBadges(categoryCounts) {
+                if (!categoryCounts) return;
+                const map = {
+                    'transactions':          categoryCounts.transactions || 0,
+                    'fuel':                  categoryCounts.fuel || 0,
+                    'admin_fuel':            categoryCounts.admin_fuel || categoryCounts.fuel || 0,
+                    'admin_fuel_management': categoryCounts.admin_fuel_management || categoryCounts.fuel || 0,
+                    'inventory':             categoryCounts.inventory || 0,
+                    'admin_inventory':       categoryCounts.admin_inventory || categoryCounts.inventory || 0,
+                    'customers':             categoryCounts.customers || 0,
+                    'prod_pricing':          categoryCounts.prod_pricing || 0,
+                    'admin_product_pricing': categoryCounts.admin_product_pricing || categoryCounts.prod_pricing || 0,
+                    'reports':               categoryCounts.reports || 0,
+                    'admin_reports':         categoryCounts.admin_reports || categoryCounts.reports || 0,
+                    'notifications':         categoryCounts.notifications || 0
+                };
+                for (const [key, cnt] of Object.entries(map)) {
+                    document.querySelectorAll(`[data-sidebar-badge="${key}"]`).forEach(el => {
+                        if (cnt > 0) { el.textContent = cnt > 99 ? '99+' : cnt; el.style.display = 'flex'; }
+                        else { el.style.display = 'none'; }
+                    });
                 }
+            }
+
+            function updateBadge(count, categoryCounts) {
+                const badge = document.getElementById('notificationBadge');
+                if (badge) {
+                    if (count > 0) {
+                        badge.textContent = count > 99 ? '99+' : count;
+                        badge.style.display = 'block';
+                        badge.style.background = '#dc3545';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+                if (categoryCounts) updateSidebarBadges(categoryCounts);
             }
 
             async function loadNotifications() {
                 const el = document.getElementById('notificationList');
                 if (el) el.innerHTML = '<div style="padding:20px;text-align:center;color:#888;font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
                 try {
-                    const res  = await fetch(API_LIST + '?action=list&limit=15&status=all');
+                    const res  = await fetch(API_LIST + '?action=list&limit=15&status=all', { credentials: 'same-origin', cache: 'no-store' });
                     const data = await res.json();
                     if (data.success) {
                         renderNotifications(data.notifications || []);
-                        updateBadge(data.unread_count || 0);
+                        updateBadge(data.bell_unread_count ?? data.unread_count ?? 0, data.category_counts);
                     }
                 } catch (e) {
                     if (el) el.innerHTML = '<div style="padding:20px;text-align:center;color:#cc0000;font-size:12px;"><i class="fas fa-exclamation-circle"></i> Failed to load notifications.</div>';
@@ -5510,28 +5548,35 @@ require_once __DIR__ . '/rbac_menu.php';
 
             async function fetchUnreadCount() {
                 try {
-                    const res  = await fetch(API_LIST + '?action=unread_count');
+                    const res  = await fetch(API_LIST + '?action=unread_count', { credentials: 'same-origin', cache: 'no-store' });
                     const data = await res.json();
                     if (data.success) {
-                        const bellCount = (typeof data.bell_unread_count !== 'undefined')
-                            ? data.bell_unread_count
-                            : (data.unread_count || 0);
-                        updateBadge(bellCount);
+                        updateBadge(data.bell_unread_count ?? data.unread_count ?? 0, data.category_counts);
                     }
                 } catch (e) {}
             }
 
             async function generateAndRefresh() {
-                try { await fetch(API_GEN); } catch (e) {}
+                try {
+                    await fetch(API_GEN, { credentials: 'same-origin', cache: 'no-store' });
+                } catch (e) {}
                 await fetchUnreadCount();
             }
 
             // Expose mark-read globally so onclick works
             window.saMarkRead = function(id) {
+                if (!id) return;
                 try {
                     const fd = new FormData();
                     fd.append('notification_id', id);
-                    fetch(API_LIST + '?action=mark_read', { method: 'POST', body: fd, credentials: 'same-origin' });
+                    fetch(API_LIST + '?action=mark_read', { method: 'POST', body: fd, credentials: 'same-origin' })
+                        .then(r => r.ok ? r.json() : null)
+                        .then(data => {
+                            if (data && data.success) {
+                                updateBadge(data.bell_unread_count ?? 0, data.category_counts);
+                            }
+                        })
+                        .catch(() => {});
                 } catch (e) {}
             };
 
@@ -5541,8 +5586,11 @@ require_once __DIR__ . '/rbac_menu.php';
                 markAllBtn.addEventListener('click', async function (e) {
                     e.stopPropagation();
                     try {
-                        const fd = new FormData();
-                        await fetch(API_LIST + '?action=mark_all_read', { method: 'POST', body: fd });
+                        const res = await fetch(API_LIST + '?action=mark_all_read', { method: 'POST', credentials: 'same-origin' });
+                        const data = await res.json();
+                        if (data && data.success) {
+                            updateBadge(0, data.category_counts); // zero bell immediately
+                        }
                     } catch (e) {}
                     loadNotifications();
                 });

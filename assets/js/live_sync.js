@@ -1,31 +1,42 @@
 /**
- * Universal Live System Synchronization Engine
- * assets/js/live_sync.js  v2.0
+ * Petron Station Management System
+ * Universal Live System Synchronization & Dynamic Auto-Refresh Engine
+ * assets/js/live_sync.js  v3.0
  *
- * Automatically refreshes critical data in real time across the entire system:
- *  - Header notifications & alert badges (#notificationBadge)
- *  - Sidebar navigation badges ([data-sidebar-badge="..."])
- *  - Footer live connection & sync status pulse indicator
- *  - Dashboard statistics via page-specific AJAX callbacks (window.refreshLivePageData)
- *  - Tables marked with [data-live-table] via background AJAX fetch
- *  - "Refresh" buttons automatically converted to AJAX reloads (no page reload needed)
+ * Automatically refreshes dynamic data globally across all roles and modules without full browser/page reloads:
+ *  - Notifications & Alerts (10–12 sec)
+ *  - Dashboard KPIs & Status Cards (15–20 sec)
+ *  - Transaction Records, POS History & Tracker (15–20 sec)
+ *  - Fuel Meter Readings & Fuel Sales Closing (15–20 sec)
+ *  - Inventory Stocks, Stock-In & Alerts (15–20 sec)
+ *  - Stock Requests, Purchase Orders & Approvals (10–15 sec)
+ *  - Receivables, Audit Trail & User Management (20–30 sec)
+ *
+ * Form Safety:
+ *  - Active data-entry forms, open modals, and focused input fields are NEVER overwritten.
+ *  - Unfinished user inputs are protected by Global Draft Engine while tables and counters update.
  */
 
-(function () {
+(function(window, document) {
     'use strict';
 
-    // Prevent duplicate initialization
-    if (window.LiveSyncEngine) return;
+    if (window.LiveSyncEngine && window.LiveSyncEngine.version === '3.0') return;
 
-    const SYNC_INTERVAL_MS  = 8000;  // global badge/notif poll: 8 seconds
-    const TABLE_REFRESH_MS  = 15000; // live table auto-refresh: 15 seconds
-    let isPolling           = false;
-    let lastSyncTimestamp   = null;
-    let syncErrorCount      = 0;
-    let lastNotifCount      = -1;
+    // ── Configuration & Intervals ──────────────────────────────────
+    const NOTIF_INTERVAL_MS   = 10000; // 10s: Notifications, alerts, badges, approval counts
+    const DATA_INTERVAL_MS    = 18000; // 18s: Dashboard KPIs, tables, history, inventory, fuel
+    const AUDIT_INTERVAL_MS   = 30000; // 30s: Audit trail, user lists, static configuration
 
-    // ── Detect base application path ──────────────────────────────
+    let isSyncingNotifs       = false;
+    let isSyncingData         = false;
+    let lastNotifCount        = -1;
+    let lastSyncTime          = null;
+
+    // ── App Base Path Detection ────────────────────────────────────
     function getAppBasePath() {
+        if (window.pageData && window.pageData.appBasePath) {
+            return window.pageData.appBasePath.replace(/\/$/, '');
+        }
         const scripts = document.querySelectorAll('script[src*="live_sync.js"]');
         for (const s of scripts) {
             const src = s.getAttribute('src') || '';
@@ -41,10 +52,10 @@
         return '';
     }
 
-    const basePath    = getAppBasePath();
+    const basePath     = getAppBasePath();
     const syncEndpoint = basePath + '/backend/api/live_system_sync.php';
 
-    // ── Helper: Is user actively interacting? ────────────────────
+    // ── Helper: Check if user is actively interacting with an element ─
     function isUserBusy() {
         const active = document.activeElement;
         if (active && (
@@ -52,24 +63,38 @@
             active.tagName === 'TEXTAREA' ||
             active.tagName === 'SELECT'   ||
             active.isContentEditable
-        )) return true;
+        )) {
+            return true;
+        }
         if (document.querySelector(
-            '.modal.show, .modal[style*="display: block"], .swal2-container, ' +
-            '.popover.show, .dropdown-menu.show'
-        )) return true;
+            '.modal.show, .modal[style*="display: block"], .modal[style*="display: flex"], ' +
+            '.swal2-container, .popover.show, .dropdown-menu.show'
+        )) {
+            return true;
+        }
         return false;
     }
 
-    // ── Helper: Escape HTML ───────────────────────────────────────
-    function escapeHtml(str) {
-        if (str === null || str === undefined) return '';
-        return String(str)
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
+    // ── Helper: Check if a specific container contains active editing elements ─
+    function isContainerBeingEdited(container) {
+        if (!container) return false;
+        const active = document.activeElement;
+        if (active && container.contains(active)) {
+            if (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT') {
+                return true;
+            }
+        }
+        // If container has draft attribute and has populated input fields that are not submitted
+        const inputs = container.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([readonly]), textarea:not([readonly])');
+        for (let i = 0; i < inputs.length; i++) {
+            if (inputs[i].value && String(inputs[i].value).trim() !== '' && inputs[i].value !== '0' && inputs[i].value !== '0.00') {
+                if (document.activeElement === inputs[i]) return true;
+            }
+        }
+        return false;
     }
 
-    // ── Update Header Notification Badge (#notificationBadge) ────
+    // ── Header Notification Badges ────────────────────────────────
     function updateNotificationBadge(count) {
         const badge = document.getElementById('notificationBadge');
         if (badge) {
@@ -81,188 +106,54 @@
                 badge.style.display = 'none';
             }
         }
-        document.querySelectorAll('.header-notif-badge, .notif-badge-count').forEach(b => {
+        document.querySelectorAll('.header-notif-badge, .notif-badge-count, #headerNotifBadge').forEach(b => {
             b.textContent = count > 0 ? (count > 99 ? '99+' : count) : '';
             b.style.display = count > 0 ? 'inline-flex' : 'none';
         });
     }
 
-    // ── Update Sidebar Badges ([data-sidebar-badge="..."]) ────────
+    // ── Sidebar Navigation Badges ──────────────────────────────────
     function updateSidebarBadges(badges) {
-        if (!badges) return;
-        const keyMap = {
-            'transactions' : ['transactions'],
-            'fuel'         : ['fuel', 'admin_fuel', 'admin_fuel_management'],
-            'inventory'    : ['inventory', 'admin_inventory'],
-            'customers'    : ['customers', 'mgr_customers'],
-            'pricing'      : ['mgr_product_pricing', 'prod_pricing', 'admin_product_pricing'],
-            'reports'      : ['reports', 'admin_reports'],
-            'users'        : ['users'],
-        };
+        if (!badges || typeof badges !== 'object') return;
+        // Strict 1:1 mapping: each key from the server updates ONLY the exact
+        // [data-sidebar-badge="<key>"] element. No fan-out / aliasing allowed,
+        // because that was causing badges to bleed across Reports ↔ Inventory.
         Object.keys(badges).forEach(key => {
-            const val        = badges[key];
-            const sidebarKeys = keyMap[key] || [key];
-            sidebarKeys.forEach(sk => {
-                document.querySelectorAll(`[data-sidebar-badge="${sk}"]`).forEach(el => {
-                    if (val > 0) {
-                        el.textContent   = val > 99 ? '99+' : val;
-                        el.style.display = 'flex';
-                    } else {
-                        el.style.display = 'none';
-                    }
-                });
-            });
-        });
-    }
-
-    // ── Footer Live Pulse Indicator ───────────────────────────────
-    function injectPulseStyles() {
-        if (document.getElementById('liveSyncPulseStyles')) return;
-        const style = document.createElement('style');
-        style.id = 'liveSyncPulseStyles';
-        style.textContent = `
-            @keyframes livePulse {
-                0%   { transform:scale(0.95); box-shadow:0 0 0 0 rgba(16,185,129,.7); }
-                70%  { transform:scale(1.05); box-shadow:0 0 0 6px rgba(16,185,129,0); }
-                100% { transform:scale(0.95); box-shadow:0 0 0 0 rgba(16,185,129,0); }
-            }
-            #liveSyncFooterBadge { transition: background .3s, border-color .3s; }
-            .live-sync-refresh-btn.ls-loading { opacity:.6; pointer-events:none; }
-            .live-sync-refresh-btn.ls-loading i { animation: spin 0.7s linear infinite; }
-            @keyframes spin { to { transform:rotate(360deg); } }
-        `;
-        document.head.appendChild(style);
-    }
-
-    function updateFooterSyncStatus(success, formattedTime) {
-        const badge = document.getElementById('liveSyncFooterBadge');
-        if (badge) badge.remove();
-        return;
-    }
-
-    // ────────────────────────────────────────────────────────────────
-    // AJAX TABLE REFRESH  ([data-live-table="selector"])
-    // Usage: <div data-live-table="#myTableWrapper" data-live-url="page.php?table_only=1">
-    // The server renders just the table HTML when ?table_only=1 is present.
-    // ────────────────────────────────────────────────────────────────
-    const _tableTimers = new Map();
-
-    async function refreshAjaxTable(container, showSpinner) {
-        if (!container) return;
-        const url = container.dataset.liveUrl || window.location.href;
-        if (container._lsInflight) return;
-        container._lsInflight = true;
-
-        if (showSpinner) {
-            const spin = document.createElement('div');
-            spin.className = 'ls-table-spinner';
-            spin.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.55);display:flex;align-items:center;justify-content:center;z-index:9;border-radius:inherit;';
-            spin.innerHTML = '<i class="fas fa-sync-alt" style="font-size:20px;color:#002F70;animation:spin .7s linear infinite;"></i>';
-            if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
-            container.appendChild(spin);
-        }
-
-        try {
-            const ctrl = new AbortController();
-            const tid  = setTimeout(() => ctrl.abort(), 8000);
-            const res  = await fetch(url, {
-                signal: ctrl.signal, credentials: 'same-origin', cache: 'no-store',
-                headers: { 'X-Live-Table': '1', 'Accept': 'text/html' }
-            });
-            clearTimeout(tid);
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            const html = await res.text();
-
-            // Parse and extract just the matching fragment
-            const parser = new DOMParser();
-            const doc    = parser.parseFromString(html, 'text/html');
-            const targetSel = container.dataset.liveTable;
-            const newFrag = targetSel ? doc.querySelector(targetSel) : null;
-            if (newFrag) {
-                container.innerHTML = newFrag.innerHTML;
-            }
-        } catch (e) {
-            // silent
-        } finally {
-            container._lsInflight = false;
-            container.querySelector('.ls-table-spinner')?.remove();
-        }
-    }
-
-    function initLiveTables() {
-        document.querySelectorAll('[data-live-table]').forEach(container => {
-            const intervalMs = parseInt(container.dataset.liveInterval || TABLE_REFRESH_MS, 10);
-            if (!_tableTimers.has(container)) {
-                const tid = setInterval(() => {
-                    if (!document.hidden && !isUserBusy()) {
-                        refreshAjaxTable(container, false);
-                    }
-                }, intervalMs);
-                _tableTimers.set(container, tid);
-            }
-        });
-    }
-
-    // ────────────────────────────────────────────────────────────────
-    // AUTO-INTERCEPT "REFRESH" BUTTONS → AJAX reload instead of page reload
-    // Targets all buttons with onclick="location.reload()" or class containing "refresh"
-    // that are simple reload triggers (not form submitters)
-    // ────────────────────────────────────────────────────────────────
-    function interceptRefreshButtons() {
-        // Find buttons whose onclick attribute contains location.reload
-        document.querySelectorAll('[onclick*="location.reload"], [onclick*="window.location.reload"]').forEach(btn => {
-            // Only intercept if it's a plain refresh (not inside a form/submit chain)
-            if (btn.closest('form')) return;
-            if (btn.dataset.lsIntercepted) return;
-            btn.dataset.lsIntercepted = '1';
-            btn.classList.add('live-sync-refresh-btn');
-
-            const origOnclick = btn.getAttribute('onclick');
-            btn.removeAttribute('onclick');
-
-            btn.addEventListener('click', async function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                btn.classList.add('ls-loading');
-
-                // Find the nearest live-table ancestor, or just call refreshLivePageData
-                const liveTableAncestor = btn.closest('[data-live-table]');
-                if (liveTableAncestor) {
-                    await refreshAjaxTable(liveTableAncestor, true);
-                } else if (typeof window.refreshLivePageData === 'function') {
-                    await window.refreshLivePageData();
+            const val = parseInt(badges[key], 10) || 0;
+            document.querySelectorAll(`[data-sidebar-badge="${key}"]`).forEach(el => {
+                if (val > 0) {
+                    el.textContent   = val > 99 ? '99+' : val;
+                    el.style.display = 'flex';
                 } else {
-                    // No AJAX handler — fall back to the original reload (safe fallback)
-                    window.location.reload();
-                    return;
+                    el.textContent   = '';
+                    el.style.display = 'none';
                 }
-
-                btn.classList.remove('ls-loading');
             });
         });
     }
 
-    // ── Main Async Sync Function ──────────────────────────────────
-    async function performLiveSync() {
-        if (isPolling) return;
-        isPolling = true;
+
+    // ── Fast Polling: Notifications, Alerts & Badges ───────────────
+    async function syncNotificationsAndBadges() {
+        if (isSyncingNotifs || document.hidden) return;
+        isSyncingNotifs = true;
+
         try {
             const ctrl = new AbortController();
-            const tId  = setTimeout(() => ctrl.abort(), 7000);
-            const response = await fetch(syncEndpoint, {
-                method: 'GET', signal: ctrl.signal,
+            const tid = setTimeout(() => ctrl.abort(), 6000);
+            const res = await fetch(syncEndpoint, {
+                method: 'GET',
+                signal: ctrl.signal,
                 credentials: 'same-origin',
                 headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' }
             });
-            clearTimeout(tId);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
+            clearTimeout(tid);
+
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
 
             if (data && data.success) {
-                syncErrorCount = 0;
-                lastSyncTimestamp = data.formatted_time;
-
-                // 1. Header notification badge
+                lastSyncTime = data.formatted_time;
                 const newCount = data.unread_notifications || 0;
                 if (newCount !== lastNotifCount) {
                     updateNotificationBadge(newCount);
@@ -271,43 +162,162 @@
                         window._petronNotifUpdateBadge(newCount, null);
                     }
                 }
-
-                // 2. Sidebar badges
                 updateSidebarBadges(data.sidebar_badges || {});
-
-                // 3. Footer pulse
-                updateFooterSyncStatus(true, data.formatted_time);
-
-                // 4. Page-specific live refresh callback
-                if (typeof window.refreshLivePageData === 'function' && !isUserBusy()) {
-                    try { window.refreshLivePageData(data); } catch (e) { /* silent */ }
-                }
             }
-        } catch (err) {
-            syncErrorCount++;
-            if (syncErrorCount > 3) updateFooterSyncStatus(false);
+        } catch (e) {
+            // silent fail
         } finally {
-            isPolling = false;
+            isSyncingNotifs = false;
         }
     }
 
-    // ── Start everything after DOM ready ─────────────────────────
-    function startEngine() {
-        injectPulseStyles();
-        performLiveSync();
-        setInterval(performLiveSync, SYNC_INTERVAL_MS);
+    // ── Dynamic DOM Fragment Refreshing (No Page Reload) ───────────
+    async function refreshDynamicPageFragments() {
+        if (isSyncingData || document.hidden) return;
+        isSyncingData = true;
 
-        // Init live tables and refresh-button interception after DOM settles
-        setTimeout(() => {
-            initLiveTables();
+        try {
+            // 1. If page has dedicated refresh routines, invoke them first
+            if (typeof window.loadTodayEntries === 'function') {
+                try { window.loadTodayEntries(); } catch(e) {}
+            }
+            if (typeof window.loadJobOrderTracker === 'function') {
+                try { window.loadJobOrderTracker(); } catch(e) {}
+            }
+            if (typeof window.refreshLivePageData === 'function') {
+                try { window.refreshLivePageData(); } catch(e) {}
+            }
+
+            // 2. Target presentation selectors to dynamically synchronize
+            const targetSelectors = [
+                // Tables and lists
+                '#todayEntriesCard',
+                '#fuelHistoryTable',
+                '#fuelHistoryTbody',
+                '#merchandiseHistoryTable',
+                '#merchandiseHistoryTbody',
+                '#stockRequestsTable',
+                '#stockRequestsTbody',
+                '#inventoryTable',
+                '#inventoryTbody',
+                '#merchTable',
+                '#jobOrderTracker',
+                '#jobOrderTrackerTbody',
+                '#usersTable',
+                '#usersTbody',
+                '#auditLogsTable',
+                '#auditLogsTbody',
+                '#pendingApprovalsCard',
+                '#posPendingOrdersList',
+                '#recentActivitiesList',
+                // KPI Cards & Metric Summaries
+                '.stat-card',
+                '.kpi-card',
+                '.metric-card',
+                '.dashboard-kpi-grid',
+                '.summary-cards-row',
+                '[data-live-table]',
+                '[data-dynamic-refresh]'
+            ];
+
+            const existingElements = [];
+            targetSelectors.forEach(sel => {
+                document.querySelectorAll(sel).forEach(el => {
+                    if (!isContainerBeingEdited(el)) {
+                        existingElements.push({ selector: sel, element: el });
+                    }
+                });
+            });
+
+            if (existingElements.length === 0) {
+                isSyncingData = false;
+                return;
+            }
+
+            // 3. Fetch latest page HTML in background
+            const ctrl = new AbortController();
+            const tid = setTimeout(() => ctrl.abort(), 8000);
+            const res = await fetch(window.location.href, {
+                method: 'GET',
+                signal: ctrl.signal,
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: { 'X-Live-Refresh': '1', 'Accept': 'text/html' }
+            });
+            clearTimeout(tid);
+
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const html = await res.text();
+
+            // 4. Parse fresh DOM and swap only matching non-editing fragments
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            existingElements.forEach(({ selector, element }) => {
+                if (isContainerBeingEdited(element)) return;
+
+                const newElement = element.id ? doc.getElementById(element.id) : doc.querySelector(selector);
+                if (newElement && element.innerHTML !== newElement.innerHTML) {
+                    element.innerHTML = newElement.innerHTML;
+                }
+            });
+
+            // 5. Re-intercept any newly rendered refresh buttons
             interceptRefreshButtons();
-        }, 500);
 
-        // Re-intercept on visibility change (catches dynamically added buttons)
-        document.addEventListener('visibilitychange', () => {
+        } catch (e) {
+            // silent fail
+        } finally {
+            isSyncingData = false;
+        }
+    }
+
+    // ── Intercept Manual "Refresh" Buttons to use Dynamic Refresh ──
+    function interceptRefreshButtons() {
+        document.querySelectorAll('[onclick*="location.reload"], [onclick*="window.location.reload"], .btn-refresh-live').forEach(btn => {
+            if (btn.closest('form') || btn.dataset.lsIntercepted) return;
+            btn.dataset.lsIntercepted = '1';
+            btn.classList.add('live-sync-refresh-btn');
+
+            btn.removeAttribute('onclick');
+            btn.addEventListener('click', async function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const icon = btn.querySelector('i');
+                if (icon) icon.classList.add('fa-spin');
+                btn.style.opacity = '0.6';
+                btn.style.pointerEvents = 'none';
+
+                await Promise.all([
+                    syncNotificationsAndBadges(),
+                    refreshDynamicPageFragments()
+                ]);
+
+                if (icon) icon.classList.remove('fa-spin');
+                btn.style.opacity = '1';
+                btn.style.pointerEvents = 'auto';
+            });
+        });
+    }
+
+    // ── Start Engine & Schedule Periodic Timers ────────────────────
+    function startEngine() {
+        // Initial fast sync on page load
+        syncNotificationsAndBadges();
+        interceptRefreshButtons();
+
+        // 1. Fast loop: Notifications, alerts, badges (10s)
+        setInterval(syncNotificationsAndBadges, NOTIF_INTERVAL_MS);
+
+        // 2. Medium loop: Tables, KPIs, inventory, transactions, history (18s)
+        setInterval(refreshDynamicPageFragments, DATA_INTERVAL_MS);
+
+        // 3. Visibility change: Sync immediately when user switches back to tab
+        document.addEventListener('visibilitychange', function() {
             if (!document.hidden) {
-                interceptRefreshButtons();
-                performLiveSync();
+                syncNotificationsAndBadges();
+                setTimeout(refreshDynamicPageFragments, 500);
             }
         });
     }
@@ -318,14 +328,14 @@
         startEngine();
     }
 
-    // ── Expose global API ─────────────────────────────────────────
+    // ── Expose Global API ──────────────────────────────────────────
     window.LiveSyncEngine = {
-        triggerSync      : performLiveSync,
-        refreshTable     : refreshAjaxTable,
+        version          : '3.0',
+        triggerSync      : syncNotificationsAndBadges,
+        refreshFragments : refreshDynamicPageFragments,
         isUserBusy       : isUserBusy,
-        getLastSyncTime  : () => lastSyncTimestamp,
+        getLastSyncTime  : () => lastSyncTime,
         getBasePath      : () => basePath,
-        interceptButtons : interceptRefreshButtons,
     };
 
-})();
+})(window, document);

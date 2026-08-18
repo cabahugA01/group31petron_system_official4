@@ -840,8 +840,7 @@ include __DIR__ . '/../partials/header.php';
 
 <style>
 /* Google Calendar Style */
-/* Google Calendar Style */
-.cal-layout { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff; display: flex; height: auto; min-height: calc(100vh - 150px); overflow: visible; margin-bottom: 60px !important; }
+.cal-layout { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: #fff; display: flex; width: 100%; max-width: 100%; height: auto; min-height: calc(100vh - 150px); overflow: hidden; margin-bottom: 60px !important; box-sizing: border-box; }
 .cal-layout *:not(i):not([class*="fa-"]) { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; box-sizing: border-box; }
 
 /* Font Awesome Icon Override */
@@ -853,7 +852,7 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
 }
 
 /* Sidebar */
-.cal-sidebar { width: 256px; border-right: 1px solid #dadce0; padding: 8px 0; overflow-y: visible; flex-shrink: 0; height: auto; }
+.cal-sidebar { width: 256px; min-width: 256px; max-width: 256px; border-right: 1px solid #dadce0; padding: 8px 0; overflow-y: visible; flex-shrink: 0; height: auto; box-sizing: border-box; }
 .cal-create-btn { margin: 20px 12px 32px; background: #fff; border: none; box-shadow: 0 1px 2px 0 rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15); border-radius: 24px; padding: 0 24px 0 12px; height: 56px; display: flex; align-items: center; gap: 16px; cursor: pointer; font-size: 14px; color: #3c4043; font-weight: 500; transition: box-shadow .2s; }
 .cal-create-btn:hover { box-shadow: 0 1px 3px 0 rgba(60,64,67,.3), 0 4px 8px 3px rgba(60,64,67,.15); }
 .cal-create-btn i { width: 36px; height: 36px; background: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #1a73e8; }
@@ -877,13 +876,13 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
 .cal-calendar-checkbox.checked::before { content: '\2713'; }
 
 /* Main content */
-.cal-main { flex: 1 0 auto; display: flex; flex-direction: column; overflow: visible; width: 100%; min-width: 0; }
-.cal-header { padding: 8px 16px; border-bottom: 1px solid #dadce0; display: flex; align-items: center; justify-content: space-between; }
-.cal-header-left { display: flex; align-items: center; gap: 16px; }
+.cal-main { flex: 1 1 auto; display: flex; flex-direction: column; overflow: hidden; width: calc(100% - 256px); min-width: 0; max-width: calc(100% - 256px); box-sizing: border-box; }
+.cal-header { padding: 8px 16px; border-bottom: 1px solid #dadce0; display: flex; align-items: center; justify-content: space-between; width: 100%; box-sizing: border-box; }
+.cal-header-left { display: flex; align-items: center; gap: 16px; min-width: 0; }
 .cal-menu-btn { background: none; border: none; padding: 12px; border-radius: 50%; cursor: pointer; color: #5f6368; font-size: 20px; }
 .cal-menu-btn:hover { background: #f1f3f4; }
-.cal-month-title { font-size: 22px; font-weight: 400; color: #3c4043; }
-.cal-header-right { display: flex; align-items: center; gap: 8px; }
+.cal-month-title { font-size: 22px; font-weight: 400; color: #3c4043; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .cal-view-btn { background: #fff !important; border: 1px solid #dadce0; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; color: #3c4043 !important; display: flex; align-items: center; gap: 6px; position: relative; text-decoration: none; }
 .cal-view-btn:hover { background: #f1f3f4 !important; }
 
@@ -898,12 +897,12 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
 .cal-icon-btn:hover { background: #f1f3f4; }
 
 /* Calendar grid */
-.cal-content { flex: 1 0 auto; height: auto; overflow: visible; width: 100%; }
-.cal-grid-container { min-width: 100%; height: auto; }
-.cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid #dadce0; position: sticky; top: 0; background: #fff; z-index: 2; }
-.cal-weekday { padding: 8px; text-align: center; font-size: 11px; font-weight: 500; color: #70757a; }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: minmax(120px, auto); }
-.cal-day { border: 1px solid #dadce0; border-top: none; border-left: none; padding: 2px; position: relative; background: #fff; overflow: hidden; }
+.cal-content { flex: 1 1 auto; height: auto; overflow: visible; width: 100%; max-width: 100%; box-sizing: border-box; }
+.cal-grid-container { width: 100%; max-width: 100%; height: auto; box-sizing: border-box; }
+.cal-weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-bottom: 1px solid #dadce0; position: sticky; top: 0; background: #fff; z-index: 2; width: 100%; box-sizing: border-box; }
+.cal-weekday { padding: 8px 4px; text-align: center; font-size: 11px; font-weight: 500; color: #70757a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: minmax(120px, auto); width: 100%; box-sizing: border-box; }
+.cal-day { border: 1px solid #dadce0; border-top: none; border-left: none; padding: 2px; position: relative; background: #fff; overflow: hidden; min-width: 0; }
 .cal-day:nth-child(7n) { border-right: none; }
 .cal-day:hover { background: #f8f9fa; }
 .cal-day.other-month { background: #fafafa; }
@@ -1292,7 +1291,7 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                     endfor;
                     ?>
                 </div>
-                <div class="cal-grid" style="grid-template-columns: repeat(7, 1fr); grid-auto-rows: 150px;">
+                <div class="cal-grid" style="grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: 150px;">
                     <?php
                     $week_date = new DateTime($view_start);
                     for ($i = 0; $i < 7; $i++):

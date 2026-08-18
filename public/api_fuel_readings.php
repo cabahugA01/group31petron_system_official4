@@ -13,7 +13,6 @@ ini_set('log_errors', '1');
 // Start session exactly the same way login.php does
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
-require_login();
 }
 
 require_once __DIR__ . '/../backend/lib.php';
@@ -85,7 +84,7 @@ if (!empty($_SESSION['user'])) {
     } catch (Exception $e) {}
 }
 
-// Path 2: auth_user_id in POST — DB lookup, no session needed.
+// Path 2: auth_user_id in POST/GET — DB lookup, no session needed.
 if (!$me) {
     $posted_uid = (int)($_POST['auth_user_id'] ?? $_GET['auth_user_id'] ?? 0);
     if ($posted_uid > 0) {
@@ -118,7 +117,7 @@ if (!$me) {
 }
 
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
-$method = $_SERVER['REQUEST_METHOD'];
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 // ── Schema migration ──────────────────────────────────────────
 try {

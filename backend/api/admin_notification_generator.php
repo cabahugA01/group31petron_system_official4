@@ -80,9 +80,11 @@ function upsert_notif(PDO $pdo, int $user_id, array $data): int {
         $row = $existing->fetch(PDO::FETCH_ASSOC);
 
         if ($row) {
-            // Message matches and status is unread -> skip
+            // Already unread with same message → skip (no change)
             if ($row['status'] === 'unread' && $row['message'] === $data['message']) return 0;
-            // Otherwise, update existing to unread with new message
+            // User already read it AND the message/count hasn't changed → keep it read, don't nag
+            if ($row['status'] === 'read' && $row['message'] === $data['message']) return 0;
+            // Situation changed (different message = higher/lower count) → update and re-open as unread
             $upd = $pdo->prepare(
                 "UPDATE notifications SET message=?, type=?, severity=?, status='unread', read_at=NULL, created_at=NOW()
                  WHERE id=?"
