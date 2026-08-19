@@ -89,7 +89,7 @@ $TANK_CONFIG_17 = get_tank_config((int)$station_id);
 $fi_raw = [];
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)");
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
     $s->execute([$station_id]);
     $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fi_raw as $row) {
@@ -1824,6 +1824,14 @@ document.addEventListener('DOMContentLoaded', function() {
         setupTablePagination('fuelTable', 'fuelRowsLimit', 'fuelPagination', 20);
     }
     filterFuelTable();
+
+    // Auto-open fuel stock request modal if triggered from URL
+    var urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('stock_request') === '1' || urlParams.get('open_sr') === '1' || urlParams.get('action') === 'request' || window.location.hash === '#stock_request') {
+        setTimeout(function() {
+            if (typeof openFuelSrModal === 'function') openFuelSrModal();
+        }, 200);
+    }
 });
 
 // â”€â”€ Initialize page â”€â”€

@@ -560,9 +560,11 @@ if ($status_filter !== '') {
         if ($status_filter === 'Adjusted')             return $vs === 'adjusted';
         if ($status_filter === 'Adjustment Requested') return $req_type === 'Adjustment';
         if ($status_filter === 'Void Requested')       return $req_type === 'Void';
+        if ($status_filter === 'Pending')              return in_array($ws, ['pending', 'awaiting_payment', 'draft']) || in_array($vs, ['pending', 'unvalidated']);
         if ($status_filter === 'In Progress')          return in_array($ws, ['in_progress', 'in progress']);
         if ($status_filter === 'Released')             return $ws === 'released';
-        // Completed = not voided, not adjusted, no pending request
+        if ($status_filter === 'Completed')            return in_array($ws, ['completed', 'finished']) || (!in_array($vs, ['voided', 'adjusted'], true) && !$req_type && $ws !== 'released' && $ws !== 'in_progress' && $ws !== 'pending');
+        // Default fallback
         return !in_array($vs, ['voided', 'adjusted'], true) && !$req_type;
     });
 }
@@ -1167,6 +1169,7 @@ try {
                 <label class="vt-lbl"><i class="fas fa-circle-check"></i> Status</label>
                 <select name="status" class="vt-inp" style="width:165px;">
                     <option value="" <?php echo $status_filter === '' ? 'selected' : ''; ?>>All Statuses</option>
+                    <option value="Pending" <?php echo $status_filter === 'Pending' ? 'selected' : ''; ?>>Pending</option>
                     <option value="In Progress" <?php echo $status_filter === 'In Progress' ? 'selected' : ''; ?>>In Progress</option>
                     <option value="Completed" <?php echo $status_filter === 'Completed' ? 'selected' : ''; ?>>Completed</option>
                     <option value="Released" <?php echo $status_filter === 'Released' ? 'selected' : ''; ?>>Released</option>

@@ -1764,6 +1764,14 @@ document.addEventListener('DOMContentLoaded', function() {
     ]);
     setupTablePagination('merchTable', 'merchRowsLimit', 'merchPagination', 50);
     applyFilters();
+
+    // Auto-open stock request modal if triggered from Quick Actions / URL
+    var urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('stock_request') === '1' || urlParams.get('open_sr') === '1' || urlParams.get('action') === 'request' || window.location.hash === '#stock_request') {
+        setTimeout(function() {
+            if (typeof openSrModal === 'function') openSrModal();
+        }, 200);
+    }
 });
 
 // ── Custom Dropdown (CDD) Logic ────────────────────────────────

@@ -189,19 +189,20 @@ if (!function_exists('get_canonical_fuel_name')) {
     }
 }
 
-// ── Build 7 rows ──────────────────────────────────────────────────────
+// ── Build 7 rows (Aligned with Manager and Staff Fuel Inventory) ──────
 $rows = [];
 foreach ($TANK_CONFIG_17 as $tc) {
     $tank_num = $tc['tanker_num'];
     $ugt_str  = 'UGT-' . str_pad($tank_num, 2, '0', STR_PAD_LEFT);
-    $ft_key   = strtolower(trim($tc['fuel_type']));
+    $fuel_type_base = $tc['fuel_type'];
+    $ft_key   = strtolower(trim($fuel_type_base));
     
     // Smart match: match by UGT number, tanker_num, or clean fuel_type
     $inv = null;
     foreach ($fi_raw as $r) {
         $r_ugt = strtolower(trim($r['ugt_no']));
         $r_ft  = strtolower(trim($r['fuel_type']));
-        if (($r_ugt !== '' && ($r_ugt === strtolower($ugt_str) || strpos($r_ugt, (string)$tank_num) !== false)) || 
+        if (($r_ugt !== '' && ($r_ugt === strtolower($ugt_str) || strpos($r_ugt, '#' . $tank_num) !== false)) || 
             strpos($r_ft, '#' . $tank_num) !== false || 
             strpos($r_ft, 'ugt-' . str_pad($tank_num, 2, '0', STR_PAD_LEFT)) !== false) {
             $inv = $r;
@@ -209,43 +210,47 @@ foreach ($TANK_CONFIG_17 as $tc) {
         }
     }
     if (!$inv) {
-        if (isset($fi_lookup[$ft_key . '_tank_' . $tank_num])) {
-            $inv = $fi_lookup[$ft_key . '_tank_' . $tank_num];
-        } elseif (isset($fi_lookup[$ft_key . '_' . strtolower(trim($tc['tank']))])) {
-            $inv = $fi_lookup[$ft_key . '_' . strtolower(trim($tc['tank']))];
-        } elseif ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
+        if ($ft_key === 'xtra unl' || $ft_key === 'xtr advance' || $ft_key === 'xtra advance') {
             $cand = '';
             if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'xtra unl 1'; }
             elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'xtra unl 2'; }
-            if ($cand && isset($fi_lookup[$cand])) { 
-                $ft_key = $cand;
+            if ($cand && isset($fi_lookup[$cand]) && (float)($fi_lookup[$cand]['current_level'] ?? 0) > 0) { 
+                $ft_key = $cand; 
                 $inv = $fi_lookup[$cand];
-            } else {
+            } else { 
+                $ft_key = 'xtra unl'; 
                 $inv = $fi_lookup['xtra unl'] ?? null;
             }
         } elseif ($ft_key === 'diesel') {
             $cand = '';
             if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'diesel 1'; }
             elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'diesel 2'; }
-            if ($cand && isset($fi_lookup[$cand])) { 
-                $ft_key = $cand;
+            if ($cand && isset($fi_lookup[$cand]) && (float)($fi_lookup[$cand]['current_level'] ?? 0) > 0) { 
+                $ft_key = $cand; 
                 $inv = $fi_lookup[$cand];
-            } else {
+            } else { 
+                $ft_key = 'diesel'; 
                 $inv = $fi_lookup['diesel'] ?? null;
             }
         } else {
             $inv = $fi_lookup[$ft_key] ?? null;
         }
     }
+
+    if (!$inv || ((float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) <= 0)) {
+        $base_key = strtolower(explode(' ', $tc['fuel_type'])[0]);
+        if (isset($fi_lookup[$base_key]) && (float)($fi_lookup[$base_key]['current_level'] ?? $fi_lookup[$base_key]['current_stock'] ?? 0) > 0) {
+            $inv = $fi_lookup[$base_key];
+        }
+    }
     
-    $tank_key = strtolower(trim($tc['tank']));
-    $capacity = (float)$tc['capacity'];
-    
-    $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
+    $capacity  = (float)$tc['capacity'];
+    $raw_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
+    $cur_level = $raw_level > 0 ? min($raw_level, $capacity) : 0;
     
     $same_n = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key, $fi_lookup) {
         $k = strtolower(trim($t['fuel_type']));
-        if ($k === 'xtra unl' || $k === 'xtr advance') {
+        if ($k === 'xtra unl' || $k === 'xtr advance' || $k === 'xtra advance') {
             $cand = '';
             if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'xtra unl 1'; }
             elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'xtra unl 2'; }
@@ -261,28 +266,28 @@ foreach ($TANK_CONFIG_17 as $tc) {
         return $k === $ft_key;
     }));
     
-    $purchases   = $del_lookup[$tank_key] ?? 0;
+    $tank_key  = strtolower($ugt_str);
+    $purchases = $del_lookup[$tank_key] ?? 0;
     
-    $beginning   = $cur_level;
-    $sales       = $same_n > 0 ? round(($sales_lookup[$ft_key] ?? 0) / $same_n, 2) : 0;
-    $calibration = $same_n > 0 ? round(($adj_lookup[$ft_key]  ?? 0) / $same_n, 2) : 0;
+    $sales_total = $sales_lookup[$ft_key] ?? 0;
+    $adj_total   = $adj_lookup[$ft_key] ?? 0;
+    $sales       = $same_n > 0 ? round($sales_total / $same_n, 2) : 0;
+    $calibration = $same_n > 0 ? round($adj_total / $same_n, 2) : 0;
+    
+    $beginning   = $same_n > 0 ? round($cur_level / $same_n, 2) : 0;
     $total_avail = $beginning + $purchases;
     
-    $ending      = max(0, $total_avail - $sales - $calibration);
+    $ending      = min(max(0, $total_avail - $sales - $calibration), $capacity);
+    $remaining_capacity = max(0, $capacity - $ending);
     $actual_dip  = $ending;
     $variance    = 0;
     
-    // Capacity-based thresholds
-    if ($capacity == 14000) {
-        $critical_lvl = 2500;
-        $low_lvl = 5000;
-    } elseif ($capacity == 7000) {
-        $critical_lvl = 1000;
-        $low_lvl = 2000;
-    } else {
-        $critical_lvl = $capacity * 0.10;
-        $low_lvl = $capacity * 0.20;
-    }
+    // Thresholds — from DB tank config (reorder_level / critical_level)
+    $critical_lvl = (float)($tc['critical_level'] ?? 0);
+    $low_lvl      = (float)($tc['reorder_level']  ?? 0);
+    if ($critical_lvl <= 0) $critical_lvl = $capacity > 0 ? $capacity * 0.15 : 0;
+    if ($low_lvl <= 0)      $low_lvl      = $capacity > 0 ? $capacity * 0.30 : 0;
+    
     $fill_pct = $capacity > 0 ? round(($ending / $capacity) * 100, 2) : 0;
     if ($ending <= 0) {
         $status = 'Out of Stock'; $sc = '#dc3545';
@@ -329,6 +334,7 @@ foreach ($TANK_CONFIG_17 as $tc) {
         'actual_dip'     => $actual_dip,
         'variance'       => $variance,
         'current_level'  => $ending,
+        'available_space'=> $remaining_capacity,
         'status'         => $status,
         'status_color'   => $sc,
         'fill_pct'       => $fill_pct,
@@ -348,11 +354,81 @@ $total_low_fuel_tanks = count(array_filter($rows, fn($r) => $r['status'] === 'Lo
 $total_critical_fuel_tanks = count(array_filter($rows, fn($r) => in_array($r['status'], ['Critical','Out of Stock'])));
 $total_fuel_value = array_sum(array_column($rows, 'value'));
 
-// â”€â”€ Active Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Active Tab ────────────────────────────────────────────────────────
 $active_tab = trim($_GET['tab'] ?? 'overview');
-if (!in_array($active_tab, ['overview', 'adjustments', 'alerts'], true)) {
+if (!in_array($active_tab, ['overview', 'movement', 'adjustments', 'alerts'], true)) {
     $active_tab = 'overview';
 }
+
+// ── Fetch Fuel Movement History (Deliveries, Sales, Adjustments) ──────
+$fuel_movement_history = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT
+            fd.delivery_date AS date,
+            fd.fuel_type,
+            COALESCE(NULLIF(fd.invoice_no,''), CONCAT('FDEL-', LPAD(fd.id, 5, '0'))) AS ref_no,
+            'Delivery (IN)' AS movement_type,
+            fd.delivery_liters AS inflow,
+            0 AS outflow,
+            fd.delivery_liters AS net_change,
+            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Staff') AS user_name,
+            COALESCE(NULLIF(fd.supplier,''), 'Petron Corporation') AS remarks
+        FROM fuel_deliveries fd
+        LEFT JOIN users u ON fd.received_by = u.id
+        WHERE (fd.station_id = ? OR fd.station_id = 0 OR fd.station_id IS NULL)
+        ORDER BY fd.delivery_date DESC LIMIT 150
+    ");
+    $stmt->execute([$station_id]);
+    $fuel_movement_history = array_merge($fuel_movement_history, $stmt->fetchAll(PDO::FETCH_ASSOC));
+} catch (Exception $e) {}
+
+try {
+    $stmt = $pdo->prepare("
+        SELECT
+            ft.transaction_date AS date,
+            ft.fuel_type,
+            COALESCE(NULLIF(ft.transaction_id,''), CONCAT('FTRX-', LPAD(ft.id, 5, '0'))) AS ref_no,
+            'Dispensed / Sales (OUT)' AS movement_type,
+            0 AS inflow,
+            ft.liters_sold AS outflow,
+            -1 * ft.liters_sold AS net_change,
+            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Pump Attendant') AS user_name,
+            CONCAT('Pump ', COALESCE(ft.pump_number, '1'), ' Shift Sales') AS remarks
+        FROM fuel_transactions ft
+        LEFT JOIN users u ON ft.staff_id = u.id
+        WHERE (ft.station_id = ? OR ft.station_id = 0 OR ft.station_id IS NULL)
+          AND LOWER(COALESCE(ft.status,'')) NOT IN ('voided','cancelled','rejected')
+        ORDER BY ft.transaction_date DESC LIMIT 150
+    ");
+    $stmt->execute([$station_id]);
+    $fuel_movement_history = array_merge($fuel_movement_history, $stmt->fetchAll(PDO::FETCH_ASSOC));
+} catch (Exception $e) {}
+
+try {
+    $stmt = $pdo->prepare("
+        SELECT
+            fa.adjustment_date AS date,
+            fa.fuel_type,
+            COALESCE(NULLIF(fa.reference_no,''), CONCAT('FADJ-', LPAD(fa.id, 5, '0'))) AS ref_no,
+            'Calibration / Dip' AS movement_type,
+            CASE WHEN fa.variance > 0 THEN fa.variance ELSE 0 END AS inflow,
+            CASE WHEN fa.variance < 0 THEN ABS(fa.variance) ELSE 0 END AS outflow,
+            fa.variance AS net_change,
+            COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Manager') AS user_name,
+            COALESCE(NULLIF(fa.reason,''), NULLIF(fa.notes,''), 'Routine Calibration') AS remarks
+        FROM fuel_adjustments fa
+        LEFT JOIN users u ON fa.user_id = u.id
+        WHERE (fa.station_id = ? OR fa.station_id = 0 OR fa.station_id IS NULL)
+        ORDER BY fa.adjustment_date DESC LIMIT 100
+    ");
+    $stmt->execute([$station_id]);
+    $fuel_movement_history = array_merge($fuel_movement_history, $stmt->fetchAll(PDO::FETCH_ASSOC));
+} catch (Exception $e) {}
+
+usort($fuel_movement_history, function($a, $b) {
+    return strcmp((string)($b['date'] ?? ''), (string)($a['date'] ?? ''));
+});
 
 // â”€â”€ Fetch Fuel Deliveries History â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $fuel_deliveries_list = [];
@@ -659,10 +735,13 @@ body, html { overflow-x:hidden !important; }
     </div>
 </div>
 
-<!-- â•â• Tab Navigation (4 Tabs) â•â• -->
+<!-- ══ Tab Navigation (4 Tabs) ══ -->
 <div class="tab-nav">
     <a href="admin_inventory_fuel.php?tab=overview" class="tab-btn <?= $active_tab === 'overview' ? 'active' : '' ?>">
         <i class="fas fa-gas-pump"></i> Fuel Inventory Overview
+    </a>
+    <a href="admin_inventory_fuel.php?tab=movement" class="tab-btn <?= $active_tab === 'movement' ? 'active' : '' ?>">
+        <i class="fas fa-exchange-alt"></i> Stock Movement Monitoring
     </a>
     <a href="admin_inventory_fuel.php?tab=adjustments" class="tab-btn <?= $active_tab === 'adjustments' ? 'active' : '' ?>">
         <i class="fas fa-history"></i> Fuel Adjustment History
@@ -672,7 +751,7 @@ body, html { overflow-x:hidden !important; }
     </a>
 </div>
 
-<!-- â•â• TAB 1: FUEL INVENTORY OVERVIEW â•â• -->
+<!-- ══ TAB 1: FUEL INVENTORY OVERVIEW ══ -->
 <?php if ($active_tab === 'overview'): ?>
 <!-- Search & Filters -->
 <div class="inv-filter-bar" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:20px; background:#fff; padding:12px 16px; border:1px solid #e2e8f0; border-radius:8px;">
@@ -765,7 +844,126 @@ body, html { overflow-x:hidden !important; }
 </div>
 <?php endif; ?>
 
-<!-- â•â• TAB 3: FUEL ADJUSTMENT HISTORY â•â• -->
+<!-- ══ TAB 2: FUEL STOCK MOVEMENT MONITORING ══ -->
+<?php if ($active_tab === 'movement'): ?>
+<?php
+    $fmov_inflow = 0;
+    $fmov_outflow = 0;
+    foreach ($fuel_movement_history as $fm) {
+        $fmov_inflow += (float)($fm['inflow'] ?? 0);
+        $fmov_outflow += (float)($fm['outflow'] ?? 0);
+    }
+?>
+<!-- Fuel Movement KPI Summary -->
+<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:20px;">
+    <div style="background:#fff; border:1px solid #bbf7d0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
+        <div>
+            <div style="font-size:11px; font-weight:700; color:#15803d; text-transform:uppercase; letter-spacing:.3px;">Total Deliveries (Inflow)</div>
+            <div style="font-size:22px; font-weight:800; color:#15803d; margin-top:4px;">+<?= number_format($fmov_inflow, 2) ?> L</div>
+        </div>
+        <div style="background:#dcfce7; color:#15803d; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-truck"></i></div>
+    </div>
+    <div style="background:#fff; border:1px solid #fed7aa; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
+        <div>
+            <div style="font-size:11px; font-weight:700; color:#c2410c; text-transform:uppercase; letter-spacing:.3px;">Total Dispensed (Outflow)</div>
+            <div style="font-size:22px; font-weight:800; color:#c2410c; margin-top:4px;">-<?= number_format($fmov_outflow, 2) ?> L</div>
+        </div>
+        <div style="background:#ffedd5; color:#c2410c; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-gas-pump"></i></div>
+    </div>
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
+        <div>
+            <div style="font-size:11px; font-weight:700; color:#002F70; text-transform:uppercase; letter-spacing:.3px;">Net Movement Volume</div>
+            <div style="font-size:22px; font-weight:800; color:<?= ($fmov_inflow - $fmov_outflow) >= 0 ? '#15803d' : '#dc2626' ?>; margin-top:4px;"><?= (($fmov_inflow - $fmov_outflow) >= 0 ? '+' : '') . number_format($fmov_inflow - $fmov_outflow, 2) ?> L</div>
+        </div>
+        <div style="background:#f0f4ff; color:#002F70; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-scale-balanced"></i></div>
+    </div>
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
+        <div>
+            <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Movement Logs</div>
+            <div style="font-size:22px; font-weight:800; color:#0f172a; margin-top:4px;"><?= count($fuel_movement_history) ?> Logs</div>
+        </div>
+        <div style="background:#f1f5f9; color:#475569; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-list-check"></i></div>
+    </div>
+</div>
+
+<!-- Search & Filter Bar -->
+<div class="inv-filter-bar" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:20px; background:#fff; padding:12px 16px; border:1px solid #e2e8f0; border-radius:8px;">
+  <div style="position:relative;">
+    <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:12px;"></i>
+    <input type="text" id="fmovSearch" placeholder="Search Ref, Type, Staff..." oninput="filterFuelMovementTable()" style="padding:7px 10px 7px 28px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:220px; outline:none;">
+  </div>
+  <select id="fmovTypeFilter" onchange="filterFuelMovementTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
+    <option value="">All Fuel Types</option>
+    <option value="diesel">Diesel</option>
+    <option value="kerosene">Kerosene</option>
+    <option value="turbo diesel">Turbo Diesel</option>
+    <option value="xcs">XCS</option>
+    <option value="xtra advance">Xtra Advance</option>
+  </select>
+  <select id="fmovMoveFilter" onchange="filterFuelMovementTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
+    <option value="">All Movement Types</option>
+    <option value="delivery">Delivery (IN)</option>
+    <option value="dispensed">Dispensed / Sales (OUT)</option>
+    <option value="calibration">Calibration / Dip (ADJ)</option>
+  </select>
+  <button type="button" class="flt-btn flt-btn-csv" onclick="filterFuelMovementTable()"><i class="fas fa-search"></i> Filter</button>
+  <button type="button" class="flt-btn btn-cancel" onclick="resetFuelMovementFilters()"><i class="fas fa-rotate-left"></i> Reset</button>
+</div>
+
+<!-- Flat Fuel Movement Table -->
+<div style="background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.05); margin-bottom:20px;">
+  <div class="aif-wrap">
+    <table class="aif-tbl" id="adminFuelMovementTable">
+      <thead>
+        <tr>
+          <th>Reference No.</th>
+          <th>Date &amp; Time</th>
+          <th>Fuel Type</th>
+          <th>Movement Type</th>
+          <th style="text-align:right;">Inflow (IN)</th>
+          <th style="text-align:right;">Outflow (OUT)</th>
+          <th style="text-align:right;">Net Change</th>
+          <th>Handled By</th>
+          <th>Remarks / Notes</th>
+        </tr>
+      </thead>
+      <tbody id="adminFuelMovementTbody">
+      <?php if (empty($fuel_movement_history)): ?>
+        <tr><td colspan="9" style="text-align:center; padding:32px; color:#6c757d;">No fuel stock movements recorded yet.</td></tr>
+      <?php else: ?>
+        <?php foreach ($fuel_movement_history as $fm):
+            $mtype = $fm['movement_type'];
+            $is_in = stripos($mtype, 'delivery') !== false || stripos($mtype, 'in') !== false;
+            $is_out = stripos($mtype, 'dispensed') !== false || stripos($mtype, 'sales') !== false || stripos($mtype, 'out') !== false;
+            $badge_bg = $is_in ? '#dcfce7' : ($is_out ? '#fee2e2' : '#fef3c7');
+            $badge_color = $is_in ? '#15803d' : ($is_out ? '#b91c1c' : '#b45309');
+            $net = (float)$fm['net_change'];
+            $net_color = $net > 0 ? '#15803d' : ($net < 0 ? '#dc2626' : '#64748b');
+        ?>
+        <tr class="fmov-row"
+            data-search="<?= strtolower(htmlspecialchars($fm['ref_no'] . ' ' . $fm['fuel_type'] . ' ' . $fm['movement_type'] . ' ' . $fm['user_name'] . ' ' . $fm['remarks'])) ?>"
+            data-fuel-type="<?= strtolower(htmlspecialchars(get_canonical_fuel_name($fm['fuel_type']))) ?>"
+            data-move-type="<?= strtolower(htmlspecialchars($fm['movement_type'])) ?>">
+          <td><code style="font-weight:700;color:#002F70;"><?= htmlspecialchars($fm['ref_no']) ?></code></td>
+          <td style="color:#64748b; font-size:11px; white-space:nowrap;"><?= date('M d, Y h:i A', strtotime($fm['date'])) ?></td>
+          <td style="font-weight:700;color:#0f172a;"><?= htmlspecialchars(get_canonical_fuel_name($fm['fuel_type'])) ?></td>
+          <td><span style="background:<?= $badge_bg ?>;color:<?= $badge_color ?>;padding:3px 8px;border-radius:12px;font-size:10.5px;font-weight:700;white-space:nowrap;"><?= htmlspecialchars($fm['movement_type']) ?></span></td>
+          <td style="text-align:right; font-weight:700; color:#15803d;"><?= (float)$fm['inflow'] > 0 ? ('+' . number_format((float)$fm['inflow'], 2) . ' L') : '—' ?></td>
+          <td style="text-align:right; font-weight:700; color:#dc2626;"><?= (float)$fm['outflow'] > 0 ? ('-' . number_format((float)$fm['outflow'], 2) . ' L') : '—' ?></td>
+          <td style="text-align:right; font-weight:800; color:<?= $net_color ?>;"><?= ($net > 0 ? '+' : '') . number_format($net, 2) ?> L</td>
+          <td style="font-size:11px; color:#334155;"><?= htmlspecialchars($fm['user_name']) ?></td>
+          <td style="font-size:11px; color:#64748b; max-width:200px;"><?= htmlspecialchars($fm['remarks'] ?: '—') ?></td>
+        </tr>
+        <?php endforeach; ?>
+      <?php endif; ?>
+      </tbody>
+    </table>
+  </div>
+  <div id="adminFuelMovementPagination" style="padding:8px 16px;"></div>
+</div>
+<?php endif; ?>
+
+<!-- ══ TAB 3: FUEL ADJUSTMENT HISTORY ══ -->
 <?php if ($active_tab === 'adjustments'): ?>
 <div style="background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.05); margin-bottom:20px;">
   <div style="padding:14px 18px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; background:#f8fafc;">
@@ -835,12 +1033,32 @@ body, html { overflow-x:hidden !important; }
 </div>
 <?php endif; ?>
 
-<!-- â•â• TAB 4: STOCK ALERTS â•â• -->
+<!-- ══ TAB 4: STOCK ALERTS ══ -->
 <?php if ($active_tab === 'alerts'): ?>
+<?php
+    $alert_tanks = array_filter($rows, fn($r) => in_array($r['status'], ['Low', 'Critical', 'Out of Stock']));
+?>
+<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:20px;">
+    <div style="background:#fff; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #fed7aa;">
+        <div>
+            <div style="font-size:11px; font-weight:700; color:#ea580c; text-transform:uppercase; letter-spacing:.3px;">Low Fuel Tanks</div>
+            <div style="font-size:24px; font-weight:800; color:#ea580c; margin-top:4px;"><?= number_format($total_low_fuel_tanks) ?></div>
+        </div>
+        <div style="background:#fff7ed; color:#ea580c; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
+    </div>
+    <div style="background:#fff; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #fecaca;">
+        <div>
+            <div style="font-size:11px; font-weight:700; color:#dc2626; text-transform:uppercase; letter-spacing:.3px;">Critical Fuel Tanks</div>
+            <div style="font-size:24px; font-weight:800; color:#dc2626; margin-top:4px;"><?= number_format($total_critical_fuel_tanks) ?></div>
+        </div>
+        <div style="background:#fef2f2; color:#dc2626; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-fire"></i></div>
+    </div>
+</div>
+
 <div style="background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.05); margin-bottom:20px;">
   <div style="padding:14px 18px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; background:#f8fafc;">
     <div style="font-weight:700; color:#002F70; font-size:14px; text-transform:uppercase; display:flex; align-items:center; gap:8px;">
-      <i class="fas fa-exclamation-triangle" style="color:#ea580c;"></i> Stock Alerts Catalog
+      <i class="fas fa-exclamation-triangle" style="color:#ea580c;"></i> Active Stock Alerts Catalog
     </div>
   </div>
   <div class="aif-wrap">
@@ -849,6 +1067,7 @@ body, html { overflow-x:hidden !important; }
         <tr>
           <th>UGT No.</th>
           <th>Fuel Type</th>
+          <th style="text-align:right;">Capacity</th>
           <th style="text-align:right;">Current Volume</th>
           <th style="text-align:right;">Reorder Level</th>
           <th style="text-align:right;">Critical Level</th>
@@ -856,15 +1075,16 @@ body, html { overflow-x:hidden !important; }
         </tr>
       </thead>
       <tbody>
-      <?php if (empty($rows)): ?>
-        <tr><td colspan="6" style="text-align:center; padding:32px; color:#6c757d;">No fuel tanks data found.</td></tr>
+      <?php if (empty($alert_tanks)): ?>
+        <tr><td colspan="7" style="text-align:center; padding:32px; color:#6c757d;"><i class="fas fa-check-circle" style="font-size:24px; color:#16a34a; display:block; margin-bottom:8px;"></i>All fuel tanks have healthy inventory levels (No critical or low alerts).</td></tr>
       <?php else: ?>
-        <?php foreach ($rows as $r):
+        <?php foreach ($alert_tanks as $r):
             $ugt_no = 'UGT-' . str_pad($r['tanker_num'], 2, '0', STR_PAD_LEFT);
         ?>
         <tr>
           <td><code style="font-weight:700;color:#002F70;font-size:12px;"><?= htmlspecialchars($ugt_no) ?></code></td>
           <td style="font-weight:700;color:#0f172a;"><?= htmlspecialchars(get_canonical_fuel_name($r['fuel_type'])) ?></td>
+          <td style="text-align:right; font-weight:600; color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
           <td style="text-align:right; font-weight:800; color:#002F70;"><?= number_format($r['current_level'], 2) ?> L</td>
           <td style="text-align:right; font-weight:600; color:#eab308;"><?= number_format($r['reorder_level'], 0) ?> L</td>
           <td style="text-align:right; font-weight:600; color:#dc2626;"><?= number_format($r['critical_level'], 0) ?> L</td>
@@ -879,7 +1099,7 @@ body, html { overflow-x:hidden !important; }
 </div>
 <?php endif; ?>
 
-<!-- â•â• VIEW FUEL DETAILS MODAL (SUB-TABBED) â•â• -->
+<!-- ══ VIEW FUEL DETAILS MODAL (SUB-TABBED) ══ -->
 <div class="modal-overlay" id="tankModal" style="z-index:10000;">
     <div style="background:#fff; border-radius:14px; width:96%; max-width:850px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 24px 40px rgba(0,0,0,.18); overflow:hidden; position:relative;">
         <!-- Header -->
@@ -887,7 +1107,6 @@ body, html { overflow-x:hidden !important; }
             <div style="font-size:15px; font-weight:800; color:#002F70; text-transform:uppercase; letter-spacing:.4px; display:flex; align-items:center; gap:8px;">
                 <i class="fas fa-gas-pump"></i> <span id="vfmTitle">View Fuel Details</span>
             </div>
-            <button type="button" onclick="closeTankModal()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#64748b; line-height:1;">&times;</button>
         </div>
         <!-- Sub-tabs -->
         <div style="display:flex; border-bottom:2px solid #e2e8f0; background:#f8fafc; flex-shrink:0; padding:0 16px; overflow-x:auto; white-space:nowrap; gap:4px;">
@@ -924,22 +1143,18 @@ body, html { overflow-x:hidden !important; }
         </div>
         <!-- Footer -->
         <div style="padding:12px 22px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:10px; background:#f8fafc; flex-shrink:0;">
-            <button type="button" onclick="printAdminFuelDetails()" class="flt-btn flt-btn-csv"><i class="fas fa-print"></i> Print Details</button>
-            <button type="button" onclick="closeTankModal()" class="btn-cancel"><i class="fas fa-times"></i> Close</button>
+            <button type="button" onclick="closeTankModal()" class="btn-cancel">Close</button>
         </div>
     </div>
 </div>
-    </div>
-</div>
 
-<!-- â•â• VIEW DELIVERY DETAIL MODAL â•â• -->
+<!-- ══ VIEW DELIVERY DETAIL MODAL ══ -->
 <div class="modal-overlay" id="delDetailModal" style="z-index:10005;">
     <div style="background:#fff; border-radius:14px; width:96%; max-width:540px; box-shadow:0 24px 40px rgba(0,0,0,.22); overflow:hidden; position:relative;">
         <div style="padding:16px 22px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; background:#f8fafc;">
             <div style="font-size:15px; font-weight:800; color:#002F70; text-transform:uppercase; letter-spacing:.4px; display:flex; align-items:center; gap:8px;">
                 <i class="fas fa-truck-loading"></i> Fuel Delivery Details
             </div>
-            <button type="button" onclick="closeDelViewModal()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#64748b; line-height:1;">&times;</button>
         </div>
         <div style="padding:22px; font-size:13px;">
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
@@ -962,7 +1177,7 @@ body, html { overflow-x:hidden !important; }
             <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Notes</div><div id="vdmNotes" style="color:#64748b; font-style:italic;"></div></div>
         </div>
         <div style="padding:12px 22px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; background:#f8fafc;">
-            <button type="button" onclick="closeDelViewModal()" class="int-btn-outline" style="border-color:#6b7280 !important; color:#6b7280 !important;"><i class="fas fa-times"></i> Close</button>
+            <button type="button" onclick="closeDelViewModal()" class="int-btn-outline" style="border-color:#6b7280 !important; color:#6b7280 !important;">Close</button>
         </div>
     </div>
 </div>
@@ -1177,30 +1392,6 @@ function vfmSwitchTab(tabNum) {
             }
         }
     }
-}
-
-function printAdminFuelDetails() {
-    var r = _adminCurrentFuel;
-    if (!r) return;
-    var ugtNoStr = r.ugt_no || ('UGT #' + (r.tanker_num || ''));
-    var pw = window.open('', '_blank');
-    pw.document.write('<!DOCTYPE html><html><head><title>Fuel Details — ' + ugtNoStr + '</title>');
-    pw.document.write('<style>body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:24px;}.header{background:#002F6C;color:#fff;padding:16px 20px;border-radius:6px 6px 0 0;}.header h2{margin:0;font-size:16px;}.section{border:1px solid #e2e8f0;border-top:none;padding:16px 20px;margin-bottom:12px;}.section h4{margin:0 0 10px;color:#002F6C;font-size:11px;text-transform:uppercase;border-bottom:1px solid #e2e8f0;padding-bottom:6px;}table.info{width:100%;border-collapse:collapse;font-size:12px;}table.info td{padding:5px 0;border-bottom:1px solid #f1f5f9;}table.info td:first-child{color:#64748b;font-weight:600;width:180px;}.footer{text-align:center;font-size:10px;color:#94a3b8;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;}</style></head><body>');
-    pw.document.write('<div class="header"><h2>Fuel Details Slip — ' + ugtNoStr + ' (' + (r.fuel_type || '') + ')</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
-    pw.document.write('<div class="section"><h4>UGT & Fuel Information</h4><table class="info">');
-    pw.document.write('<tr><td>UGT Tank No.:</td><td><strong>' + ugtNoStr + '</strong></td></tr>');
-    pw.document.write('<tr><td>Fuel Type:</td><td><strong>' + (r.fuel_type || '—') + '</strong></td></tr>');
-    pw.document.write('<tr><td>Storage Capacity:</td><td>' + Number(r.capacity || 0).toLocaleString() + ' L</td></tr>');
-    pw.document.write('<tr><td>Current Volume:</td><td><strong style="color:#002F70;">' + Number(r.current_level || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</strong></td></tr>');
-    pw.document.write('<tr><td>Available Space:</td><td><strong style="color:#16a34a;">' + Number(r.available_space || (r.capacity - r.current_level) || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</strong></td></tr>');
-    pw.document.write('<tr><td>Reorder Level:</td><td>' + Number(r.reorder_level || 0).toLocaleString() + ' L</td></tr>');
-    pw.document.write('<tr><td>Critical Level:</td><td>' + Number(r.critical_level || 0).toLocaleString() + ' L</td></tr>');
-    pw.document.write('<tr><td>Status:</td><td>' + (r.status || 'Normal') + '</td></tr>');
-    pw.document.write('</table></div>');
-    pw.document.write('<div class="footer">Petron Station Management System &copy; ' + new Date().getFullYear() + '</div>');
-    pw.document.write('</body></html>');
-    pw.document.close();
-    setTimeout(function() { pw.print(); }, 300);
 }
 
 function openDelViewModal(d) {
@@ -1490,9 +1681,40 @@ function execRejectFuelAdjustment() {
 }
 
 
+function filterFuelMovementTable() {
+    var sq = (document.getElementById('fmovSearch') ? document.getElementById('fmovSearch').value : '').toLowerCase().trim();
+    var ft = (document.getElementById('fmovTypeFilter') ? document.getElementById('fmovTypeFilter').value : '').toLowerCase().trim();
+    var mv = (document.getElementById('fmovMoveFilter') ? document.getElementById('fmovMoveFilter').value : '').toLowerCase().trim();
+
+    var rows = document.querySelectorAll('#adminFuelMovementTbody tr.fmov-row');
+    rows.forEach(function(row) {
+        var sText = row.getAttribute('data-search') || '';
+        var fType = row.getAttribute('data-fuel-type') || '';
+        var mType = row.getAttribute('data-move-type') || '';
+
+        var matchS = !sq || sText.indexOf(sq) !== -1;
+        var matchF = !ft || fType.indexOf(ft) !== -1;
+        var matchM = !mv || mType.indexOf(mv) !== -1;
+
+        if (matchS && matchF && matchM) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+function resetFuelMovementFilters() {
+    if (document.getElementById('fmovSearch')) document.getElementById('fmovSearch').value = '';
+    if (document.getElementById('fmovTypeFilter')) document.getElementById('fmovTypeFilter').value = '';
+    if (document.getElementById('fmovMoveFilter')) document.getElementById('fmovMoveFilter').value = '';
+    filterFuelMovementTable();
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof setupTablePagination === 'function') {
         setupTablePagination('adminFuelInvTable', null, 'adminFuelInvPagination', 20);
+        setupTablePagination('adminFuelMovementTable', null, 'adminFuelMovementPagination', 20);
         setupTablePagination('adminFuelDelTable', null, 'adminFuelDelPagination', 20);
         setupTablePagination('adminFuelAdjTable', null, 'adminFuelAdjPagination', 20);
         setupTablePagination('adminFuelAlertTable', null, 'adminFuelAlertPagination', 20);

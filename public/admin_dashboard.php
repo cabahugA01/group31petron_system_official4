@@ -1,9 +1,11 @@
 <?php
 /**
- * Admin Dashboard
- *
- * DB-driven station overview for revenue, transactions, users, approvals,
- * inventory, deliveries, audit status, backup status, and quick actions.
+ * ADMIN / OWNER — Admin Dashboard
+ * Complete branch-wide monitoring of Fuel, Merchandise, and Job Order operations,
+ * including sales, inventory, approvals, receivables, staff/manager activities,
+ * performance analytics, and operational oversight.
+ * 
+ * Strictly Database-Driven Implementation (All 23 Core Modules & Subsystems)
  */
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -14,12 +16,12 @@ require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
 
-$me = current_user();
-$role = role_key($me['role'] ?? '');
+$me         = current_user();
+$role       = role_key($me['role'] ?? '');
 $station_id = (int) user_station_id();
-$user_id = (int) ($me['id'] ?? ($_SESSION['user_id'] ?? 0));
+$user_id    = (int) ($me['id'] ?? ($_SESSION['user_id'] ?? 0));
 
-if (!in_array($role, ['admin', 'superadmin', 'developer'], true)) {
+if (!in_array($role, ['admin', 'superadmin', 'developer', 'owner'], true)) {
     header('Location: dashboard.php');
     exit;
 }
@@ -28,258 +30,80 @@ if (!$station_id && $role === 'admin') {
     render_no_station_page('admin_dashboard.php');
 }
 
-// Date range filter — defaults to today for both from/to
-$date_from = trim($_GET['date_from'] ?? $_POST['date_from'] ?? date('Y-m-d'));
-$date_to   = trim($_GET['date_to']   ?? $_POST['date_to']   ?? date('Y-m-d'));
-$date_check_from = DateTimeImmutable::createFromFormat('Y-m-d', $date_from);
-if (!$date_check_from || $date_check_from->format('Y-m-d') !== $date_from) {
-    $date_from = date('Y-m-d');
-    $date_check_from = new DateTimeImmutable($date_from);
-}
-$date_check_to = DateTimeImmutable::createFromFormat('Y-m-d', $date_to);
-if (!$date_check_to || $date_check_to->format('Y-m-d') !== $date_to) {
-    $date_to = date('Y-m-d');
-    $date_check_to = new DateTimeImmutable($date_to);
-}
-if ($date_to < $date_from) { $date_to = $date_from; $date_check_to = $date_check_from; }
-
-// Legacy aliases used by weekly chart and audit (single-date context)
-$date_filter = $date_from;
-$date_check  = $date_check_from;
-
-// Period label
-$period_label = ($date_from === $date_to)
-    ? date('M j, Y', strtotime($date_from))
-    : date('M j', strtotime($date_from)) . ' – ' . date('M j, Y', strtotime($date_to));
-$is_today = ($date_from === date('Y-m-d') && $date_to === date('Y-m-d'));
-
-function adm_h($value): string
-{
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
-
-function adm_money($value): string
-{
-    return '&#8369;' . number_format((float) $value, 2);
-}
-
-function adm_qty($value, int $decimals = 2): string
-{
-    return number_format((float) $value, $decimals);
-}
-
-function adm_table_exists(PDO $pdo, string $table): bool
-{
-    static $cache = [];
-    if (array_key_exists($table, $cache)) {
-        return $cache[$table];
-    }
-
+// ── Mark notification as read and redirect ──────────────────────────────────
+if (isset($_GET['open_notif']) && (int)$_GET['open_notif'] > 0) {
+    $notif_id = (int)$_GET['open_notif'];
     try {
-        $stmt = $pdo->prepare(
-            'SELECT COUNT(*) FROM information_schema.TABLES
-             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?'
-        );
-        $stmt->execute([$table]);
-        $cache[$table] = (bool) $stmt->fetchColumn();
-    } catch (Throwable $e) {
-        $cache[$table] = false;
-    }
-
-    return $cache[$table];
+        $stmt = $pdo->prepare("SELECT redirect_url FROM notifications WHERE id = ?");
+        $stmt->execute([$notif_id]);
+        $redir = $stmt->fetchColumn();
+        
+        $upd = $pdo->prepare("UPDATE notifications SET status = 'read', read_at = NOW() WHERE id = ?");
+        $upd->execute([$notif_id]);
+        
+        if ($redir && $redir !== '') {
+            header("Location: " . $redir);
+            exit;
+        }
+    } catch (Exception $e) {}
+    header("Location: notifications.php");
+    exit;
 }
 
-function adm_value(PDO $pdo, string $sql, array $params = [], $default = 0)
-{
+// ── Date Filters ────────────────────────────────────────────────────────────
+$date_from = $_GET['date_from'] ?? date('Y-m-d');
+$date_to   = $_GET['date_to']   ?? date('Y-m-d');
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)) { $date_from = date('Y-m-d'); }
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to))   { $date_to   = date('Y-m-d'); }
+if ($date_to < $date_from) { $date_to = $date_from; }
+
+$is_today_filter = ($date_from === $date_to && $date_from === date('Y-m-d'));
+
+function adm_h($value): string {
+    return htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
+}
+
+function adm_money($value): string {
+    return '&#8369; ' . number_format((float) $value, 2);
+}
+
+function adm_value(PDO $pdo, string $sql, array $params = [], $default = 0) {
     try {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
-        $value = $stmt->fetchColumn();
-        return $value === false || $value === null ? $default : $value;
+        $val = $stmt->fetchColumn();
+        return $val === false || $val === null ? $default : $val;
     } catch (Throwable $e) {
-        error_log('[admin_dashboard] value query failed: ' . $e->getMessage() . ' | ' . $sql);
         return $default;
     }
 }
 
-function adm_rows(PDO $pdo, string $sql, array $params = []): array
-{
+function adm_rows(PDO $pdo, string $sql, array $params = []): array {
     try {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } catch (Throwable $e) {
-        error_log('[admin_dashboard] rows query failed: ' . $e->getMessage() . ' | ' . $sql);
         return [];
     }
 }
 
-function adm_station_clause(int $station_id, string $alias = ''): string
-{
-    if (!$station_id) {
-        return '1=1';
-    }
-
-    $prefix = $alias !== '' ? $alias . '.' : '';
-    return $prefix . 'station_id = ?';
-}
-
-function adm_station_params(int $station_id): array
-{
-    return $station_id ? [$station_id] : [];
-}
-
-function adm_user_name_expr(string $alias = 'u'): string
-{
-    $p = $alias !== '' ? $alias . '.' : '';
-    return "COALESCE(NULLIF(TRIM(CONCAT(COALESCE({$p}first_name, ''), ' ', COALESCE({$p}last_name, ''))), ''), {$p}username, CONCAT('User #', {$p}id))";
-}
-
-function adm_badge_class($status): string
-{
-    $s = strtolower(trim((string) $status));
-    if ($s === '' || str_contains($s, 'pending') || str_contains($s, 'await') || str_contains($s, 'warning')) {
-        return 'warning';
-    }
-    if (str_contains($s, 'approved') || str_contains($s, 'active') || str_contains($s, 'completed') || str_contains($s, 'connected') || str_contains($s, 'success') || str_contains($s, 'normal') || str_contains($s, 'ok')) {
-        return 'success';
-    }
-    if (str_contains($s, 'reject') || str_contains($s, 'cancel') || str_contains($s, 'failed') || str_contains($s, 'error') || str_contains($s, 'critical') || str_contains($s, 'inactive') || str_contains($s, 'disabled')) {
-        return 'danger';
-    }
-    if (str_contains($s, 'progress') || str_contains($s, 'review') || str_contains($s, 'ready') || str_contains($s, 'stock')) {
-        return 'info';
-    }
-    if (str_contains($s, 'low') || str_contains($s, 'short') || str_contains($s, 'locked')) {
-        return 'warning';
-    }
-    return 'neutral';
-}
-
-function adm_status_label($status, string $fallback = 'Pending'): string
-{
-    $status = trim((string) $status);
-    return $status !== '' ? $status : $fallback;
-}
-
-function adm_format_time($value): string
-{
-    if (!$value) {
-        return 'N/A';
-    }
-
-    $ts = strtotime((string) $value);
-    return $ts ? date('M d, h:i A', $ts) : (string) $value;
-}
-
-function adm_bytes($bytes): string
-{
-    $bytes = max(0, (float) $bytes);
-    $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    $index = 0;
-    while ($bytes >= 1024 && $index < count($units) - 1) {
-        $bytes /= 1024;
-        $index++;
-    }
-
-    return number_format($bytes, $index === 0 ? 0 : 2) . ' ' . $units[$index];
-}
-
-function adm_merch_bucket(string $category, string $product): string
-{
-    $catClean = trim($category);
-    if (!empty($catClean)) {
-        return $catClean;
-    }
-    return 'Merchandise';
-}
-
-function adm_merge_by_ref(array $rows): array
-{
-    $seen = [];
-    $unique = [];
-    foreach ($rows as $row) {
-        $key = strtolower(($row['type'] ?? '') . '|' . ($row['ref_no'] ?? ''));
-        if (isset($seen[$key])) {
-            continue;
-        }
-        $seen[$key] = true;
-        $unique[] = $row;
-    }
-    return $unique;
-}
-
-function adm_sort_created_desc(array &$rows): void
-{
-    usort($rows, static function ($a, $b) {
-        return strtotime((string) ($b['created_at'] ?? $b['time_sort'] ?? '')) <=> strtotime((string) ($a['created_at'] ?? $a['time_sort'] ?? ''));
-    });
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['admin_dashboard_action'] ?? '') === 'run_backup') {
+function adm_table_exists(PDO $pdo, string $table): bool {
+    static $cache = [];
+    if (isset($cache[$table])) return $cache[$table];
     try {
-        require_once __DIR__ . '/../backend/database_management.php';
-        $backup_result = DatabaseManagement::createBackup('admin_manual');
-
-        if (empty($backup_result['success'])) {
-            throw new RuntimeException($backup_result['error'] ?? 'Backup failed.');
-        }
-
-        $backup_file = (string) ($backup_result['filepath'] ?? '');
-        $backup_size = ($backup_file !== '' && is_file($backup_file)) ? (int) filesize($backup_file) : 0;
-        $backup_name = (string) ($backup_result['filename'] ?? basename($backup_file));
-
-        if (adm_table_exists($pdo, 'system_backups')) {
-            $stmt = $pdo->prepare(
-                'INSERT INTO system_backups
-                 (backup_name, backup_type, file_path, file_size, status, created_by, created_at, completed_at, backup_path)
-                 VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW(), ?)'
-            );
-            $stmt->execute([
-                $backup_name,
-                'database',
-                $backup_file,
-                $backup_size,
-                'completed',
-                $user_id ?: null,
-                $backup_file,
-            ]);
-        }
-
-        $_SESSION['success'] = 'Database backup completed: ' . $backup_name;
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?");
+        $stmt->execute([$table]);
+        $cache[$table] = (bool) $stmt->fetchColumn();
     } catch (Throwable $e) {
-        if (adm_table_exists($pdo, 'system_backups')) {
-            try {
-                $stmt = $pdo->prepare(
-                    'INSERT INTO system_backups
-                     (backup_name, backup_type, status, created_by, created_at, completed_at, error_message)
-                     VALUES (?, ?, ?, ?, NOW(), NOW(), ?)'
-                );
-                $stmt->execute([
-                    'admin_manual_' . date('Ymd_His'),
-                    'database',
-                    'failed',
-                    $user_id ?: null,
-                    $e->getMessage(),
-                ]);
-            } catch (Throwable $ignored) {
-            }
-        }
-
-        $_SESSION['error'] = 'Backup failed: ' . $e->getMessage();
+        $cache[$table] = false;
     }
-
-    header('Location: admin_dashboard.php?' . http_build_query(['date_from' => $date_from, 'date_to' => $date_to]));
-    exit;
+    return $cache[$table];
 }
-
-$flash_success = $_SESSION['success'] ?? null;
-$flash_error = $_SESSION['error'] ?? null;
-unset($_SESSION['success'], $_SESSION['error']);
 
 $display_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
 if ($display_name === '') {
-    $display_name = $me['full_name'] ?? $me['name'] ?? $me['username'] ?? 'Admin';
+    $display_name = $me['full_name'] ?? $me['name'] ?? $me['username'] ?? 'Admin / Owner';
 }
 
 $station_label = $me['station_name'] ?? '';
@@ -287,2396 +111,2579 @@ if ($station_label === '' && $station_id) {
     $station_label = (string) adm_value($pdo, 'SELECT name FROM stations WHERE id = ?', [$station_id], 'Station #' . $station_id);
 }
 if ($station_label === '') {
-    $station_label = 'All Stations';
+    $station_label = 'Vamenta Blvd., Carmen, City Of Cagayan De Oro , Misamis Oriental';
 }
 
-$station_sql = adm_station_clause($station_id);
-$station_params = adm_station_params($station_id);
-$station_sql_mt = adm_station_clause($station_id, 'mt');
-$station_params_mt = adm_station_params($station_id);
+$st_sql      = $station_id ? "(station_id = ? OR station_id = 0 OR station_id IS NULL)" : "1=1";
+$st_params   = $station_id ? [$station_id] : [];
+$date_params = array_merge($st_params, [$date_from, $date_to]);
+$today_str   = date('Y-m-d');
 
-// Summary metrics — use date range.
-$date_range_params = array_merge($station_params, [$date_from, $date_to]);
+// ── 1. KPI & COMBINED SALES DATA (Fuel + Merchandise + Job Orders) ───────────
 
-$fuel_count = adm_table_exists($pdo, 'fuel_transactions')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM fuel_transactions WHERE {$station_sql} AND DATE(transaction_date) BETWEEN ? AND ?", $date_range_params)
-    : 0;
+// Fuel Sales (Filtered Date Range)
+$fuel_today_sales = (float) adm_value($pdo, "
+    SELECT COALESCE(SUM(total_amount), 0)
+    FROM fuel_transactions
+    WHERE {$st_sql}
+      AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+      AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
+", $date_params);
 
-$merch_count = adm_table_exists($pdo, 'merchandise_transactions')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$station_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?", $date_range_params)
-    : 0;
+$fuel_volume_sold_today = (float) adm_value($pdo, "
+    SELECT COALESCE(SUM(liters_sold), 0)
+    FROM fuel_transactions
+    WHERE {$st_sql}
+      AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+      AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
+", $date_params);
 
-$service_count = adm_table_exists($pdo, 'job_orders')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND DATE(created_at) BETWEEN ? AND ?", $date_range_params)
-    : 0;
+// Shift 1 & Shift 2 Fuel Sales
+$shift1_fuel_sales = (float) adm_value($pdo, "
+    SELECT COALESCE(SUM(total_amount), 0)
+    FROM fuel_transactions
+    WHERE {$st_sql}
+      AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+      AND (
+        LOWER(COALESCE(shift_period, '')) IN ('shift 1', 'first shift', 'morning') 
+        OR LOWER(COALESCE(shift_name, '')) LIKE '%1%' 
+        OR (TIME(COALESCE(transaction_date, created_at)) >= '06:00:00' AND TIME(COALESCE(transaction_date, created_at)) < '14:00:00')
+      )
+      AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
+", $date_params);
 
-$total_transactions = $fuel_count + $merch_count + $service_count;
+$shift2_fuel_sales = (float) adm_value($pdo, "
+    SELECT COALESCE(SUM(total_amount), 0)
+    FROM fuel_transactions
+    WHERE {$st_sql}
+      AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+      AND (
+        LOWER(COALESCE(shift_period, '')) IN ('shift 2', 'second shift', 'afternoon') 
+        OR LOWER(COALESCE(shift_name, '')) LIKE '%2%' 
+        OR (TIME(COALESCE(transaction_date, created_at)) >= '14:00:00' OR TIME(COALESCE(transaction_date, created_at)) < '06:00:00')
+      )
+      AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
+", $date_params);
 
-$fuel_revenue = adm_table_exists($pdo, 'fuel_transactions')
-    ? (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE(transaction_date) BETWEEN ? AND ?", $date_range_params)
-    : 0.0;
+// Merchandise Sales (Filtered Date Range)
+$merch_today_sales = (float) adm_value($pdo, "
+    SELECT COALESCE(SUM(total_amount), 0)
+    FROM merchandise_transactions
+    WHERE {$st_sql}
+      AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+      AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+      AND LOWER(COALESCE(transaction_type, 'merchandise')) NOT IN ('job_order','service')
+      AND (job_order_service IS NULL OR TRIM(job_order_service) = '')
+", $date_params);
 
-$merch_revenue = adm_table_exists($pdo, 'merchandise_transactions')
-    ? (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?", $date_range_params)
-    : 0.0;
+// Job Orders Sales (Filtered Date Range)
+$job_today_sales = (float) adm_value($pdo, "
+    SELECT COALESCE(SUM(total_cost), 0) FROM (
+        SELECT COALESCE(total_cost, estimated_cost, actual_labor_cost + actual_parts_cost, 0) AS total_cost 
+        FROM job_orders 
+        WHERE {$st_sql} AND DATE(COALESCE(completed_at, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(status, 'completed')) NOT IN ('voided','cancelled','rejected')
+        UNION ALL
+        SELECT total_amount AS total_cost
+        FROM merchandise_transactions
+        WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+          AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order', 'service', 'combined') OR (job_order_service IS NOT NULL AND TRIM(job_order_service) != ''))
+          AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+    ) AS all_job_sales
+", array_merge($date_params, $date_params));
 
-$service_revenue = adm_table_exists($pdo, 'job_orders')
-    ? (float) adm_value(
-        $pdo,
-        "SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, COALESCE(actual_labor_cost, 0) + COALESCE(actual_parts_cost, 0), 0)), 0)
-         FROM job_orders
-         WHERE {$station_sql}
-           AND DATE(created_at) BETWEEN ? AND ?
-           AND LOWER(COALESCE(status, '')) IN ('completed', 'verified', 'finalized', 'released')",
-        $date_range_params
+$total_today_sales = $fuel_today_sales + $merch_today_sales + $job_today_sales;
+
+// Total Filtered Transaction Count
+$fuel_txn_count = (int) adm_value($pdo, "SELECT COUNT(*) FROM fuel_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')", $date_params);
+$merch_txn_count = (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected') AND LOWER(COALESCE(transaction_type, 'merchandise')) NOT IN ('job_order','service') AND (job_order_service IS NULL OR TRIM(job_order_service) = '')", $date_params);
+$job_txn_count = (int) adm_value($pdo, "SELECT COUNT(*) FROM (
+    SELECT id FROM job_orders WHERE {$st_sql} AND DATE(COALESCE(completed_at, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(status, 'completed')) NOT IN ('voided','cancelled','rejected')
+    UNION ALL
+    SELECT id FROM merchandise_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order', 'service', 'combined') OR (job_order_service IS NOT NULL AND TRIM(job_order_service) != '')) AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+) AS all_jobs", array_merge($date_params, $date_params));
+$total_today_transactions = $fuel_txn_count + $merch_txn_count + $job_txn_count;
+
+// Monthly Revenue
+$month_start = date('Y-m-01');
+$month_end   = date('Y-m-t');
+$month_params = array_merge($st_params, [$month_start, $month_end]);
+
+$month_fuel_sales = (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(status,'')) NOT IN ('voided','rejected','cancelled')", $month_params);
+$month_merch_sales = (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected') AND LOWER(COALESCE(transaction_type, 'merchandise')) NOT IN ('job_order','service') AND (job_order_service IS NULL OR TRIM(job_order_service) = '')", $month_params);
+$month_job_sales = (float) adm_value($pdo, "SELECT COALESCE(SUM(total_cost), 0) FROM (
+    SELECT COALESCE(total_cost, estimated_cost, 0) AS total_cost FROM job_orders WHERE {$st_sql} AND DATE(COALESCE(completed_at, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(status, '')) NOT IN ('voided','cancelled','rejected')
+    UNION ALL
+    SELECT total_amount AS total_cost FROM merchandise_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order', 'service', 'combined') OR (job_order_service IS NOT NULL AND TRIM(job_order_service) != '')) AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+) AS all_month_jobs", array_merge($month_params, $month_params));
+$monthly_revenue = $month_fuel_sales + $month_merch_sales + $month_job_sales;
+
+// ── 2. JOB ORDERS MONITORING (Direct from Transaction Module) ───────────────
+$jo_pending_count    = (int) adm_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'reviewed', 'pending validation')", $st_params);
+$jo_inprogress_count = (int) adm_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) IN ('in progress', 'in_progress', 'awaiting parts')", $st_params);
+$jo_completed_count  = (int) adm_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) IN ('completed', 'verified', 'ready')", $st_params);
+$jo_released_count   = (int) adm_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) IN ('released', 'finalized')", $st_params);
+$jo_voided_count     = (int) adm_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) IN ('void', 'voided', 'cancelled', 'rejected')", $st_params);
+
+if (adm_table_exists($pdo, 'merchandise_transactions')) {
+    $jo_pending_count += (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$st_sql} AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order','service') OR (job_order_service IS NOT NULL AND job_order_service != '')) AND LOWER(COALESCE(workflow_status, 'pending')) IN ('pending', 'reviewed', 'pending validation')", $st_params);
+    $jo_inprogress_count += (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$st_sql} AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order','service') OR (job_order_service IS NOT NULL AND job_order_service != '')) AND LOWER(COALESCE(workflow_status, 'pending')) IN ('in progress', 'in_progress', 'awaiting parts')", $st_params);
+    $jo_completed_count += (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$st_sql} AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order','service') OR (job_order_service IS NOT NULL AND job_order_service != '')) AND LOWER(COALESCE(workflow_status, 'pending')) IN ('completed', 'verified', 'ready')", $st_params);
+    $jo_released_count += (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$st_sql} AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order','service') OR (job_order_service IS NOT NULL AND job_order_service != '')) AND LOWER(COALESCE(workflow_status, 'pending')) IN ('released', 'finalized')", $st_params);
+}
+
+$active_job_orders    = $jo_pending_count + $jo_inprogress_count;
+$completed_job_orders = $jo_completed_count + $jo_released_count;
+$total_job_orders_logged = $active_job_orders + $completed_job_orders;
+
+// Total All-Time Job Orders Sales from Transaction Module
+$total_job_order_revenue = (float) adm_value($pdo, "
+    SELECT COALESCE(SUM(total_cost), 0) FROM (
+        SELECT COALESCE(total_cost, estimated_cost, actual_labor_cost + actual_parts_cost, 0) AS total_cost 
+        FROM job_orders 
+        WHERE {$st_sql} AND LOWER(COALESCE(status, 'completed')) NOT IN ('voided','cancelled','rejected')
+        UNION ALL
+        SELECT total_amount AS total_cost
+        FROM merchandise_transactions
+        WHERE {$st_sql}
+          AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order', 'service', 'combined') OR (job_order_service IS NOT NULL AND TRIM(job_order_service) != ''))
+          AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+    ) AS all_total_jobs
+", array_merge($st_params, $st_params));
+
+// ── 3. FUEL MANAGEMENT & EXACT 7 TANK RECONCILIATION ────────────────────────
+$fi_raw    = [];
+$fi_lookup = [];
+try {
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, status, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
+    $s->execute([$station_id]);
+    $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($fi_raw as $row) {
+        $key = strtolower(trim($row['fuel_type']));
+        $val = (float)($row['current_level'] ?? $row['current_stock'] ?? 0);
+        if (!isset($fi_lookup[$key]) || $val > 0) $fi_lookup[$key] = $row;
+    }
+} catch (Exception $e) {}
+
+$TANK_CONFIG_ADM = get_tank_config($station_id);
+
+$fuel_tanks           = [];
+$low_fuel_count       = 0;
+$crit_fuel_count      = 0;
+$out_fuel_count       = 0;
+$normal_fuel_count    = 0;
+$fuel_inventory_value = 0.0;
+$total_fuel_capacity  = 0.0;
+$total_available_fuel = 0.0;
+
+foreach ($TANK_CONFIG_ADM as $tc) {
+    $tank_num       = $tc['tanker_num'];
+    $fuel_type_base = $tc['fuel_type'];
+    $ft_key         = strtolower(trim($fuel_type_base));
+    $ugt_str        = 'UGT-' . str_pad($tank_num, 2, '0', STR_PAD_LEFT);
+
+    $inv = null;
+    foreach ($fi_raw as $r) {
+        $r_ugt = strtolower(trim($r['ugt_no']));
+        $r_ft  = strtolower(trim($r['fuel_type']));
+        if (($r_ugt !== '' && $r_ugt === strtolower($ugt_str)) ||
+            strpos($r_ft, '#' . $tank_num) !== false ||
+            strpos($r_ft, 'ugt-' . str_pad($tank_num, 2, '0', STR_PAD_LEFT)) !== false) {
+            $inv = $r; break;
+        }
+    }
+    if (!$inv) $inv = $fi_lookup[$ft_key] ?? null;
+
+    $same_type_count = max(1, count(array_filter($TANK_CONFIG_ADM, function($t) use ($ft_key) {
+        return strtolower(trim($t['fuel_type'])) === $ft_key;
+    })));
+
+    $cap       = (float)$tc['capacity'];
+    $raw_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
+    $lvl       = round($raw_level / $same_type_count, 2);
+    $price     = $inv ? (float)($inv['price_per_liter'] ?? 0) : 0;
+    $pct       = $cap > 0 ? min(100, round(($lvl / $cap) * 100, 1)) : 0;
+
+    $reord = (float)$tc['reorder_level'];
+    $crit  = (float)$tc['critical_level'];
+
+    $fuel_inventory_value += ($lvl * $price);
+    $total_fuel_capacity  += $cap;
+    $total_available_fuel += $lvl;
+
+    if ($lvl <= 0) {
+        $out_fuel_count++; $crit_fuel_count++;
+        $alert_type = 'out'; $alert_status = 'OUT OF STOCK';
+        $badge_bg = '#FEE2E2'; $badge_color = '#991B1B'; $badge_border = '#FECACA';
+        $bar_color = '#DC2626';
+    } elseif ($lvl <= $crit) {
+        $crit_fuel_count++;
+        $alert_type = 'critical'; $alert_status = 'CRITICAL';
+        $badge_bg = '#FEE2E2'; $badge_color = '#DC2626'; $badge_border = '#FECACA';
+        $bar_color = '#DC2626';
+    } elseif ($lvl <= $reord) {
+        $low_fuel_count++;
+        $alert_type = 'low'; $alert_status = 'LOW';
+        $badge_bg = '#FEF9C3'; $badge_color = '#B45309'; $badge_border = '#FDE68A';
+        $bar_color = '#D97706';
+    } else {
+        $normal_fuel_count++;
+        $alert_type = 'normal'; $alert_status = 'NORMAL';
+        $badge_bg = '#DCFCE7'; $badge_color = '#15803D'; $badge_border = '#BBF7D0';
+        $bar_color = '#16A34A';
+    }
+
+    $fuel_tanks[] = [
+        'id'             => $inv['id'] ?? 0,
+        'fuel_type'      => $tc['fuel_type'],
+        'ugt'            => $tc['tank'],
+        'label'          => $tc['label'],
+        'capacity'       => $cap,
+        'current_level'  => $lvl,
+        'reorder_level'  => $reord,
+        'critical_level' => $crit,
+        'price_per_liter'=> $price,
+        'fill_percent'   => $pct,
+        'alert_type'     => $alert_type,
+        'alert_status'   => $alert_status,
+        'badge_bg'       => $badge_bg,
+        'badge_color'    => $badge_color,
+        'badge_border'   => $badge_border,
+        'bar_color'      => $bar_color,
+    ];
+}
+
+// Meter Reading Statuses
+$pending_meter_validations = (int) adm_value($pdo, "
+    SELECT COUNT(*) FROM fuel_transactions 
+    WHERE {$st_sql} AND (
+        LOWER(TRIM(COALESCE(status, ''))) IN ('readings_submitted', 'pending validation', 'pending', 'pendingvalidation', 'awaiting validation')
+        OR LOWER(TRIM(COALESCE(validation_status, ''))) IN ('pending', 'pending validation')
     )
-    : 0.0;
+", $st_params);
 
-$total_revenue = $fuel_revenue + $merch_revenue + $service_revenue;
+$submitted_meter_readings = (int) adm_value($pdo, "SELECT COUNT(*) FROM fuel_transactions WHERE {$st_sql} AND DATE(transaction_date) = ?", array_merge($st_params, [$today_str]));
+$validated_meter_readings = (int) adm_value($pdo, "SELECT COUNT(*) FROM fuel_transactions WHERE {$st_sql} AND LOWER(TRIM(COALESCE(status, ''))) IN ('completed', 'validated', 'verified')", $st_params);
+$rejected_meter_readings  = (int) adm_value($pdo, "SELECT COUNT(*) FROM fuel_transactions WHERE {$st_sql} AND LOWER(TRIM(COALESCE(status, ''))) IN ('rejected', 'for revision', 'for_revision', 'returned')", $st_params);
 
-$active_admins = adm_table_exists($pdo, 'users')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM users WHERE {$station_sql} AND status = 'Active' AND LOWER(role) = 'admin'", $station_params)
-    : 0;
-$active_managers = adm_table_exists($pdo, 'users')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM users WHERE {$station_sql} AND status = 'Active' AND LOWER(role) = 'manager'", $station_params)
-    : 0;
-$active_staff = adm_table_exists($pdo, 'users')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM users WHERE {$station_sql} AND status = 'Active' AND LOWER(role) = 'staff'", $station_params)
-    : 0;
-$total_active_users = $active_admins + $active_managers + $active_staff;
+// Fuel Sales Closing Statuses
+$shift1_status = 'Pending';
+$shift2_status = 'Pending';
+if (adm_table_exists($pdo, 'fuel_sales_closing')) {
+    $closings_today = adm_rows($pdo, "
+        SELECT shift, shift_period, status
+        FROM fuel_sales_closing
+        WHERE {$st_sql} AND DATE(report_date) = ?
+    ", array_merge($st_params, [$today_str]));
 
-$pending_user_accounts = adm_table_exists($pdo, 'users')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM users WHERE {$station_sql} AND LOWER(COALESCE(status, '')) = 'pending'", $station_params)
-    : 0;
+    foreach ($closings_today as $c) {
+        $shift_name = strtolower(trim($c['shift'] . ' ' . $c['shift_period']));
+        $c_status = strtolower(trim($c['status']));
+        $is_done = in_array($c_status, ['completed', 'approved', 'verified', 'checked', 'closing_completed']);
+        $is_ret  = in_array($c_status, ['returned', 'for_revision', 'rejected']);
 
-$pending_customer_requests = adm_table_exists($pdo, 'customers')
-    ? (int) adm_value(
-        $pdo,
-        "SELECT COUNT(*) FROM customers
-         WHERE {$station_sql}
-           AND LOWER(COALESCE(status, 'active')) <> 'inactive'
-           AND (
-                LOWER(COALESCE(verification_status, '')) = 'pending'
-                OR LOWER(COALESCE(mgr_status, '')) = 'pending'
-           )",
-        $station_params
-    )
-    : 0;
-
-$pending_purchase_orders = adm_table_exists($pdo, 'purchase_orders')
-    ? (int) adm_value(
-        $pdo,
-        "SELECT COUNT(*) FROM purchase_orders
-         WHERE {$station_sql}
-           AND (
-                LOWER(COALESCE(status, '')) IN ('pending', 'pending approval', 'pending admin validation')
-                OR (admin_finalized = 0 AND LOWER(COALESCE(status, '')) NOT IN ('draft', 'rejected', 'cancelled', 'received'))
-                OR (stock_in_done = 0 AND LOWER(COALESCE(status, '')) = 'approved')
-           )",
-        $station_params
-    )
-    : 0;
-
-$pending_fuel_purchase_orders = adm_table_exists($pdo, 'fuel_purchase_orders')
-    ? (int) adm_value(
-        $pdo,
-        "SELECT COUNT(*) FROM fuel_purchase_orders
-         WHERE {$station_sql}
-           AND LOWER(COALESCE(status, '')) IN ('pending', 'pending approval', 'pending admin validation', 'approved')",
-        $station_params
-    )
-    : 0;
-
-$pending_price_requests = adm_table_exists($pdo, 'pending_price_approvals')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM pending_price_approvals WHERE {$station_sql} AND LOWER(status) = 'pending'", $station_params)
-    : 0;
-
-$pending_stock_adjustments = adm_table_exists($pdo, 'merchandise_adjustments')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_adjustments WHERE {$station_sql} AND LOWER(COALESCE(status,'pending')) = 'pending'", $station_params)
-    : 0;
-
-$pending_stock_requests = adm_table_exists($pdo, 'stock_requests')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM stock_requests WHERE {$station_sql} AND LOWER(COALESCE(status,'')) IN ('purchase order generated','manager approved','approved')", $station_params)
-    : 0;
-
-$pending_inventory_approvals = $pending_purchase_orders + $pending_fuel_purchase_orders + $pending_stock_adjustments + $pending_stock_requests;
-$total_pending_approvals = $pending_user_accounts + $pending_inventory_approvals + $pending_price_requests;
-
-$fuel_total_count = 0;
-$fuel_critical_count = 0;
-$fuel_low_count = 0;
-if (adm_table_exists($pdo, 'fuel_inventory')) {
-    $fuel_inv_rows = adm_rows($pdo, "SELECT current_level, current_stock, capacity FROM fuel_inventory WHERE {$station_sql}", $station_params);
-    $fuel_total_count = count($fuel_inv_rows);
-    foreach ($fuel_inv_rows as $fi_row) {
-        $capacity = (float)($fi_row['capacity'] ?? 0);
-        $level = min(max(0, (float)($fi_row['current_level'] ?? $fi_row['current_stock'] ?? 0)), $capacity);
-        if ($capacity == 14000)    { $critical_lvl = 2500; $low_lvl = 5000; }
-        elseif ($capacity == 7000) { $critical_lvl = 1000; $low_lvl = 2000; }
-        else                       { $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20; }
-        if ($level <= $critical_lvl) {
-            $fuel_critical_count++;
-        } elseif ($level <= $low_lvl) {
-            $fuel_low_count++;
+        if (str_contains($shift_name, '1') || str_contains($shift_name, 'first') || str_contains($shift_name, 'morning')) {
+            $shift1_status = $is_done ? 'Completed' : ($is_ret ? 'Returned for Correction' : 'Submitted');
+        } elseif (str_contains($shift_name, '2') || str_contains($shift_name, 'second') || str_contains($shift_name, 'afternoon')) {
+            $shift2_status = $is_done ? 'Completed' : ($is_ret ? 'Returned for Correction' : 'Submitted');
         }
     }
 }
-$fuel_normal_count = max(0, $fuel_total_count - $fuel_low_count - $fuel_critical_count);
 
-$merch_total_count = adm_table_exists($pdo, 'station_inventory')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM station_inventory WHERE {$station_sql} AND status = 'active'", $station_params)
-    : 0;
-$merch_critical_count = adm_table_exists($pdo, 'station_inventory')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM station_inventory WHERE {$station_sql} AND status = 'active' AND COALESCE(stock_level, 0) <= 0", $station_params)
-    : 0;
-$merch_low_count = adm_table_exists($pdo, 'station_inventory')
-    ? (int) adm_value(
-        $pdo,
-        "SELECT COUNT(*) FROM station_inventory
-         WHERE {$station_sql}
-           AND status = 'active'
-           AND COALESCE(stock_level, 0) > 0
-           AND COALESCE(stock_level, 0) <= COALESCE(reorder_level, 0)",
-        $station_params
-    )
-    : 0;
-$merch_normal_count = max(0, $merch_total_count - $merch_low_count - $merch_critical_count);
-$total_inventory_alerts = $fuel_low_count + $fuel_critical_count + $merch_low_count + $merch_critical_count;
+// ── 4. MERCHANDISE INVENTORY (Exact 269 Product Catalog UNION) ───────────────
+$merch_inv_stats = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT
+            ip.id,
+            ip.product_name                              AS product_name,
+            COALESCE(ip.category,'Merchandise')          AS category,
+            COALESCE(ip.unit_price, 0)                   AS price,
+            COALESCE(ip.unit_cost, 0)                    AS unit_cost,
+            ip.sku,
+            COALESCE(ip.brand,'Petron Corporation')      AS supplier,
+            COALESCE(ip.status,'active')                 AS product_status,
+            COALESCE(ip.min_stock, 0)                    AS min_stock,
+            COALESCE(ip.max_stock, 0)                    AS max_stock,
+            COALESCE(si.stock_level, ip.stock, 0)        AS stock_level,
+            COALESCE(si.capacity, ip.max_stock, 480)     AS capacity,
+            COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
+            COALESCE(si.critical_level, 10)              AS critical_level,
+            COALESCE(si.unit, ip.size, 'pcs')            AS unit,
+            COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
+            si.physical_count,
+            si.variance
+        FROM inventory_products ip
+        LEFT JOIN station_inventory si ON si.product_id = ip.id AND (si.station_id = ? OR si.station_id = 0 OR si.station_id IS NULL)
+        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
 
-// Deliveries are merged by visible reference so duplicated oversight/PO rows are not counted twice.
-$delivery_rows = [];
-if (adm_table_exists($pdo, 'deliveries_oversight')) {
-    $delivery_rows = array_merge($delivery_rows, adm_rows(
-        $pdo,
-        "SELECT id,
-                delivery_type AS type,
-                COALESCE(NULLIF(delivery_ref, ''), CONCAT('DO-', id)) AS ref_no,
-                supplier,
-                product,
-                quantity,
-                unit,
-                status,
-                delivery_date,
-                created_at,
-                CASE WHEN delivery_type = 'fuel' THEN 'admin_fuel_deliveries_oversight.php' ELSE 'admin_merchandise_deliveries_oversight.php' END AS action_url,
-                'oversight' AS source
-         FROM deliveries_oversight
-         WHERE {$station_sql}
-           AND LOWER(COALESCE(status, '')) IN ('pending manager approval', 'pending validation', 'pending verification', 'pending manager confirmation', 'pending admin oversight', 'discrepancy', 'flagged')
-         ORDER BY created_at DESC
-         LIMIT 12",
-        $station_params
-    ));
-}
-if (adm_table_exists($pdo, 'purchase_orders')) {
-    $delivery_rows = array_merge($delivery_rows, adm_rows(
-        $pdo,
-        "SELECT id,
-                COALESCE(NULLIF(type, ''), 'merchandise') AS type,
-                po_number AS ref_no,
-                COALESCE(product_name, 'Merchandise Products') AS product,
-                quantity,
-                'pcs' AS unit,
-                COALESCE(status, 'Pending') AS status,
-                expected_delivery_date AS delivery_date,
-                created_at,
-                'admin_procurement_reports.php?section=po' AS action_url,
-                'purchase_order' AS source
-         FROM purchase_orders
-         WHERE {$station_sql}
-           AND admin_finalized = 1
-           AND delivery_validated = 0
-           AND stock_in_done = 0
-           AND LOWER(COALESCE(status, '')) NOT IN ('cancelled', 'rejected')
-         ORDER BY created_at DESC
-         LIMIT 12",
-        $station_params
-    ));
-}
-if (adm_table_exists($pdo, 'fuel_purchase_orders')) {
-    $delivery_rows = array_merge($delivery_rows, adm_rows(
-        $pdo,
-        "SELECT fpo.id,
-                'fuel' AS type,
-                fpo.po_number AS ref_no,
-                COALESCE(ft.name, CONCAT('Fuel Type #', fpo.fuel_type_id)) AS product,
-                fpo.volume AS quantity,
-                'L' AS unit,
-                COALESCE(fpo.status, 'Pending') AS status,
-                fpo.expected_delivery_date AS delivery_date,
-                fpo.created_at,
-                'admin_fuel_deliveries_oversight.php' AS action_url,
-                'fuel_purchase_order' AS source
-         FROM fuel_purchase_orders fpo
-         LEFT JOIN fuel_types ft ON ft.id = fpo.fuel_type_id
-         WHERE " . adm_station_clause($station_id, 'fpo') . "
-           AND LOWER(COALESCE(fpo.status, '')) IN ('approved', 'approved po', 'admin finalized', 'official', 'confirmed')
-           AND fpo.delivery_date IS NULL
-         ORDER BY fpo.created_at DESC
-         LIMIT 12",
-        adm_station_params($station_id)
-    ));
-}
-$delivery_rows = adm_merge_by_ref($delivery_rows);
-adm_sort_created_desc($delivery_rows);
-$pending_deliveries_count = count($delivery_rows);
-$delivery_rows = array_slice($delivery_rows, 0, 8);
+        UNION
 
-// ── Live Sync JSON Endpoint ───────────────────────────────────────────────────
-if (isset($_GET['live_sync']) && $_GET['live_sync'] === '1') {
-    header('Content-Type: application/json; charset=utf-8');
-    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-    header('Pragma: no-cache');
+        SELECT
+            p.id,
+            p.name                                       AS product_name,
+            COALESCE(pc.name,'General')                  AS category,
+            COALESCE(si2.price, p.price, 0)              AS price,
+            COALESCE(p.cost, si2.cost, 0)                AS unit_cost,
+            COALESCE(NULLIF(p.sku,''), CONCAT('P', LPAD(p.id,4,'0'))) AS sku,
+            'Petron Corporation'                         AS supplier,
+            COALESCE(NULLIF(si2.status,''), NULLIF(p.status,''), 'active') AS product_status,
+            COALESCE(p.min_stock_level, 0)               AS min_stock,
+            COALESCE(p.max_stock_level, 0)               AS max_stock,
+            COALESCE(si2.stock_level, p.current_stock, 0) AS stock_level,
+            COALESCE(NULLIF(si2.capacity,0), NULLIF(p.capacity,0), NULLIF(p.max_stock_level,0), 480) AS capacity,
+            COALESCE(NULLIF(si2.reorder_level,0), NULLIF(p.min_stock_level,0), 24) AS reorder_level,
+            COALESCE(NULLIF(si2.critical_level,0), 10)   AS critical_level,
+            COALESCE(NULLIF(p.unit,''), NULLIF(si2.unit,''), 'pcs') AS unit,
+            COALESCE(si2.last_updated, p.updated_at, p.created_at) AS last_updated,
+            si2.physical_count,
+            si2.variance
+        FROM products p
+        LEFT JOIN product_categories pc ON pc.id = p.category_id
+        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND (si2.station_id = ? OR si2.station_id = 0 OR si2.station_id IS NULL)
+        WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
+          AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
+          AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products'))
+
+        ORDER BY category, product_name
+    ");
+    $stmt->execute([$station_id, $station_id]);
+    $merch_inv_stats = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+$total_products_count  = count($merch_inv_stats);
+$available_merch_count = 0;
+$low_merch_count       = 0;
+$crit_merch_count      = 0;
+$out_merch_count       = 0;
+$variance_merch_count  = 0;
+$merch_inventory_value = 0.0;
+$merch_alert_items     = [];
+
+foreach ($merch_inv_stats as &$item) {
+    $stock     = (float)($item['stock_level'] ?? 0);
+    $reorder   = (float)($item['reorder_level'] ?? 24);
+    $critical  = (float)($item['critical_level'] ?? 10);
+    $variance  = $item['variance'];
+    $has_var   = ($variance !== null && (float)$variance != 0);
+    $cost      = (float)($item['unit_cost'] > 0 ? $item['unit_cost'] : ($item['price'] ?? 0));
+    $merch_inventory_value += ($stock * $cost);
+
+    if ($has_var) {
+        $variance_merch_count++;
+    }
+
+    if ($stock <= 0) {
+        $out_merch_count++;
+        $item['alert_type']   = 'out';
+        $item['alert_status'] = 'OUT OF STOCK';
+        $item['badge_bg']     = '#FEE2E2';
+        $item['badge_color']  = '#991B1B';
+        $item['badge_border'] = '#FECACA';
+        $merch_alert_items[]  = $item;
+    } elseif ($stock <= $critical) {
+        $crit_merch_count++;
+        $item['alert_type']   = 'critical';
+        $item['alert_status'] = 'CRITICAL';
+        $item['badge_bg']     = '#FEE2E2';
+        $item['badge_color']  = '#DC2626';
+        $item['badge_border'] = '#FECACA';
+        $merch_alert_items[]  = $item;
+    } elseif ($stock <= $reorder) {
+        $low_merch_count++;
+        $item['alert_type']   = 'low';
+        $item['alert_status'] = 'LOW';
+        $item['badge_bg']     = '#FEF9C3';
+        $item['badge_color']  = '#B45309';
+        $item['badge_border'] = '#FDE68A';
+        $merch_alert_items[]  = $item;
+    } else {
+        $available_merch_count++;
+        $item['alert_type']   = 'available';
+        $item['alert_status'] = 'AVAILABLE';
+        $item['badge_bg']     = '#DCFCE7';
+        $item['badge_color']  = '#15803D';
+        $item['badge_border'] = '#BBF7D0';
+    }
+    $item['has_variance'] = $has_var;
+}
+unset($item);
+
+$low_stock_items       = $low_fuel_count + $low_merch_count;
+$critical_stock_items  = $crit_fuel_count + $crit_merch_count;
+$out_of_stock_items    = $out_fuel_count + $out_merch_count;
+$total_inventory_value = $fuel_inventory_value + $merch_inventory_value;
+
+// ── 5. STOCK REQUEST, STOCK-IN & PURCHASE ORDERS ────────────────────────────
+// Stock Requests
+$sr_pending  = (int) adm_value($pdo, "SELECT COUNT(*) FROM stock_requests WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'pending manager review', 'pending admin review', 'submitted')", $st_params);
+$sr_approved = (int) adm_value($pdo, "SELECT COUNT(*) FROM stock_requests WHERE {$st_sql} AND LOWER(COALESCE(status, '')) IN ('approved', 'completed')", $st_params);
+$sr_rejected = (int) adm_value($pdo, "SELECT COUNT(*) FROM stock_requests WHERE {$st_sql} AND LOWER(COALESCE(status, '')) IN ('rejected', 'cancelled')", $st_params);
+$sr_revision = (int) adm_value($pdo, "SELECT COUNT(*) FROM stock_requests WHERE {$st_sql} AND LOWER(COALESCE(status, '')) IN ('for revision', 'for_revision', 'returned')", $st_params);
+
+// Stock-In & Verification — derived from purchase_orders pipeline (merchandise_stock_in has no status column)
+// Pending Stock-In: POs that are admin-finalized but stock-in not yet done
+$si_pending  = (int) adm_value($pdo, "SELECT COUNT(*) FROM purchase_orders WHERE {$st_sql} AND admin_finalized = 1 AND (stock_in_done = 0 OR stock_in_done IS NULL)", $st_params);
+// For Verify: POs where stock-in is done but delivery not yet validated (exclude Completed POs)
+$si_for_ver  = (int) adm_value($pdo, "SELECT COUNT(*) FROM purchase_orders WHERE {$st_sql} AND stock_in_done = 1 AND (delivery_validated = 0 OR delivery_validated IS NULL) AND LOWER(status) NOT IN ('completed','cancelled','rejected','rejected by admin')", $st_params);
+// Approved/Completed: Count of encoded merchandise_stock_in records (each = a completed delivery)
+$si_approved = (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_stock_in WHERE {$st_sql}", $st_params);
+// Returned/Issues: stock-in records with a bad condition_flag
+$si_returned = (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_stock_in WHERE {$st_sql} AND LOWER(COALESCE(condition_flag,'good')) IN ('damaged','short','excess','mixed','bad','defective')", $st_params);
+
+// Purchase Orders — query the purchase_orders table directly
+$po_pending   = (int) adm_value($pdo, "SELECT COUNT(*) FROM purchase_orders WHERE {$st_sql} AND LOWER(status) IN ('draft','pending approval','pending','pending admin validation')", $st_params);
+$po_generated = (int) adm_value($pdo, "SELECT COUNT(*) FROM purchase_orders WHERE {$st_sql} AND LOWER(status) IN ('approved','approved po','admin finalized','official','confirmed','received')", $st_params);
+$po_completed = (int) adm_value($pdo, "SELECT COUNT(*) FROM purchase_orders WHERE {$st_sql} AND (LOWER(status) = 'completed' OR stock_in_done = 1)", $st_params);
+
+// ── 6. APPROVALS & REQUEST OVERVIEW BREAKDOWN ───────────────────────────────
+$pending_stock_reqs      = $sr_pending;
+$pending_stockin         = $si_pending + $si_for_ver;
+$pending_void_reqs       = (int) adm_value($pdo, "SELECT COUNT(*) FROM transaction_requests WHERE {$st_sql} AND LOWER(COALESCE(request_type, '')) = 'void' AND LOWER(COALESCE(status, 'pending')) = 'pending'", $st_params);
+$pending_adjustment_reqs = (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_adjustments WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) = 'pending'", $st_params);
+$pending_master_data     = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'pending manager review', 'for review')", $st_params);
+
+$total_pending_approvals = $pending_stock_reqs + $pending_stockin + $pending_void_reqs + $pending_adjustment_reqs + $pending_master_data;
+
+// Master Data Request Breakdown
+$md_vehicle_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(request_type, '')) = 'vehicle'", $st_params);
+$md_product_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(request_type, '')) IN ('product', 'merchandise')", $st_params);
+$md_service_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(request_type, '')) = 'service'", $st_params);
+
+$md_pending_cnt  = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status, 'pending')) = 'pending'", $st_params);
+$md_approved_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status, '')) = 'approved'", $st_params);
+$md_rejected_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status, '')) = 'rejected'", $st_params);
+$md_revision_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status, '')) IN ('for revision', 'for_revision')", $st_params);
+
+// Void & Adjustment Breakdown
+$void_approved = (int) adm_value($pdo, "SELECT COUNT(*) FROM transaction_requests WHERE {$st_sql} AND LOWER(COALESCE(request_type, '')) = 'void' AND LOWER(COALESCE(status, '')) = 'approved'", $st_params);
+$void_rejected = (int) adm_value($pdo, "SELECT COUNT(*) FROM transaction_requests WHERE {$st_sql} AND LOWER(COALESCE(request_type, '')) = 'void' AND LOWER(COALESCE(status, '')) = 'rejected'", $st_params);
+
+$adj_approved = (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_adjustments WHERE {$st_sql} AND LOWER(COALESCE(status, '')) = 'approved'", $st_params);
+$adj_rejected = (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_adjustments WHERE {$st_sql} AND LOWER(COALESCE(status, '')) = 'rejected'", $st_params);
+$adj_revision = (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_adjustments WHERE {$st_sql} AND LOWER(COALESCE(status, '')) IN ('for revision', 'for_revision')", $st_params);
+
+// ── 7. ACCOUNTS RECEIVABLE (AR: Merchandise + Job Orders; Fuel Excluded) ─────
+$total_ar_outstanding = 0.0;
+$ar_due_overdue_count = 0;
+$ar_recently_paid     = 0.0;
+$ar_customer_map      = [];
+
+// Merchandise AR
+if (adm_table_exists($pdo, 'merchandise_transactions')) {
+    $m_ar = (float) adm_value($pdo, "
+        SELECT COALESCE(SUM(balance_due), 0)
+        FROM merchandise_transactions
+        WHERE {$st_sql} AND balance_due > 0
+          AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+    ", $st_params);
+    $total_ar_outstanding += $m_ar;
+
+    $ar_due_overdue_count += (int) adm_value($pdo, "
+        SELECT COUNT(*)
+        FROM merchandise_transactions
+        WHERE {$st_sql} AND balance_due > 0
+          AND due_date IS NOT NULL AND due_date <= CURDATE()
+          AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+    ", $st_params);
+
+    $ar_recently_paid += (float) adm_value($pdo, "
+        SELECT COALESCE(SUM(amount_paid), 0)
+        FROM merchandise_transactions
+        WHERE {$st_sql} AND amount_paid > 0
+          AND DATE(COALESCE(transaction_date, created_at)) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+    ", $st_params);
+
+    $m_custs = adm_rows($pdo, "
+        SELECT COALESCE(NULLIF(TRIM(customer_name), ''), 'Walk-in Customer') AS customer_name,
+               COALESCE(SUM(balance_due), 0) AS total_balance,
+               MAX(due_date) AS due_date
+        FROM merchandise_transactions
+        WHERE {$st_sql} AND balance_due > 0
+          AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+        GROUP BY COALESCE(NULLIF(TRIM(customer_name), ''), 'Walk-in Customer')
+    ", $st_params);
+    foreach ($m_custs as $mc) {
+        $cname = $mc['customer_name'];
+        if (!isset($ar_customer_map[$cname])) {
+            $ar_customer_map[$cname] = ['customer_name' => $cname, 'total_balance' => 0.0, 'due_date' => $mc['due_date']];
+        }
+        $ar_customer_map[$cname]['total_balance'] += (float)$mc['total_balance'];
+    }
+}
+
+// Job Orders AR
+if (adm_table_exists($pdo, 'job_orders')) {
+    $j_ar = (float) adm_value($pdo, "
+        SELECT COALESCE(SUM(COALESCE(balance_due, GREATEST(0, COALESCE(total_cost, 0) - COALESCE(amount_paid, 0)))), 0)
+        FROM job_orders
+        WHERE {$st_sql}
+          AND COALESCE(balance_due, GREATEST(0, COALESCE(total_cost, 0) - COALESCE(amount_paid, 0))) > 0
+          AND LOWER(COALESCE(status, 'completed')) NOT IN ('void','voided','cancelled','rejected')
+    ", $st_params);
+    $total_ar_outstanding += $j_ar;
+
+    $ar_due_overdue_count += (int) adm_value($pdo, "
+        SELECT COUNT(*)
+        FROM job_orders
+        WHERE {$st_sql}
+          AND COALESCE(balance_due, GREATEST(0, COALESCE(total_cost, 0) - COALESCE(amount_paid, 0))) > 0
+          AND due_date IS NOT NULL AND due_date <= CURDATE()
+          AND LOWER(COALESCE(status, 'completed')) NOT IN ('void','voided','cancelled','rejected')
+    ", $st_params);
+
+    $ar_recently_paid += (float) adm_value($pdo, "
+        SELECT COALESCE(SUM(amount_paid), 0)
+        FROM job_orders
+        WHERE {$st_sql} AND amount_paid > 0
+          AND DATE(COALESCE(created_at, updated_at)) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+    ", $st_params);
+
+    $j_custs = adm_rows($pdo, "
+        SELECT COALESCE(NULLIF(TRIM(customer_name), ''), 'Walk-in Customer') AS customer_name,
+               COALESCE(SUM(COALESCE(balance_due, GREATEST(0, COALESCE(total_cost, 0) - COALESCE(amount_paid, 0)))), 0) AS total_balance,
+               MAX(due_date) AS due_date
+        FROM job_orders
+        WHERE {$st_sql}
+          AND COALESCE(balance_due, GREATEST(0, COALESCE(total_cost, 0) - COALESCE(amount_paid, 0))) > 0
+          AND LOWER(COALESCE(status, 'completed')) NOT IN ('void','voided','cancelled','rejected')
+        GROUP BY COALESCE(NULLIF(TRIM(customer_name), ''), 'Walk-in Customer')
+    ", $st_params);
+    foreach ($j_custs as $jc) {
+        $cname = $jc['customer_name'];
+        if (!isset($ar_customer_map[$cname])) {
+            $ar_customer_map[$cname] = ['customer_name' => $cname, 'total_balance' => 0.0, 'due_date' => $jc['due_date']];
+        }
+        $ar_customer_map[$cname]['total_balance'] += (float)$jc['total_balance'];
+    }
+}
+
+usort($ar_customer_map, fn($a, $b) => $b['total_balance'] <=> $a['total_balance']);
+$ar_customer_list = array_slice($ar_customer_map, 0, 5);
+
+// ── 8. PAYMENT BREAKDOWN (Exact 7 System Payment Types) ─────────────────────
+$all_7_pms = ['Cash', 'Credit Card', 'Debit Card', 'GCash', 'Maya', 'Petron Fleet Card', 'Credit Account'];
+$payment_map = array_fill_keys($all_7_pms, 0.0);
+
+// Branch-wide consolidated payment records across all 3 streams
+$pm_rows = adm_rows($pdo, "
+    SELECT TRIM(payment_method) AS pm, COALESCE(SUM(total_amount), 0) AS amt
+    FROM (
+        SELECT payment_method, total_amount 
+        FROM fuel_transactions 
+        WHERE {$st_sql} 
+          AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
+        
+        UNION ALL
+        
+        SELECT payment_method, total_amount 
+        FROM merchandise_transactions 
+        WHERE {$st_sql} 
+          AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+        
+        UNION ALL
+        
+        SELECT payment_method, COALESCE(total_cost, estimated_cost, actual_labor_cost + actual_parts_cost, 0) AS total_amount 
+        FROM job_orders 
+        WHERE {$st_sql} 
+          AND LOWER(COALESCE(status, 'completed')) NOT IN ('voided','cancelled','rejected')
+    ) AS all_pms
+    WHERE payment_method IS NOT NULL AND TRIM(payment_method) != ''
+    GROUP BY TRIM(payment_method)
+", array_merge($st_params, $st_params, $st_params));
+
+foreach ($pm_rows as $pr) {
+    $pm_name = strtolower(trim((string)$pr['pm']));
+    $amt = (float)$pr['amt'];
+    if (str_contains($pm_name, 'debit')) {
+        $payment_map['Debit Card'] += $amt;
+    } elseif (str_contains($pm_name, 'credit card') || ($pm_name === 'card' && !str_contains($pm_name, 'fleet'))) {
+        $payment_map['Credit Card'] += $amt;
+    } elseif (str_contains($pm_name, 'gcash')) {
+        $payment_map['GCash'] += $amt;
+    } elseif (str_contains($pm_name, 'maya') || str_contains($pm_name, 'paymaya')) {
+        $payment_map['Maya'] += $amt;
+    } elseif (str_contains($pm_name, 'fleet')) {
+        $payment_map['Petron Fleet Card'] += $amt;
+    } elseif (str_contains($pm_name, 'credit account') || str_contains($pm_name, 'credit') || str_contains($pm_name, 'account') || str_contains($pm_name, 'ar') || str_contains($pm_name, 'charge')) {
+        $payment_map['Credit Account'] += $amt;
+    } else {
+        $payment_map['Cash'] += $amt;
+    }
+}
+
+$payment_labels  = array_keys($payment_map);
+$payment_amounts = array_values($payment_map);
+
+// ── 9. CHARTS DATA (Daily Trends, Top Products, Top Services, Revenue) ───────
+$week_labels       = [];
+$daily_fuel_data   = [];
+$daily_merch_data  = [];
+$daily_job_data    = [];
+$daily_total_data  = [];
+$monday = date('Y-m-d', strtotime('monday this week'));
+
+for ($i = 0; $i < 7; $i++) {
+    $day = date('Y-m-d', strtotime("$monday +$i days"));
+    $week_labels[] = date('D (M j)', strtotime($day));
+    $day_params = array_merge($st_params, [$day]);
+    
+    $d_fuel  = (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) = ? AND LOWER(COALESCE(status,'')) NOT IN ('voided','rejected','cancelled')", $day_params);
+    $d_merch = (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) = ? AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected') AND LOWER(COALESCE(transaction_type, 'merchandise')) NOT IN ('job_order','service') AND (job_order_service IS NULL OR TRIM(job_order_service) = '')", $day_params);
+    $d_job   = (float) adm_value($pdo, "SELECT COALESCE(SUM(total_cost), 0) FROM (
+        SELECT COALESCE(total_cost, estimated_cost, 0) AS total_cost FROM job_orders WHERE {$st_sql} AND DATE(COALESCE(completed_at, created_at)) = ? AND LOWER(COALESCE(status, 'completed')) NOT IN ('voided','cancelled','rejected')
+        UNION ALL
+        SELECT total_amount AS total_cost FROM merchandise_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) = ? AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order', 'service', 'combined') OR (job_order_service IS NOT NULL AND TRIM(job_order_service) != '')) AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+    ) AS all_d_jobs", array_merge($day_params, $day_params));
+    
+    $daily_fuel_data[]  = round($d_fuel, 2);
+    $daily_merch_data[] = round($d_merch, 2);
+    $daily_job_data[]   = round($d_job, 2);
+    $daily_total_data[] = round($d_fuel + $d_merch + $d_job, 2);
+}
+
+// Monthly Revenue Trend (Last 6 Months)
+$monthly_trend_labels = [];
+$monthly_trend_data   = [];
+for ($m = 5; $m >= 0; $m--) {
+    $mstart = date('Y-m-01', strtotime("-{$m} months"));
+    $mend   = date('Y-m-t',  strtotime("-{$m} months"));
+    $monthly_trend_labels[] = date('M Y', strtotime($mstart));
+    $mparams = array_merge($st_params, [$mstart, $mend]);
+    
+    $mf = (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(status,'')) NOT IN ('voided','rejected','cancelled')", $mparams);
+    $mm = (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected') AND LOWER(COALESCE(transaction_type, 'merchandise')) NOT IN ('job_order','service') AND (job_order_service IS NULL OR TRIM(job_order_service) = '')", $mparams);
+    $mj = (float) adm_value($pdo, "SELECT COALESCE(SUM(total_cost), 0) FROM (
+        SELECT COALESCE(total_cost, estimated_cost, 0) AS total_cost FROM job_orders WHERE {$st_sql} AND DATE(COALESCE(completed_at, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(status,'')) NOT IN ('voided','cancelled','rejected')
+        UNION ALL
+        SELECT total_amount AS total_cost FROM merchandise_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order', 'service', 'combined') OR (job_order_service IS NOT NULL AND TRIM(job_order_service) != '')) AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+    ) AS all_mj_jobs", array_merge($mparams, $mparams));
+    
+    $monthly_trend_data[] = round($mf + $mm + $mj, 2);
+}
+
+// Top 5 Selling Merchandise Products
+$top_products = adm_rows($pdo, "
+    SELECT COALESCE(NULLIF(TRIM(mti.product_name), ''), 'Product') AS product_name,
+           COALESCE(SUM(mti.quantity), 0) AS total_qty,
+           COALESCE(SUM(mti.subtotal), 0) AS total_revenue
+    FROM merchandise_transaction_items mti
+    INNER JOIN merchandise_transactions mt ON mt.id = mti.transaction_id
+    WHERE {$st_sql}
+      AND LOWER(COALESCE(mt.workflow_status, mt.validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+    GROUP BY product_name
+    ORDER BY total_qty DESC, total_revenue DESC
+    LIMIT 5
+", $st_params);
+
+$top_prod_labels     = [];
+$top_prod_quantities = [];
+foreach ($top_products as $tp) {
+    $top_prod_labels[]     = $tp['product_name'];
+    $top_prod_quantities[] = (float) $tp['total_qty'];
+}
+if (empty($top_prod_labels)) {
+    $top_prod_labels     = ['No Sales Logged'];
+    $top_prod_quantities = [0];
+}
+
+// Top 5 Most Requested Services
+$services_map = [];
+$jo_srv_rows = adm_rows($pdo, "
+    SELECT COALESCE(NULLIF(TRIM(service_type), ''), 'General Service') AS service_name,
+           COUNT(*) AS request_count
+    FROM job_orders
+    WHERE {$st_sql}
+      AND LOWER(COALESCE(status, 'completed')) NOT IN ('voided','cancelled','rejected')
+    GROUP BY service_name
+", $st_params);
+foreach ($jo_srv_rows as $jsr) {
+    $sname = trim($jsr['service_name']);
+    if ($sname !== '') { $services_map[$sname] = ($services_map[$sname] ?? 0) + (int)$jsr['request_count']; }
+}
+if (adm_table_exists($pdo, 'merchandise_transactions')) {
+    $mt_srv_rows = adm_rows($pdo, "
+        SELECT job_order_service FROM merchandise_transactions WHERE {$st_sql} AND job_order_service IS NOT NULL AND TRIM(job_order_service) != '' AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+    ", $st_params);
+    foreach ($mt_srv_rows as $msr) {
+        $srv_list = explode(',', (string)$msr['job_order_service']);
+        foreach ($srv_list as $sn) {
+            $snt = trim($sn);
+            if ($snt !== '') {
+                $services_map[$snt] = ($services_map[$snt] ?? 0) + 1;
+            }
+        }
+    }
+}
+arsort($services_map);
+$top_services_final = array_slice($services_map, 0, 5, true);
+
+$top_service_labels = [];
+$top_service_counts = [];
+foreach ($top_services_final as $sname => $scount) {
+    $top_service_labels[] = $sname;
+    $top_service_counts[] = (int) $scount;
+}
+if (empty($top_service_labels)) {
+    $top_service_labels = ['No Services Logged'];
+    $top_service_counts = [0];
+}
+
+// Job Order Status Chart
+$jo_status_labels = ['Pending', 'In Progress', 'Completed', 'Voided'];
+$jo_status_data   = [$jo_pending_count, $jo_inprogress_count, $jo_completed_count, $jo_voided_count];
+
+// ── 10. RECENT TRANSACTIONS (Consolidated Fuel, Merchandise, Job Order) ──────
+$recent_transactions = [];
+
+// Fuel Transactions
+$f_txns = adm_rows($pdo, "
+    SELECT COALESCE(NULLIF(transaction_id,''), CONCAT('FTRX-', LPAD(id, 5, '0'))) AS ref_no,
+           'Fuel' AS stream_type,
+           COALESCE(NULLIF(customer_name, ''), 'Pump Cash Customer') AS customer_name,
+           total_amount AS amount,
+           COALESCE(payment_method, 'Cash') AS payment_method,
+           COALESCE(status, 'Completed') AS status,
+           COALESCE(transaction_date, created_at) AS created_at
+    FROM fuel_transactions
+    WHERE {$st_sql}
+    ORDER BY created_at DESC
+    LIMIT 4
+", $st_params);
+$recent_transactions = array_merge($recent_transactions, $f_txns);
+
+// Merchandise Transactions
+$m_txns = adm_rows($pdo, "
+    SELECT COALESCE(transaction_id, CONCAT('TRX-', LPAD(id, 4, '0'))) AS ref_no,
+           'Merchandise' AS stream_type,
+           COALESCE(NULLIF(customer_name, ''), 'Walk-in Customer') AS customer_name,
+           total_amount AS amount,
+           COALESCE(payment_method, 'Cash') AS payment_method,
+           COALESCE(workflow_status, validation_status, 'Completed') AS status,
+           COALESCE(transaction_date, created_at) AS created_at
+    FROM merchandise_transactions
+    WHERE {$st_sql}
+    ORDER BY created_at DESC
+    LIMIT 4
+", $st_params);
+$recent_transactions = array_merge($recent_transactions, $m_txns);
+
+// Job Orders
+$j_txns = adm_rows($pdo, "
+    SELECT COALESCE(NULLIF(job_order_number, ''), CONCAT('JO-', LPAD(id, 4, '0'))) AS ref_no,
+           'Job Order' AS stream_type,
+           COALESCE(NULLIF(customer_name, ''), 'Service Customer') AS customer_name,
+           COALESCE(total_cost, estimated_cost, 0) AS amount,
+           COALESCE(payment_method, 'Cash') AS payment_method,
+           status,
+           COALESCE(completed_at, created_at) AS created_at
+    FROM job_orders
+    WHERE {$st_sql}
+    ORDER BY created_at DESC
+    LIMIT 4
+", $st_params);
+$recent_transactions = array_merge($recent_transactions, $j_txns);
+
+usort($recent_transactions, fn($a, $b) => strcmp((string)($b['created_at'] ?? ''), (string)($a['created_at'] ?? '')));
+$recent_transactions = array_slice($recent_transactions, 0, 7);
+
+// ── 11. RECENT INVENTORY MOVEMENTS ──────────────────────────────────────────
+$recent_inventory_movements = [];
+
+// Merchandise Movements from inventory_logs
+if (adm_table_exists($pdo, 'inventory_logs')) {
+    $m_logs = adm_rows($pdo, "
+        SELECT COALESCE(NULLIF(il.reference_no,''), CONCAT('LOG-', LPAD(il.id, 4, '0'))) AS ref_no,
+               COALESCE(
+                   NULLIF(p.name,''),
+                   NULLIF(msi.product_name,''),
+                   CONCAT('Product #', il.product_id)
+               ) AS product_name,
+               CASE
+                   WHEN LOWER(il.action) = 'merchandise_sale' THEN 'Sale (OUT)'
+                   WHEN LOWER(il.action) = 'stock_in'         THEN 'Stock-In (IN)'
+                   WHEN LOWER(il.action) = 'adjustment'       THEN 'Adjustment'
+                   WHEN LOWER(il.action) = 'transfer'         THEN 'Transfer'
+                   ELSE COALESCE(il.movement_type, il.action, 'Stock Movement')
+               END AS movement_type,
+               COALESCE(il.quantity_change, 0) AS quantity_change,
+               COALESCE(p.unit, 'pcs') AS unit,
+               'Merchandise' AS stream_type,
+               il.created_at
+        FROM inventory_logs il
+        LEFT JOIN products p ON p.id = il.product_id
+        LEFT JOIN merchandise_stock_in msi ON msi.station_id = il.station_id AND msi.encoded_at = il.created_at
+        WHERE {$st_sql}
+        ORDER BY il.created_at DESC
+        LIMIT 6
+    ", $st_params);
+    $recent_inventory_movements = array_merge($recent_inventory_movements, $m_logs);
+}
+
+// Merchandise Stock-In Deliveries (from merchandise_stock_in — actual encoded deliveries)
+if (adm_table_exists($pdo, 'merchandise_stock_in')) {
+    $si_rows = adm_rows($pdo, "
+        SELECT COALESCE(NULLIF(msi.po_number,''), CONCAT('SI-', LPAD(msi.id, 4, '0'))) AS ref_no,
+               COALESCE(NULLIF(msi.product_name,''), 'Merchandise Item') AS product_name,
+               'Stock-In (Delivery)' AS movement_type,
+               msi.qty_received AS quantity_change,
+               'pcs' AS unit,
+               'Merchandise' AS stream_type,
+               msi.encoded_at AS created_at
+        FROM merchandise_stock_in msi
+        WHERE {$st_sql}
+        ORDER BY msi.encoded_at DESC
+        LIMIT 6
+    ", $st_params);
+    // Only add if not already captured by inventory_logs (avoid duplicate for same ref)
+    $existing_refs = array_column($recent_inventory_movements, 'ref_no');
+    foreach ($si_rows as $si) {
+        if (!in_array($si['ref_no'], $existing_refs)) {
+            $recent_inventory_movements[] = $si;
+        }
+    }
+}
+
+// Fuel Deliveries (IN)
+if (adm_table_exists($pdo, 'fuel_deliveries')) {
+    $fd_rows = adm_rows($pdo, "
+        SELECT COALESCE(NULLIF(fd.invoice_no,''), CONCAT('FDEL-', LPAD(fd.id, 5, '0'))) AS ref_no,
+               CONCAT(COALESCE(fd.fuel_type, 'Fuel'), ' Delivery') AS product_name,
+               'Fuel Delivery (IN)' AS movement_type,
+               fd.delivery_liters AS quantity_change,
+               'L' AS unit,
+               'Fuel' AS stream_type,
+               fd.delivery_date AS created_at
+        FROM fuel_deliveries fd
+        WHERE {$st_sql}
+        ORDER BY fd.delivery_date DESC
+        LIMIT 6
+    ", $st_params);
+    $recent_inventory_movements = array_merge($recent_inventory_movements, $fd_rows);
+}
+
+usort($recent_inventory_movements, fn($a, $b) => strcmp((string)($b['created_at'] ?? ''), (string)($a['created_at'] ?? '')));
+$recent_inventory_movements = array_slice($recent_inventory_movements, 0, 6);
+
+// ── 12. BRANCH ACTIVITY OVERVIEW & NOTIFICATIONS ─────────────────────────────
+$notifications_list = [];
+if (adm_table_exists($pdo, 'notifications')) {
+    $notifications_list = adm_rows($pdo, "
+        SELECT id, title, message, redirect_url, status, created_at
+        FROM notifications
+        WHERE (user_id = ? OR recipient_role IN ('admin', 'owner', 'all'))
+        ORDER BY created_at DESC
+        LIMIT 5
+    ", [$user_id]);
+}
+
+// Branch Activity — Login History from audit_logs (matches admin_reports.php?cat=audit&tab=login_history)
+$branch_activity_logs = [];
+if (adm_table_exists($pdo, 'audit_logs')) {
+    $branch_activity_logs = adm_rows($pdo, "
+        SELECT al.id,
+               al.action_type                                              AS action,
+               COALESCE(al.action_details, '')                            AS details,
+               al.created_at,
+               COALESCE(
+                   NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''),
+                   NULLIF(u.username,''),
+                   'System'
+               )                                                          AS user_name,
+               COALESCE(u.role, 'Staff')                                  AS user_role,
+               COALESCE(al.log_type, 'user')                              AS log_type,
+               COALESCE(al.status, 'Success')                             AS entry_status,
+               COALESCE(al.ip_address, '')                                AS ip_address
+        FROM audit_logs al
+        LEFT JOIN users u ON u.id = al.user_id
+        WHERE LOWER(al.log_type) IN ('user', 'authentication')
+          AND LOWER(al.action_type) IN (
+              'login', 'logout', 'login failed', 'captcha failed',
+              'password_reset_requested', 'password_reset_otp_sent',
+              'password_reset_otp_verified', 'password_reset_completed',
+              'password_reset_otp_failed'
+          )
+        ORDER BY al.id DESC
+        LIMIT 6
+    ");
+}
+
+// Operational User / Shift / Branch Status
+$active_staff_count = (int) adm_value($pdo, "SELECT COUNT(*) FROM users WHERE status = 'active'", []);
+$current_hour       = (int)date('H');
+$current_shift_name = ($current_hour >= 6 && $current_hour < 14) ? 'Shift 1 (06:00 - 14:00)' : 'Shift 2 (14:00 - 22:00)';
+
+// ── AJAX REAL-TIME POLLING RESPONSE ─────────────────────────────────────────
+if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
+    header('Content-Type: application/json');
     echo json_encode([
-        'success'   => true,
-        'timestamp' => date('Y-m-d H:i:s'),
-        'metrics'   => [
-            'total_pending_approvals'  => number_format($total_pending_approvals),
-            'pending_inventory_approvals' => number_format($pending_inventory_approvals),
-            'pending_deliveries_count' => number_format($pending_deliveries_count),
-            'total_inventory_alerts'   => number_format($total_inventory_alerts),
-            'pending_user_accounts'    => number_format($pending_user_accounts),
+        'kpis' => [
+            'fuel_sales_today'     => number_format($fuel_today_sales, 2),
+            'merch_sales_today'    => number_format($merch_today_sales, 2),
+            'job_sales_today'      => number_format($job_today_sales, 2),
+            'total_sales_today'    => number_format($total_today_sales, 2),
+            'total_transactions'   => number_format($total_today_transactions),
+            'active_job_orders'    => $active_job_orders,
+            'completed_job_orders' => $completed_job_orders,
+            'total_job_orders'     => $total_job_orders_logged,
+            'job_order_revenue'    => number_format($total_job_order_revenue, 2),
+            'low_stock_items'      => $low_stock_items,
+            'critical_stock_items' => $critical_stock_items,
+            'out_of_stock_items'   => $out_of_stock_items,
+            'pending_approvals'    => $total_pending_approvals,
+            'monthly_revenue'      => number_format($monthly_revenue, 2),
+            'inventory_value'      => number_format($total_inventory_value, 2),
+            'ar_outstanding'       => number_format($total_ar_outstanding, 2),
+            'payment_cash'         => number_format($payment_map['Cash'] ?? 0, 2),
+            'payment_credit_card'  => number_format($payment_map['Credit Card'] ?? 0, 2),
+            'payment_debit_card'   => number_format($payment_map['Debit Card'] ?? 0, 2),
+            'payment_gcash'        => number_format($payment_map['GCash'] ?? 0, 2),
+            'payment_maya'         => number_format($payment_map['Maya'] ?? 0, 2),
+            'payment_fleet'        => number_format($payment_map['Petron Fleet Card'] ?? 0, 2),
+            'payment_credit_acct'  => number_format($payment_map['Credit Account'] ?? 0, 2),
         ],
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        'charts' => [
+            'week_labels'          => $week_labels,
+            'daily_fuel'           => $daily_fuel_data,
+            'daily_merch'          => $daily_merch_data,
+            'daily_job'            => $daily_job_data,
+            'daily_total'          => $daily_total_data,
+            'monthly_labels'       => $monthly_trend_labels,
+            'monthly_revenue'      => $monthly_trend_data,
+            'top_prod_labels'      => $top_prod_labels,
+            'top_prod_data'        => $top_prod_quantities,
+            'top_serv_labels'      => $top_service_labels,
+            'top_serv_data'        => $top_service_counts,
+            'payment_labels'       => $payment_labels,
+            'payment_data'         => $payment_amounts,
+            'jo_status_data'       => $jo_status_data,
+        ],
+        'recent_transactions'      => $recent_transactions,
+        'recent_movements'         => $recent_inventory_movements,
+        'notifications'            => $notifications_list,
+        'branch_activity_logs'     => $branch_activity_logs
+    ]);
     exit;
 }
-
-// System health and monitoring.
-$db_connected = true;
-try {
-    $pdo->query('SELECT 1');
-} catch (Throwable $e) {
-    $db_connected = false;
-}
-$server_running = true;
-
-$latest_backup = adm_table_exists($pdo, 'system_backups')
-    ? adm_rows($pdo, 'SELECT * FROM system_backups ORDER BY COALESCE(completed_at, created_at) DESC, id DESC LIMIT 1')
-    : [];
-$latest_backup = $latest_backup[0] ?? null;
-$backup_ok = $latest_backup && strtolower((string) ($latest_backup['status'] ?? '')) === 'completed';
-$backup_label = $latest_backup ? adm_status_label($latest_backup['status'], 'Unknown') : 'No Backup';
-$system_health_ok = $db_connected && $server_running && $backup_ok;
-$system_health_value = $system_health_ok ? 'OK' : ($db_connected && $server_running ? 'Review' : 'Issue');
-
-$audit_today_logs = adm_table_exists($pdo, 'audit_logs')
-    ? (int) adm_value($pdo, 'SELECT COUNT(*) FROM audit_logs WHERE DATE(created_at) BETWEEN ? AND ?', [$date_from, $date_to])
-    : 0;
-$audit_errors = adm_table_exists($pdo, 'audit_logs')
-    ? (int) adm_value(
-        $pdo,
-        "SELECT COUNT(*) FROM audit_logs
-         WHERE DATE(created_at) BETWEEN ? AND ?
-           AND (LOWER(COALESCE(status, '')) IN ('error', 'failed') OR error_message IS NOT NULL)",
-        [$date_from, $date_to]
-    )
-    : 0;
-$audit_warnings = adm_table_exists($pdo, 'audit_logs')
-    ? (int) adm_value(
-        $pdo,
-        "SELECT COUNT(*) FROM audit_logs
-         WHERE DATE(created_at) BETWEEN ? AND ?
-           AND (LOWER(COALESCE(status, '')) = 'warning' OR LOWER(COALESCE(log_type, '')) = 'warning')",
-        [$date_from, $date_to]
-    )
-    : 0;
-$login_successes = adm_table_exists($pdo, 'login_attempts')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM login_attempts WHERE DATE(attempt_time) BETWEEN ? AND ? AND LOWER(status) = 'success'", [$date_from, $date_to])
-    : 0;
-$login_failures = adm_table_exists($pdo, 'login_attempts')
-    ? (int) adm_value($pdo, "SELECT COUNT(*) FROM login_attempts WHERE DATE(attempt_time) BETWEEN ? AND ? AND LOWER(status) IN ('failed', 'locked', 'blocked')", [$date_from, $date_to])
-    : 0;
-
-$db_stats = ['storage_bytes' => 0, 'records' => 0];
-try {
-    $stmt = $pdo->query(
-        'SELECT COALESCE(SUM(DATA_LENGTH + INDEX_LENGTH), 0) AS storage_bytes,
-                COALESCE(SUM(TABLE_ROWS), 0) AS records
-         FROM information_schema.TABLES
-         WHERE TABLE_SCHEMA = DATABASE()'
-    );
-    $db_stats = $stmt->fetch(PDO::FETCH_ASSOC) ?: $db_stats;
-} catch (Throwable $e) {
-}
-
-$next_backup = adm_table_exists($pdo, 'system_settings')
-    ? (string) adm_value(
-        $pdo,
-        "SELECT setting_value FROM system_settings
-         WHERE setting_key IN ('next_backup_at', 'backup_schedule', 'database_backup_schedule')
-         ORDER BY FIELD(setting_key, 'next_backup_at', 'backup_schedule', 'database_backup_schedule')
-         LIMIT 1",
-        [],
-        ''
-    )
-    : '';
-if ($next_backup === '') {
-    $next_backup = 'Manual';
-}
-
-// Chart data.
-$month_labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-$monthly_revenue = [];
-$selected_year = (int) substr($date_filter, 0, 4);
-for ($month = 1; $month <= 12; $month++) {
-    $start = sprintf('%04d-%02d-01', $selected_year, $month);
-    $end = date('Y-m-t', strtotime($start));
-    $fuel_month = adm_table_exists($pdo, 'fuel_transactions')
-        ? (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE(transaction_date) BETWEEN ? AND ?", array_merge($station_params, [$start, $end]))
-        : 0.0;
-    $merch_month = adm_table_exists($pdo, 'merchandise_transactions')
-        ? (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?", array_merge($station_params, [$start, $end]))
-        : 0.0;
-    $service_month = adm_table_exists($pdo, 'job_orders')
-        ? (float) adm_value(
-            $pdo,
-            "SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, COALESCE(actual_labor_cost, 0) + COALESCE(actual_parts_cost, 0), 0)), 0)
-             FROM job_orders
-             WHERE {$station_sql}
-               AND DATE(created_at) BETWEEN ? AND ?
-               AND LOWER(COALESCE(status, '')) IN ('completed', 'verified', 'finalized', 'released')",
-            array_merge($station_params, [$start, $end])
-        )
-        : 0.0;
-    $monthly_revenue[] = round($fuel_month + $merch_month + $service_month, 2);
-}
-
-$week_start = $date_check->modify('monday this week');
-$weekly_labels = [];
-$weekly_sales = [];
-for ($i = 0; $i < 7; $i++) {
-    $day = $week_start->modify("+{$i} days");
-    $day_value = $day->format('Y-m-d');
-    $weekly_labels[] = $day->format('D');
-    $fuel_day = adm_table_exists($pdo, 'fuel_transactions')
-        ? (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE(transaction_date) = ?", array_merge($station_params, [$day_value]))
-        : 0.0;
-    $merch_day = adm_table_exists($pdo, 'merchandise_transactions')
-        ? (float) adm_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND DATE(COALESCE(transaction_date, created_at)) = ?", array_merge($station_params, [$day_value]))
-        : 0.0;
-    $service_day = adm_table_exists($pdo, 'job_orders')
-        ? (float) adm_value(
-            $pdo,
-            "SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, COALESCE(actual_labor_cost, 0) + COALESCE(actual_parts_cost, 0), 0)), 0)
-             FROM job_orders
-             WHERE {$station_sql}
-               AND DATE(created_at) = ?
-               AND LOWER(COALESCE(status, '')) IN ('completed', 'verified', 'finalized', 'released')",
-            array_merge($station_params, [$day_value])
-        )
-        : 0.0;
-    $weekly_sales[] = round($fuel_day + $merch_day + $service_day, 2);
-}
-
-$fuel_product_labels = ['Diesel', 'XCS', 'Turbo Diesel', 'XTRA', 'Kerosene'];
-$fuel_sales_by_product = [];
-$fuel_rules = [
-    ["LOWER(fuel_type) LIKE ? AND LOWER(fuel_type) NOT LIKE ?", ['%diesel%', '%turbo%']],
-    ["LOWER(fuel_type) LIKE ?", ['%xcs%']],
-    ["LOWER(fuel_type) LIKE ? AND LOWER(fuel_type) LIKE ?", ['%turbo%', '%diesel%']],
-    ["(LOWER(fuel_type) LIKE ? OR LOWER(fuel_type) LIKE ?)", ['%xtra%', '%unleaded%']],
-    ["LOWER(fuel_type) LIKE ?", ['%kerosene%']],
-];
-foreach ($fuel_rules as [$condition, $condition_params]) {
-    $fuel_sales_by_product[] = adm_table_exists($pdo, 'fuel_transactions')
-        ? (float) adm_value(
-            $pdo,
-            "SELECT COALESCE(SUM(liters_sold), 0)
-             FROM fuel_transactions
-             WHERE {$station_sql}
-               AND DATE(transaction_date) BETWEEN ? AND ?
-               AND {$condition}",
-            array_merge($station_params, [$date_from, $date_to], $condition_params)
-        )
-        : 0.0;
-}
-
-$merch_category_labels = adm_table_exists($pdo, 'product_categories')
-    ? array_column(adm_rows($pdo, "SELECT name FROM product_categories WHERE LOWER(name) <> 'fuel products' ORDER BY name ASC"), 'name')
-    : ['Car Accessories', 'Drinks/Food', 'Filters', 'Merchandise', 'Oils/Lubes/Grease', 'Others', 'Services', 'Snacks', 'VIC Filters'];
-$merch_sales_by_category = array_fill_keys($merch_category_labels, 0.0);
-if (adm_table_exists($pdo, 'merchandise_transaction_items') && adm_table_exists($pdo, 'merchandise_transactions')) {
-    $category_rows = adm_rows(
-        $pdo,
-        "SELECT COALESCE(mti.category, '') AS category,
-                COALESCE(mti.product_name, '') AS product_name,
-                COALESCE(SUM(mti.subtotal), 0) AS total
-         FROM merchandise_transaction_items mti
-         INNER JOIN merchandise_transactions mt ON mt.id = mti.transaction_id
-         WHERE {$station_sql_mt}
-           AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
-         GROUP BY COALESCE(mti.category, ''), COALESCE(mti.product_name, '')",
-        array_merge($station_params_mt, [$date_from, $date_to])
-    );
-    foreach ($category_rows as $row) {
-        $bucket = adm_merch_bucket((string) ($row['category'] ?? ''), (string) ($row['product_name'] ?? ''));
-        $merch_sales_by_category[$bucket] += (float) ($row['total'] ?? 0);
-    }
-}
-
-$user_activity_counts = [];
-if (adm_table_exists($pdo, 'fuel_transactions')) {
-    foreach (adm_rows(
-        $pdo,
-        "SELECT staff_id AS user_id, COUNT(*) AS tx_count
-         FROM fuel_transactions
-         WHERE {$station_sql}
-           AND DATE(transaction_date) BETWEEN ? AND ?
-           AND staff_id IS NOT NULL
-         GROUP BY staff_id",
-        array_merge($station_params, [$date_from, $date_to])
-    ) as $row) {
-        $id = (int) ($row['user_id'] ?? 0);
-        if ($id > 0) {
-            $user_activity_counts[$id] = ($user_activity_counts[$id] ?? 0) + (int) ($row['tx_count'] ?? 0);
-        }
-    }
-}
-if (adm_table_exists($pdo, 'merchandise_transactions')) {
-    foreach (adm_rows(
-        $pdo,
-        "SELECT staff_id AS user_id, COUNT(*) AS tx_count
-         FROM merchandise_transactions
-         WHERE {$station_sql}
-           AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
-           AND staff_id IS NOT NULL
-         GROUP BY staff_id",
-        array_merge($station_params, [$date_from, $date_to])
-    ) as $row) {
-        $id = (int) ($row['user_id'] ?? 0);
-        if ($id > 0) {
-            $user_activity_counts[$id] = ($user_activity_counts[$id] ?? 0) + (int) ($row['tx_count'] ?? 0);
-        }
-    }
-}
-if (adm_table_exists($pdo, 'job_orders')) {
-    foreach (adm_rows(
-        $pdo,
-        "SELECT COALESCE(NULLIF(created_by, 0), user_id) AS user_id, COUNT(*) AS tx_count
-         FROM job_orders
-         WHERE {$station_sql}
-           AND DATE(created_at) BETWEEN ? AND ?
-           AND COALESCE(NULLIF(created_by, 0), user_id) IS NOT NULL
-         GROUP BY COALESCE(NULLIF(created_by, 0), user_id)",
-        array_merge($station_params, [$date_from, $date_to])
-    ) as $row) {
-        $id = (int) ($row['user_id'] ?? 0);
-        if ($id > 0) {
-            $user_activity_counts[$id] = ($user_activity_counts[$id] ?? 0) + (int) ($row['tx_count'] ?? 0);
-        }
-    }
-}
-arsort($user_activity_counts);
-$user_activity_counts = array_slice($user_activity_counts, 0, 6, true);
-$user_activity_labels = [];
-$user_activity_data = [];
-if ($user_activity_counts && adm_table_exists($pdo, 'users')) {
-    $ids = array_keys($user_activity_counts);
-    $placeholders = implode(',', array_fill(0, count($ids), '?'));
-    $name_expr = adm_user_name_expr('u');
-    $name_rows = adm_rows($pdo, "SELECT id, {$name_expr} AS display_name FROM users u WHERE id IN ({$placeholders})", $ids);
-    $name_map = [];
-    foreach ($name_rows as $row) {
-        $name_map[(int) $row['id']] = (string) $row['display_name'];
-    }
-    foreach ($user_activity_counts as $id => $count) {
-        $user_activity_labels[] = $name_map[(int) $id] ?? ('User #' . $id);
-        $user_activity_data[] = $count;
-    }
-}
-
-// Management panel data.
-$pending_users_data = adm_table_exists($pdo, 'users')
-    ? adm_rows(
-        $pdo,
-        "SELECT id,
-                employee_id,
-                " . adm_user_name_expr('u') . " AS employee,
-                role,
-                status
-         FROM users u
-         WHERE " . adm_station_clause($station_id, 'u') . "
-           AND LOWER(COALESCE(status, '')) = 'pending'
-         ORDER BY created_at DESC
-         LIMIT 8",
-        adm_station_params($station_id)
-    )
-    : [];
-
-$recent_user_activities = adm_table_exists($pdo, 'audit_logs')
-    ? adm_rows(
-        $pdo,
-        "SELECT COALESCE(" . adm_user_name_expr('u') . ", 'System') AS user_name,
-                COALESCE(al.entity_type, al.log_type, 'System') AS module,
-                COALESCE(al.action_type, 'Activity') AS action,
-                al.status,
-                al.created_at
-         FROM audit_logs al
-         LEFT JOIN users u ON u.id = al.user_id
-         WHERE (" . adm_station_clause($station_id, 'u') . " OR al.user_id IS NULL)
-         ORDER BY al.created_at DESC
-         LIMIT 10",
-        adm_station_params($station_id)
-    )
-    : [];
-
-$pending_inventory_adjustments = [];
-
-// 1. Merchandise Purchase Orders pending admin action
-if (adm_table_exists($pdo, 'purchase_orders')) {
-    $pending_inventory_adjustments = array_merge($pending_inventory_adjustments, adm_rows(
-        $pdo,
-        "SELECT po.id,
-                po.po_number AS ref_no,
-                COALESCE(po.product_name, 'Merchandise Purchase Order') AS product,
-                COALESCE(" . adm_user_name_expr('u') . ", 'Manager') AS requested_by,
-                po.status,
-                po.created_at,
-                'Merchandise PO' AS type,
-                'admin_procurement_reports.php?section=po' AS action_url
-         FROM purchase_orders po
-         LEFT JOIN users u ON u.id = po.created_by
-         WHERE " . adm_station_clause($station_id, 'po') . "
-           AND (
-                LOWER(COALESCE(po.status, '')) IN ('pending', 'pending approval', 'pending admin validation')
-                OR (po.admin_finalized = 0 AND LOWER(COALESCE(po.status, '')) NOT IN ('draft', 'rejected', 'cancelled', 'received'))
-                OR (po.stock_in_done = 0 AND LOWER(COALESCE(po.status, '')) IN ('approved'))
-           )
-         ORDER BY po.created_at DESC
-         LIMIT 8",
-        adm_station_params($station_id)
-    ));
-}
-
-// 2. Fuel Purchase Orders pending admin action
-if (adm_table_exists($pdo, 'fuel_purchase_orders')) {
-    $pending_inventory_adjustments = array_merge($pending_inventory_adjustments, adm_rows(
-        $pdo,
-        "SELECT fpo.id,
-                fpo.po_number AS ref_no,
-                COALESCE(ft.name, CONCAT('Fuel Type #', fpo.fuel_type_id)) AS product,
-                COALESCE(" . adm_user_name_expr('u') . ", 'Manager') AS requested_by,
-                fpo.status,
-                fpo.created_at,
-                'Fuel PO' AS type,
-                'admin_procurement_reports.php?section=po' AS action_url
-         FROM fuel_purchase_orders fpo
-         LEFT JOIN fuel_types ft ON ft.id = fpo.fuel_type_id
-         LEFT JOIN users u ON u.id = fpo.created_by
-         WHERE " . adm_station_clause($station_id, 'fpo') . "
-           AND LOWER(COALESCE(fpo.status, '')) IN ('pending', 'pending approval', 'pending admin validation', 'approved')
-         ORDER BY fpo.created_at DESC
-         LIMIT 8",
-        adm_station_params($station_id)
-    ));
-}
-
-// 3. Merchandise stock adjustments pending approval
-if (adm_table_exists($pdo, 'merchandise_adjustments')) {
-    $pending_inventory_adjustments = array_merge($pending_inventory_adjustments, adm_rows(
-        $pdo,
-        "SELECT ma.id,
-                COALESCE(ma.sku, CONCAT('ADJ-', ma.id)) AS ref_no,
-                ma.product_name AS product,
-                COALESCE(" . adm_user_name_expr('u') . ", 'Staff') AS requested_by,
-                ma.status,
-                ma.created_at,
-                'Stock Adjustment' AS type,
-                'admin_inventory_adjustments.php' AS action_url
-         FROM merchandise_adjustments ma
-         LEFT JOIN users u ON u.id = ma.requested_by
-         WHERE " . adm_station_clause($station_id, 'ma') . "
-           AND LOWER(COALESCE(ma.status, 'pending')) = 'pending'
-         ORDER BY ma.created_at DESC
-         LIMIT 8",
-        adm_station_params($station_id)
-    ));
-}
-
-// 4. Stock requests with status 'Purchase Order Generated' (waiting admin finalization)
-if (adm_table_exists($pdo, 'stock_requests')) {
-    $pending_inventory_adjustments = array_merge($pending_inventory_adjustments, adm_rows(
-        $pdo,
-        "SELECT sr.id,
-                COALESCE(sr.request_no, CONCAT('PR-', sr.id)) AS ref_no,
-                sr.item_name AS product,
-                COALESCE(" . adm_user_name_expr('u') . ", 'Staff') AS requested_by,
-                sr.status,
-                sr.created_at,
-                'Stock Request' AS type,
-                'admin_procurement_reports.php' AS action_url
-         FROM stock_requests sr
-         LEFT JOIN users u ON u.id = sr.staff_id
-         WHERE " . adm_station_clause($station_id, 'sr') . "
-           AND LOWER(COALESCE(sr.status, '')) IN ('purchase order generated', 'manager approved', 'approved')
-         ORDER BY sr.created_at DESC
-         LIMIT 8",
-        adm_station_params($station_id)
-    ));
-}
-
-adm_sort_created_desc($pending_inventory_adjustments);
-$pending_inventory_adjustments = array_slice($pending_inventory_adjustments, 0, 10);
-
-// Pending customers: merge from customer_requests AND customers table
-$pending_customers = [];
-if (adm_table_exists($pdo, 'customer_requests')) {
-    $pending_customers = array_merge($pending_customers, adm_rows(
-        $pdo,
-        "SELECT cr.id,
-                TRIM(CONCAT(COALESCE(cr.first_name, ''), ' ', COALESCE(cr.middle_name, ''), ' ', COALESCE(cr.last_name, ''))) AS customer,
-                COALESCE(NULLIF(cr.contact_number, ''), 'N/A') AS contact,
-                COALESCE(" . adm_user_name_expr('u') . ", 'Staff Request') AS requested_by,
-                COALESCE(cr.status, 'Pending') AS status,
-                cr.created_at
-         FROM customer_requests cr
-         LEFT JOIN users u ON u.id = cr.requested_by
-         WHERE " . adm_station_clause($station_id, 'cr') . "
-           AND LOWER(COALESCE(cr.status, 'pending')) NOT IN ('rejected', 'cancelled')
-         ORDER BY cr.created_at DESC
-         LIMIT 8",
-        adm_station_params($station_id)
-    ));
-}
-if (adm_table_exists($pdo, 'customers')) {
-    $pending_customers = array_merge($pending_customers, adm_rows(
-        $pdo,
-        "SELECT c.id,
-                COALESCE(NULLIF(TRIM(c.name), ''), 'Unnamed Customer') AS customer,
-                COALESCE(NULLIF(c.contact_number, ''), NULLIF(c.phone, ''), 'N/A') AS contact,
-                COALESCE(" . adm_user_name_expr('u') . ", 'Staff') AS requested_by,
-                COALESCE(c.verification_status, c.mgr_status, 'Pending') AS status,
-                c.created_at
-         FROM customers c
-         LEFT JOIN users u ON u.id = c.registered_by
-         WHERE " . adm_station_clause($station_id, 'c') . "
-           AND (
-               LOWER(COALESCE(c.verification_status, '')) = 'pending'
-               OR LOWER(COALESCE(c.mgr_status, '')) = 'pending'
-           )
-           AND LOWER(COALESCE(c.status, 'active')) <> 'inactive'
-         ORDER BY c.created_at DESC
-         LIMIT 8",
-        adm_station_params($station_id)
-    ));
-}
-adm_sort_created_desc($pending_customers);
-$pending_customers = array_slice($pending_customers, 0, 8);
-
-$recent_deliveries = [];
-if (adm_table_exists($pdo, 'deliveries_oversight')) {
-    $recent_deliveries = array_merge($recent_deliveries, adm_rows(
-        $pdo,
-        "SELECT id,
-                delivery_type AS type,
-                COALESCE(NULLIF(delivery_ref, ''), CONCAT('DO-', id)) AS ref_no,
-                supplier,
-                product,
-                status,
-                created_at,
-                CASE WHEN delivery_type = 'fuel' THEN 'admin_fuel_deliveries_oversight.php' ELSE 'admin_merchandise_deliveries_oversight.php' END AS action_url
-         FROM deliveries_oversight
-         WHERE {$station_sql}
-         ORDER BY created_at DESC
-         LIMIT 10",
-        $station_params
-    ));
-}
-if (adm_table_exists($pdo, 'purchase_orders')) {
-    $recent_deliveries = array_merge($recent_deliveries, adm_rows(
-        $pdo,
-        "SELECT id,
-                COALESCE(NULLIF(type, ''), 'merchandise') AS type,
-                po_number AS ref_no,
-                'Purchase Order' AS supplier,
-                COALESCE(product_name, 'Merchandise Products') AS product,
-                status,
-                created_at,
-                'admin_procurement_reports.php?section=po' AS action_url
-         FROM purchase_orders
-         WHERE {$station_sql}
-           AND (delivery_validated = 1 OR stock_in_done = 1 OR LOWER(COALESCE(status, '')) IN ('received', 'confirmed', 'admin finalized', 'approved po'))
-         ORDER BY updated_at DESC, created_at DESC
-         LIMIT 10",
-        $station_params
-    ));
-}
-adm_sort_created_desc($recent_deliveries);
-$recent_deliveries = array_slice(adm_merge_by_ref($recent_deliveries), 0, 8);
-
-$recent_transactions = [];
-if (adm_table_exists($pdo, 'fuel_transactions')) {
-    $recent_transactions = array_merge($recent_transactions, adm_rows(
-        $pdo,
-        "SELECT 'Fuel' AS type,
-                COALESCE(transaction_id, CONCAT('FT-', id)) AS ref_no,
-                fuel_type AS details,
-                total_amount,
-                COALESCE(status, 'Completed') AS status,
-                transaction_date AS created_at,
-                'admin_all_transactions.php' AS action_url
-         FROM fuel_transactions
-         WHERE {$station_sql}
-         ORDER BY transaction_date DESC, id DESC
-         LIMIT 10",
-        $station_params
-    ));
-}
-if (adm_table_exists($pdo, 'merchandise_transactions')) {
-    $recent_transactions = array_merge($recent_transactions, adm_rows(
-        $pdo,
-        "SELECT 'Merchandise' AS type,
-                COALESCE(transaction_id, CONCAT('MT-', id)) AS ref_no,
-                COALESCE(customer_name, 'Merchandise') AS details,
-                total_amount,
-                COALESCE(validation_status, workflow_status, 'Completed') AS status,
-                COALESCE(transaction_date, created_at) AS created_at,
-                'admin_all_transactions.php' AS action_url
-         FROM merchandise_transactions
-         WHERE {$station_sql}
-         ORDER BY COALESCE(transaction_date, created_at) DESC, id DESC
-         LIMIT 10",
-        $station_params
-    ));
-}
-if (adm_table_exists($pdo, 'job_orders')) {
-    $recent_transactions = array_merge($recent_transactions, adm_rows(
-        $pdo,
-        "SELECT 'Service' AS type,
-                COALESCE(job_order_number, job_order_id, CONCAT('JO-', id)) AS ref_no,
-                COALESCE(customer_name, service_type, 'Service') AS details,
-                COALESCE(total_cost, estimated_cost, 0) AS total_amount,
-                COALESCE(status, validation_status, 'Pending') AS status,
-                created_at,
-                'admin_all_transactions.php' AS action_url
-         FROM job_orders
-         WHERE {$station_sql}
-         ORDER BY created_at DESC, id DESC
-         LIMIT 10",
-        $station_params
-    ));
-}
-adm_sort_created_desc($recent_transactions);
-$recent_transactions = array_slice($recent_transactions, 0, 10);
-
-$low_inventory_rows = [];
-if (adm_table_exists($pdo, 'fuel_inventory')) {
-    $fuel_all = adm_rows($pdo, "SELECT fuel_type, current_level, current_stock, capacity FROM fuel_inventory WHERE {$station_sql}", $station_params);
-    foreach ($fuel_all as $fi_row) {
-        $capacity = (float)($fi_row['capacity'] ?? 0);
-        $level = min(max(0, (float)($fi_row['current_level'] ?? $fi_row['current_stock'] ?? 0)), $capacity);
-        if ($capacity == 14000)    { $critical_lvl = 2500; $low_lvl = 5000; }
-        elseif ($capacity == 7000) { $critical_lvl = 1000; $low_lvl = 2000; }
-        else                       { $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20; }
-        if ($level <= 0) {
-            $status = 'Out of Stock';
-        } elseif ($level <= $critical_lvl) {
-            $status = 'Critical';
-        } elseif ($level <= $low_lvl) {
-            $status = 'Low';
-        } else {
-            $status = 'Normal';
-        }
-        if ($status !== 'Normal') {
-            $low_inventory_rows[] = [
-                'type' => 'Fuel',
-                'product' => $fi_row['fuel_type'],
-                'current_stock' => $level,
-                'reorder_level' => $low_lvl,
-                'status' => $status,
-                'action_url' => 'admin_inventory_fuel.php'
-            ];
-        }
-    }
-}
-if (adm_table_exists($pdo, 'station_inventory')) {
-    $product_name_expr = adm_table_exists($pdo, 'products') ? 'COALESCE(p.name, CONCAT(\'Product #\', si.product_id))' : 'CONCAT(\'Product #\', si.product_id)';
-    $product_join = adm_table_exists($pdo, 'products') ? 'LEFT JOIN products p ON p.id = si.product_id' : '';
-    $low_inventory_rows = array_merge($low_inventory_rows, adm_rows(
-        $pdo,
-        "SELECT 'Merchandise' AS type,
-                {$product_name_expr} AS product,
-                COALESCE(si.stock_level, 0) AS current_stock,
-                COALESCE(si.reorder_level, 0) AS reorder_level,
-                CASE
-                    WHEN COALESCE(si.stock_level, 0) <= 0 THEN 'Critical'
-                    WHEN COALESCE(si.stock_level, 0) <= COALESCE(si.reorder_level, 0) THEN 'Low'
-                    ELSE 'Normal'
-                END AS status,
-                'admin_inventory_merchandise.php' AS action_url
-         FROM station_inventory si
-         {$product_join}
-         WHERE " . adm_station_clause($station_id, 'si') . "
-           AND si.status = 'active'
-           AND COALESCE(si.stock_level, 0) <= COALESCE(si.reorder_level, 0)
-         ORDER BY si.stock_level ASC
-         LIMIT 8",
-        adm_station_params($station_id)
-    ));
-}
-usort($low_inventory_rows, static function ($a, $b) {
-    $rank = ['Critical' => 0, 'Low' => 1, 'Normal' => 2];
-    return ($rank[$a['status'] ?? 'Normal'] ?? 3) <=> ($rank[$b['status'] ?? 'Normal'] ?? 3);
-});
-$low_inventory_rows = array_slice($low_inventory_rows, 0, 10);
-
-$quick_actions = [
-    [
-        'label' => 'User Management',
-        'icon' => 'fa-users-cog',
-        'href' => 'users.php',
-        'badge' => $pending_user_accounts > 0 ? $pending_user_accounts . ' pending' : '',
-    ],
-    [
-        'label' => 'Pricing Management',
-        'icon' => 'fa-tags',
-        'href' => 'admin_set_prices.php',
-        'badge' => $pending_price_requests > 0 ? $pending_price_requests . ' pending' : '',
-    ],
-    [
-        'label' => 'Reports',
-        'icon' => 'fa-chart-line',
-        'href' => 'admin_reports.php',
-        'badge' => '',
-    ],
-    [
-        'label' => 'Audit Logs',
-        'icon' => 'fa-clipboard-list',
-        'href' => 'admin_audit_trail.php',
-        'badge' => $audit_errors > 0 ? $audit_errors . ' errors' : '',
-    ],
-    [
-        'label' => 'System Settings',
-        'icon' => 'fa-sliders-h',
-        'href' => '#system-monitoring',
-        'badge' => 'Status',
-    ],
-    [
-        'label' => 'Inventory',
-        'icon' => 'fa-boxes-stacked',
-        'href' => 'admin_inventory_merchandise.php',
-        'badge' => $total_inventory_alerts > 0 ? $total_inventory_alerts . ' alerts' : '',
-    ],
-    [
-        'label' => 'Transactions',
-        'icon' => 'fa-receipt',
-        'href' => 'admin_all_transactions.php',
-        'badge' => $total_transactions > 0 ? $total_transactions . ' today' : '',
-    ],
-];
 
 include __DIR__ . '/../partials/header.php';
 ?>
 
+<script src="../assets/vendor/chart.js/chart.umd.min.js"></script>
+
 <style>
+    :root {
+        --petron-blue: #002F6C;
+        --petron-red: #ED1C24;
+        --petron-navy: #001A3D;
+        --bg-light: #F4F6F9;
+        --card-bg: #FFFFFF;
+        --text-dark: #1E293B;
+        --text-muted: #64748B;
+        --border-color: #E2E8F0;
+    }
+
     body[data-page="admin_dashboard"] .main {
-        padding: 0 24px 60px 24px !important;
-        background: #f5f7fb;
+        padding: 20px 24px 60px 24px !important;
+        background: var(--bg-light);
         box-sizing: border-box;
     }
 
-    .admin-dashboard {
-        --petron-blue: #002f70;
-        --petron-navy: #032b55;
-        --petron-red: #df1f26;
-        --ink: #172033;
-        --muted: #64748b;
-        --line: #dbe4ef;
-        --page: #f5f7fb;
-        --card: #ffffff;
-        --success: #119b52;
-        --warning: #f59e0b;
-        --danger: #dc2626;
-        --info: #0e7490;
-        color: var(--ink);
-        padding: 0 !important;
-        background: var(--page);
-        min-height: calc(100vh - 120px);
+    .adm-dashboard {
         width: 100%;
-        box-sizing: border-box;
+        max-width: 100%;
+        margin: 0 auto;
+        color: var(--text-dark);
+        font-family: inherit;
     }
 
-    .admin-dashboard * {
-        box-sizing: border-box;
-    }
-
-    .admin-dashboard a {
-        text-decoration: none;
-    }
-
-    .admin-panel {
-        background: var(--card);
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
-    }
-
-    .admin-page-header {
+    .adm-header {
         display: flex;
-        align-items: center;
         justify-content: space-between;
-        gap: 15px;
-        margin-bottom: 25px;
-    }
-
-    .admin-kicker {
-        display: inline-flex;
         align-items: center;
-        gap: 8px;
-        color: var(--muted);
-        font-size: 14px;
-        font-weight: 700;
-        margin-top: 8px;
-    }
-
-    .admin-page-header h1 {
-        margin: 0;
-        color: var(--petron-blue);
-        font-size: 24px;
-        font-weight: 800;
-        letter-spacing: 0;
-    }
-
-    .admin-subtext {
-        margin: 10px 0 0;
-        max-width: 860px;
-        color: #475569;
-        font-size: 14px;
-        line-height: 1.55;
-    }
-
-    .admin-filter-form {
-        display: flex;
-        align-items: center;
-        gap: 10px;
         flex-wrap: wrap;
-        justify-content: flex-end;
+        gap: 16px;
+        margin-bottom: 24px;
     }
-
-    .admin-date-input {
-        height: 44px;
-        border: 1px solid #cbd5e1;
-        border-radius: 8px;
-        padding: 0 14px;
-        color: #0f172a;
-        background: #fff;
-        min-width: 170px;
-    }
-
-    .admin-btn {
-        min-height: 38px;
-        border: 0;
-        border-radius: 8px;
-        padding: 0 14px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
+    .adm-header-left h1 {
+        font-size: 22px;
         font-weight: 800;
-        font-size: 13px;
-        cursor: pointer;
-        transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
-        white-space: nowrap;
-    }
-
-    .admin-btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 16px rgba(0, 47, 112, 0.14);
-    }
-
-    .admin-btn.primary {
-        background: var(--petron-blue);
-        color: #fff;
-    }
-
-    .admin-btn.success {
-        background: var(--success);
-        color: #fff;
-    }
-
-    .admin-btn.danger {
-        background: var(--danger);
-        color: #fff;
-    }
-
-    .admin-btn.neutral {
-        background: #eef4fb;
         color: var(--petron-blue);
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: -0.5px;
+    }
+    .adm-header-left p {
+        margin: 3px 0 0 0;
+        font-size: 11.5px;
+        color: var(--text-muted);
+        font-weight: 500;
     }
 
-    .admin-alert {
-        border-radius: 8px;
-        padding: 14px 16px;
-        margin-bottom: 16px;
-        font-weight: 700;
+    .adm-filter-bar {
         display: flex;
         align-items: center;
         gap: 10px;
-    }
-
-    .admin-alert.success {
-        background: #e9f8ef;
-        color: #116b3a;
-        border: 1px solid #bde8cb;
-    }
-
-    .admin-alert.danger {
-        background: #fff1f1;
-        color: #991b1b;
-        border: 1px solid #fecaca;
-    }
-
-    .mgr-summary-grid {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 16px;
-        margin-bottom: 22px;
-    }
-
-    .mgr-card {
-        min-height: 126px;
-        display: flex;
-        justify-content: space-between;
-        gap: 14px;
-        padding: 18px;
-        overflow: hidden;
-        background: #ffffff !important;
-        border: 1px solid #dbe3ee;
+        background: #FFFFFF;
+        padding: 6px 12px;
         border-radius: 8px;
-        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
-        transition: transform 0.25s ease, box-shadow 0.25s ease;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
-
-    /* Ensure all text in mgr-cards stays readable regardless of data-tone */
-    .mgr-card .mgr-card-label,
-    .mgr-card .mgr-card-value,
-    .mgr-card .mgr-card-sub {
-        background: transparent !important;
-    }
-
-    .mgr-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
-    }
-
-    .mgr-card > div:first-child {
-        flex: 1;
-        min-width: 0;
+    .adm-filter-group {
         display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-    }
-
-    .mgr-card-label {
-        color: #56657a;
-        font-size: 11px;
-        font-weight: 900;
-        text-transform: uppercase;
-        letter-spacing: 0;
-        line-height: 1.25;
-    }
-
-    .mgr-card-value {
-        margin-top: 8px;
-        color: #071225;
-        font-size: 25px;
-        line-height: 1.15;
-        font-weight: 900;
-    }
-
-    .mgr-card-sub {
-        margin-top: 8px;
-        color: #6b7a90;
-        font-size: 11px;
-        font-weight: 700;
-        line-height: 1.45;
-    }
-
-    .mgr-icon {
-        width: 44px;
-        height: 44px;
-        flex: 0 0 44px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 50%;
-        font-size: 18px;
-        background: #eef4ff;
-        color: #002f70;
-        margin-left: 10px;
-    }
-
-    .health-list {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        margin-top: 8px;
-        color: var(--muted);
-        font-size: 12px;
-        font-weight: 700;
-    }
-
-    .health-list span {
-        display: inline-flex;
         align-items: center;
         gap: 6px;
     }
-
-    .admin-dashboard .text-success {
-        color: var(--success) !important;
+    .adm-filter-group label {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text-muted);
+        text-transform: uppercase;
+    }
+    .adm-filter-group input[type="date"] {
+        border: 1px solid #CBD5E1;
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 12px;
+        color: var(--text-dark);
+        font-weight: 600;
+        outline: none;
+    }
+    .adm-filter-btn {
+        background: var(--petron-blue);
+        color: #FFFFFF;
+        border: none;
+        border-radius: 6px;
+        padding: 7px 16px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: background 0.2s ease;
+    }
+    .adm-filter-btn:hover {
+        background: var(--petron-navy);
     }
 
-    .admin-dashboard .text-warning {
-        color: var(--warning) !important;
-    }
-
-    .admin-dashboard .text-danger {
-        color: var(--danger) !important;
-    }
-
-    .chart-grid {
+    /* 12 KPI Cards Grid */
+    .adm-kpi-grid-12 {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 18px;
-        margin-bottom: 22px;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin-bottom: 24px;
     }
-
-    .chart-card {
-        min-height: 330px;
-        padding: 20px;
-    }
-
-    .chart-card.wide {
-        grid-column: span 2;
-    }
-
-    .section-title,
-    .panel-title {
+    .adm-kpi-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 16px 18px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03);
         display: flex;
-        align-items: center;
-        gap: 10px;
-        margin: 0;
-        color: var(--petron-blue);
-        font-size: 20px;
-        font-weight: 900;
-        letter-spacing: 0;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 94px;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
-
-    .section-title {
-        margin: 26px 0 14px;
+    .adm-kpi-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.06);
     }
-
-    .chart-head {
+    .adm-kpi-header {
         display: flex;
-        align-items: center;
         justify-content: space-between;
-        border-bottom: 1px solid #edf2f7;
-        padding-bottom: 14px;
-        margin-bottom: 14px;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    .adm-kpi-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+    .adm-kpi-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 7px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        background: var(--icon-bg, #EFF6FF);
+        color: var(--icon-color, var(--petron-blue));
+    }
+    .adm-kpi-value {
+        font-size: 21px;
+        font-weight: 800;
+        color: var(--text-dark);
+        line-height: 1.1;
+        margin: 0;
     }
 
-    .chart-head h2 {
-        font-size: 18px;
-    }
-
-    .chart-shell {
-        height: 245px;
-        position: relative;
-    }
-
-    .management-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 18px;
-        margin-bottom: 22px;
-    }
-
-    .admin-panel {
-        min-height: 260px;
+    /* Standard Cards & Layout */
+    .adm-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+        margin-bottom: 24px;
         overflow: hidden;
     }
-
-    .admin-panel.full {
-        grid-column: 1 / -1;
+    .adm-card-header {
+        padding: 13px 18px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #FAFCFE;
     }
-
-    .panel-head {
-        min-height: 62px;
-        padding: 18px 20px;
-        border-bottom: 1px solid #edf2f7;
+    .adm-card-header h2 {
+        font-size: 13.5px;
+        font-weight: 800;
+        color: var(--petron-blue);
+        margin: 0;
         display: flex;
         align-items: center;
+        gap: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    .adm-card-body {
+        padding: 16px 18px;
+    }
+
+    .adm-grid-2col {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+        margin-bottom: 24px;
+    }
+    .adm-grid-3col {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    /* Metric Rows */
+    .adm-metric-list {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+    }
+    .adm-metric-item {
+        display: flex;
         justify-content: space-between;
-        gap: 12px;
+        align-items: center;
+        padding: 7px 11px;
+        background: #F8FAFC;
+        border-radius: 6px;
+        border: 1px solid #F1F5F9;
+    }
+    .adm-metric-label {
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--text-muted);
+    }
+    .adm-metric-value {
+        font-size: 12.5px;
+        font-weight: 800;
+        color: var(--text-dark);
     }
 
-    .panel-title {
-        font-size: 17px;
-    }
-
-    .panel-body {
-        padding: 18px 20px 20px;
-    }
-
-    .data-table-wrap {
+    /* Tables */
+    .adm-table-responsive {
         width: 100%;
         overflow-x: auto;
     }
-
-    .data-table {
+    .adm-table {
         width: 100%;
         border-collapse: collapse;
-        min-width: 620px;
+        font-size: 11.5px;
     }
-
-    .data-table th {
+    .adm-table th {
+        background: #F8FAFC;
         color: #475569;
-        font-size: 12px;
-        font-weight: 900;
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0;
-        background: #f8fafc;
-        border-bottom: 1px solid #e5ecf5;
-        padding: 10px;
+        font-size: 10.5px;
+        letter-spacing: 0.3px;
+        padding: 9px 12px;
+        border-bottom: 1px solid var(--border-color);
         text-align: left;
-        white-space: nowrap;
     }
-
-    .data-table td {
-        padding: 11px 10px;
-        border-bottom: 1px solid #edf2f7;
-        color: #243044;
-        font-size: 13px;
+    .adm-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid #F1F5F9;
+        color: var(--text-dark);
         vertical-align: middle;
     }
-
-    .data-table tr:last-child td {
-        border-bottom: 0;
+    .adm-table tr:hover td {
+        background: #F8FAFC;
     }
 
-    .table-actions {
-        display: flex;
-        align-items: center;
-        gap: 7px;
-        flex-wrap: wrap;
-    }
-
-    .tiny-btn {
-        min-height: 30px;
-        border-radius: 7px;
-        padding: 0 10px;
+    /* Badges */
+    .adm-badge {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
-        font-size: 12px;
-        font-weight: 900;
-        color: var(--petron-blue);
-        background: transparent;
-        border: 1px solid var(--petron-blue);
-        text-decoration: none;
-        transition: background 0.15s ease, color 0.15s ease;
-    }
-
-    .tiny-btn:hover {
-        background: var(--petron-blue);
-        color: #ffffff;
-        text-decoration: none;
-    }
-
-    .tiny-btn.success {
-        color: #116b3a;
-        background: transparent;
-        border-color: #116b3a;
-    }
-
-    .tiny-btn.success:hover {
-        background: #116b3a;
-        color: #ffffff;
-    }
-
-    .tiny-btn.danger {
-        color: #9f1239;
-        background: transparent;
-        border-color: #9f1239;
-    }
-
-    .tiny-btn.danger:hover {
-        background: #9f1239;
-        color: #ffffff;
-    }
-
-    .badge {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 24px;
-        border-radius: 999px;
-        padding: 3px 9px;
-        font-size: 11px;
-        font-weight: 900;
-        white-space: nowrap;
-    }
-
-    .badge.success {
-        background: #dcfce7;
-        color: #166534;
-    }
-
-    .badge.warning {
-        background: #fef3c7;
-        color: #92400e;
-    }
-
-    .badge.danger {
-        background: #fee2e2;
-        color: #991b1b;
-    }
-
-    .badge.info {
-        background: #cffafe;
-        color: #155e75;
-    }
-
-    .badge.neutral {
-        background: #e5e7eb;
-        color: #374151;
-    }
-
-    .empty-state {
-        min-height: 128px;
-        display: grid;
-        place-items: center;
-        text-align: center;
-        color: var(--muted);
-        font-weight: 700;
-        line-height: 1.5;
-        background: #f8fafc;
-        border: 1px dashed #d8e2ef;
-        border-radius: 8px;
-        padding: 18px;
-    }
-
-    .quick-grid {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 14px;
-        margin-bottom: 24px;
-    }
-
-    .quick-action {
-        min-height: 90px;
-        border: 1px solid #e2e8f0;
+        padding: 2.5px 8px;
         border-radius: 12px;
-        background: #ffffff !important;
-        color: #334155 !important;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 9px;
-        padding: 16px 12px;
-        font-weight: 700;
-        font-size: 12px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04);
-        transition: all 0.25s ease;
-        text-align: center;
-        width: 100%;
-        cursor: pointer;
-        text-decoration: none;
-        box-sizing: border-box;
-        appearance: none;
-        -webkit-appearance: none;
-        font-family: inherit;
-        outline: none;
-    }
-
-    /* Explicit override for <button> element variant */
-    button.quick-action {
-        background: #ffffff !important;
-        color: #334155 !important;
-        border: 1px solid #e2e8f0 !important;
-    }
-
-    .quick-action:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-        border-color: var(--petron-blue);
-        color: var(--petron-blue);
-    }
-
-    .quick-action i {
-        font-size: 20px;
-        color: var(--petron-blue);
-        transition: transform 0.25s ease;
-        background: transparent;
-        width: auto;
-        height: auto;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .quick-action:hover i {
-        transform: scale(1.15);
-    }
-
-    .quick-action span {
-        display: block;
-        line-height: 1.3;
-        font-size: 12px;
-        font-weight: 700;
-    }
-
-    .quick-action small {
-        display: block;
-        margin-top: 4px;
-        color: #64748b;
         font-size: 10px;
-        font-weight: 600;
-    }
-
-    .quick-form {
-        margin: 0;
-        display: contents; /* Let the button fill the grid cell like anchor cards */
-    }
-
-    .system-grid {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 18px;
-        margin-bottom: 24px;
-    }
-
-    .system-stat-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
-    }
-
-    .system-stat {
-        border: 1px solid #e5ecf5;
-        border-radius: 8px;
-        padding: 14px;
-        background: #f8fafc;
-    }
-
-    .system-stat label {
-        display: block;
-        color: var(--muted);
-        font-size: 12px;
-        font-weight: 900;
+        font-weight: 800;
+        line-height: 1;
+        letter-spacing: 0.4px;
         text-transform: uppercase;
-        letter-spacing: 0;
-        margin-bottom: 7px;
+    }
+    .adm-badge-success { background: #DCFCE7; color: #15803D; border: 1px solid #BBF7D0; }
+    .adm-badge-warning { background: #FEF9C3; color: #B45309; border: 1px solid #FDE68A; }
+    .adm-badge-danger  { background: #FEE2E2; color: #DC2626; border: 1px solid #FECACA; }
+    .adm-badge-info    { background: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; }
+    .adm-badge-neutral { background: #F1F5F9; color: #475569; border: 1px solid #E2E8F0; }
+
+    /* Chart Wrappers */
+    .adm-chart-wrap {
+        position: relative;
+        height: 230px;
+        width: 100%;
     }
 
-    .system-stat strong {
-        color: #0f172a;
-        font-size: 19px;
-        font-weight: 900;
+    /* Notifications List */
+    .adm-notif-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 11px 14px;
+        border-bottom: 1px solid #F1F5F9;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.15s ease;
     }
-
-    .mini-list {
-        display: grid;
-        gap: 10px;
-    }
-
-    .mini-list-row {
+    .adm-notif-item:hover { background: #F8FAFC; }
+    .adm-notif-icon {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: #EFF6FF;
+        color: var(--petron-blue);
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        border-bottom: 1px solid #edf2f7;
-        padding-bottom: 10px;
-        color: #243044;
-        font-size: 13px;
+        justify-content: center;
+        font-size: 12px;
+        flex-shrink: 0;
     }
+    .adm-notif-content { flex: 1; min-width: 0; }
+    .adm-notif-title { font-size: 12px; font-weight: 700; color: var(--text-dark); margin: 0 0 2px 0; }
+    .adm-notif-msg { font-size: 11px; color: var(--text-muted); margin: 0 0 3px 0; line-height: 1.3; }
+    .adm-notif-time { font-size: 10px; color: #94A3B8; font-weight: 600; }
 
-    .mini-list-row:last-child {
-        border-bottom: 0;
-        padding-bottom: 0;
+    @media (max-width: 1200px) {
+        .adm-kpi-grid-12 { grid-template-columns: repeat(3, 1fr); }
+        .adm-grid-2col, .adm-grid-3col { grid-template-columns: 1fr; }
     }
-
-    .mini-list-row span {
-        color: var(--muted);
-        font-weight: 800;
+    @media (max-width: 768px) {
+        .adm-kpi-grid-12 { grid-template-columns: repeat(2, 1fr); }
     }
-
-    @media (max-width: 1300px) {
-        .mgr-summary-grid,
-        .quick-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
-        .chart-grid,
-        .system-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-    }
-
-    @media (max-width: 900px) {
-        .admin-dashboard {
-            padding: 0;
-            padding-bottom: 70px;
-        }
-
-        .admin-page-header,
-        .management-grid,
-        .system-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .admin-page-header {
-            align-items: flex-start;
-            flex-direction: column;
-        }
-
-        .admin-filter-form {
-            width: 100%;
-            justify-content: stretch;
-        }
-
-        .admin-date-input,
-        .admin-filter-form .admin-btn {
-            width: 100%;
-        }
-
-        .mgr-summary-grid,
-        .chart-grid,
-        .management-grid,
-        .quick-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .chart-card.wide,
-        .admin-panel.full {
-            grid-column: auto;
-        }
+    @media (max-width: 480px) {
+        .adm-kpi-grid-12 { grid-template-columns: 1fr; }
     }
 </style>
 
-<div class="admin-dashboard">
-    <?php if ($flash_success): ?>
-        <div class="admin-alert success"><i class="fas fa-circle-check"></i><?= adm_h($flash_success) ?></div>
-    <?php endif; ?>
-    <?php if ($flash_error): ?>
-        <div class="admin-alert danger"><i class="fas fa-triangle-exclamation"></i><?= adm_h($flash_error) ?></div>
-    <?php endif; ?>
+<div class="adm-dashboard">
 
-    <section class="admin-page-header">
-        <div>
-            <h1>WELCOME, <?= adm_h(strtoupper($display_name)) ?>!</h1>
-            <div class="admin-kicker"><i class="fas fa-user-shield"></i> Admin Dashboard</div>
+    <!-- Header & Date Filter -->
+    <div class="adm-header">
+        <div class="adm-header-left">
+            <h1><?= adm_h($display_name) ?></h1>
+            <p><i class="fas fa-location-dot" style="color:var(--petron-red);"></i> <?= adm_h($station_label) ?> &bull; Branch Management &amp; Operational Oversight</p>
         </div>
-        <form class="admin-filter-form" method="get" action="admin_dashboard.php">
-            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-right:4px;">From</label>
-            <input class="admin-date-input" type="date" name="date_from" value="<?= adm_h($date_from) ?>">
-            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin:0 4px;">To</label>
-            <input class="admin-date-input" type="date" name="date_to" value="<?= adm_h($date_to) ?>">
-            <button class="admin-btn primary" type="submit"><i class="fas fa-filter"></i>Filter</button>
-    </section>
-
-    <?php 
-    $enable_kpi_cards     = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_kpi_cards', true) : true;
-    $enable_charts        = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_charts', true) : true;
-    $enable_quick_actions = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_quick_actions', true) : true;
-    ?>
-
-    <?php if ($enable_kpi_cards): ?>
-    <section class="mgr-summary-grid" aria-label="Admin summary cards">
-        <div class="mgr-card" data-tone="blue">
-            <div>
-                <div class="mgr-card-label"><?= $is_today ? "Today's Revenue" : "Revenue" ?></div>
-                <div class="mgr-card-value"><?= adm_money($total_revenue) ?></div>
-                <div class="mgr-card-sub">Fuel <?= adm_money($fuel_revenue) ?> &middot; Merchandise <?= adm_money($merch_revenue) ?> &middot; Services <?= adm_money($service_revenue) ?></div>
+        <form method="GET" action="admin_dashboard.php" class="adm-filter-bar">
+            <div class="adm-filter-group">
+                <label for="date_from">From</label>
+                <input type="date" id="date_from" name="date_from" value="<?= adm_h($date_from) ?>">
             </div>
-            <div class="mgr-icon" style="background: #eff6ff; color: #002F70;"><i class="fas fa-peso-sign"></i></div>
-        </div>
-
-        <div class="mgr-card" data-tone="green">
-            <div>
-                <div class="mgr-card-label"><?= $is_today ? "Today's Transactions" : "Transactions" ?></div>
-                <div class="mgr-card-value"><?= number_format($total_transactions) ?></div>
-                <div class="mgr-card-sub">Fuel <?= number_format($fuel_count) ?> &middot; Merchandise <?= number_format($merch_count) ?> &middot; Services <?= number_format($service_count) ?></div>
+            <div class="adm-filter-group">
+                <label for="date_to">To</label>
+                <input type="date" id="date_to" name="date_to" value="<?= adm_h($date_to) ?>">
             </div>
-            <div class="mgr-icon" style="background: #f0fdf4; color: #16a34a;"><i class="fas fa-right-left"></i></div>
-        </div>
+            <button type="submit" class="adm-filter-btn"><i class="fas fa-filter"></i> Filter</button>
+        </form>
+    </div>
 
-        <div class="mgr-card" data-tone="cyan">
-            <div>
-                <div class="mgr-card-label">Active Users</div>
-                <div class="mgr-card-value"><?= number_format($total_active_users) ?></div>
-                <div class="mgr-card-sub"><?= number_format($active_admins) ?> Admin &middot; <?= number_format($active_managers) ?> Manager &middot; <?= number_format($active_staff) ?> Staff</div>
+    <!-- ========================================================================= -->
+    <!-- 1. 12 KPI CARDS (ALL STREAMS: FUEL + MERCHANDISE + JOBS + INVENTORY + AR) -->
+    <!-- ========================================================================= -->
+    <div class="adm-kpi-grid-12">
+        <!-- 1. Fuel Sales Today -->
+        <div class="adm-kpi-card" style="--icon-bg: #EFF6FF; --icon-color: #002F6C;">
+            <div class="adm-kpi-header">
+                <span class="adm-kpi-title"><?= $is_today_filter ? 'Fuel Sales Today' : 'Fuel Sales' ?></span>
+                <div class="adm-kpi-icon"><i class="fas fa-gas-pump"></i></div>
             </div>
-            <div class="mgr-icon" style="background: #ecfeff; color: #0891b2;"><i class="fas fa-users"></i></div>
+            <div class="adm-kpi-value" id="kpi_fuel_sales"><?= adm_money($fuel_today_sales) ?></div>
         </div>
 
-        <div class="mgr-card" data-tone="amber">
-            <div>
-                <div class="mgr-card-label">Pending Approvals</div>
-                <div class="mgr-card-value" data-live-metric="total_pending_approvals"><?= number_format($total_pending_approvals) ?></div>
-                <div class="mgr-card-sub">Users <?= number_format($pending_user_accounts) ?> &middot; Inventory <?= number_format($pending_inventory_approvals) ?> &middot; Pricing <?= number_format($pending_price_requests) ?></div>
+        <!-- 2. Merchandise Sales Today -->
+        <div class="adm-kpi-card" style="--icon-bg: #F0FDF4; --icon-color: #15803D;">
+            <div class="adm-kpi-header">
+                <span class="adm-kpi-title"><?= $is_today_filter ? 'Merchandise Sales Today' : 'Merchandise Sales' ?></span>
+                <div class="adm-kpi-icon"><i class="fas fa-boxes"></i></div>
             </div>
-            <div class="mgr-icon" style="background: #fef9c3; color: #eab308;"><i class="fas fa-clipboard-check"></i></div>
+            <div class="adm-kpi-value" id="kpi_merch_sales"><?= adm_money($merch_today_sales) ?></div>
         </div>
 
-        <div class="mgr-card" data-tone="red">
-            <div>
-                <div class="mgr-card-label">Inventory Alerts</div>
-                <div class="mgr-card-value" data-live-metric="total_inventory_alerts"><?= number_format($total_inventory_alerts) ?></div>
-                <div class="mgr-card-sub">Low fuel <?= number_format($fuel_low_count) ?> &middot; Low merchandise <?= number_format($merch_low_count) ?> &middot; Critical <?= number_format($fuel_critical_count + $merch_critical_count) ?></div>
+        <!-- 3. Job Order Sales Today -->
+        <div class="adm-kpi-card" style="--icon-bg: #FFFBEB; --icon-color: #B45309;">
+            <div class="adm-kpi-header">
+                <span class="adm-kpi-title"><?= $is_today_filter ? 'Job Order Sales Today' : 'Job Order Sales' ?></span>
+                <div class="adm-kpi-icon"><i class="fas fa-wrench"></i></div>
             </div>
-            <div class="mgr-icon" style="background: #fef2f2; color: #dc2626;"><i class="fas fa-triangle-exclamation"></i></div>
+            <div class="adm-kpi-value" id="kpi_job_sales"><?= adm_money($job_today_sales) ?></div>
         </div>
 
-        <div class="mgr-card" data-tone="orange">
-            <div>
-                <div class="mgr-card-label">Pending Deliveries</div>
-                <div class="mgr-card-value"><?= number_format($pending_deliveries_count) ?></div>
-                <div class="mgr-card-sub">Awaiting receive, validation, or stock-in action.</div>
+        <!-- 4. Total Sales Today -->
+        <div class="adm-kpi-card" style="--icon-bg: #EFF6FF; --icon-color: var(--petron-blue); border: 1.5px solid #BFDBFE;">
+            <div class="adm-kpi-header">
+                <span class="adm-kpi-title" style="color:var(--petron-blue); font-weight:800;"><?= $is_today_filter ? 'Total Sales Today' : 'Total Sales' ?></span>
+                <div class="adm-kpi-icon" style="background:#002F6C; color:#FFF;"><i class="fas fa-coins"></i></div>
             </div>
-            <div class="mgr-icon" style="background: #ffedd5; color: #ea580c;"><i class="fas fa-truck"></i></div>
+            <div class="adm-kpi-value" style="color:var(--petron-blue);" id="kpi_total_sales"><?= adm_money($total_today_sales) ?></div>
         </div>
 
-        <div class="mgr-card" data-tone="gray">
-            <div>
-                <div class="mgr-card-label">System Health</div>
-                <div class="mgr-card-value"><?= adm_h($system_health_value) ?></div>
-                <div class="health-list">
-                    <span><i class="fas fa-circle <?= $db_connected ? 'text-success' : 'text-danger' ?>"></i> Database <?= $db_connected ? 'Connected' : 'Issue' ?></span>
-                    <span><i class="fas fa-circle <?= $server_running ? 'text-success' : 'text-danger' ?>"></i> Server <?= $server_running ? 'Running' : 'Issue' ?></span>
-                    <span><i class="fas fa-circle <?= $backup_ok ? 'text-success' : 'text-warning' ?>"></i> Backup <?= adm_h($backup_label) ?></span>
+        <!-- 5. Active Job Orders -->
+        <div class="adm-kpi-card" style="--icon-bg: #FEF3C7; --icon-color: #D97706;">
+            <div class="adm-kpi-header">
+                <span class="adm-kpi-title">Active Job Orders</span>
+                <div class="adm-kpi-icon"><i class="fas fa-screwdriver-wrench"></i></div>
+            </div>
+            <div class="adm-kpi-value" id="kpi_active_jobs"><?= number_format($active_job_orders) ?></div>
+        </div>
+
+        <!-- 6. Completed Job Orders -->
+        <div class="adm-kpi-card" style="--icon-bg: #ECFDF5; --icon-color: #059669;">
+            <div class="adm-kpi-header">
+                <span class="adm-kpi-title">Completed Job Orders</span>
+                <div class="adm-kpi-icon"><i class="fas fa-circle-check"></i></div>
+            </div>
+            <div class="adm-kpi-value" id="kpi_completed_jobs"><?= number_format($completed_job_orders) ?></div>
+        </div>
+
+        <!-- 7. Low Stock Items -->
+        <div class="adm-kpi-card" style="--icon-bg: #FFFBEB; --icon-color: #B45309;">
+            <div class="adm-kpi-header">
+                <span class="adm-kpi-title">Low Stock Items</span>
+                <div class="adm-kpi-icon"><i class="fas fa-triangle-exclamation"></i></div>
+            </div>
+            <div class="adm-kpi-value" id="kpi_low_stock"><?= number_format($low_stock_items) ?></div>
+        </div>
+
+        <!-- 8. Critical / Out-of-Stock -->
+        <div class="adm-kpi-card" style="--icon-bg: #FEF2F2; --icon-color: #DC2626;">
+            <div class="adm-kpi-header">
+                <span class="adm-kpi-title">Critical / Out-of-Stock</span>
+                <div class="adm-kpi-icon"><i class="fas fa-circle-exclamation"></i></div>
+            </div>
+            <div class="adm-kpi-value" id="kpi_critical_stock"><?= number_format($critical_stock_items) ?></div>
+        </div>
+
+        <!-- 9. Pending Approvals -->
+        <div class="adm-kpi-card" style="--icon-bg: #F5F3FF; --icon-color: #7C3AED;">
+            <div class="adm-kpi-header">
+                <span class="adm-kpi-title">Pending Approvals</span>
+                <div class="adm-kpi-icon"><i class="fas fa-clipboard-check"></i></div>
+            </div>
+            <div class="adm-kpi-value" id="kpi_pending_approvals"><?= number_format($total_pending_approvals) ?></div>
+        </div>
+
+        <!-- 10. Monthly Revenue -->
+        <div class="adm-kpi-card" style="--icon-bg: #E0F2FE; --icon-color: #0284C7;">
+            <div class="adm-kpi-header">
+                <span class="adm-kpi-title">Monthly Revenue</span>
+                <div class="adm-kpi-icon"><i class="fas fa-chart-line"></i></div>
+            </div>
+            <div class="adm-kpi-value" id="kpi_monthly_rev"><?= adm_money($monthly_revenue) ?></div>
+        </div>
+
+        <!-- 11. Inventory Value -->
+        <div class="adm-kpi-card" style="--icon-bg: #F0FDFA; --icon-color: #0D9488;">
+            <div class="adm-kpi-header">
+                <span class="adm-kpi-title">Inventory Value</span>
+                <div class="adm-kpi-icon"><i class="fas fa-boxes-stacked"></i></div>
+            </div>
+            <div class="adm-kpi-value" id="kpi_inventory_val"><?= adm_money($total_inventory_value) ?></div>
+        </div>
+
+        <!-- 12. Outstanding Receivables -->
+        <div class="adm-kpi-card" style="--icon-bg: #FEF2F2; --icon-color: #B91C1C;">
+            <div class="adm-kpi-header">
+                <span class="adm-kpi-title">Outstanding Receivables</span>
+                <div class="adm-kpi-icon"><i class="fas fa-file-invoice-dollar"></i></div>
+            </div>
+            <div class="adm-kpi-value" id="kpi_ar_val"><?= adm_money($total_ar_outstanding) ?></div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 2. BRANCH SALES OVERVIEW & 3. FUEL MANAGEMENT OVERVIEW (2-COL) -->
+    <!-- ========================================================================= -->
+    <div class="adm-grid-2col">
+        <!-- 2. BRANCH SALES OVERVIEW -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-chart-pie"></i> Branch Sales Overview</h2>
+                <span class="adm-badge adm-badge-info" id="branch_tx_badge"><?= number_format($total_today_transactions) ?> Finalized Transactions</span>
+            </div>
+            <div class="adm-card-body">
+                <div class="adm-metric-list" style="margin-bottom:12px;">
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Fuel Sales</span>
+                        <span class="adm-metric-value" id="op_fuel_sales"><?= adm_money($fuel_today_sales) ?></span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Merchandise Sales</span>
+                        <span class="adm-metric-value" id="op_merch_sales"><?= adm_money($merch_today_sales) ?></span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Job Orders / Services</span>
+                        <span class="adm-metric-value" id="op_job_sales"><?= adm_money($job_today_sales) ?></span>
+                    </div>
+                    <div class="adm-metric-item" style="background:#EFF6FF; border-color:#BFDBFE;">
+                        <span class="adm-metric-label" style="color:var(--petron-blue); font-weight:800;">Total Finalized Sales</span>
+                        <span class="adm-metric-value" style="color:var(--petron-blue); font-size:14px;" id="op_total_sales"><?= adm_money($total_today_sales) ?></span>
+                    </div>
+                </div>
+
+                <!-- Exact 7 System Payment Breakdown -->
+                <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px 12px;">
+                    <span style="font-size:10.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Payment Breakdown (7 Methods)</span>
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:6px; margin-top:8px;">
+                        <div style="font-size:11px; padding:4px 6px; background:#FFF; border:1px solid #E2E8F0; border-radius:4px;">Cash: <strong id="pm_cash"><?= adm_money($payment_map['Cash'] ?? 0) ?></strong></div>
+                        <div style="font-size:11px; padding:4px 6px; background:#FFF; border:1px solid #E2E8F0; border-radius:4px;">Credit Card: <strong id="pm_credit_card"><?= adm_money($payment_map['Credit Card'] ?? 0) ?></strong></div>
+                        <div style="font-size:11px; padding:4px 6px; background:#FFF; border:1px solid #E2E8F0; border-radius:4px;">Debit Card: <strong id="pm_debit_card"><?= adm_money($payment_map['Debit Card'] ?? 0) ?></strong></div>
+                        <div style="font-size:11px; padding:4px 6px; background:#FFF; border:1px solid #E2E8F0; border-radius:4px;">GCash: <strong id="pm_gcash"><?= adm_money($payment_map['GCash'] ?? 0) ?></strong></div>
+                        <div style="font-size:11px; padding:4px 6px; background:#FFF; border:1px solid #E2E8F0; border-radius:4px;">Maya: <strong id="pm_maya"><?= adm_money($payment_map['Maya'] ?? 0) ?></strong></div>
+                        <div style="font-size:11px; padding:4px 6px; background:#FFF; border:1px solid #E2E8F0; border-radius:4px;">Petron Fleet: <strong id="pm_fleet"><?= adm_money($payment_map['Petron Fleet Card'] ?? 0) ?></strong></div>
+                        <div style="font-size:11px; padding:4px 6px; background:#FFF; border:1px solid #E2E8F0; border-radius:4px;">Credit Acct: <strong id="pm_credit_acct"><?= adm_money($payment_map['Credit Account'] ?? 0) ?></strong></div>
+                    </div>
                 </div>
             </div>
-            <div class="mgr-icon" style="background: #f1f5f9; color: #64748b;"><i class="fas fa-server"></i></div>
         </div>
-    </section>
-    <?php endif; ?>
 
-    <?php if ($enable_charts): ?>
-    <section class="chart-grid" aria-label="Admin charts">
-        <article class="admin-panel chart-card">
-            <div class="chart-head">
-                <h2 class="panel-title"><i class="fas fa-chart-pie"></i>Revenue Breakdown</h2>
+        <!-- 3. FUEL MANAGEMENT OVERVIEW -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-gas-pump"></i> Fuel Management Overview</h2>
+                <a href="admin_inventory_fuel.php" style="font-size:11px; font-weight:700; color:var(--petron-blue); text-decoration:none;"><i class="fas fa-arrow-up-right-from-square"></i> Fuel Module</a>
             </div>
-            <div class="chart-shell"><canvas id="revenueBreakdownChart"></canvas></div>
-        </article>
-
-        <article class="admin-panel chart-card wide">
-            <div class="chart-head">
-                <h2 class="panel-title"><i class="fas fa-chart-line"></i>Monthly Revenue Trend</h2>
-                <span class="badge neutral"><?= (int) $selected_year ?></span>
-            </div>
-            <div class="chart-shell"><canvas id="monthlyRevenueChart"></canvas></div>
-        </article>
-
-        <article class="admin-panel chart-card">
-            <div class="chart-head">
-                <h2 class="panel-title"><i class="fas fa-chart-column"></i>Transactions per Module</h2>
-            </div>
-            <div class="chart-shell"><canvas id="transactionsModuleChart"></canvas></div>
-        </article>
-
-        <article class="admin-panel chart-card">
-            <div class="chart-head">
-                <h2 class="panel-title"><i class="fas fa-boxes-stacked"></i>Inventory Status</h2>
-            </div>
-            <div class="chart-shell"><canvas id="inventoryStatusChart"></canvas></div>
-        </article>
-
-        <article class="admin-panel chart-card">
-            <div class="chart-head">
-                <h2 class="panel-title"><i class="fas fa-calendar-week"></i>Weekly Sales Trend</h2>
-            </div>
-            <div class="chart-shell"><canvas id="weeklySalesChart"></canvas></div>
-        </article>
-
-        <article class="admin-panel chart-card">
-            <div class="chart-head">
-                <h2 class="panel-title"><i class="fas fa-user-check"></i>User Activity</h2>
-            </div>
-            <div class="chart-shell"><canvas id="userActivityChart"></canvas></div>
-        </article>
-
-        <article class="admin-panel chart-card">
-            <div class="chart-head">
-                <h2 class="panel-title"><i class="fas fa-gas-pump"></i>Fuel Sales by Product</h2>
-            </div>
-            <div class="chart-shell"><canvas id="fuelSalesChart"></canvas></div>
-        </article>
-
-        <article class="admin-panel chart-card">
-            <div class="chart-head">
-                <h2 class="panel-title"><i class="fas fa-bag-shopping"></i>Merchandise Sales by Category</h2>
-            </div>
-            <div class="chart-shell"><canvas id="merchandiseCategoryChart"></canvas></div>
-        </article>
-    </section>
-
-    <h2 class="section-title"><i class="fas fa-list-check"></i>Management Panels</h2>
-    <section class="management-grid" aria-label="Admin management panels">
-        <article class="admin-panel">
-            <div class="panel-head">
-                <h3 class="panel-title"><i class="fas fa-user-clock"></i>Pending User Accounts</h3>
-                <a class="tiny-btn" href="users.php">Open Users</a>
-            </div>
-            <div class="panel-body">
-                <?php if (!$pending_users_data): ?>
-                    <div class="empty-state">No pending user accounts.</div>
-                <?php else: ?>
-                    <div class="data-table-wrap">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Employee</th>
-                                    <th>Position</th>
-                                    <th>Status</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($pending_users_data as $row): ?>
-                                    <tr>
-                                        <td><?= adm_h($row['employee']) ?></td>
-                                        <td><?= adm_h(ucfirst((string) $row['role'])) ?></td>
-                                        <td><span class="badge <?= adm_badge_class($row['status']) ?>"><?= adm_h($row['status']) ?></span></td>
-                                        <td>
-                                            <div class="table-actions">
-                                                <a class="tiny-btn success" href="users.php">Approve</a>
-                                                <a class="tiny-btn danger" href="users.php">Deactivate</a>
-                                                <a class="tiny-btn" href="users.php">Reset Password</a>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
+            <div class="adm-card-body">
+                <div class="adm-metric-list" style="margin-bottom:12px;">
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Shift 1 Sales &amp; Closing Status</span>
+                        <span class="adm-metric-value">
+                            <span id="op_shift1_fuel"><?= adm_money($shift1_fuel_sales) ?></span> &bull; 
+                            <span class="adm-badge adm-badge-<?= $shift1_status === 'Completed' ? 'success' : ($shift1_status === 'Returned for Correction' ? 'danger' : 'warning') ?>" id="op_shift1"><?= adm_h($shift1_status) ?></span>
+                        </span>
                     </div>
-                <?php endif; ?>
-            </div>
-        </article>
-
-        <article class="admin-panel">
-            <div class="panel-head">
-                <h3 class="panel-title"><i class="fas fa-clock-rotate-left"></i>Recent User Activities</h3>
-                <a class="tiny-btn" href="admin_audit_trail.php">Audit Logs</a>
-            </div>
-            <div class="panel-body">
-                <?php if (!$recent_user_activities): ?>
-                    <div class="empty-state">No recent user activity found.</div>
-                <?php else: ?>
-                    <div class="data-table-wrap">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>User</th>
-                                    <th>Module</th>
-                                    <th>Action</th>
-                                    <th>Time</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($recent_user_activities as $row): ?>
-                                    <tr>
-                                        <td><?= adm_h($row['user_name']) ?></td>
-                                        <td><?= adm_h($row['module']) ?></td>
-                                        <td><?= adm_h($row['action']) ?></td>
-                                        <td><?= adm_h(adm_format_time($row['created_at'])) ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Shift 2 Sales &amp; Closing Status</span>
+                        <span class="adm-metric-value">
+                            <span id="op_shift2_fuel"><?= adm_money($shift2_fuel_sales) ?></span> &bull; 
+                            <span class="adm-badge adm-badge-<?= $shift2_status === 'Completed' ? 'success' : ($shift2_status === 'Returned for Correction' ? 'danger' : 'warning') ?>" id="op_shift2"><?= adm_h($shift2_status) ?></span>
+                        </span>
                     </div>
-                <?php endif; ?>
-            </div>
-        </article>
-
-        <article class="admin-panel">
-            <div class="panel-head">
-                <h3 class="panel-title"><i class="fas fa-clipboard-list"></i>Pending Inventory Adjustments</h3>
-                <a class="tiny-btn" href="admin_procurement_reports.php?section=po">Purchase Orders</a>
-            </div>
-            <div class="panel-body">
-                <?php if (!$pending_inventory_adjustments): ?>
-                    <div class="empty-state">No pending inventory approvals.</div>
-                <?php else: ?>
-                    <div class="data-table-wrap">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Ref No</th>
-                                    <th>Product</th>
-                                    <th>Requested By</th>
-                                    <th>Status</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($pending_inventory_adjustments as $row): ?>
-                                    <tr>
-                                        <td><?= adm_h($row['ref_no']) ?></td>
-                                        <td><?= adm_h($row['product']) ?></td>
-                                        <td><?= adm_h($row['requested_by']) ?></td>
-                                        <td><span class="badge <?= adm_badge_class($row['status']) ?>"><?= adm_h(adm_status_label($row['status'])) ?></span></td>
-                                        <td>
-                                            <div class="table-actions">
-                                                <a class="tiny-btn" href="<?= adm_h($row['action_url']) ?>">Review</a>
-                                                <a class="tiny-btn success" href="<?= adm_h($row['action_url']) ?>">Approve</a>
-                                                <a class="tiny-btn danger" href="<?= adm_h($row['action_url']) ?>">Reject</a>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Meter Reading Status</span>
+                        <span class="adm-metric-value">
+                            <span style="color:#D97706;" id="op_pending_meters"><?= number_format($pending_meter_validations) ?> Pending</span> &bull; 
+                            <span style="color:#16A34A;" id="op_validated_meters"><?= number_format($validated_meter_readings) ?> Validated</span>
+                        </span>
                     </div>
-                <?php endif; ?>
-            </div>
-        </article>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Total Fuel Available / Capacity</span>
+                        <span class="adm-metric-value" style="color:var(--petron-blue);"><?= number_format($total_available_fuel, 2) ?> L / <?= number_format($total_fuel_capacity, 0) ?> L</span>
+                    </div>
+                </div>
 
-        <article class="admin-panel">
-            <div class="panel-head">
-                <h3 class="panel-title"><i class="fas fa-address-card"></i>Customer Request Monitoring</h3>
-                <a class="tiny-btn" href="admin_reports.php?section=customers">Customer Reports</a>
+                <!-- 7 Fuel Tanks Level Overview -->
+                <div style="border:1px solid #E2E8F0; border-radius:8px; overflow:hidden;">
+                    <div style="padding:6px 10px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:10.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Active Fuel Tanks (<?= count($fuel_tanks) ?>)</span>
+                        <span style="font-size:10px; color:#15803D; font-weight:700;"><?= $normal_fuel_count ?> Normal &bull; <?= $low_fuel_count ?> Low &bull; <?= $crit_fuel_count ?> Crit</span>
+                    </div>
+                    <div style="max-height:140px; overflow-y:auto;">
+                        <?php foreach ($fuel_tanks as $ft): ?>
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; border-bottom:1px solid #F1F5F9; gap:8px;">
+                                <div style="flex:1; min-width:0;">
+                                    <div style="font-size:11.5px; font-weight:700; color:#1E293B; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><?= adm_h($ft['fuel_type']) ?> <small style="color:#64748B;">(<?= adm_h($ft['ugt']) ?>)</small></div>
+                                    <div style="display:flex; align-items:center; gap:5px; margin-top:2px;">
+                                        <div style="flex:1; height:5px; background:#E2E8F0; border-radius:999px; overflow:hidden;">
+                                            <div style="height:100%; width:<?= $ft['fill_percent'] ?>%; background:<?= $ft['bar_color'] ?>; border-radius:999px;"></div>
+                                        </div>
+                                        <span style="font-size:9.5px; color:#64748B; font-weight:600; white-space:nowrap;"><?= number_format($ft['current_level'], 0) ?> L (<?= $ft['fill_percent'] ?>%)</span>
+                                    </div>
+                                </div>
+                                <span style="display:inline-block; padding:2px 8px; font-size:9px; font-weight:800; border-radius:999px; background:<?= $ft['badge_bg'] ?>; color:<?= $ft['badge_color'] ?>; border:1px solid <?= $ft['badge_border'] ?>; letter-spacing:0.4px; text-transform:uppercase; white-space:nowrap;"><?= adm_h($ft['alert_status']) ?></span>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
             </div>
-            <div class="panel-body">
-                <?php if (!$pending_customers): ?>
-                    <div class="empty-state">No pending customer registrations.</div>
-                <?php else: ?>
-                    <div class="data-table-wrap">
-                        <table class="data-table">
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 4. MERCHANDISE INVENTORY & 5. STOCK REQUEST / STOCK-IN (2-COL) -->
+    <!-- ========================================================================= -->
+    <div class="adm-grid-2col">
+        <!-- 4. MERCHANDISE INVENTORY OVERVIEW -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-boxes"></i> Merchandise Inventory Overview</h2>
+                <a href="admin_inventory_merchandise.php" style="font-size:11px; font-weight:700; color:var(--petron-blue); text-decoration:none;"><i class="fas fa-arrow-up-right-from-square"></i> Open Catalog</a>
+            </div>
+            <div class="adm-card-body">
+                <div class="adm-metric-list" style="margin-bottom:12px;">
+                    <div onclick="openAdmMerchInvModal('available')" class="adm-metric-item" style="cursor:pointer;" title="Click to view available merchandise">
+                        <span class="adm-metric-label" style="color:#15803D;"><i class="fas fa-circle-check"></i> Available Products (In Stock)</span>
+                        <span class="adm-metric-value" style="color:#15803D;"><?= number_format($available_merch_count) ?> / <?= number_format($total_products_count) ?></span>
+                    </div>
+                    <div onclick="openAdmMerchInvModal('low')" class="adm-metric-item" style="cursor:pointer;" title="Click to view low stock merchandise">
+                        <span class="adm-metric-label" style="color:#D97706;"><i class="fas fa-triangle-exclamation"></i> Low Stock</span>
+                        <span class="adm-metric-value" style="color:#D97706;"><?= number_format($low_merch_count) ?></span>
+                    </div>
+                    <div onclick="openAdmMerchInvModal('critical')" class="adm-metric-item" style="cursor:pointer;" title="Click to view critical stock merchandise">
+                        <span class="adm-metric-label" style="color:#DC2626;"><i class="fas fa-circle-exclamation"></i> Critical Stock</span>
+                        <span class="adm-metric-value" style="color:#DC2626;"><?= number_format($crit_merch_count) ?></span>
+                    </div>
+                    <div onclick="openAdmMerchInvModal('out')" class="adm-metric-item" style="cursor:pointer;" title="Click to view out of stock merchandise">
+                        <span class="adm-metric-label" style="color:#991B1B;"><i class="fas fa-circle-xmark"></i> Out of Stock</span>
+                        <span class="adm-metric-value" style="color:#991B1B;"><?= number_format($out_merch_count) ?></span>
+                    </div>
+                    <div onclick="openAdmMerchInvModal('variance')" class="adm-metric-item" style="cursor:pointer;" title="Click to view physical count variances">
+                        <span class="adm-metric-label" style="color:#7C3AED;"><i class="fas fa-clipboard-check"></i> Variance Detected (P-Count)</span>
+                        <span class="adm-metric-value" style="color:#7C3AED;"><?= number_format($variance_merch_count) ?></span>
+                    </div>
+                </div>
+                <div style="padding:8px 12px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Total Merchandise Valuation</span>
+                    <strong style="color:var(--petron-blue); font-size:13px;"><?= adm_money($merch_inventory_value) ?></strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. STOCK REQUEST & STOCK-IN OVERVIEW -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-truck-ramp-box"></i> Stock Request &amp; Stock-In Overview</h2>
+                <a href="admin_inventory_merchandise.php?tab=requests" style="font-size:11px; font-weight:700; color:var(--petron-blue); text-decoration:none;"><i class="fas fa-list-check"></i> Manage Reqs</a>
+            </div>
+            <div class="adm-card-body">
+                <!-- Stock Requests Section -->
+                <span style="font-size:10.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Stock Requests Status</span>
+                <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin:6px 0 12px 0;">
+                    <div style="background:#FFFBEB; border:1px solid #FDE68A; padding:6px; border-radius:6px; text-align:center;">
+                        <div style="font-size:9.5px; font-weight:700; color:#B45309;">Pending</div>
+                        <div style="font-size:14px; font-weight:800; color:#B45309;"><?= $sr_pending ?></div>
+                    </div>
+                    <div style="background:#F0FDF4; border:1px solid #BBF7D0; padding:6px; border-radius:6px; text-align:center;">
+                        <div style="font-size:9.5px; font-weight:700; color:#15803D;">Approved</div>
+                        <div style="font-size:14px; font-weight:800; color:#15803D;"><?= $sr_approved ?></div>
+                    </div>
+                    <div style="background:#FEF2F2; border:1px solid #FECACA; padding:6px; border-radius:6px; text-align:center;">
+                        <div style="font-size:9.5px; font-weight:700; color:#DC2626;">Rejected</div>
+                        <div style="font-size:14px; font-weight:800; color:#DC2626;"><?= $sr_rejected ?></div>
+                    </div>
+                    <div style="background:#F5F3FF; border:1px solid #DDD6FE; padding:6px; border-radius:6px; text-align:center;">
+                        <div style="font-size:9.5px; font-weight:700; color:#7C3AED;">Revision</div>
+                        <div style="font-size:14px; font-weight:800; color:#7C3AED;"><?= $sr_revision ?></div>
+                    </div>
+                </div>
+
+                <!-- Stock-In Section -->
+                <span style="font-size:10.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Stock-In &amp; Verification</span>
+                <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin:6px 0 12px 0;">
+                    <div style="background:#FFFBEB; border:1px solid #FDE68A; padding:6px; border-radius:6px; text-align:center;">
+                        <div style="font-size:9.5px; font-weight:700; color:#B45309;">Pending</div>
+                        <div style="font-size:14px; font-weight:800; color:#B45309;"><?= $si_pending ?></div>
+                    </div>
+                    <div style="background:#EFF6FF; border:1px solid #BFDBFE; padding:6px; border-radius:6px; text-align:center;">
+                        <div style="font-size:9.5px; font-weight:700; color:#1E40AF;">For Verify</div>
+                        <div style="font-size:14px; font-weight:800; color:#1E40AF;"><?= $si_for_ver ?></div>
+                    </div>
+                    <div style="background:#F0FDF4; border:1px solid #BBF7D0; padding:6px; border-radius:6px; text-align:center;">
+                        <div style="font-size:9.5px; font-weight:700; color:#15803D;">Approved</div>
+                        <div style="font-size:14px; font-weight:800; color:#15803D;"><?= $si_approved ?></div>
+                    </div>
+                    <div style="background:#FEF2F2; border:1px solid #FECACA; padding:6px; border-radius:6px; text-align:center;">
+                        <div style="font-size:9.5px; font-weight:700; color:#DC2626;">Returned</div>
+                        <div style="font-size:14px; font-weight:800; color:#DC2626;"><?= $si_returned ?></div>
+                    </div>
+                </div>
+
+                <!-- Purchase Orders Overview -->
+                <div style="display:flex; justify-content:space-between; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; padding:7px 10px;">
+                    <span style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Purchase Orders:</span>
+                    <span style="font-size:11.5px; font-weight:700; color:var(--petron-blue);">
+                        <?= $po_pending ?> Pending &bull; <?= $po_generated ?> Generated &bull; <?= $po_completed ?> Completed
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 6. JOB ORDER OVERVIEW & 7. PAYMENT TYPE PIE CHART (2-COL) -->
+    <!-- ========================================================================= -->
+    <div class="adm-grid-2col">
+        <!-- 6. JOB ORDER OVERVIEW & PERFORMANCE (DIRECT FROM TRANSACTION MODULE) -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-wrench"></i> Job Order Overview &amp; Performance</h2>
+                <a href="manager_validated_transactions.php?type=job_order" style="font-size:11px; font-weight:700; color:var(--petron-blue); text-decoration:none;"><i class="fas fa-list-check"></i> Transaction Module (JOs)</a>
+            </div>
+            <div class="adm-card-body">
+                <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-bottom:12px;">
+                    <div style="background:#FFFBEB; border:1px solid #FDE68A; padding:8px 6px; border-radius:6px; text-align:center;">
+                        <div style="font-size:9.5px; font-weight:700; color:#B45309;">Pending</div>
+                        <div style="font-size:16px; font-weight:800; color:#B45309;"><?= $jo_pending_count ?></div>
+                    </div>
+                    <div style="background:#EFF6FF; border:1px solid #BFDBFE; padding:8px 6px; border-radius:6px; text-align:center;">
+                        <div style="font-size:9.5px; font-weight:700; color:#1E40AF;">In Progress</div>
+                        <div style="font-size:16px; font-weight:800; color:#1E40AF;"><?= $jo_inprogress_count ?></div>
+                    </div>
+                    <div style="background:#F0FDF4; border:1px solid #BBF7D0; padding:8px 6px; border-radius:6px; text-align:center;">
+                        <div style="font-size:9.5px; font-weight:700; color:#15803D;">Completed</div>
+                        <div style="font-size:16px; font-weight:800; color:#15803D;"><?= $jo_completed_count ?></div>
+                    </div>
+                    <div style="background:#F5F3FF; border:1px solid #DDD6FE; padding:8px 6px; border-radius:6px; text-align:center;">
+                        <div style="font-size:9.5px; font-weight:700; color:#7C3AED;">Released</div>
+                        <div style="font-size:16px; font-weight:800; color:#7C3AED;"><?= $jo_released_count ?></div>
+                    </div>
+                </div>
+                <div class="adm-metric-list">
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Total Job Orders in Transactions Module</span>
+                        <span class="adm-metric-value"><?= number_format($total_job_orders_logged) ?> Recorded</span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Total Job Order Sales (Revenue)</span>
+                        <span class="adm-metric-value" style="color:var(--petron-blue);"><?= adm_money($total_job_order_revenue) ?></span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Most Requested Service</span>
+                        <span class="adm-metric-value"><?= !empty($top_service_labels[0]) ? adm_h($top_service_labels[0]) : 'None' ?></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 7. PAYMENT TYPE ANALYSIS (EXACT 7 PAYMENT METHODS DISTRIBUTION) -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-credit-card" style="color:#10B981;"></i> Payment Type Analysis</h2>
+                <span class="adm-badge adm-badge-info">7 Payment Methods</span>
+            </div>
+            <div class="adm-card-body">
+                <div class="adm-chart-wrap">
+                    <canvas id="paymentTypeChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 8. SALES ANALYTICS (DAILY SALES TREND & MONTHLY REVENUE TREND) (2-COL) -->
+    <!-- ========================================================================= -->
+    <div class="adm-grid-2col">
+        <!-- Daily Sales Trend -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-chart-line" style="color:var(--petron-blue);"></i> Daily Sales Trend (Current Week)</h2>
+                <span class="adm-badge adm-badge-neutral">Fuel, Merch &amp; Services</span>
+            </div>
+            <div class="adm-card-body">
+                <div class="adm-chart-wrap">
+                    <canvas id="dailySalesTrendChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Monthly Revenue Trend -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-arrow-trend-up" style="color:var(--petron-red);"></i> Monthly Revenue Trend (6 Months)</h2>
+                <span class="adm-badge adm-badge-neutral">All Streams Finalized</span>
+            </div>
+            <div class="adm-card-body">
+                <div class="adm-chart-wrap">
+                    <canvas id="monthlyRevenueChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 9. TOP PRODUCTS, 10. MOST REQUESTED SERVICES & 11. JO STATUS CHART (3-COL) -->
+    <!-- ========================================================================= -->
+    <div class="adm-grid-3col">
+        <!-- 9. TOP SELLING PRODUCTS -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-trophy" style="color:#F59E0B;"></i> Top Selling Products</h2>
+            </div>
+            <div class="adm-card-body">
+                <div class="adm-chart-wrap">
+                    <canvas id="topProductsChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 10. MOST REQUESTED SERVICES -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-wrench" style="color:#0284C7;"></i> Requested Services</h2>
+            </div>
+            <div class="adm-card-body">
+                <div class="adm-chart-wrap">
+                    <canvas id="topServicesChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 11. JOB ORDER STATUS CHART -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-circle-notch" style="color:#D97706;"></i> Job Order Status</h2>
+            </div>
+            <div class="adm-card-body">
+                <div class="adm-chart-wrap">
+                    <canvas id="joStatusChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 12. APPROVAL & REQUEST, 13. MASTER DATA, 14. VOID & ADJUSTMENT (3-COL) -->
+    <!-- ========================================================================= -->
+    <div class="adm-grid-3col">
+        <!-- 12. APPROVAL & REQUEST OVERVIEW -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-stamp" style="color:#7C3AED;"></i> Approval Requests</h2>
+                <span class="adm-badge adm-badge-info"><?= $total_pending_approvals ?> Pending</span>
+            </div>
+            <div class="adm-card-body">
+                <div class="adm-metric-list">
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label"><i class="fas fa-boxes-stacked"></i> Stock Requests</span>
+                        <span class="adm-badge <?= $pending_stock_reqs > 0 ? 'adm-badge-warning' : 'adm-badge-neutral' ?>"><?= $pending_stock_reqs ?> Pending</span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label"><i class="fas fa-truck-ramp-box"></i> Stock-In Deliveries</span>
+                        <span class="adm-badge <?= $pending_stockin > 0 ? 'adm-badge-warning' : 'adm-badge-neutral' ?>"><?= $pending_stockin ?> Pending</span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label"><i class="fas fa-ban"></i> Void Requests</span>
+                        <span class="adm-badge <?= $pending_void_reqs > 0 ? 'adm-badge-danger' : 'adm-badge-neutral' ?>"><?= $pending_void_reqs ?> Pending</span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label"><i class="fas fa-sliders"></i> Stock Adjustments</span>
+                        <span class="adm-badge <?= $pending_adjustment_reqs > 0 ? 'adm-badge-warning' : 'adm-badge-neutral' ?>"><?= $pending_adjustment_reqs ?> Pending</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 13. MASTER DATA REQUEST OVERVIEW -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-database" style="color:#059669;"></i> Master Data Requests</h2>
+                <span class="adm-badge adm-badge-neutral"><?= $md_pending_cnt ?> Pending</span>
+            </div>
+            <div class="adm-card-body">
+                <div class="adm-metric-list" style="margin-bottom:10px;">
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Vehicle Requests</span>
+                        <span class="adm-metric-value"><?= $md_vehicle_cnt ?> Total</span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Merchandise Product Reqs</span>
+                        <span class="adm-metric-value"><?= $md_product_cnt ?> Total</span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Service Type Requests</span>
+                        <span class="adm-metric-value"><?= $md_service_cnt ?> Total</span>
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:5px; text-align:center; font-size:10px;">
+                    <div style="background:#F0FDF4; border:1px solid #BBF7D0; padding:4px; border-radius:4px; color:#15803D; font-weight:700;"><?= $md_approved_cnt ?> Approved</div>
+                    <div style="background:#FEF2F2; border:1px solid #FECACA; padding:4px; border-radius:4px; color:#DC2626; font-weight:700;"><?= $md_rejected_cnt ?> Rejected</div>
+                    <div style="background:#F5F3FF; border:1px solid #DDD6FE; padding:4px; border-radius:4px; color:#7C3AED; font-weight:700;"><?= $md_revision_cnt ?> Revision</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 14. VOID & ADJUSTMENT MONITORING -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-rotate-left" style="color:#DC2626;"></i> Void &amp; Adjustment</h2>
+                <span class="adm-badge adm-badge-neutral">Audit Impact</span>
+            </div>
+            <div class="adm-card-body">
+                <div class="adm-metric-list" style="margin-bottom:8px;">
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Void Requests</span>
+                        <span class="adm-metric-value"><?= $pending_void_reqs ?> Pending &bull; <?= $void_approved ?> Approved</span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Adjustment Requests</span>
+                        <span class="adm-metric-value"><?= $pending_adjustment_reqs ?> Pending &bull; <?= $adj_approved ?> Approved</span>
+                    </div>
+                </div>
+                <div style="background:#FEF2F2; border:1px solid #FECACA; border-radius:6px; padding:7px 10px; font-size:10.5px; color:#991B1B; line-height:1.3;">
+                    <i class="fas fa-info-circle"></i> <strong>Business Effect:</strong> Approved Voids reverse sales &amp; restore stock. Approved Adjustments update ledger balances.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 15. ACCOUNTS RECEIVABLE & 16. RECENT TRANSACTIONS (2-COL) -->
+    <!-- ========================================================================= -->
+    <div class="adm-grid-2col">
+        <!-- 15. ACCOUNTS RECEIVABLE OVERVIEW -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-file-invoice-dollar" style="color:#0D9488;"></i> Accounts Receivable (AR)</h2>
+                <span class="adm-badge adm-badge-neutral">Merchandise &amp; Services</span>
+            </div>
+            <div class="adm-card-body">
+                <div class="adm-metric-list" style="margin-bottom:12px;">
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Total Outstanding AR</span>
+                        <span class="adm-metric-value" style="color:#DC2626;" id="op_ar_outstanding"><?= adm_money($total_ar_outstanding) ?></span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Due / Overdue Accounts</span>
+                        <span class="adm-metric-value" style="color:#B45309;" id="op_ar_overdue"><?= number_format($ar_due_overdue_count) ?> Accounts</span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Recently Paid (Last 30 Days)</span>
+                        <span class="adm-metric-value" style="color:#16A34A;" id="op_ar_paid"><?= adm_money($ar_recently_paid) ?></span>
+                    </div>
+                </div>
+                <?php if (!empty($ar_customer_list)): ?>
+                    <span style="font-size:10.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Top Outstanding Accounts</span>
+                    <div class="adm-table-responsive" style="margin-top:6px;">
+                        <table class="adm-table">
                             <thead>
                                 <tr>
                                     <th>Customer</th>
-                                    <th>Contact</th>
-                                    <th>Requested By</th>
-                                    <th>Status</th>
+                                    <th>Due Date</th>
+                                    <th style="text-align:right;">Balance</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                <?php foreach ($pending_customers as $row): ?>
+                            <tbody id="ar_customer_tbody">
+                                <?php foreach ($ar_customer_list as $arc): ?>
                                     <tr>
-                                        <td><?= adm_h($row['customer']) ?></td>
-                                        <td><?= adm_h($row['contact']) ?></td>
-                                        <td><?= adm_h($row['requested_by']) ?></td>
+                                        <td><strong><?= adm_h($arc['customer_name']) ?></strong></td>
+                                        <td><?= !empty($arc['due_date']) ? date('M d, Y', strtotime($arc['due_date'])) : '—' ?></td>
+                                        <td style="text-align:right;"><strong style="color:#DC2626;"><?= adm_money($arc['total_balance']) ?></strong></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- 16. RECENT TRANSACTIONS (Consolidated) -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-receipt"></i> Recent Finalized Transactions</h2>
+                <a href="manager_validated_transactions.php" style="font-size:11px; font-weight:700; color:var(--petron-blue); text-decoration:none;">View All</a>
+            </div>
+            <div class="adm-card-body" style="padding:0;">
+                <div class="adm-table-responsive">
+                    <table class="adm-table">
+                        <thead>
+                            <tr>
+                                <th>Reference</th>
+                                <th>Stream / Type</th>
+                                <th>Payment</th>
+                                <th style="text-align:right;">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recent_txn_tbody">
+                            <?php if (empty($recent_transactions)): ?>
+                                <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:20px;">No finalized transactions yet.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($recent_transactions as $rt): ?>
+                                    <tr>
                                         <td>
-                                            <div class="table-actions">
-                                                <span class="badge <?= adm_badge_class($row['status']) ?>"><?= adm_h(adm_status_label($row['status'])) ?></span>
-                                            </div>
+                                            <strong><?= adm_h($rt['ref_no']) ?></strong>
+                                            <br><small style="color:var(--text-muted);"><?= adm_h($rt['customer_name']) ?></small>
                                         </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </article>
-
-        <article class="admin-panel">
-            <div class="panel-head">
-                    <div class="empty-state">No delivery records yet.</div>
-                <?php else: ?>
-                    <div class="data-table-wrap">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Delivery No</th>
-                                    <th>Supplier</th>
-                                    <th>Product</th>
-                                    <th>Status</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($recent_deliveries as $row): ?>
-                                    <tr>
-                                        <td><?= adm_h($row['ref_no']) ?></td>
-                                        <td><?= adm_h($row['supplier'] ?? 'N/A') ?></td>
-                                        <td><?= adm_h($row['product'] ?? ucfirst((string) $row['type'])) ?></td>
-                                        <td><span class="badge <?= adm_badge_class($row['status']) ?>"><?= adm_h(adm_status_label($row['status'])) ?></span></td>
                                         <td>
-                                            <div class="table-actions">
-                                                <a class="tiny-btn success" href="<?= adm_h($row['action_url']) ?>">Receive Delivery</a>
-                                                <a class="tiny-btn" href="<?= adm_h($row['action_url']) ?>">View</a>
-                                                <a class="tiny-btn" href="<?= adm_h($row['action_url']) ?>">Stock-In</a>
-                                            </div>
+                                            <span class="adm-badge adm-badge-<?= $rt['stream_type'] === 'Fuel' ? 'warning' : ($rt['stream_type'] === 'Job Order' ? 'info' : 'success') ?>">
+                                                <?= adm_h($rt['stream_type']) ?>
+                                            </span>
                                         </td>
+                                        <td><span class="adm-badge adm-badge-neutral"><?= adm_h($rt['payment_method']) ?></span></td>
+                                        <td style="text-align:right;"><strong><?= adm_money($rt['amount']) ?></strong></td>
                                     </tr>
                                 <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </article>
-
-        <article class="admin-panel">
-            <div class="panel-head">
-                <h3 class="panel-title"><i class="fas fa-receipt"></i>Recent Transactions</h3>
-                <a class="tiny-btn" href="admin_all_transactions.php">All Transactions</a>
-            </div>
-            <div class="panel-body">
-                <?php if (!$recent_transactions): ?>
-                    <div class="empty-state">No recent transactions found.</div>
-                <?php else: ?>
-                    <div class="data-table-wrap">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Type</th>
-                                    <th>Reference</th>
-                                    <th>Details</th>
-                                    <th>Amount</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($recent_transactions as $row): ?>
-                                    <tr>
-                                        <td><span class="badge info"><?= adm_h($row['type']) ?></span></td>
-                                        <td><a href="<?= adm_h($row['action_url']) ?>"><?= adm_h($row['ref_no']) ?></a></td>
-                                        <td><?= adm_h($row['details']) ?></td>
-                                        <td><?= adm_money($row['total_amount']) ?></td>
-                                        <td><span class="badge <?= adm_badge_class($row['status']) ?>"><?= adm_h(adm_status_label($row['status'], 'Posted')) ?></span></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </article>
-
-        <article class="admin-panel">
-            <div class="panel-head">
-                <h3 class="panel-title"><i class="fas fa-box-open"></i>Low Inventory Summary</h3>
-                <a class="tiny-btn" href="admin_inventory_merchandise.php">Inventory</a>
-            </div>
-            <div class="panel-body">
-                <?php if (!$low_inventory_rows): ?>
-                    <div class="empty-state">Fuel and merchandise inventory are within normal levels.</div>
-                <?php else: ?>
-                    <div class="data-table-wrap">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Type</th>
-                                    <th>Product</th>
-                                    <th>Current Stock</th>
-                                    <th>Reorder Level</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($low_inventory_rows as $row): ?>
-                                    <tr>
-                                        <td><?= adm_h($row['type']) ?></td>
-                                        <td><a href="<?= adm_h($row['action_url']) ?>"><?= adm_h($row['product']) ?></a></td>
-                                        <td><?= adm_qty($row['current_stock']) ?></td>
-                                        <td><?= adm_qty($row['reorder_level']) ?></td>
-                                        <td><span class="badge <?= adm_badge_class($row['status']) ?>"><?= adm_h($row['status']) ?></span></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </article>
-    </section>
-
-    <h2 id="system-monitoring" class="section-title"><i class="fas fa-shield-halved"></i>System Monitoring</h2>
-    <section class="system-grid" aria-label="Admin system monitoring">
-        <article class="admin-panel">
-            <div class="panel-head">
-                <h3 class="panel-title"><i class="fas fa-clipboard-list"></i>Audit Trail Summary</h3>
-                <a class="tiny-btn" href="admin_audit_trail.php">View Audit Logs</a>
-            </div>
-            <div class="panel-body system-stat-grid">
-                <div class="system-stat"><label>Today's Logs</label><strong><?= number_format($audit_today_logs) ?></strong></div>
-                <div class="system-stat"><label>Errors</label><strong><?= number_format($audit_errors) ?></strong></div>
-                <div class="system-stat"><label>Warnings</label><strong><?= number_format($audit_warnings) ?></strong></div>
-                <div class="system-stat"><label>Failed Logins</label><strong><?= number_format($login_failures) ?></strong></div>
-                <div class="system-stat"><label>Successful Logins</label><strong><?= number_format($login_successes) ?></strong></div>
-            </div>
-        </article>
-
-        <article class="admin-panel">
-            <div class="panel-head">
-                <h3 class="panel-title"><i class="fas fa-database"></i>Backup Status</h3>
-            </div>
-            <div class="panel-body">
-                <div class="mini-list">
-                    <div class="mini-list-row"><span>Last Backup</span><strong><?= adm_h($latest_backup ? adm_format_time($latest_backup['completed_at'] ?? $latest_backup['created_at']) : 'None') ?></strong></div>
-                    <div class="mini-list-row"><span>Status</span><span class="badge <?= adm_badge_class($backup_label) ?>"><?= adm_h($backup_label) ?></span></div>
-                    <div class="mini-list-row"><span>Next Scheduled Backup</span><strong><?= adm_h($next_backup) ?></strong></div>
-                </div>
-                <form class="quick-form" method="post" action="admin_dashboard.php" style="margin-top:16px;">
-                    <input type="hidden" name="date_from" value="<?= adm_h($date_from) ?>">
-                    <input type="hidden" name="date_to" value="<?= adm_h($date_to) ?>">
-                    <input type="hidden" name="admin_dashboard_action" value="run_backup">
-                    <button class="admin-btn primary" type="submit"><i class="fas fa-download"></i>Backup Now</button>
-                </form>
-            </div>
-        </article>
-
-        <article class="admin-panel">
-            <div class="panel-head">
-                <h3 class="panel-title"><i class="fas fa-server"></i>Database Status</h3>
-            </div>
-            <div class="panel-body">
-                <div class="mini-list">
-                    <div class="mini-list-row"><span>Connection</span><span class="badge <?= $db_connected ? 'success' : 'danger' ?>"><?= $db_connected ? 'Connected' : 'Disconnected' ?></span></div>
-                    <div class="mini-list-row"><span>Storage Used</span><strong><?= adm_h(adm_bytes($db_stats['storage_bytes'] ?? 0)) ?></strong></div>
-                    <div class="mini-list-row"><span>Estimated Records</span><strong><?= number_format((int) ($db_stats['records'] ?? 0)) ?></strong></div>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
                 </div>
             </div>
-        </article>
-    </section>
+        </div>
+    </div>
 
-    <h2 class="section-title"><i class="fas fa-bolt"></i>Quick Actions</h2>
-    <section class="quick-grid" aria-label="Admin quick actions">
-        <?php foreach ($quick_actions as $action): ?>
-            <a class="quick-action" href="<?= adm_h($action['href']) ?>">
-                <i class="fas <?= adm_h($action['icon']) ?>"></i>
-                <span>
-                    <?= adm_h($action['label']) ?>
-                    <?php if ($action['badge'] !== ''): ?>
-                        <small><?= adm_h($action['badge']) ?></small>
-                    <?php endif; ?>
-                </span>
-            </a>
-        <?php endforeach; ?>
-        <form class="quick-form" method="post" action="admin_dashboard.php">
-            <input type="hidden" name="date_from" value="<?= adm_h($date_from) ?>">
-            <input type="hidden" name="date_to" value="<?= adm_h($date_to) ?>">
-            <input type="hidden" name="admin_dashboard_action" value="run_backup">
-            <button class="quick-action" type="submit">
-                <i class="fas fa-database"></i>
-                <span>
-                    Backup Database
-                    <small><?= adm_h($backup_label) ?></small>
-                </span>
-            </button>
-        </form>
-    </section>
+    <!-- ========================================================================= -->
+    <!-- 17. RECENT INVENTORY MOVEMENTS & 18. BRANCH ACTIVITY OVERVIEW (2-COL) -->
+    <!-- ========================================================================= -->
+    <div class="adm-grid-2col">
+        <!-- 17. RECENT INVENTORY MOVEMENTS -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-arrow-right-arrow-left"></i> Recent Inventory Movements</h2>
+                <a href="admin_inventory_merchandise.php?tab=movement" style="font-size:11px; font-weight:700; color:var(--petron-blue); text-decoration:none;">All Movements</a>
+            </div>
+            <div class="adm-card-body" style="padding:0;">
+                <div class="adm-table-responsive">
+                    <table class="adm-table">
+                        <thead>
+                            <tr>
+                                <th>Reference</th>
+                                <th>Product / Item</th>
+                                <th>Action</th>
+                                <th style="text-align:right;">Qty Change</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recent_mov_tbody">
+                            <?php if (empty($recent_inventory_movements)): ?>
+                                <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:20px;">No inventory movements logged yet.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($recent_inventory_movements as $im): ?>
+                                    <?php 
+                                        $qty = (float)$im['quantity_change'];
+                                        $unit = $im['unit'] ?? 'pcs';
+                                        $qty_str = ($qty > 0 ? '+' : '') . number_format($qty, ($unit === 'L' ? 2 : 0)) . ' ' . $unit;
+                                        $color = $qty > 0 ? '#15803D' : ($qty < 0 ? '#DC2626' : '#64748B');
+                                    ?>
+                                    <tr>
+                                        <td><strong><?= adm_h($im['ref_no']) ?></strong></td>
+                                        <td><?= adm_h($im['product_name']) ?></td>
+                                        <td><span class="adm-badge adm-badge-neutral"><?= adm_h($im['movement_type']) ?></span></td>
+                                        <td style="text-align:right;"><strong style="color:<?= $color ?>;"><?= $qty_str ?></strong></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 18. BRANCH ACTIVITY OVERVIEW -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-clock-rotate-left"></i> Login History</h2>
+                <a href="admin_reports.php?cat=audit&tab=login_history" style="font-size:11px; font-weight:700; color:var(--petron-blue); text-decoration:none;">View All</a>
+            </div>
+            <div class="adm-card-body" style="padding:0;">
+                <?php if (empty($branch_activity_logs)): ?>
+                    <div style="text-align:center; padding:24px; color:var(--text-muted); font-size:12px;">No audit trail records found.</div>
+                <?php else: ?>
+                    <?php foreach ($branch_activity_logs as $act):
+                        $action    = $act['action'] ?? '';
+                        $logType   = strtoupper($act['log_type'] ?? 'SYSTEM');
+                        $status    = $act['entry_status'] ?? 'Success';
+                        $isSuccess = stripos($status, 'success') !== false || stripos($status, 'ok') !== false;
+                        $isFailed  = stripos($status, 'fail') !== false || stripos($status, 'error') !== false;
+                        // Icon & color based on action
+                        if (stripos($action,'login') !== false && !$isFailed) {
+                            $icon = 'fa-right-to-bracket'; $iconColor = '#15803D'; $iconBg = '#F0FDF4';
+                        } elseif (stripos($action,'login') !== false && $isFailed) {
+                            $icon = 'fa-triangle-exclamation'; $iconColor = '#DC2626'; $iconBg = '#FEF2F2';
+                        } elseif (stripos($action,'logout') !== false) {
+                            $icon = 'fa-right-from-bracket'; $iconColor = '#B45309'; $iconBg = '#FFFBEB';
+                        } elseif (stripos($action,'password') !== false || stripos($action,'reset') !== false) {
+                            $icon = 'fa-key'; $iconColor = '#7C3AED'; $iconBg = '#F5F3FF';
+                        } elseif (stripos($action,'clock') !== false) {
+                            $icon = 'fa-clock'; $iconColor = '#0284C7'; $iconBg = '#F0F9FF';
+                        } else {
+                            $icon = 'fa-shield-halved'; $iconColor = '#475569'; $iconBg = '#F1F5F9';
+                        }
+                        // Status badge
+                        $statusBadge = $isFailed
+                            ? '<span class="adm-badge adm-badge-danger" style="font-size:8.5px;padding:1px 5px;">'.adm_h($status).'</span>'
+                            : ($isSuccess ? '<span class="adm-badge adm-badge-success" style="font-size:8.5px;padding:1px 5px;">'.adm_h($status).'</span>' : '');
+                        // Log type chip
+                        $typeBadge = '<span style="font-size:8.5px;padding:1px 5px;border-radius:4px;background:#E2E8F0;color:#475569;font-weight:700;">'.adm_h($logType).'</span>';
+                    ?>
+                    <div class="adm-notif-item">
+                        <div class="adm-notif-icon" style="background:<?= $iconBg ?>; color:<?= $iconColor ?>;"><i class="fas <?= $icon ?>"></i></div>
+                        <div class="adm-notif-content">
+                            <div class="adm-notif-title" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                                <?= adm_h($action) ?>
+                                <?= $typeBadge ?>
+                                <?= $statusBadge ?>
+                                <small style="color:var(--text-muted); font-weight:400;"><?= adm_h($act['user_name']) ?> (<?= ucfirst(adm_h($act['user_role'])) ?>)</small>
+                            </div>
+                            <div class="adm-notif-msg"><?= adm_h($act['details']) ?></div>
+                            <div class="adm-notif-time">
+                                <i class="fas fa-clock"></i> <?= date('M j, g:i A', strtotime($act['created_at'])) ?>
+                                <?php if (!empty($act['ip_address'])): ?>
+                                    &nbsp;&bull;&nbsp;<i class="fas fa-network-wired"></i> <?= adm_h($act['ip_address']) ?>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 19. NOTIFICATION HUB, 20. REPORT SHORTCUTS, 21. USER/BRANCH STATUS (3-COL) -->
+    <!-- ========================================================================= -->
+    <div class="adm-grid-3col">
+        <!-- 19. NOTIFICATION HUB -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-bell"></i> Notification Hub</h2>
+                <a href="notifications.php" style="font-size:11px; font-weight:700; color:var(--petron-blue); text-decoration:none;">View All</a>
+            </div>
+            <div class="adm-card-body" style="padding:0;">
+                <?php if (empty($notifications_list)): ?>
+                    <div style="text-align:center; padding:24px; color:var(--text-muted); font-size:12px;">
+                        <i class="fas fa-check-circle" style="font-size:20px; color:#15803D; margin-bottom:6px;"></i>
+                        <p style="margin:0;">No new notifications or alerts.</p>
+                    </div>
+                <?php else: ?>
+                    <?php foreach ($notifications_list as $notif): ?>
+                        <a href="admin_dashboard.php?open_notif=<?= (int)$notif['id'] ?>" class="adm-notif-item">
+                            <div class="adm-notif-icon"><i class="fas fa-bell"></i></div>
+                            <div class="adm-notif-content">
+                                <div class="adm-notif-title">
+                                    <?= adm_h($notif['title']) ?>
+                                    <?php if (($notif['status'] ?? '') === 'unread'): ?>
+                                        <span class="adm-badge adm-badge-warning" style="font-size:8.5px; padding:1px 5px;">New</span>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="adm-notif-msg"><?= adm_h($notif['message']) ?></div>
+                                <div class="adm-notif-time"><i class="fas fa-clock"></i> <?= date('M j, g:i A', strtotime($notif['created_at'])) ?></div>
+                            </div>
+                        </a>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- 20. REPORT SHORTCUTS -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-file-lines" style="color:var(--petron-blue);"></i> Report Shortcuts</h2>
+                <a href="admin_reports.php" style="font-size:11px; font-weight:700; color:var(--petron-blue); text-decoration:none;">Reports Hub</a>
+            </div>
+            <div class="adm-card-body">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                    <a href="admin_reports.php?cat=sales&tab=fuel_sales" style="padding:8px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; text-decoration:none; color:var(--text-dark); font-size:11px; font-weight:700; display:flex; align-items:center; gap:6px;">
+                        <i class="fas fa-gas-pump" style="color:var(--petron-blue);"></i> Fuel Sales
+                    </a>
+                    <a href="admin_reports.php?cat=sales&tab=daily_merch_service" style="padding:8px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; text-decoration:none; color:var(--text-dark); font-size:11px; font-weight:700; display:flex; align-items:center; gap:6px;">
+                        <i class="fas fa-boxes" style="color:#15803D;"></i> Merch Sales
+                    </a>
+                    <a href="admin_reports.php?cat=operations&tab=job_order" style="padding:8px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; text-decoration:none; color:var(--text-dark); font-size:11px; font-weight:700; display:flex; align-items:center; gap:6px;">
+                        <i class="fas fa-wrench" style="color:#D97706;"></i> Job Orders
+                    </a>
+                    <a href="admin_reports.php?cat=inventory&tab=merch_inventory" style="padding:8px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; text-decoration:none; color:var(--text-dark); font-size:11px; font-weight:700; display:flex; align-items:center; gap:6px;">
+                        <i class="fas fa-warehouse" style="color:#0284C7;"></i> Inventory
+                    </a>
+                    <a href="admin_reports.php?cat=financial&tab=receivables" style="padding:8px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; text-decoration:none; color:var(--text-dark); font-size:11px; font-weight:700; display:flex; align-items:center; gap:6px;">
+                        <i class="fas fa-file-invoice-dollar" style="color:#0D9488;"></i> Receivables
+                    </a>
+                    <a href="admin_reports.php?cat=audit&tab=login_history" style="padding:8px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; text-decoration:none; color:var(--text-dark); font-size:11px; font-weight:700; display:flex; align-items:center; gap:6px;">
+                        <i class="fas fa-shield-halved" style="color:#7C3AED;"></i> Audit Trail
+                    </a>
+                    <a href="admin_reports.php?cat=financial&tab=revenue_summary" style="padding:8px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; text-decoration:none; color:var(--text-dark); font-size:11px; font-weight:700; display:flex; align-items:center; gap:6px;">
+                        <i class="fas fa-chart-pie" style="color:#B45309;"></i> Revenue
+                    </a>
+                    <a href="admin_reports.php?cat=procurement&tab=purchase_order" style="padding:8px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; text-decoration:none; color:var(--text-dark); font-size:11px; font-weight:700; display:flex; align-items:center; gap:6px;">
+                        <i class="fas fa-truck-loading" style="color:#475569;"></i> Procurement
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 21. USER / SHIFT / BRANCH STATUS -->
+        <div class="adm-card" style="margin-bottom:0;">
+            <div class="adm-card-header">
+                <h2><i class="fas fa-building-circle-check" style="color:#15803D;"></i> Branch Operations Status</h2>
+                <span class="adm-badge adm-badge-success">Operational</span>
+            </div>
+            <div class="adm-card-body">
+                <div class="adm-metric-list">
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Active Staff Members</span>
+                        <span class="adm-metric-value" style="color:#15803D;"><?= number_format($active_staff_count) ?> Active</span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Current Operational Shift</span>
+                        <span class="adm-metric-value" style="color:var(--petron-blue);"><?= adm_h($current_shift_name) ?></span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Shift 1 Fuel Status</span>
+                        <span class="adm-badge adm-badge-<?= $shift1_status === 'Completed' ? 'success' : 'warning' ?>"><?= adm_h($shift1_status) ?></span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Shift 2 Fuel Status</span>
+                        <span class="adm-badge adm-badge-<?= $shift2_status === 'Completed' ? 'success' : 'warning' ?>"><?= adm_h($shift2_status) ?></span>
+                    </div>
+                    <div class="adm-metric-item">
+                        <span class="adm-metric-label">Pending Approval Requests</span>
+                        <span class="adm-badge <?= $total_pending_approvals > 0 ? 'adm-badge-warning' : 'adm-badge-success' ?>"><?= $total_pending_approvals ?> Action Items</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
-<script src="<?= adm_h(($app_base_path ?? '') . '/assets/vendor/chart.js/chart.umd.min.js') ?>"></script>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const peso = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
-    const number = new Intl.NumberFormat('en-PH');
-    const colors = {
-        fuel: '#df1f26',
-        merch: '#119b52',
-        service: '#002f70',
-        warning: '#f59e0b',
-        danger: '#dc2626',
-        info: '#0e7490',
-        purple: '#7c3aed',
-        grid: '#dbe4ef',
-        text: '#475569'
-    };
+<!-- ========================================================================= -->
+<!-- ADMIN MERCHANDISE INVENTORY MODAL -->
+<!-- ========================================================================= -->
+<div id="admMerchInvModal" style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(15,23,42,0.6); backdrop-filter:blur(3px); align-items:center; justify-content:center; padding:16px;">
+    <div style="background:#ffffff; border-radius:12px; max-width:920px; width:100%; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25); border:1px solid #E2E8F0; overflow:hidden;">
+        <!-- Header -->
+        <div style="padding:16px 20px; background:#002F6C; color:#FFFFFF; display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <i class="fas fa-boxes" style="font-size:20px; color:#FCD34D;"></i>
+                <div>
+                    <h3 style="margin:0; font-size:16px; font-weight:800; color:#FFFFFF;">Admin Merchandise Catalog &amp; Stock Levels</h3>
+                    <p style="margin:0; font-size:11px; color:#93C5FD;">Branch-wide overview of <?= number_format($total_products_count) ?> products, inventory values &amp; physical counts</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeAdmMerchInvModal()" style="background:transparent; border:none; color:#FFFFFF; font-size:20px; cursor:pointer; line-height:1;">&times;</button>
+        </div>
 
-    function safeData(values) {
-        return values.map(function (value) {
-            const n = Number(value);
-            return Number.isFinite(n) ? n : 0;
+        <!-- Filter Tabs -->
+        <div style="padding:12px 20px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
+                <button type="button" class="adm-flt-btn active" id="admflt_all" onclick="filterAdmMerchModal('all')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#002F6C; color:#FFF; cursor:pointer;">
+                    All (<?= $total_products_count ?>)
+                </button>
+                <button type="button" class="adm-flt-btn" id="admflt_available" onclick="filterAdmMerchModal('available')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#15803D; cursor:pointer;">
+                    <i class="fas fa-circle-check"></i> Available (<?= $available_merch_count ?>)
+                </button>
+                <button type="button" class="adm-flt-btn" id="admflt_low" onclick="filterAdmMerchModal('low')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#B45309; cursor:pointer;">
+                    <i class="fas fa-triangle-exclamation"></i> Low Stock (<?= $low_merch_count ?>)
+                </button>
+                <button type="button" class="adm-flt-btn" id="admflt_critical" onclick="filterAdmMerchModal('critical')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#DC2626; cursor:pointer;">
+                    <i class="fas fa-circle-exclamation"></i> Critical (<?= $crit_merch_count ?>)
+                </button>
+                <button type="button" class="adm-flt-btn" id="admflt_out" onclick="filterAdmMerchModal('out')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#991B1B; cursor:pointer;">
+                    <i class="fas fa-circle-xmark"></i> Out of Stock (<?= $out_merch_count ?>)
+                </button>
+                <button type="button" class="adm-flt-btn" id="admflt_variance" onclick="filterAdmMerchModal('variance')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#7C3AED; cursor:pointer;">
+                    <i class="fas fa-clipboard-check"></i> Variance (<?= $variance_merch_count ?>)
+                </button>
+            </div>
+            <input type="text" id="admMerchModalSearch" placeholder="Search product..." onkeyup="searchAdmMerchModal()" style="padding:5px 10px; font-size:12px; border:1px solid #CBD5E1; border-radius:6px; width:180px;">
+        </div>
+
+        <!-- Table Body -->
+        <div style="padding:0; overflow-y:auto; flex:1;">
+            <table class="adm-table" style="margin:0; width:100%;">
+                <thead>
+                    <tr>
+                        <th>Product Name</th>
+                        <th>Category</th>
+                        <th style="text-align:right;">Current Stock</th>
+                        <th style="text-align:right;">Reorder Level</th>
+                        <th style="text-align:right;">Critical Level</th>
+                        <th style="text-align:center;">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="admMerchModalTableBody">
+                    <?php if (empty($merch_inv_stats)): ?>
+                        <tr><td colspan="6" style="text-align:center; color:#64748B; padding:24px;">No merchandise products found.</td></tr>
+                    <?php else: ?>
+                        <?php foreach ($merch_inv_stats as $item): ?>
+                            <tr class="adm-merch-row" data-type="<?= $item['alert_type'] ?>" data-has-variance="<?= $item['has_variance'] ? 'true' : 'false' ?>" data-name="<?= strtolower(htmlspecialchars($item['product_name'] . ' ' . $item['category'])) ?>">
+                                <td>
+                                    <strong><?= adm_h($item['product_name']) ?></strong>
+                                    <?php if ($item['has_variance']): ?>
+                                        <span style="display:inline-block; margin-left:6px; padding:1px 6px; font-size:9px; font-weight:800; border-radius:4px; background:#F5F3FF; color:#7C3AED; border:1px solid #DDD6FE;">Variance <?= ($item['variance'] > 0 ? '+' : '') . (float)$item['variance'] ?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><span style="color:#64748B; font-size:11px;"><?= adm_h($item['category']) ?></span></td>
+                                <td style="text-align:right; font-weight:800; color:<?= $item['alert_type'] === 'out' ? '#991B1B' : ($item['alert_type'] === 'critical' ? '#DC2626' : ($item['alert_type'] === 'low' ? '#B45309' : '#15803D')) ?>;">
+                                    <?= number_format((float)$item['stock_level']) ?> <?= adm_h($item['unit']) ?>
+                                </td>
+                                <td style="text-align:right; color:#64748B;"><?= number_format((float)$item['reorder_level']) ?></td>
+                                <td style="text-align:right; color:#64748B;"><?= number_format((float)$item['critical_level']) ?></td>
+                                <td style="text-align:center;">
+                                    <span style="display:inline-block; padding:3px 10px; font-size:10px; font-weight:800; border-radius:999px; background:<?= $item['badge_bg'] ?? '#F1F5F9' ?>; color:<?= $item['badge_color'] ?? '#475569' ?>; border:1.5px solid <?= $item['badge_border'] ?? '#CBD5E1' ?>; letter-spacing:0.5px; text-transform:uppercase;"><?= adm_h($item['alert_status']) ?></span>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Footer -->
+        <div style="padding:12px 20px; background:#F8FAFC; border-top:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:11px; color:#64748B;">Total Catalog Items: <strong><?= number_format($total_products_count) ?></strong></span>
+            <div style="display:flex; gap:8px;">
+                <button type="button" onclick="closeAdmMerchInvModal()" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFFFFF; color:#475569; cursor:pointer;">Close</button>
+                <a href="admin_inventory_merchandise.php" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:none; background:#002F6C; color:#FFFFFF; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+                    <i class="fas fa-boxes"></i> Open Merchandise Module
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- 22. AUTO REFRESH & 23. GLOBAL DRAFT AUTOSAVE CLIENT SCRIPTS -->
+<!-- ========================================================================= -->
+<script>
+// Modal Functions
+function openAdmMerchInvModal(filterType = 'all') {
+    const modal = document.getElementById('admMerchInvModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        filterAdmMerchModal(filterType);
+    }
+}
+function closeAdmMerchInvModal() {
+    const modal = document.getElementById('admMerchInvModal');
+    if (modal) modal.style.display = 'none';
+}
+function filterAdmMerchModal(type) {
+    document.querySelectorAll('.adm-flt-btn').forEach(b => {
+        b.style.background = '#FFFFFF';
+        b.style.color = '#475569';
+    });
+    const activeBtn = document.getElementById('admflt_' + type);
+    if (activeBtn) {
+        activeBtn.style.background = '#002F6C';
+        activeBtn.style.color = '#FFFFFF';
+    }
+    const rows = document.querySelectorAll('.adm-merch-row');
+    rows.forEach(r => {
+        const rowType = r.getAttribute('data-type');
+        const hasVar  = r.getAttribute('data-has-variance');
+        if (type === 'all') {
+            r.style.display = '';
+        } else if (type === 'variance') {
+            r.style.display = (hasVar === 'true') ? '' : 'none';
+        } else if (rowType === type) {
+            r.style.display = '';
+        } else {
+            r.style.display = 'none';
+        }
+    });
+}
+function searchAdmMerchModal() {
+    const q = (document.getElementById('admMerchModalSearch')?.value || '').toLowerCase().trim();
+    document.querySelectorAll('.adm-merch-row').forEach(r => {
+        const name = r.getAttribute('data-name') || '';
+        if (!q || name.includes(q)) {
+            r.style.display = '';
+        } else {
+            r.style.display = 'none';
+        }
+    });
+}
+
+// 23. Global Draft Autosave Utility (Preserves unsubmitted forms)
+const AdminDraftAutosave = {
+    save: function(formKey, data) {
+        try { localStorage.setItem('adm_draft_' + formKey, JSON.stringify({ ts: Date.now(), data })); } catch(e) {}
+    },
+    get: function(formKey) {
+        try {
+            const raw = localStorage.getItem('adm_draft_' + formKey);
+            return raw ? JSON.parse(raw) : null;
+        } catch(e) { return null; }
+    },
+    clear: function(formKey) {
+        try { localStorage.removeItem('adm_draft_' + formKey); } catch(e) {}
+    }
+};
+
+document.addEventListener('DOMContentLoaded', function () {
+    const money = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 2 });
+    const num   = new Intl.NumberFormat('en-US');
+
+    // 1. Payment Type Pie/Doughnut Chart (Exact 7 Payment Types)
+    const ctxPayment = document.getElementById('paymentTypeChart');
+    let paymentChartInstance = null;
+    if (ctxPayment) {
+        paymentChartInstance = new Chart(ctxPayment, {
+            type: 'doughnut',
+            data: {
+                labels: <?= json_encode($payment_labels) ?>,
+                datasets: [{
+                    data: <?= json_encode($payment_amounts, JSON_NUMERIC_CHECK) ?>,
+                    backgroundColor: ['#002F6C', '#0284C7', '#3B82F6', '#10B981', '#14B8A6', '#F59E0B', '#8B5CF6'],
+                    borderWidth: 2,
+                    borderColor: '#FFFFFF'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9.5, weight: '600' } } },
+                    tooltip: { callbacks: { label: ctx => ' ' + ctx.label + ': ' + money.format(ctx.parsed || 0) } }
+                }
+            }
         });
     }
 
-    function baseOptions(extra) {
-        return Object.assign({
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    labels: {
-                        usePointStyle: true,
-                        boxWidth: 8,
-                        color: colors.text,
-                        font: { size: 12, weight: '600' }
-                    }
-                },
-                tooltip: {
-                    backgroundColor: '#0f172a',
-                    padding: 10,
-                    titleFont: { weight: '700' },
-                    bodyFont: { weight: '600' }
-                }
+    // 2. Daily Sales Trend Line Chart
+    const ctxDaily = document.getElementById('dailySalesTrendChart');
+    let dailySalesChartInstance = null;
+    if (ctxDaily) {
+        dailySalesChartInstance = new Chart(ctxDaily, {
+            type: 'line',
+            data: {
+                labels: <?= json_encode($week_labels) ?>,
+                datasets: [
+                    { label: 'Total (₱)', data: <?= json_encode($daily_total_data, JSON_NUMERIC_CHECK) ?>, borderColor: '#002F6C', backgroundColor: 'rgba(0, 47, 108, 0.06)', fill: true, tension: 0.35, borderWidth: 2.5, pointRadius: 4 },
+                    { label: 'Fuel (₱)', data: <?= json_encode($daily_fuel_data, JSON_NUMERIC_CHECK) ?>, borderColor: '#D97706', borderDash: [4, 4], fill: false, tension: 0.3, borderWidth: 1.5, pointRadius: 3 },
+                    { label: 'Merch (₱)', data: <?= json_encode($daily_merch_data, JSON_NUMERIC_CHECK) ?>, borderColor: '#15803D', borderDash: [4, 4], fill: false, tension: 0.3, borderWidth: 1.5, pointRadius: 3 },
+                    { label: 'Job Orders (₱)', data: <?= json_encode($daily_job_data, JSON_NUMERIC_CHECK) ?>, borderColor: '#7C3AED', borderDash: [4, 4], fill: false, tension: 0.3, borderWidth: 1.5, pointRadius: 3 }
+                ]
             },
-            scales: {
-                x: {
-                    grid: { color: colors.grid },
-                    ticks: { color: colors.text, font: { weight: '600' } }
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top', labels: { boxWidth: 10, font: { size: 10, weight: '600' } } },
+                    tooltip: { callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + money.format(ctx.parsed.y || 0) } }
                 },
-                y: {
-                    beginAtZero: true,
-                    grid: { color: colors.grid },
-                    ticks: { color: colors.text, font: { weight: '600' } }
+                scales: {
+                    y: { beginAtZero: true, ticks: { callback: v => '₱' + num.format(v) }, grid: { color: '#F1F5F9' } },
+                    x: { grid: { display: false }, ticks: { font: { size: 10 } } }
                 }
             }
-        }, extra || {});
+        });
     }
 
-    function renderChart(id, config) {
-        const canvas = document.getElementById(id);
-        if (!canvas || !window.Chart) return;
-        new Chart(canvas, config);
+    // 3. Monthly Revenue Trend Line Chart
+    const ctxMonthly = document.getElementById('monthlyRevenueChart');
+    let monthlyRevenueChartInstance = null;
+    if (ctxMonthly) {
+        monthlyRevenueChartInstance = new Chart(ctxMonthly, {
+            type: 'line',
+            data: {
+                labels: <?= json_encode($monthly_trend_labels) ?>,
+                datasets: [{
+                    label: 'Monthly Revenue (₱)',
+                    data: <?= json_encode($monthly_trend_data, JSON_NUMERIC_CHECK) ?>,
+                    borderColor: '#ED1C24',
+                    backgroundColor: 'rgba(237, 28, 36, 0.08)',
+                    fill: true,
+                    tension: 0.35,
+                    borderWidth: 2.5,
+                    pointBackgroundColor: '#002F6C',
+                    pointRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => 'Monthly: ' + money.format(ctx.parsed.y || 0) } }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { callback: v => '₱' + num.format(v) }, grid: { color: '#F1F5F9' } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
     }
 
-    renderChart('revenueBreakdownChart', {
-        type: 'doughnut',
-        data: {
-            labels: ['Fuel Sales', 'Merchandise Sales', 'Service Sales'],
-            datasets: [{
-                data: safeData([<?= json_encode($fuel_revenue) ?>, <?= json_encode($merch_revenue) ?>, <?= json_encode($service_revenue) ?>]),
-                backgroundColor: [colors.fuel, colors.merch, colors.service],
-                borderWidth: 0
-            }]
-        },
-        options: baseOptions({
-            cutout: '62%',
-            scales: {},
-            plugins: {
-                legend: { position: 'bottom' },
-                tooltip: {
-                    callbacks: {
-                        label: function (ctx) {
-                            return ctx.label + ': ' + peso.format(ctx.raw || 0);
-                        }
-                    }
+    // 4. Top Products Bar Chart
+    const ctxTopProd = document.getElementById('topProductsChart');
+    let topProductsChartInstance = null;
+    if (ctxTopProd) {
+        topProductsChartInstance = new Chart(ctxTopProd, {
+            type: 'bar',
+            data: {
+                labels: <?= json_encode($top_prod_labels) ?>,
+                datasets: [{
+                    label: 'Units Sold',
+                    data: <?= json_encode($top_prod_quantities, JSON_NUMERIC_CHECK) ?>,
+                    backgroundColor: '#002F6C',
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => 'Sold: ' + num.format(ctx.parsed.y || 0) + ' pcs' } }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { stepSize: 1, callback: v => num.format(v) }, grid: { color: '#F1F5F9' } },
+                    x: { grid: { display: false }, ticks: { font: { size: 9.5 }, maxRotation: 25, minRotation: 0 } }
                 }
             }
-        })
-    });
-
-    renderChart('monthlyRevenueChart', {
-        type: 'line',
-        data: {
-            labels: <?= json_encode($month_labels) ?>,
-            datasets: [{
-                label: 'Revenue',
-                data: safeData(<?= json_encode($monthly_revenue) ?>),
-                borderColor: colors.service,
-                backgroundColor: 'rgba(0, 47, 112, 0.12)',
-                borderWidth: 3,
-                pointRadius: 3,
-                tension: 0.35,
-                fill: true
-            }]
-        },
-        options: baseOptions({
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function (ctx) {
-                            return peso.format(ctx.raw || 0);
-                        }
-                    }
-                }
-            }
-        })
-    });
-
-    renderChart('transactionsModuleChart', {
-        type: 'bar',
-        data: {
-            labels: ['Fuel', 'Merchandise', 'Service'],
-            datasets: [{
-                label: 'Transactions',
-                data: safeData([<?= (int) $fuel_count ?>, <?= (int) $merch_count ?>, <?= (int) $service_count ?>]),
-                backgroundColor: [colors.fuel, colors.merch, colors.service],
-                borderRadius: 5
-            }]
-        },
-        options: baseOptions({
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function (ctx) {
-                            return number.format(ctx.raw || 0) + ' transactions';
-                        }
-                    }
-                }
-            }
-        })
-    });
-
-    renderChart('inventoryStatusChart', {
-        type: 'bar',
-        data: {
-            labels: ['Fuel Tanks', 'Merchandise Products'],
-            datasets: [
-                { label: 'Normal', data: [<?= (int) $fuel_normal_count ?>, <?= (int) $merch_normal_count ?>], backgroundColor: colors.merch, borderRadius: 5 },
-                { label: 'Low', data: [<?= (int) $fuel_low_count ?>, <?= (int) $merch_low_count ?>], backgroundColor: colors.warning, borderRadius: 5 },
-                { label: 'Critical', data: [<?= (int) $fuel_critical_count ?>, <?= (int) $merch_critical_count ?>], backgroundColor: colors.danger, borderRadius: 5 }
-            ]
-        },
-        options: baseOptions({
-            indexAxis: 'y',
-            scales: {
-                x: { stacked: true, beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.text, precision: 0 } },
-                y: { stacked: true, grid: { display: false }, ticks: { color: colors.text, font: { weight: '700' } } }
-            }
-        })
-    });
-
-    renderChart('weeklySalesChart', {
-        type: 'line',
-        data: {
-            labels: <?= json_encode($weekly_labels) ?>,
-            datasets: [{
-                label: 'Revenue',
-                data: safeData(<?= json_encode($weekly_sales) ?>),
-                borderColor: colors.merch,
-                backgroundColor: 'rgba(17, 155, 82, 0.12)',
-                borderWidth: 3,
-                pointRadius: 3,
-                tension: 0.35,
-                fill: true
-            }]
-        },
-        options: baseOptions({
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function (ctx) {
-                            return peso.format(ctx.raw || 0);
-                        }
-                    }
-                }
-            }
-        })
-    });
-
-    renderChart('userActivityChart', {
-        type: 'bar',
-        data: {
-            labels: <?= json_encode($user_activity_labels) ?>,
-            datasets: [{
-                label: 'Transactions Processed',
-                data: safeData(<?= json_encode($user_activity_data) ?>),
-                backgroundColor: colors.purple,
-                borderRadius: 5
-            }]
-        },
-        options: baseOptions({
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function (ctx) {
-                            return number.format(ctx.raw || 0) + ' processed';
-                        }
-                    }
-                }
-            }
-        })
-    });
-
-    renderChart('fuelSalesChart', {
-        type: 'bar',
-        data: {
-            labels: <?= json_encode($fuel_product_labels) ?>,
-            datasets: [{
-                label: 'Liters',
-                data: safeData(<?= json_encode($fuel_sales_by_product) ?>),
-                backgroundColor: [colors.fuel, colors.warning, colors.purple, colors.merch, colors.info],
-                borderRadius: 5
-            }]
-        },
-        options: baseOptions({
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function (ctx) {
-                            return number.format(ctx.raw || 0) + ' L';
-                        }
-                    }
-                }
-            }
-        })
-    });
-
-    renderChart('merchandiseCategoryChart', {
-        type: 'bar',
-        data: {
-            labels: <?= json_encode($merch_category_labels) ?>,
-            datasets: [{
-                label: 'Sales',
-                data: safeData(<?= json_encode(array_values($merch_sales_by_category)) ?>),
-                backgroundColor: [colors.service, colors.info, colors.warning, colors.merch, colors.fuel],
-                borderRadius: 5
-            }]
-        },
-        options: baseOptions({
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function (ctx) {
-                            return peso.format(ctx.raw || 0);
-                        }
-                    }
-                }
-            }
-        })
-    });
-});
-</script>
-
-<!-- ── Admin Dashboard Live Metric Sync ─ live_sync.js loaded by footer.php ── -->
-<script>
-(function () {
-    'use strict';
-    function getLiveSyncUrl() {
-        const url = new URL(window.location.href);
-        url.searchParams.set('live_sync', '1');
-        url.searchParams.set('_', String(Date.now()));
-        return url.toString();
+        });
     }
-    let _inFlight = false;
-    let _lastMetrics = {};
 
-    function flashEl(el) {
-        if (!el) return;
-        el.style.transition = 'color 0.25s';
-        el.style.color = '#002F70';
-        setTimeout(() => { el.style.color = ''; }, 600);
+    // 5. Most Requested Services Bar Chart
+    const ctxTopServ = document.getElementById('topServicesChart');
+    let topServicesChartInstance = null;
+    if (ctxTopServ) {
+        topServicesChartInstance = new Chart(ctxTopServ, {
+            type: 'bar',
+            data: {
+                labels: <?= json_encode($top_service_labels) ?>,
+                datasets: [{
+                    label: 'Requests',
+                    data: <?= json_encode($top_service_counts, JSON_NUMERIC_CHECK) ?>,
+                    backgroundColor: '#0284C7',
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => 'Requests: ' + num.format(ctx.parsed.y || 0) } }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { stepSize: 1, callback: v => num.format(v) }, grid: { color: '#F1F5F9' } },
+                    x: { grid: { display: false }, ticks: { font: { size: 9.5 }, maxRotation: 25, minRotation: 0 } }
+                }
+            }
+        });
     }
-    function updateEl(key, val) {
-        const el = document.querySelector('[data-live-metric="' + key + '"]');
-        if (el && el.textContent.trim() !== String(val).trim()) {
-            el.textContent = val;
-            flashEl(el);
+
+    // 6. Job Order Status Chart
+    const ctxJO = document.getElementById('joStatusChart');
+    let joStatusChartInstance = null;
+    if (ctxJO) {
+        joStatusChartInstance = new Chart(ctxJO, {
+            type: 'doughnut',
+            data: {
+                labels: <?= json_encode($jo_status_labels) ?>,
+                datasets: [{
+                    data: <?= json_encode($jo_status_data, JSON_NUMERIC_CHECK) ?>,
+                    backgroundColor: ['#D97706', '#0284C7', '#16A34A', '#DC2626'],
+                    borderWidth: 2,
+                    borderColor: '#FFFFFF'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10, weight: '600' } } }
+                }
+            }
+        });
+    }
+
+    // 22. AUTO REFRESH (Background 15-second polling without manual F5)
+    async function autoRefreshAdminDashboard() {
+        // Do not update while modal or inputs are open
+        const modal = document.getElementById('admMerchInvModal');
+        if (modal && modal.style.display === 'flex') return;
+
+        try {
+            const resp = await fetch('admin_dashboard.php?ajax=1');
+            if (!resp.ok) return;
+            const data = await resp.json();
+
+            if (data.kpis) {
+                if (document.getElementById('kpi_fuel_sales')) document.getElementById('kpi_fuel_sales').innerHTML = '&#8369; ' + data.kpis.fuel_sales_today;
+                if (document.getElementById('kpi_merch_sales')) document.getElementById('kpi_merch_sales').innerHTML = '&#8369; ' + data.kpis.merch_sales_today;
+                if (document.getElementById('kpi_job_sales')) document.getElementById('kpi_job_sales').innerHTML = '&#8369; ' + data.kpis.job_sales_today;
+                if (document.getElementById('kpi_total_sales')) document.getElementById('kpi_total_sales').innerHTML = '&#8369; ' + data.kpis.total_sales_today;
+                if (document.getElementById('kpi_active_jobs')) document.getElementById('kpi_active_jobs').textContent = data.kpis.active_job_orders;
+                if (document.getElementById('kpi_completed_jobs')) document.getElementById('kpi_completed_jobs').textContent = data.kpis.completed_job_orders;
+                if (document.getElementById('kpi_low_stock')) document.getElementById('kpi_low_stock').textContent = data.kpis.low_stock_items;
+                if (document.getElementById('kpi_critical_stock')) document.getElementById('kpi_critical_stock').textContent = data.kpis.critical_stock_items;
+                if (document.getElementById('kpi_pending_approvals')) document.getElementById('kpi_pending_approvals').textContent = data.kpis.pending_approvals;
+                if (document.getElementById('kpi_monthly_rev')) document.getElementById('kpi_monthly_rev').innerHTML = '&#8369; ' + data.kpis.monthly_revenue;
+                if (document.getElementById('kpi_inventory_val')) document.getElementById('kpi_inventory_val').innerHTML = '&#8369; ' + data.kpis.inventory_value;
+                if (document.getElementById('kpi_ar_val')) document.getElementById('kpi_ar_val').innerHTML = '&#8369; ' + data.kpis.ar_outstanding;
+
+                // Branch Sales Overview Section IDs
+                if (document.getElementById('op_fuel_sales')) document.getElementById('op_fuel_sales').innerHTML = '&#8369; ' + data.kpis.fuel_sales_today;
+                if (document.getElementById('op_merch_sales')) document.getElementById('op_merch_sales').innerHTML = '&#8369; ' + data.kpis.merch_sales_today;
+                if (document.getElementById('op_job_sales')) document.getElementById('op_job_sales').innerHTML = '&#8369; ' + data.kpis.job_sales_today;
+                if (document.getElementById('op_total_sales')) document.getElementById('op_total_sales').innerHTML = '&#8369; ' + data.kpis.total_sales_today;
+                if (document.getElementById('branch_tx_badge')) document.getElementById('branch_tx_badge').textContent = data.kpis.total_transactions + ' Finalized Transactions';
+                
+                // 7 Payment Breakdown IDs
+                if (document.getElementById('pm_cash')) document.getElementById('pm_cash').innerHTML = '&#8369; ' + data.kpis.payment_cash;
+                if (document.getElementById('pm_credit_card')) document.getElementById('pm_credit_card').innerHTML = '&#8369; ' + data.kpis.payment_credit_card;
+                if (document.getElementById('pm_debit_card')) document.getElementById('pm_debit_card').innerHTML = '&#8369; ' + data.kpis.payment_debit_card;
+                if (document.getElementById('pm_gcash')) document.getElementById('pm_gcash').innerHTML = '&#8369; ' + data.kpis.payment_gcash;
+                if (document.getElementById('pm_maya')) document.getElementById('pm_maya').innerHTML = '&#8369; ' + data.kpis.payment_maya;
+                if (document.getElementById('pm_fleet')) document.getElementById('pm_fleet').innerHTML = '&#8369; ' + data.kpis.payment_fleet;
+                if (document.getElementById('pm_credit_acct')) document.getElementById('pm_credit_acct').innerHTML = '&#8369; ' + data.kpis.payment_credit_acct;
+            }
+
+            if (data.charts) {
+                if (paymentChartInstance && data.charts.payment_data) {
+                    paymentChartInstance.data.datasets[0].data = data.charts.payment_data;
+                    paymentChartInstance.update();
+                }
+                if (dailySalesChartInstance && data.charts.daily_total) {
+                    dailySalesChartInstance.data.datasets[0].data = data.charts.daily_total;
+                    dailySalesChartInstance.data.datasets[1].data = data.charts.daily_fuel;
+                    dailySalesChartInstance.data.datasets[2].data = data.charts.daily_merch;
+                    dailySalesChartInstance.data.datasets[3].data = data.charts.daily_job;
+                    dailySalesChartInstance.update();
+                }
+                if (monthlyRevenueChartInstance && data.charts.monthly_revenue) {
+                    monthlyRevenueChartInstance.data.datasets[0].data = data.charts.monthly_revenue;
+                    monthlyRevenueChartInstance.update();
+                }
+                if (topProductsChartInstance && data.charts.top_prod_data) {
+                    topProductsChartInstance.data.labels = data.charts.top_prod_labels;
+                    topProductsChartInstance.data.datasets[0].data = data.charts.top_prod_data;
+                    topProductsChartInstance.update();
+                }
+                if (topServicesChartInstance && data.charts.top_serv_data) {
+                    topServicesChartInstance.data.labels = data.charts.top_serv_labels;
+                    topServicesChartInstance.data.datasets[0].data = data.charts.top_serv_data;
+                    topServicesChartInstance.update();
+                }
+                if (joStatusChartInstance && data.charts.jo_status_data) {
+                    joStatusChartInstance.data.datasets[0].data = data.charts.jo_status_data;
+                    joStatusChartInstance.update();
+                }
+            }
+        } catch(err) {
+            console.warn('Auto refresh notice:', err);
         }
     }
 
-    window.refreshLivePageData = async function () {
-        if (_inFlight) return;
-        _inFlight = true;
-        try {
-            const ctrl = new AbortController();
-            const tid = setTimeout(() => ctrl.abort(), 6000);
-            const res = await fetch(getLiveSyncUrl(), { signal: ctrl.signal, credentials: 'same-origin', cache: 'no-store', headers: { 'Accept': 'application/json' } });
-            clearTimeout(tid);
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            const data = await res.json();
-            if (!data.success) throw new Error('error');
-            const m = data.metrics || {};
-            Object.keys(m).forEach(k => { if (_lastMetrics[k] !== m[k]) { updateEl(k, m[k]); _lastMetrics[k] = m[k]; } });
-        } catch (e) {}
-        finally { _inFlight = false; }
-    };
-})();
+    setInterval(autoRefreshAdminDashboard, 15000);
+});
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -444,7 +444,7 @@ $date_to        = trim($_GET['date_to'] ?? '');
 
 // â”€â”€ Active Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $active_tab = trim($_GET['tab'] ?? 'overview');
-if (!in_array($active_tab, ['overview', 'movement', 'stockin', 'stockout', 'transfer', 'damaged', 'expired'])) $active_tab = 'overview';
+if (!in_array($active_tab, ['overview', 'movement', 'alerts', 'stockin', 'stockout', 'transfer', 'damaged', 'expired'])) $active_tab = 'overview';
 
 // â”€â”€ Fetch dynamic categories for dropdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $all_categories = [];
@@ -634,7 +634,7 @@ try {
 
 $filtered_items = [];
 
-foreach ($all_items as $item) {
+foreach ($all_items as &$item) {
     $stock     = (float)$item['stock_level'];
     $capacity  = (float)$item['capacity'];
     $reorder   = (float)$item['reorder_level'];
@@ -658,6 +658,8 @@ foreach ($all_items as $item) {
     if ($item_status === 'inactive') {
         $computed_status = 'inactive';
     }
+
+    $item['computed_status'] = $computed_status;
 
     // Global KPIs (unfiltered)
     $kpi_total_products++;
@@ -760,6 +762,7 @@ foreach ($all_items as $item) {
     $item['computed_status'] = $computed_status;
     $filtered_items[] = $item;
 }
+unset($item);
 
 // Group filtered items by category for grouped rendering
 $sorted_filtered = [];
@@ -1920,11 +1923,50 @@ body, html {
 </div>
 <?php endif; ?>
 
-<!-- â•â• TAB: STOCK ALERTS â•â• -->
+<!-- ════ TAB: STOCK ALERTS ════ -->
 <?php if ($active_tab === 'alerts'): ?>
+<?php
+$alert_rows = array_filter($all_items, function($i) {
+    $status = strtolower($i['computed_status'] ?? '');
+    return in_array($status, ['low', 'critical', 'out'], true);
+});
+$total_alerts_count = count($alert_rows);
+?>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:20px;">
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #fed7aa;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+            <div style="font-size:11px;font-weight:700;color:#ea580c;text-transform:uppercase;letter-spacing:.3px;">Low Stock Items</div>
+            <div style="font-size:24px;font-weight:800;color:#ea580c;margin-top:4px;"><?= number_format($kpi_low_stock) ?></div>
+        </div>
+        <div style="background:#fff7ed;color:#ea580c;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
+    </div>
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #fecaca;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+            <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.3px;">Critical Stock Items</div>
+            <div style="font-size:24px;font-weight:800;color:#dc2626;margin-top:4px;"><?= number_format($kpi_critical_stock) ?></div>
+        </div>
+        <div style="background:#fef2f2;color:#dc2626;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-fire"></i></div>
+    </div>
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #fecaca;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+            <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock</div>
+            <div style="font-size:24px;font-weight:800;color:#991b1b;margin-top:4px;"><?= number_format($kpi_out_of_stock) ?></div>
+        </div>
+        <div style="background:#fef2f2;color:#991b1b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
+    </div>
+    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+            <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.3px;">Total Active Alerts</div>
+            <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?= number_format($total_alerts_count) ?></div>
+        </div>
+        <div style="background:#f0f4f8;color:#002F70;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-bell"></i></div>
+    </div>
+</div>
+
 <div class="tbl-card">
     <div class="tbl-hd">
-        <div class="tbl-title"><i class="fas fa-exclamation-triangle" style="color:#dc2626;"></i> Stock Alerts</div>
+        <div class="tbl-title"><i class="fas fa-exclamation-triangle" style="color:#dc2626;"></i> Active Stock Alerts Catalog</div>
         <div style="display:flex;align-items:center;gap:10px;">
             <input type="text" id="adminAlertSearchInput" placeholder="Search alert products..." oninput="filterAdminAlertTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:220px;">
         </div>
@@ -1933,35 +1975,37 @@ body, html {
         <table class="afto-tbl" id="adminAlertTable" style="width:100%; table-layout:fixed;">
             <thead>
                 <tr>
-                    <th>Product</th>
-                    <th style="text-align:right;">Current Stock</th>
-                    <th style="text-align:right;">Reorder Level</th>
-                    <th style="text-align:center;">Status</th>
+                    <th style="width:10%;">SKU</th>
+                    <th style="width:25%;">Product Name</th>
+                    <th style="width:15%;">Category</th>
+                    <th style="width:12%;text-align:right;">Current Stock</th>
+                    <th style="width:12%;text-align:right;">Reorder Level</th>
+                    <th style="width:12%;text-align:center;">Status</th>
+                    <th style="width:14%;text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody id="adminAlertBody">
-            <?php
-            $alert_rows = array_filter($all_items, function($i) {
-                $st = (float)($i['stock_level'] ?? 0);
-                $re = (float)($i['reorder_level'] ?? 24);
-                return ($st <= $re || strtolower($i['computed_status'] ?? '') !== 'available');
-            });
-            ?>
             <?php if (empty($alert_rows)): ?>
-                <tr><td colspan="4" class="align-center" style="padding:24px;color:#64748b;"><i class="fas fa-check-circle" style="font-size:24px;display:block;margin-bottom:8px;color:#16a34a;"></i>All stock levels are healthy! No alerts.</td></tr>
+                <tr><td colspan="7" class="align-center" style="padding:32px;color:#64748b;"><i class="fas fa-check-circle" style="font-size:28px;display:block;margin-bottom:8px;color:#16a34a;"></i>All stock levels are healthy! No active alerts found.</td></tr>
             <?php else: ?>
                 <?php foreach ($alert_rows as $item):
                     $stock   = (float)$item['stock_level'];
                     $reorder = (float)($item['reorder_level'] ?? 24);
                     $unit    = htmlspecialchars($item['unit'] ?? 'pcs');
-                    $st_lbl  = getStatusLabel($item['computed_status']);
-                    $st_cls  = getStatusBadgeClass($item['computed_status']);
+                    $st_lbl  = getStatusLabel($item['computed_status'] ?? 'available');
+                    $st_cls  = getStatusBadgeClass($item['computed_status'] ?? 'available');
+                    $item_json = htmlspecialchars(json_encode($item), ENT_QUOTES);
                 ?>
-                <tr class="alert-row" data-search="<?= strtolower(htmlspecialchars($item['name'] . ' ' . $item['sku'])) ?>">
-                    <td><strong><?= htmlspecialchars($item['name']) ?></strong><br><code style="font-size:9px;color:#94a3b8;"><?= htmlspecialchars($item['sku']) ?></code></td>
-                    <td style="text-align:right;font-weight:800;font-size:14px;color:#002F70;"><?= number_format($stock, 0) ?> <?= $unit ?></td>
+                <tr class="alert-row" data-search="<?= strtolower(htmlspecialchars($item['name'] . ' ' . $item['sku'] . ' ' . ($item['category_name'] ?? ''))) ?>">
+                    <td><code style="font-size:11px;font-weight:700;color:#002F70;"><?= htmlspecialchars($item['sku']) ?></code></td>
+                    <td><strong><?= htmlspecialchars($item['name']) ?></strong></td>
+                    <td style="color:#475569;font-weight:600;"><?= htmlspecialchars($item['category_name'] ?? 'General') ?></td>
+                    <td style="text-align:right;font-weight:800;font-size:13px;color:#002F70;"><?= number_format($stock, 0) ?> <?= $unit ?></td>
                     <td style="text-align:right;font-weight:600;color:#ea580c;"><?= number_format($reorder, 0) ?> <?= $unit ?></td>
                     <td style="text-align:center;"><span class="badge-lbl <?= $st_cls ?>"><?= htmlspecialchars($st_lbl) ?></span></td>
+                    <td style="text-align:center;">
+                        <button type="button" class="int-btn-outline" onclick='adminViewProduct(<?= $item_json ?>)' style="padding:4px 10px;font-size:11px;"><i class="fas fa-eye"></i> View</button>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
@@ -1972,7 +2016,7 @@ body, html {
 </div>
 <?php endif; ?>
 
-<!-- â•â• VIEW PRODUCT MODAL (WITH SUB-TABS) â•â• -->
+<!-- ════ VIEW PRODUCT MODAL (WITH SUB-TABS) ════ -->
 <div class="modal-overlay" id="adminViewProdModal" style="z-index:10000;">
     <div style="background:#fff;border-radius:14px;width:96%;max-width:850px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 40px rgba(0,0,0,.18);overflow:hidden;position:relative;z-index:10001;">
         <!-- Header -->
@@ -1980,7 +2024,6 @@ body, html {
             <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:8px;">
                 <i class="fas fa-box-open"></i> <span id="vpmTitle">View Product</span>
             </div>
-            <button type="button" onclick="closeAdminViewProdModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1;">&times;</button>
         </div>
         <!-- Sub-tabs inside modal -->
         <div style="display:flex;border-bottom:2px solid #e2e8f0;background:#f8fafc;flex-shrink:0;padding:0 16px;overflow-x:auto;white-space:nowrap;gap:4px;">
@@ -2025,19 +2068,18 @@ body, html {
         </div>
         <!-- Footer -->
         <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:10px;background:#f8fafc;flex-shrink:0;">
-            <button type="button" onclick="closeAdminViewProdModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;"><i class="fas fa-times"></i> Close</button>
+            <button type="button" onclick="closeAdminViewProdModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;">Close</button>
         </div>
     </div>
 </div>
 
-<!-- â•â• VIEW MOVEMENT MODAL â•â• -->
+<!-- ════ VIEW MOVEMENT MODAL ════ -->
 <div class="modal-overlay" id="adminViewMovModal" style="z-index:10005;">
     <div style="background:#fff;border-radius:14px;width:96%;max-width:520px;box-shadow:0 24px 40px rgba(0,0,0,.22);overflow:hidden;position:relative;z-index:10006;">
         <div style="padding:16px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">
             <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:8px;">
                 <i class="fas fa-exchange-alt"></i> Stock Movement Details
             </div>
-            <button type="button" onclick="closeAdminViewMovModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1;">&times;</button>
         </div>
         <div style="padding:22px;font-size:13px;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
@@ -2056,19 +2098,18 @@ body, html {
             <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Notes / Remarks</div><div id="vmmNotes" style="color:#64748b;font-style:italic;"></div></div>
         </div>
         <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;background:#f8fafc;">
-            <button type="button" onclick="closeAdminViewMovModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;"><i class="fas fa-times"></i> Close</button>
+            <button type="button" onclick="closeAdminViewMovModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;">Close</button>
         </div>
     </div>
 </div>
 
-<!-- â•â• VIEW STOCK-IN MODAL â•â• -->
+<!-- ════ VIEW STOCK-IN MODAL ════ -->
 <div class="modal-overlay" id="adminViewSiModal" style="z-index:10005;">
     <div style="background:#fff;border-radius:14px;width:96%;max-width:540px;box-shadow:0 24px 40px rgba(0,0,0,.22);overflow:hidden;position:relative;z-index:10006;">
         <div style="padding:16px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">
             <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:8px;">
                 <i class="fas fa-truck-loading"></i> Stock-In Record Details
             </div>
-            <button type="button" onclick="closeAdminViewSiModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1;">&times;</button>
         </div>
         <div style="padding:22px;font-size:13px;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
@@ -2092,7 +2133,7 @@ body, html {
             <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Notes</div><div id="vsimNotes" style="color:#64748b;font-style:italic;"></div></div>
         </div>
         <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;background:#f8fafc;">
-            <button type="button" onclick="closeAdminViewSiModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;"><i class="fas fa-times"></i> Close</button>
+            <button type="button" onclick="closeAdminViewSiModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;">Close</button>
         </div>
     </div>
 </div>
@@ -2104,7 +2145,6 @@ body, html {
             <div class="modal-title" style="font-size:16px; font-weight:700; color:#fff !important; display:flex; align-items:center; gap:8px;">
                 <i class="fas fa-edit"></i> Edit Product Information
             </div>
-            <button type="button" onclick="closeAdminEditModal()" style="background:none; border:none; color:#fff; font-size:18px; cursor:pointer;"><i class="fas fa-times"></i></button>
         </div>
         <form method="post" action="admin_inventory_merchandise.php" style="padding:20px;">
             <input type="hidden" name="action" value="update_product">
@@ -2201,7 +2241,7 @@ function adminViewProduct(item) {
         document.body.appendChild(overlay);
     }
 
-    document.getElementById('vpmTitle').textContent = 'View Product — ' + (item.name || '');
+    if (document.getElementById('vpmTitle')) document.getElementById('vpmTitle').textContent = 'View Product — ' + (item.name || '');
     document.getElementById('vpmSku').textContent = item.sku || '—';
     document.getElementById('vpmName').textContent = item.name || '—';
     document.getElementById('vpmCategory').textContent = item.category_name || '—';
@@ -2310,30 +2350,7 @@ function vpmSwitchTab(tabNum) {
     }
 }
 
-function printAdminProductDetails() {
-    var r = _adminCurrentProd;
-    if (!r) return;
-    var pw = window.open('', '_blank');
-    pw.document.write('<!DOCTYPE html><html><head><title>Product Details — ' + (r.name || '') + '</title>');
-    pw.document.write('<style>body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:0;padding:24px;}.header{background:#002F6C;color:#fff;padding:16px 20px;border-radius:6px 6px 0 0;}.header h2{margin:0;font-size:16px;}.section{border:1px solid #e2e8f0;border-top:none;padding:16px 20px;margin-bottom:12px;}.section h4{margin:0 0 10px;color:#002F6C;font-size:11px;text-transform:uppercase;border-bottom:1px solid #e2e8f0;padding-bottom:6px;}table.info{width:100%;border-collapse:collapse;font-size:12px;}table.info td{padding:5px 0;border-bottom:1px solid #f1f5f9;}table.info td:first-child{color:#64748b;font-weight:600;width:180px;}.footer{text-align:center;font-size:10px;color:#94a3b8;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;}</style></head><body>');
-    pw.document.write('<div class="header"><h2>Merchandise Product Slip — ' + (r.name || '') + '</h2><p>Petron Station Management System &mdash; Printed: ' + new Date().toLocaleString() + '</p></div>');
-    pw.document.write('<div class="section"><h4>Product Information</h4><table class="info">');
-    pw.document.write('<tr><td>SKU:</td><td><code>' + (r.sku || '—') + '</code></td></tr>');
-    pw.document.write('<tr><td>Product Name:</td><td><strong>' + (r.name || '—') + '</strong></td></tr>');
-    pw.document.write('<tr><td>Category:</td><td>' + (r.category_name || '—') + '</td></tr>');
-    pw.document.write('<tr><td>Brand:</td><td>' + (r.brand || 'Petron') + '</td></tr>');
-    pw.document.write('<tr><td>Supplier:</td><td>' + (r.supplier || 'Petron Corporation') + '</td></tr>');
-    pw.document.write('<tr><td>Barcode:</td><td>' + (r.barcode || '4800012345678') + '</td></tr>');
-    pw.document.write('<tr><td>Current Stock:</td><td><strong style="color:#002F70;">' + Number(r.stock_level || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' ' + (r.unit || 'pcs') + '</strong></td></tr>');
-    pw.document.write('<tr><td>Selling Price:</td><td><strong style="color:#16a34a;">₱' + Number(r.price || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</strong></td></tr>');
-    pw.document.write('</table></div>');
-    pw.document.write('<div class="footer">Petron Station Management System &copy; ' + new Date().getFullYear() + '</div>');
-    pw.document.write('</body></html>');
-    pw.document.close();
-    setTimeout(function() { pw.print(); }, 300);
-}
-
-// â”€â”€ Movement Modal â”€â”€
+// ── Movement Modal ──
 function openMovModal(d) {
     var modal = document.getElementById('adminViewMovModal');
     if (!modal) return;

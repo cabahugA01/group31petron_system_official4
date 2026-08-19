@@ -97,7 +97,7 @@ function is_pending_validation_status($status_str) {
     return str_contains($s, 'pending') || in_array($s, ['closing_completed', 'submitted']);
 }
 
-// â”€â”€ Filters & Inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Filters & Inputs ──────────────────────────────────────────
 $date_from          = trim($_GET['date_from']          ?? date('Y-m-d', strtotime('-30 days')));
 $date_to            = trim($_GET['date_to']            ?? date('Y-m-d'));
 $shift_filter       = trim($_GET['shift_filter']       ?? 'all');
@@ -106,7 +106,248 @@ $status_filter      = trim($_GET['status_filter']      ?? 'pending');
 $search_query       = trim($_GET['search_query']       ?? '');
 $export             = trim($_GET['export']             ?? '');
 
-// â”€â”€ POST Actions (Validate / Reject) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── AJAX Action: Get Fuel Closing for Review ─────────────────
+if (isset($_GET['ajax_action']) && $_GET['ajax_action'] === 'get_closing_for_review') {
+    header('Content-Type: application/json');
+    $tx_ids_raw = $_GET['tx_ids'] ?? '';
+    $tx_id_arr = [];
+    if (is_array($tx_ids_raw)) {
+        $tx_id_arr = array_map('intval', $tx_ids_raw);
+    } else {
+        $tx_id_arr = array_filter(array_map('intval', explode(',', (string)$tx_ids_raw)));
+    }
+
+    if (empty($tx_id_arr)) {
+        echo json_encode(['success' => false, 'message' => 'No transaction IDs provided.']);
+        exit;
+    }
+
+    $in_pl = implode(',', $tx_id_arr);
+    $tx_stmt = $pdo->query("
+        SELECT ft.*, fp.pump_number,
+               COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Staff') as staff_name
+        FROM fuel_transactions ft
+        LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
+        LEFT JOIN users u ON ft.staff_id = u.id
+        WHERE ft.id IN ($in_pl) AND ft.station_id = {$station_id}
+        ORDER BY ft.id ASC
+    ");
+    $selected_txs = $tx_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (empty($selected_txs)) {
+        echo json_encode(['success' => false, 'message' => 'Selected transactions not found.']);
+        exit;
+    }
+
+    $first_tx = $selected_txs[0];
+    $rep_date = date('Y-m-d', strtotime($first_tx['transaction_date'] ?: $first_tx['created_at']));
+    $rep_shift = !empty($first_tx['shift_name']) ? $first_tx['shift_name'] : (!empty($first_tx['shift_period']) ? (strtolower($first_tx['shift_period']) === 'second' ? 'Second Shift' : 'First Shift') : 'Second Shift');
+    $rep_shift_key = strtolower($first_tx['shift_period'] ?? '');
+    if (!$rep_shift_key) {
+        $rep_shift_key = (strpos(strtolower($rep_shift), 'first') !== false || strpos(strtolower($rep_shift), '1') !== false) ? 'first' : 'second';
+    }
+
+    $calc_liters = 0.0;
+    $calc_sales = 0.0;
+    $pump_items = [];
+    foreach ($selected_txs as $stx) {
+        $beg = (float)$stx['previous_reading'];
+        $end = (float)$stx['present_reading'];
+        $cal = (float)$stx['calibration'];
+        $lit = (float)$stx['liters_sold'];
+        if ($end >= $beg && $end > 0) {
+            $lit = max(0, $end - $beg - $cal);
+        }
+        $amt = round($lit * (float)$stx['price_per_liter'], 2);
+        $calc_liters += $lit;
+        $calc_sales += $amt;
+
+        $pump_items[] = [
+            'id' => (int)$stx['id'],
+            'txn_id' => $stx['transaction_id'],
+            'pump_name' => $stx['pump_number'] ?: ('Pump #' . ($stx['pump_id'] ?: '?')),
+            'fuel_type' => $stx['fuel_type'],
+            'beginning' => $beg,
+            'ending' => $end,
+            'cal' => $cal,
+            'liters' => $lit,
+            'price' => (float)$stx['price_per_liter'],
+            'amount' => $amt,
+            'staff' => $stx['staff_name']
+        ];
+    }
+
+    // Check existing fuel_sales_closing record
+    $cls_stmt = $pdo->prepare("
+        SELECT * FROM fuel_sales_closing 
+        WHERE station_id = ? AND report_date = ? AND (shift = ? OR shift_period = ?)
+        ORDER BY id DESC LIMIT 1
+    ");
+    $cls_stmt->execute([$station_id, $rep_date, $rep_shift, $rep_shift_key]);
+    $existing_closing = $cls_stmt->fetch(PDO::FETCH_ASSOC);
+
+    $mgr_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
+    if (!$mgr_name) $mgr_name = $me['username'] ?? 'Manager';
+
+    $staff_encoder = $first_tx['staff_name'];
+
+    echo json_encode([
+        'success' => true,
+        'report_date' => $rep_date,
+        'shift' => $rep_shift,
+        'shift_period' => $rep_shift_key,
+        'staff_name' => $staff_encoder,
+        'manager_name' => $mgr_name,
+        'calculated' => [
+            'total_liters' => $calc_liters,
+            'total_sales' => $calc_sales,
+            'pumps' => $pump_items
+        ],
+        'closing' => $existing_closing ?: null
+    ]);
+    exit;
+}
+
+// ── AJAX Action: Save Closing and Validate Fuel Transactions ─────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (($_POST['action'] ?? '') === 'save_closing_and_validate')) {
+    header('Content-Type: application/json');
+    $tx_ids_raw = $_POST['tx_ids'] ?? [];
+    if (is_string($tx_ids_raw)) {
+        $tx_ids_raw = json_decode($tx_ids_raw, true) ?: explode(',', $tx_ids_raw);
+    }
+    $tx_id_arr = array_filter(array_map('intval', (array)$tx_ids_raw));
+
+    if (empty($tx_id_arr)) {
+        echo json_encode(['success' => false, 'message' => 'No transaction IDs provided for approval.']);
+        exit;
+    }
+
+    $rep_date        = trim($_POST['report_date'] ?? date('Y-m-d'));
+    $shift           = trim($_POST['shift'] ?? 'Second Shift');
+    $shift_period    = trim($_POST['shift_period'] ?? 'second');
+    $total_fuel_sales= (float)($_POST['total_fuel_sales'] ?? 0);
+    $total_liters    = (float)($_POST['total_liters'] ?? 0);
+
+    $cash_shift1     = (float)($_POST['cash_shift1'] ?? 0);
+    $cash_shift2     = (float)($_POST['cash_shift2'] ?? 0);
+    $total_cash      = (float)($_POST['total_cash'] ?? 0);
+
+    $ar_shift1       = (float)($_POST['ar_shift1'] ?? 0);
+    $ar_shift2       = (float)($_POST['ar_shift2'] ?? 0);
+    $total_ar        = (float)($_POST['total_ar'] ?? 0);
+
+    $net_sales       = (float)($_POST['net_sales'] ?? 0);
+    $total_cash_bank = (float)($_POST['total_cash_bank'] ?? 0);
+
+    $checked_by      = trim($_POST['checked_by'] ?? '');
+    $verified_by     = trim($_POST['verified_by'] ?? '');
+    $manager_remarks = trim($_POST['manager_remarks'] ?? '');
+
+    try {
+        $pdo->beginTransaction();
+
+        // 1. Check or Insert/Update fuel_sales_closing
+        $stmt_chk = $pdo->prepare("SELECT id FROM fuel_sales_closing WHERE station_id = ? AND report_date = ? AND (shift = ? OR shift_period = ?) LIMIT 1");
+        $stmt_chk->execute([$station_id, $rep_date, $shift, $shift_period]);
+        $closing_id = $stmt_chk->fetchColumn();
+
+        if ($closing_id) {
+            $stmt_upd = $pdo->prepare("
+                UPDATE fuel_sales_closing SET
+                    shift = ?, shift_period = ?, total_fuel_sales = ?, total_liters = ?,
+                    cash_shift1 = ?, cash_shift2 = ?, total_cash = ?,
+                    ar_shift1 = ?, ar_shift2 = ?, total_ar = ?, net_sales = ?,
+                    total_cash_bank = ?, verified_by = ?, checked_by = ?, encoded_by = ?,
+                    encoded_at = NOW(), status = 'VERIFIED'
+                WHERE id = ?
+            ");
+            $stmt_upd->execute([
+                $shift, $shift_period, $total_fuel_sales, $total_liters,
+                $cash_shift1, $cash_shift2, $total_cash,
+                $ar_shift1, $ar_shift2, $total_ar, $net_sales,
+                $total_cash_bank, $verified_by, $checked_by, $me['id'],
+                $closing_id
+            ]);
+        } else {
+            $stmt_ins = $pdo->prepare("
+                INSERT INTO fuel_sales_closing (
+                    station_id, report_date, shift, shift_period, total_fuel_sales, total_liters,
+                    cash_shift1, cash_shift2, total_cash, ar_shift1, ar_shift2, total_ar,
+                    net_sales, total_cash_bank, verified_by, checked_by, encoded_by, encoded_at, status
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'VERIFIED'
+                )
+            ");
+            $stmt_ins->execute([
+                $station_id, $rep_date, $shift, $shift_period, $total_fuel_sales, $total_liters,
+                $cash_shift1, $cash_shift2, $total_cash, $ar_shift1, $ar_shift2, $total_ar,
+                $net_sales, $total_cash_bank, $verified_by, $checked_by, $me['id']
+            ]);
+            $closing_id = $pdo->lastInsertId();
+        }
+
+        // 2. Validate all transactions in $tx_id_arr
+        $in_pl = implode(',', $tx_id_arr);
+        $tx_stmt = $pdo->query("SELECT * FROM fuel_transactions WHERE id IN ($in_pl) AND station_id = {$station_id}");
+        $transactions_to_validate = $tx_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $validated_count = 0;
+        foreach ($transactions_to_validate as $tx) {
+            $prev_reading    = (float)$tx['previous_reading'];
+            $present_reading = (float)$tx['present_reading'];
+            $calibration     = (float)$tx['calibration'];
+            $price_per_liter = (float)$tx['price_per_liter'];
+
+            if ($present_reading >= $prev_reading && $present_reading > 0) {
+                $liters_sold = max(0.00, $present_reading - $prev_reading - $calibration);
+            } else {
+                $liters_sold = max(0.00, (float)$tx['liters_sold']);
+            }
+
+            $total_amount = round($liters_sold * $price_per_liter, 2);
+
+            $up = $pdo->prepare("
+                UPDATE fuel_transactions 
+                SET previous_reading = ?, present_reading = ?, liters_sold = ?, total_amount = ?,
+                    status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ?
+                WHERE id = ?
+            ");
+            $up->execute([$prev_reading, $present_reading, $liters_sold, $total_amount, $me['id'], $manager_remarks ?: null, $tx['id']]);
+
+            // Deduct inventory
+            $base_fuel_type = preg_replace('/\s*-\s*\d+$/i', '', trim($tx['fuel_type']));
+            $up_stock = $pdo->prepare("
+                UPDATE fuel_inventory 
+                SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
+                    current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
+                    last_updated   = NOW()
+                WHERE station_id = ? 
+                  AND (
+                      LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                   OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                  )
+            ");
+            $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type'], $base_fuel_type]);
+
+            log_activity($pdo, $me['id'], 'Fuel Reading Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | {$liters_sold} L");
+            $validated_count++;
+        }
+
+        $pdo->commit();
+
+        echo json_encode([
+            'success' => true,
+            'message' => "Fuel Sales Closing for {$rep_date} ({$shift}) saved and {$validated_count} transaction(s) approved successfully!"
+        ]);
+        exit;
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        exit;
+    }
+}
+
+// ─── POST Actions (Validate / Reject) ──────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $is_ajax = !empty($_POST['ajax']) || (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
     $action  = trim($_POST['action'] ?? '');
@@ -719,6 +960,26 @@ html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !impor
 .ato-btn-batch-adjust { color: #0ea5e9 !important; border-color: #0ea5e9 !important; background: white !important; }
 .ato-btn-batch-adjust:hover:not(:disabled) { background: #0ea5e9 !important; color: #fff !important; }
 
+/* Fuel Closing Modal Custom Inputs */
+.fsc-calc-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1.5px solid #CBD5E1;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #1E293B;
+    background: #FFFFFF;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+}
+.fsc-calc-input:focus {
+    border-color: #002F6C;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(0, 47, 108, 0.12);
+    background: #FFF;
+}
+
 
 /* Summary Cards matching Adjustments Oversight standard */
 .afto-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
@@ -1263,6 +1524,173 @@ input[type="checkbox"]:indeterminate {
     </div>
 </div>
 
+<!-- Fuel Sales Closing Review & Approval Modal -->
+<div id="fuelClosingApprovalModal" class="modal" style="display:none; align-items:center; justify-content:center;">
+    <div class="modal-content" style="max-width: 880px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 14px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
+        <!-- Header -->
+        <div class="modal-header" style="background: linear-gradient(135deg, #002F6C 0%, #001A3D 100%); color: #fff; padding: 18px 24px; margin-bottom: 0; border-bottom: none;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.15); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <i class="fas fa-file-invoice-dollar" style="color: #FBBF24; font-size: 20px;"></i>
+                </div>
+                <div>
+                    <h3 style="margin: 0; color: #fff; font-size: 17px; font-weight: 800; letter-spacing: 0.3px;">Fuel Sales Closing Review &amp; Approval</h3>
+                    <div style="font-size: 12px; color: #93C5FD; margin-top: 2px;">
+                        <span id="fsc_badge_station">Petron Carmen Station</span> • 
+                        <span id="fsc_badge_date" style="font-weight: 700; color: #fff;"></span> • 
+                        <span id="fsc_badge_shift" class="afto-badge bg-amber" style="font-size: 10px; padding: 2px 8px;"></span>
+                    </div>
+                </div>
+            </div>
+            <span class="modal-close" style="color: #fff; opacity: 0.8; font-size: 24px;" onclick="closeModal('fuelClosingApprovalModal')">&times;</span>
+        </div>
+
+        <!-- Scrollable Modal Body -->
+        <div class="modal-body" style="padding: 20px 24px; overflow-y: auto; flex: 1; background: #F8FAFC; margin-bottom: 0;">
+            <!-- Loading Indicator -->
+            <div id="fsc_loading" style="display: none; text-align: center; padding: 40px 20px; color: #64748B;">
+                <i class="fas fa-circle-notch fa-spin" style="font-size: 32px; color: #002F6C; margin-bottom: 12px;"></i>
+                <div style="font-weight: 600; font-size: 14px;">Loading Fuel Sales Closing data...</div>
+            </div>
+
+            <div id="fsc_content_wrap">
+                <!-- Section 1: Selected Meter Readings & Volume Breakdown -->
+                <div style="background: #fff; border: 1px solid #E2E8F0; border-radius: 10px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
+                        <div style="font-size: 13px; font-weight: 800; color: #002F6C; text-transform: uppercase;">
+                            <i class="fas fa-gas-pump" style="color: #DC2626; margin-right: 6px;"></i> Pump Meter Readings Summary
+                        </div>
+                        <div style="font-size: 11px; color: #64748B;">
+                            Selected Transactions: <strong id="fsc_tx_count" style="color: #0F172A;">0</strong>
+                        </div>
+                    </div>
+                    
+                    <div style="max-height: 180px; overflow-y: auto; border: 1px solid #E2E8F0; border-radius: 6px; margin-bottom: 12px;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                            <thead style="background: #002F6C; color: #fff; position: sticky; top: 0;">
+                                <tr>
+                                    <th style="padding: 6px 8px; text-align: left;">Pump</th>
+                                    <th style="padding: 6px 8px; text-align: left;">Fuel Type</th>
+                                    <th style="padding: 6px 8px; text-align: right;">Begin</th>
+                                    <th style="padding: 6px 8px; text-align: right;">Ending</th>
+                                    <th style="padding: 6px 8px; text-align: right;">Cal</th>
+                                    <th style="padding: 6px 8px; text-align: right;">Net Liters</th>
+                                    <th style="padding: 6px 8px; text-align: right;">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fsc_readings_tbody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Computed KPI Cards -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-size: 10px; font-weight: 700; color: #1E40AF; text-transform: uppercase;">Total Fuel Liters Sold</div>
+                                <div id="fsc_disp_liters" style="font-size: 18px; font-weight: 800; color: #1E3A8A; margin-top: 2px;">0.00 L</div>
+                            </div>
+                            <i class="fas fa-tint" style="font-size: 24px; color: #3B82F6; opacity: 0.6;"></i>
+                        </div>
+                        <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-size: 10px; font-weight: 700; color: #166534; text-transform: uppercase;">Total Fuel Sales Amount</div>
+                                <div id="fsc_disp_sales" style="font-size: 18px; font-weight: 800; color: #14532D; margin-top: 2px;">₱0.00</div>
+                            </div>
+                            <i class="fas fa-peso-sign" style="font-size: 24px; color: #22C55E; opacity: 0.6;"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Editable Closing Breakdown (Cash & AR) -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <!-- Cash Breakdown Card -->
+                    <div style="background: #fff; border: 1px solid #E2E8F0; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                        <div style="font-size: 13px; font-weight: 800; color: #15803D; text-transform: uppercase; margin-bottom: 12px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
+                            <i class="fas fa-money-bill-wave" style="margin-right: 6px;"></i> Cash Breakdown (Editable)
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label style="font-size: 11px; font-weight: 700; color: #475569;">Shift 1 Cash (₱)</label>
+                            <input type="text" id="fsc_cash_shift1" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label style="font-size: 11px; font-weight: 700; color: #475569;">Shift 2 Cash (₱)</label>
+                            <input type="text" id="fsc_cash_shift2" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00">
+                        </div>
+                        <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                            <span style="font-size: 11px; font-weight: 700; color: #166534;">Total Cash Sales:</span>
+                            <span id="fsc_total_cash_val" style="font-size: 15px; font-weight: 800; color: #15803D;">₱0.00</span>
+                        </div>
+                    </div>
+
+                    <!-- AR Breakdown Card -->
+                    <div style="background: #fff; border: 1px solid #E2E8F0; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                        <div style="font-size: 13px; font-weight: 800; color: #D97706; text-transform: uppercase; margin-bottom: 12px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
+                            <i class="fas fa-file-invoice" style="margin-right: 6px;"></i> Accounts Receivable / Credit (Editable)
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label style="font-size: 11px; font-weight: 700; color: #475569;">Shift 1 AR (₱)</label>
+                            <input type="text" id="fsc_ar_shift1" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label style="font-size: 11px; font-weight: 700; color: #475569;">Shift 2 AR (₱)</label>
+                            <input type="text" id="fsc_ar_shift2" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00">
+                        </div>
+                        <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                            <span style="font-size: 11px; font-weight: 700; color: #B45309;">Total AR Sales:</span>
+                            <span id="fsc_total_ar_val" style="font-size: 15px; font-weight: 800; color: #B45309;">₱0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 3: Net Sales & Bank Summary + Manager Sign-Off -->
+                <div style="background: #fff; border: 1px solid #E2E8F0; border-radius: 10px; padding: 16px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px;">
+                        <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <span style="font-size: 11px; font-weight: 700; color: #1E40AF; text-transform: uppercase;">Net Sales (Total Cash + AR):</span>
+                                <div id="fsc_net_sales_val" style="font-size: 16px; font-weight: 800; color: #1E3A8A; margin-top: 2px;">₱0.00</div>
+                            </div>
+                            <i class="fas fa-calculator" style="font-size: 22px; color: #3B82F6; opacity: 0.5;"></i>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="font-size: 11px; font-weight: 700; color: #475569;">Total Cash to Bank / Deposit (₱)</label>
+                            <input type="text" id="fsc_total_cash_bank" class="fsc-calc-input" oninput="formatAutoCommaDot(this);" onblur="formatAutoCommaDotOnBlur(this);" placeholder="0.00" style="font-weight: 700; color: #002F6C; background: #F8FAFC;">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="font-size: 11px; font-weight: 700; color: #475569;">Checked By (Staff Encoder)</label>
+                            <input type="text" id="fsc_checked_by" placeholder="Staff Name" style="font-size: 13px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="font-size: 11px; font-weight: 700; color: #475569;">Verified By (Manager)</label>
+                            <input type="text" id="fsc_verified_by" placeholder="Manager Name" style="font-size: 13px; font-weight: 700; color: #002F6C;">
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 11px; font-weight: 700; color: #475569;">Manager Validation Remarks / Notes <span style="color:#94A3B8; font-weight: normal;">(Optional)</span></label>
+                        <textarea id="fsc_remarks" rows="2" placeholder="Enter validation remarks or approval notes (e.g. 'Readings reconciled, cash verified with deposit slip')..." style="font-size: 12px;"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="modal-footer" style="padding: 14px 24px; background: #F1F5F9; border-top: 1px solid #E2E8F0; display: flex; justify-content: space-between; align-items: center;">
+            <button type="button" class="ato-btn ato-btn-back" onclick="closeModal('fuelClosingApprovalModal')">
+                <i class="fas fa-times"></i> Cancel
+            </button>
+            <button type="button" id="btnConfirmFscApprove" class="ato-btn" style="background: #16A34A !important; color: #fff !important; border-color: #16A34A !important; padding: 10px 24px !important; font-size: 13px !important; font-weight: 700 !important; border-radius: 8px !important; box-shadow: 0 4px 12px rgba(22,163,74,0.3);" onclick="saveClosingAndValidate()">
+                <i class="fas fa-check-circle" style="margin-right: 6px;"></i> Save Closing &amp; Approve Transactions
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Review Selected Modal (Batch Summary) -->
 <div id="reviewModal" class="modal">
     <div class="modal-content" style="max-width: 700px;">
@@ -1801,126 +2229,214 @@ function notifySelectWarning(msg) {
     }
 }
 
-// Open Review Modal
-function openReviewModal() {
-    const selected = getSelectedTransactions();
-    if (selected.length === 0) {
-        notifySelectWarning('Please select at least one transaction to review.');
-        return;
+let currentFscTxIds = [];
+let currentFscReportDate = '';
+let currentFscShift = '';
+let currentFscShiftPeriod = '';
+let currentFscTotalLiters = 0;
+let currentFscTotalSales = 0;
+
+function fscRecalcTotals() {
+    const c1 = getRawNumber('fsc_cash_shift1');
+    const c2 = getRawNumber('fsc_cash_shift2');
+    const totCash = c1 + c2;
+    const elTotCash = document.getElementById('fsc_total_cash_val');
+    if (elTotCash) {
+        elTotCash.textContent = '₱' + totCash.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    const ar1 = getRawNumber('fsc_ar_shift1');
+    const ar2 = getRawNumber('fsc_ar_shift2');
+    const totAr = ar1 + ar2;
+    const elTotAr = document.getElementById('fsc_total_ar_val');
+    if (elTotAr) {
+        elTotAr.textContent = '₱' + totAr.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    const netSales = totCash + totAr;
+    const elNetSales = document.getElementById('fsc_net_sales_val');
+    if (elNetSales) {
+        elNetSales.textContent = '₱' + netSales.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+}
+
+async function openFuelClosingApprovalModal(txIds) {
+    if (!txIds || txIds.length === 0) {
+        const selected = getSelectedTransactions();
+        if (selected.length === 0) {
+            notifySelectWarning('Please select at least one transaction to approve.');
+            return;
+        }
+        txIds = selected.map(tx => tx.id);
     }
     
-    // Calculate totals
-    let totalLiters = 0;
-    let totalSales = 0;
-    let totalCal = 0;
-    
-    // Build reading list HTML
-    let listHTML = '';
-    selected.forEach(tx => {
-        const pump = tx.pump_number || 'Pump #' + (tx.pump_id || '?');
-        const fuelType = tx.fuel_type || '—';
-        const liters = parseFloat(tx.liters_sold) || 0;
-        const amount = parseFloat(tx.total_amount) || 0;
-        const cal = parseFloat(tx.calibration) || 0;
+    currentFscTxIds = txIds;
+    document.getElementById('fsc_loading').style.display = 'block';
+    document.getElementById('fsc_content_wrap').style.display = 'none';
+    document.getElementById('fuelClosingApprovalModal').style.display = 'flex';
+
+    try {
+        const res = await fetch('manager_fuel_transaction_validation.php?ajax_action=get_closing_for_review&tx_ids=' + txIds.join(','));
+        const data = await res.json();
         
-        totalLiters += liters;
-        totalSales += amount;
-        totalCal += cal;
+        if (!data || !data.success) {
+            throw new Error(data?.message || 'Failed to load fuel closing data.');
+        }
+
+        currentFscReportDate = data.report_date || '';
+        currentFscShift = data.shift || 'Second Shift';
+        currentFscShiftPeriod = data.shift_period || 'second';
+        currentFscTotalLiters = parseFloat(data.calculated?.total_liters || 0);
+        currentFscTotalSales = parseFloat(data.calculated?.total_sales || 0);
+
+        document.getElementById('fsc_badge_date').textContent = currentFscReportDate;
+        document.getElementById('fsc_badge_shift').textContent = currentFscShift;
+        document.getElementById('fsc_tx_count').textContent = data.calculated?.pumps?.length || 0;
+        document.getElementById('fsc_disp_liters').textContent = currentFscTotalLiters.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
+        document.getElementById('fsc_disp_sales').textContent = '₱' + currentFscTotalSales.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+        // Populate readings table
+        let tbodyHtml = '';
+        if (data.calculated?.pumps && data.calculated.pumps.length > 0) {
+            data.calculated.pumps.forEach(p => {
+                tbodyHtml += `
+                    <tr style="border-bottom: 1px solid #F1F5F9;">
+                        <td style="padding: 6px 8px; font-weight: 700; color: #002F6C;">${escapeHtml(p.pump_name)}</td>
+                        <td style="padding: 6px 8px;">${escapeHtml(p.fuel_type)}</td>
+                        <td style="padding: 6px 8px; text-align: right;">${parseFloat(p.beginning).toFixed(2)}</td>
+                        <td style="padding: 6px 8px; text-align: right; font-weight: 700;">${parseFloat(p.ending).toFixed(2)}</td>
+                        <td style="padding: 6px 8px; text-align: right;">${parseFloat(p.cal).toFixed(2)}</td>
+                        <td style="padding: 6px 8px; text-align: right; font-weight: 700; color: #1E3A8A;">${parseFloat(p.liters).toFixed(2)} L</td>
+                        <td style="padding: 6px 8px; text-align: right; font-weight: 800; color: #15803D;">₱${parseFloat(p.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    </tr>
+                `;
+            });
+        }
+        document.getElementById('fsc_readings_tbody').innerHTML = tbodyHtml;
+
+        // Populate closing values
+        const closing = data.closing || {};
+        const isShift1 = (currentFscShiftPeriod === 'first' || currentFscShift.toLowerCase().includes('first') || currentFscShift.includes('1'));
         
-        listHTML += `
-            <tr style="border-bottom: 1px solid #f1f5f9;">
-                <td style="padding: 8px;">${escapeHtml(pump)}</td>
-                <td style="padding: 8px;">${escapeHtml(fuelType)}</td>
-                <td style="padding: 8px; text-align: right; font-weight: 600;">${liters.toFixed(2)} L</td>
-                <td style="padding: 8px; text-align: right; font-weight: 700; color: #16a34a;">₱${amount.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-            </tr>
+        let c1 = parseFloat(closing.cash_shift1 || 0);
+        let c2 = parseFloat(closing.cash_shift2 || 0);
+        let ar1 = parseFloat(closing.ar_shift1 || 0);
+        let ar2 = parseFloat(closing.ar_shift2 || 0);
+
+        // Intelligent default if not set
+        if (c1 === 0 && c2 === 0 && ar1 === 0 && ar2 === 0) {
+            if (isShift1) {
+                c1 = currentFscTotalSales;
+            } else {
+                c2 = currentFscTotalSales;
+            }
+        }
+
+        document.getElementById('fsc_cash_shift1').value = c1.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('fsc_cash_shift2').value = c2.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('fsc_ar_shift1').value = ar1.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('fsc_ar_shift2').value = ar2.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+        const bankVal = parseFloat(closing.total_cash_bank || (c1 + c2) || 0);
+        document.getElementById('fsc_total_cash_bank').value = bankVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+        document.getElementById('fsc_checked_by').value = closing.checked_by || data.staff_name || 'Staff';
+        document.getElementById('fsc_verified_by').value = closing.verified_by || data.manager_name || 'Edgar Eslit';
+        document.getElementById('fsc_remarks').value = '';
+
+        fscRecalcTotals();
+
+        document.getElementById('fsc_loading').style.display = 'none';
+        document.getElementById('fsc_content_wrap').style.display = 'block';
+    } catch (e) {
+        document.getElementById('fsc_loading').innerHTML = `
+            <div style="color: #DC2626; font-weight: 700; margin-bottom: 8px;">Failed to load closing data</div>
+            <div style="font-size: 12px; margin-bottom: 12px;">${escapeHtml(e.message)}</div>
+            <button type="button" class="ato-btn ato-btn-back" onclick="closeModal('fuelClosingApprovalModal')">Close</button>
         `;
-    });
-    
-    // Update modal content
-    document.getElementById('revTotalPumps').textContent = selected.length;
-    document.getElementById('revTotalLiters').textContent = totalLiters.toFixed(2) + ' L';
-    document.getElementById('revTotalSales').textContent = '₱' + totalSales.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
-    document.getElementById('revTotalCal').textContent = totalCal.toFixed(2) + ' L';
-    document.getElementById('revReadingsList').innerHTML = listHTML;
-    
-    // Show modal
-    document.getElementById('reviewModal').style.display = 'flex';
+    }
 }
 
-// Close Review and proceed to Validate
-function closeReviewAndValidate() {
-    closeModal('reviewModal');
-    batchValidate();
+async function saveClosingAndValidate() {
+    const btn = document.getElementById('btnConfirmFscApprove');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Processing Approval...';
+
+    const c1 = getRawNumber('fsc_cash_shift1');
+    const c2 = getRawNumber('fsc_cash_shift2');
+    const totCash = c1 + c2;
+
+    const ar1 = getRawNumber('fsc_ar_shift1');
+    const ar2 = getRawNumber('fsc_ar_shift2');
+    const totAr = ar1 + ar2;
+
+    const netSales = totCash + totAr;
+    const totBank = getRawNumber('fsc_total_cash_bank');
+
+    const checkedBy = document.getElementById('fsc_checked_by').value.trim();
+    const verifiedBy = document.getElementById('fsc_verified_by').value.trim();
+    const remarks = document.getElementById('fsc_remarks').value.trim();
+
+    try {
+        const formData = new FormData();
+        formData.append('action', 'save_closing_and_validate');
+        formData.append('tx_ids', JSON.stringify(currentFscTxIds));
+        formData.append('report_date', currentFscReportDate);
+        formData.append('shift', currentFscShift);
+        formData.append('shift_period', currentFscShiftPeriod);
+        formData.append('total_fuel_sales', currentFscTotalSales);
+        formData.append('total_liters', currentFscTotalLiters);
+        formData.append('cash_shift1', c1);
+        formData.append('cash_shift2', c2);
+        formData.append('total_cash', totCash);
+        formData.append('ar_shift1', ar1);
+        formData.append('ar_shift2', ar2);
+        formData.append('total_ar', totAr);
+        formData.append('net_sales', netSales);
+        formData.append('total_cash_bank', totBank);
+        formData.append('checked_by', checkedBy);
+        formData.append('verified_by', verifiedBy);
+        formData.append('manager_remarks', remarks);
+
+        const response = await fetch('manager_fuel_transaction_validation.php', {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+
+        const jsonRes = await response.json();
+        if (jsonRes && jsonRes.success) {
+            closeModal('fuelClosingApprovalModal');
+            sessionStorage.setItem('petron_post_reload_toast_msg', jsonRes.message);
+            sessionStorage.setItem('petron_post_reload_toast_type', 'success');
+            location.reload();
+        } else {
+            throw new Error(jsonRes?.message || 'Approval failed.');
+        }
+    } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        if (window.showPetronFlash) {
+            window.showPetronFlash('Error: ' + err.message, 'error', 6000);
+        } else {
+            alert('Error: ' + err.message);
+        }
+    }
 }
 
-// Close Review and proceed to Reject
-function closeReviewAndReject() {
-    closeModal('reviewModal');
-    openBatchReject();
-}
-
-// Batch Validate (Approve) - Direct approval without review modal
-async function batchValidate() {
+// Batch Validate (Approve) - Opens Fuel Sales Closing Review Modal
+function batchValidate() {
     const selected = getSelectedTransactions();
     if (selected.length === 0) {
         notifySelectWarning('Please select at least one transaction to approve.');
         return;
     }
-    
-    const confirmApprove = await showActionConfirmModal({
-        icon: 'fas fa-check-circle',
-        title: 'Approve Fuel Transactions',
-        message: `Approve ${selected.length} transaction(s)?\n\nThis will validate the readings and deduct fuel stock from inventory.`,
-        confirmText: 'Yes, Approve',
-        confirmBg: '#16a34a'
-    });
-    if (!confirmApprove) return;
-    
-    let successCount = 0;
-    let errorCount = 0;
-    const errors = [];
-    let totalLiters = 0;
-    let totalSales = 0;
-    
-    for (const tx of selected) {
-        try {
-            const formData = new FormData();
-            formData.append('ajax', '1');
-            formData.append('action', 'validate');
-            formData.append('id', tx.id || tx.transaction_id);
-            formData.append('remarks', 'Batch validation - approved by manager');
-            
-            const response = await fetch('', {
-                method: 'POST',
-                body: formData,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            });
-            
-            const jsonRes = await response.json().catch(() => null);
-            if (jsonRes && jsonRes.success) {
-                successCount++;
-                totalLiters += parseFloat(tx.liters_sold || 0);
-                totalSales += parseFloat(tx.total_amount || 0);
-            } else {
-                errorCount++;
-                errors.push(`${tx.transaction_id}: ${jsonRes?.message || 'Server error'}`);
-            }
-        } catch (error) {
-            errorCount++;
-            errors.push(`${tx.transaction_id}: ${error.message}`);
-        }
-    }
-    
-    if (errorCount === 0) {
-        sessionStorage.setItem('petron_post_reload_toast_msg', `${successCount} transaction(s) approved successfully.`);
-        sessionStorage.setItem('petron_post_reload_toast_type', 'success');
-        location.reload();
-    } else {
-        sessionStorage.setItem('petron_post_reload_toast_msg', `Approved with ${errorCount} error(s): ` + errors.join(', '));
-        sessionStorage.setItem('petron_post_reload_toast_type', 'error');
-        location.reload();
-    }
+    openFuelClosingApprovalModal(selected.map(tx => tx.id));
+}
+
+function openValidate(id, txCode) {
+    openFuelClosingApprovalModal([id]);
 }
 
 // Open Batch Reject Modal

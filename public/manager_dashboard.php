@@ -1,9 +1,8 @@
 <?php
 /**
- * Manager Dashboard
- *
- * Station command center for operations, approvals, inventory, pricing,
- * transactions, service queue, quick actions, and calendar.
+ * Manager Dashboard — Complete Final Implementation
+ * Operational Monitoring + Approval Management + Fuel Verification + Inventory Performance
+ * Combined Fuel, Merchandise, and Job Order Operations across all 22 Sections.
  */
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -28,188 +27,72 @@ if (!$station_id && $role === 'manager') {
     render_no_station_page('manager_dashboard.php');
 }
 
-// Date range filter — defaults to today for both from/to
+// Mark notification as read and redirect to target page
+if (isset($_GET['open_notif']) && (int)$_GET['open_notif'] > 0) {
+    $notif_id = (int)$_GET['open_notif'];
+    $stmt = $pdo->prepare("SELECT redirect_url FROM notifications WHERE id = ?");
+    $stmt->execute([$notif_id]);
+    $redir = $stmt->fetchColumn();
+    
+    $upd = $pdo->prepare("UPDATE notifications SET status = 'read', read_at = NOW() WHERE id = ?");
+    $upd->execute([$notif_id]);
+    
+    if ($redir && $redir !== '') {
+        header("Location: " . $redir);
+        exit;
+    } else {
+        header("Location: notifications.php");
+        exit;
+    }
+}
+
+// Date filters (Default to today)
 $date_from = $_GET['date_from'] ?? date('Y-m-d');
 $date_to   = $_GET['date_to']   ?? date('Y-m-d');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)) { $date_from = date('Y-m-d'); }
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to))   { $date_to   = date('Y-m-d'); }
 if ($date_to < $date_from) { $date_to = $date_from; }
 
-// Legacy single-date alias (used by hourly chart and weekly breakdown which still need a single date)
-$date_filter = $date_from;
-
-function mgr_h($value): string
-{
+function mgr_h($value): string {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 }
 
-function mgr_money($value): string
-{
-    return '&#8369;' . number_format((float) $value, 2);
+function mgr_money($value): string {
+    return '&#8369; ' . number_format((float) $value, 2);
 }
 
-function mgr_qty($value, int $decimals = 2): string
-{
-    return number_format((float) $value, $decimals);
-}
-
-function mgr_table_exists(PDO $pdo, string $table): bool
-{
-    static $cache = [];
-    if (array_key_exists($table, $cache)) {
-        return $cache[$table];
-    }
-
-    try {
-        $stmt = $pdo->prepare(
-            "SELECT COUNT(*) FROM information_schema.TABLES
-             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?"
-        );
-        $stmt->execute([$table]);
-        $cache[$table] = (bool) $stmt->fetchColumn();
-    } catch (Throwable $e) {
-        $cache[$table] = false;
-    }
-
-    return $cache[$table];
-}
-
-function mgr_column_exists(PDO $pdo, string $table, string $column): bool
-{
-    static $cache = [];
-    $key = $table . '.' . $column;
-    if (array_key_exists($key, $cache)) {
-        return $cache[$key];
-    }
-
-    try {
-        $stmt = $pdo->prepare(
-            "SELECT COUNT(*) FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
-        );
-        $stmt->execute([$table, $column]);
-        $cache[$key] = (bool) $stmt->fetchColumn();
-    } catch (Throwable $e) {
-        $cache[$key] = false;
-    }
-
-    return $cache[$key];
-}
-
-function mgr_column_sql(string $column, string $alias = ''): string
-{
-    $quoted = '`' . str_replace('`', '``', $column) . '`';
-    if ($alias !== '' && preg_match('/^[A-Za-z0-9_]+$/', $alias)) {
-        return "`{$alias}`.{$quoted}";
-    }
-    return $quoted;
-}
-
-function mgr_datetime_expr(PDO $pdo, string $table, string $alias = '', array $preferred = ['transaction_date', 'created_at']): string
-{
-    $parts = [];
-    foreach ($preferred as $column) {
-        if (mgr_column_exists($pdo, $table, $column)) {
-            $parts[] = "NULLIF(" . mgr_column_sql($column, $alias) . ", '0000-00-00 00:00:00')";
-        }
-    }
-
-    if (!$parts) {
-        return 'NOW()';
-    }
-
-    return count($parts) === 1 ? $parts[0] : 'COALESCE(' . implode(', ', $parts) . ')';
-}
-
-function mgr_transaction_status_ok(PDO $pdo, string $table, array $columns, string $alias = ''): string
-{
-    $excluded = "'void', 'voided', 'rejected', 'cancelled', 'canceled'";
-    $checks = [];
-
-    foreach ($columns as $column) {
-        if (mgr_column_exists($pdo, $table, $column)) {
-            $col = mgr_column_sql($column, $alias);
-            $checks[] = "LOWER(TRIM(COALESCE({$col}, ''))) NOT IN ({$excluded})";
-        }
-    }
-
-    return $checks ? ' AND ' . implode(' AND ', $checks) : '';
-}
-
-function mgr_registered_customer_only(PDO $pdo, string $alias = ''): string
-{
-    if (!mgr_column_exists($pdo, 'customers', 'customer_type')) {
-        return '';
-    }
-
-    $col = mgr_column_sql('customer_type', $alias);
-    return " AND LOWER(COALESCE({$col}, 'regular')) <> 'walk-in'";
-}
-
-function mgr_value(PDO $pdo, string $sql, array $params = [], $default = 0)
-{
+function mgr_value(PDO $pdo, string $sql, array $params = [], $default = 0) {
     try {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
-        $value = $stmt->fetchColumn();
-        return $value === false || $value === null ? $default : $value;
+        $val = $stmt->fetchColumn();
+        return $val === false || $val === null ? $default : $val;
     } catch (Throwable $e) {
-        error_log('[manager_dashboard] value query failed: ' . $e->getMessage() . ' | ' . $sql);
         return $default;
     }
 }
 
-function mgr_rows(PDO $pdo, string $sql, array $params = []): array
-{
+function mgr_rows(PDO $pdo, string $sql, array $params = []): array {
     try {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } catch (Throwable $e) {
-        error_log('[manager_dashboard] rows query failed: ' . $e->getMessage() . ' | ' . $sql);
         return [];
     }
 }
 
-function mgr_station_clause(int $station_id, string $alias = ''): string
-{
-    if (!$station_id) {
-        return '1=1';
+function mgr_table_exists(PDO $pdo, string $table): bool {
+    static $cache = [];
+    if (isset($cache[$table])) return $cache[$table];
+    try {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?");
+        $stmt->execute([$table]);
+        $cache[$table] = (bool) $stmt->fetchColumn();
+    } catch (Throwable $e) {
+        $cache[$table] = false;
     }
-    $prefix = $alias !== '' ? $alias . '.' : '';
-    return $prefix . 'station_id = ?';
-}
-
-function mgr_station_params(int $station_id): array
-{
-    return $station_id ? [$station_id] : [];
-}
-
-function mgr_badge_class($status): string
-{
-    $s = strtolower(trim((string) $status));
-    if ($s === '' || str_contains($s, 'pending') || str_contains($s, 'await')) {
-        return 'warning';
-    }
-    if (str_contains($s, 'approved') || str_contains($s, 'verified') || str_contains($s, 'received') || str_contains($s, 'normal') || str_contains($s, 'confirmed')) {
-        return 'success';
-    }
-    if (str_contains($s, 'reject') || str_contains($s, 'cancel') || str_contains($s, 'critical') || str_contains($s, 'out')) {
-        return 'danger';
-    }
-    if (str_contains($s, 'progress') || str_contains($s, 'review') || str_contains($s, 'ready') || str_contains($s, 'adjust')) {
-        return 'info';
-    }
-    if (str_contains($s, 'low') || str_contains($s, 'short') || str_contains($s, 'damaged')) {
-        return 'warning';
-    }
-    return 'neutral';
-}
-
-function mgr_status_label($status): string
-{
-    $status = trim((string) $status);
-    return $status !== '' ? $status : 'Pending';
+    return $cache[$table];
 }
 
 $display_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
@@ -222,2163 +105,2491 @@ if ($station_label === '' && $station_id) {
     $station_label = (string) mgr_value($pdo, 'SELECT name FROM stations WHERE id = ?', [$station_id], 'Station #' . $station_id);
 }
 if ($station_label === '') {
-    $station_label = 'All Stations';
+    $station_label = 'Vamenta Blvd., Carmen, City Of Cagayan De Oro , Misamis Oriental';
 }
 
-$station_sql = mgr_station_clause($station_id);
-$station_params = mgr_station_params($station_id);
-$fuel_dt_expr = mgr_datetime_expr($pdo, 'fuel_transactions', '', ['transaction_date', 'created_at']);
-$merch_dt_expr = mgr_datetime_expr($pdo, 'merchandise_transactions', '', ['transaction_date', 'created_at']);
-$merch_dt_expr_mt = mgr_datetime_expr($pdo, 'merchandise_transactions', 'mt', ['transaction_date', 'created_at']);
-$job_dt_expr = mgr_datetime_expr($pdo, 'job_orders', '', ['created_at', 'completed_at']);
-$fuel_status_ok = mgr_transaction_status_ok($pdo, 'fuel_transactions', ['status']);
-$merch_status_ok = mgr_transaction_status_ok($pdo, 'merchandise_transactions', ['validation_status', 'workflow_status']);
-$merch_status_ok_mt = mgr_transaction_status_ok($pdo, 'merchandise_transactions', ['validation_status', 'workflow_status'], 'mt');
-$job_status_ok = mgr_transaction_status_ok($pdo, 'job_orders', ['status', 'validation_status']);
-$registered_customer_only = mgr_registered_customer_only($pdo);
+$st_sql = $station_id ? "(station_id = ? OR station_id = 0)" : "1=1";
+$st_params = $station_id ? [$station_id] : [];
+$date_params = array_merge($st_params, [$date_from, $date_to]);
 
-// Summary cards — use date range.
-$date_range_params = array_merge($station_params, [$date_from, $date_to]);
-
-$fuel_count = mgr_table_exists($pdo, 'fuel_transactions')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM fuel_transactions WHERE {$station_sql} AND DATE({$fuel_dt_expr}) BETWEEN ? AND ? {$fuel_status_ok}", $date_range_params)
-    : 0;
-
-$merch_count = mgr_table_exists($pdo, 'merchandise_transactions')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$station_sql} AND DATE({$merch_dt_expr}) BETWEEN ? AND ? {$merch_status_ok}", $date_range_params)
-    : 0;
-
-$service_count = mgr_table_exists($pdo, 'job_orders')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND DATE({$job_dt_expr}) BETWEEN ? AND ? {$job_status_ok}", $date_range_params)
-    : 0;
-
-$total_transactions = $fuel_count + $merch_count + $service_count;
-
-$fuel_revenue = mgr_table_exists($pdo, 'fuel_transactions')
-    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE({$fuel_dt_expr}) BETWEEN ? AND ? {$fuel_status_ok}", $date_range_params)
-    : 0.0;
-
-$merch_revenue = mgr_table_exists($pdo, 'merchandise_transactions')
-    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND DATE({$merch_dt_expr}) BETWEEN ? AND ? AND LOWER(COALESCE(transaction_type,'merchandise')) NOT IN ('job_order','service','combined') AND NULLIF(TRIM(COALESCE(job_order_service,'')),'') IS NULL {$merch_status_ok}", $date_range_params)
-    : 0.0;
-
-$service_revenue = 0.0;
-if (mgr_table_exists($pdo, 'job_orders')) {
-    $service_revenue += (float) mgr_value(
-        $pdo,
-        "SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, actual_labor_cost + actual_parts_cost, 0)), 0)
-         FROM job_orders
-         WHERE {$station_sql}
-           AND DATE({$job_dt_expr}) BETWEEN ? AND ?
-           AND LOWER(COALESCE(status, '')) NOT IN ('voided', 'cancelled')",
-        $date_range_params
-    );
+// Active shift detection
+$cur_hour = (int)date('G');
+if ($cur_hour >= 6 && $cur_hour < 14) {
+    $active_shift_num    = 1;
+    $active_shift_name   = 'Shift 1';
+    $active_shift_period = 'first';
+    $active_shift_hours  = '6:00 AM – 2:00 PM';
+    $active_shift_start  = '06:00:00';
+    $active_shift_end    = '14:00:00';
+} else {
+    $active_shift_num    = 2;
+    $active_shift_name   = 'Shift 2';
+    $active_shift_period = 'second';
+    $active_shift_hours  = '2:00 PM – 12:00 MN';
+    $active_shift_start  = '14:00:00';
+    $active_shift_end    = '23:59:59';
 }
+
+// ── 1. KPI METRICS (Fuel + Merchandise + Job Orders + Inventory + Approvals) ──
+$fuel_today_sales = (float) mgr_value($pdo, "
+    SELECT COALESCE(SUM(total_amount), 0)
+    FROM fuel_transactions
+    WHERE {$st_sql}
+      AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+      AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
+", $date_params);
+
+$merch_today_sales = (float) mgr_value($pdo, "
+    SELECT COALESCE(SUM(total_amount), 0)
+    FROM merchandise_transactions
+    WHERE {$st_sql}
+      AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+      AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+      AND LOWER(COALESCE(transaction_type, 'merchandise')) NOT IN ('job_order','service')
+      AND (job_order_service IS NULL OR TRIM(job_order_service) = '')
+", $date_params);
+
+$job_today_sales = (float) mgr_value($pdo, "
+    SELECT COALESCE(SUM(total_cost), 0) FROM (
+        SELECT COALESCE(total_cost, estimated_cost, actual_labor_cost + actual_parts_cost, 0) AS total_cost 
+        FROM job_orders 
+        WHERE {$st_sql} AND DATE(COALESCE(completed_at, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(status, 'completed')) NOT IN ('voided','cancelled','rejected')
+        UNION ALL
+        SELECT total_amount AS total_cost
+        FROM merchandise_transactions
+        WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+          AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order', 'service', 'combined') OR job_order_service IS NOT NULL)
+          AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+    ) AS all_job_sales
+", array_merge($date_params, $date_params));
+
+$total_today_sales = $fuel_today_sales + $merch_today_sales + $job_today_sales;
+
+// Monthly Revenue
+$month_start = date('Y-m-01');
+$month_end   = date('Y-m-t');
+$month_params = array_merge($st_params, [$month_start, $month_end]);
+
+$month_fuel_sales  = (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(status,'')) NOT IN ('voided','rejected','cancelled')", $month_params);
+$month_merch_sales = (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected') AND LOWER(COALESCE(transaction_type, 'merchandise')) NOT IN ('job_order','service')", $month_params);
+$month_job_sales   = (float) mgr_value($pdo, "SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, 0)), 0) FROM job_orders WHERE {$st_sql} AND DATE(COALESCE(completed_at, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(status, '')) NOT IN ('voided','cancelled','rejected')", $month_params);
+$monthly_revenue   = $month_fuel_sales + $month_merch_sales + $month_job_sales;
+
+// ── 2. JOB ORDERS MONITORING (Pending, In Progress, Completed, Released) ───────
+$jo_pending_count    = (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'reviewed', 'pending validation')", $st_params);
+$jo_inprogress_count = (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) IN ('in progress', 'awaiting parts')", $st_params);
+$jo_completed_count  = (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) IN ('completed', 'verified', 'ready')", $st_params);
+$jo_released_count   = (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) IN ('released', 'finalized')", $st_params);
+
 if (mgr_table_exists($pdo, 'merchandise_transactions')) {
-    $service_revenue += (float) mgr_value(
-        $pdo,
-        "SELECT COALESCE(SUM(total_amount), 0)
-         FROM merchandise_transactions
-         WHERE {$station_sql}
-           AND DATE({$merch_dt_expr}) BETWEEN ? AND ?
-           AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order', 'service', 'combined') OR NULLIF(TRIM(COALESCE(job_order_service, '')), '') IS NOT NULL)
-           {$merch_status_ok}",
-        $date_range_params
-    );
+    $jo_pending_count    += (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$st_sql} AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order','service') OR (job_order_service IS NOT NULL AND job_order_service != '')) AND LOWER(COALESCE(workflow_status, 'pending')) IN ('pending', 'reviewed', 'pending validation')", $st_params);
+    $jo_inprogress_count += (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$st_sql} AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order','service') OR (job_order_service IS NOT NULL AND job_order_service != '')) AND LOWER(COALESCE(workflow_status, 'pending')) IN ('in progress', 'awaiting parts')", $st_params);
+    $jo_completed_count  += (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$st_sql} AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order','service') OR (job_order_service IS NOT NULL AND job_order_service != '')) AND LOWER(COALESCE(workflow_status, 'pending')) IN ('completed', 'verified', 'ready')", $st_params);
+    $jo_released_count   += (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$st_sql} AND (LOWER(COALESCE(transaction_type, '')) IN ('job_order','service') OR (job_order_service IS NOT NULL AND job_order_service != '')) AND LOWER(COALESCE(workflow_status, 'pending')) IN ('released', 'finalized')", $st_params);
 }
 
-$total_revenue = $fuel_revenue + $merch_revenue + $service_revenue;
+$active_job_orders    = $jo_pending_count + $jo_inprogress_count;
+$completed_job_orders = $jo_completed_count + $jo_released_count;
+$jo_status_counts     = [$jo_pending_count, $jo_inprogress_count, $jo_completed_count, $jo_released_count];
 
-$total_fuel_liters = mgr_table_exists($pdo, 'fuel_transactions')
-    ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(liters_sold), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE({$fuel_dt_expr}) BETWEEN ? AND ? {$fuel_status_ok}", $date_range_params)
-    : 0.0;
+// ── 3. INVENTORY MONITORING & VALUATIONS (Fuel + Merchandise) ────────────────
+$fuel_inventory_value = 0.0;
+$low_fuel_count       = 0;
+$crit_fuel_count      = 0;
+$out_fuel_count       = 0;
+$total_fuel_capacity  = 0.0;
+$total_available_fuel = 0.0;
 
-$pending_merch_stock = mgr_table_exists($pdo, 'stock_requests')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM stock_requests WHERE {$station_sql} AND LOWER(status) IN ('pending', 'pending manager review')", $station_params)
-    : 0;
+// ── Fetch raw fi_raw records (same as manager_inventory_fuel.php) ─────────
+$fi_raw    = [];
+$fi_lookup = [];
+try {
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, status, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
+    $s->execute([$station_id]);
+    $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($fi_raw as $row) {
+        $key = strtolower(trim($row['fuel_type']));
+        $val = (float)($row['current_level'] ?? $row['current_stock'] ?? 0);
+        if (!isset($fi_lookup[$key]) || $val > 0) $fi_lookup[$key] = $row;
+    }
+} catch (Exception $e) {}
 
-$pending_fuel_stock = mgr_table_exists($pdo, 'fuel_stock_requests')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM fuel_stock_requests WHERE {$station_sql} AND LOWER(status) IN ('pending', 'pending manager review')", $station_params)
-    : 0;
+// ── Use same TANK_CONFIG as inventory module ──────────────────────────────
+$TANK_CONFIG_DASH = get_tank_config($station_id);
 
-$pending_customer_requests = mgr_table_exists($pdo, 'customer_requests')
-    ? (int) mgr_value(
-        $pdo,
-        "SELECT COUNT(*) FROM customer_requests
-         WHERE {$station_sql}
-           AND LOWER(COALESCE(status, 'pending')) = 'pending'",
-        $station_params
-    )
-    : 0;
+$fuel_tanks = [];
+foreach ($TANK_CONFIG_DASH as $tc) {
+    $tank_num       = $tc['tanker_num'];
+    $fuel_type_base = $tc['fuel_type'];
+    $ft_key         = strtolower(trim($fuel_type_base));
+    $ugt_str        = 'UGT-' . str_pad($tank_num, 2, '0', STR_PAD_LEFT);
 
-$pending_price_requests = mgr_table_exists($pdo, 'pending_price_approvals')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM pending_price_approvals WHERE {$station_sql} AND LOWER(status) = 'pending'", $station_params)
-    : 0;
-
-$total_pending_approvals = $pending_merch_stock + $pending_fuel_stock + $pending_customer_requests + $pending_price_requests;
-
-$low_fuel_count = 0;
-$out_fuel_count = 0;
-if (mgr_table_exists($pdo, 'fuel_inventory')) {
-    $fuel_inv_rows = mgr_rows($pdo, "SELECT current_level, current_stock, capacity FROM fuel_inventory WHERE {$station_sql}", $station_params);
-    foreach ($fuel_inv_rows as $fi_row) {
-        $capacity = (float)($fi_row['capacity'] ?? 0);
-        $level = min(max(0, (float)($fi_row['current_level'] ?? $fi_row['current_stock'] ?? 0)), $capacity);
-        if ($capacity == 14000)    { $critical_lvl = 2500; $low_lvl = 5000; }
-        elseif ($capacity == 7000) { $critical_lvl = 1000; $low_lvl = 2000; }
-        else                       { $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20; }
-        if ($level <= 0) {
-            $out_fuel_count++;
-        } elseif ($level <= $critical_lvl || $level <= $low_lvl) {
-            $low_fuel_count++;
+    // Match by UGT number in fuel_type string (same logic as inventory module)
+    $inv = null;
+    foreach ($fi_raw as $r) {
+        $r_ugt = strtolower(trim($r['ugt_no']));
+        $r_ft  = strtolower(trim($r['fuel_type']));
+        if (($r_ugt !== '' && $r_ugt === strtolower($ugt_str)) ||
+            strpos($r_ft, '#' . $tank_num) !== false ||
+            strpos($r_ft, 'ugt-' . str_pad($tank_num, 2, '0', STR_PAD_LEFT)) !== false) {
+            $inv = $r; break;
         }
+    }
+    if (!$inv) $inv = $fi_lookup[$ft_key] ?? null;
+
+    // same_type_count: how many tanks share same fuel type key (for division)
+    $same_type_count = count(array_filter($TANK_CONFIG_DASH, function($t) use ($ft_key) {
+        return strtolower(trim($t['fuel_type'])) === $ft_key;
+    }));
+    $same_type_count = max(1, $same_type_count);
+
+    $cap       = (float)$tc['capacity'];
+    $raw_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
+    // Divide by same_type_count (matches inventory module behaviour)
+    $lvl       = round($raw_level / $same_type_count, 2);
+    $price     = $inv ? (float)($inv['price_per_liter'] ?? 0) : 0;
+    $pct       = $cap > 0 ? min(100, round(($lvl / $cap) * 100, 1)) : 0;
+
+    // Use tank-config reorder/critical (same source as inventory module)
+    $reord = (float)$tc['reorder_level'];
+    $crit  = (float)$tc['critical_level'];
+
+    $fuel_inventory_value += ($lvl * $price);
+    $total_fuel_capacity  += $cap;
+    $total_available_fuel += $lvl;
+
+    if ($lvl <= 0) {
+        $out_fuel_count++; $crit_fuel_count++;
+        $alert_type = 'out'; $alert_status = 'OUT OF STOCK';
+        $badge_bg = '#FEE2E2'; $badge_color = '#991B1B'; $badge_border = '#FECACA';
+        $bar_color = '#DC2626';
+    } elseif ($lvl <= $crit) {
+        $crit_fuel_count++;
+        $alert_type = 'critical'; $alert_status = 'CRITICAL';
+        $badge_bg = '#FEE2E2'; $badge_color = '#DC2626'; $badge_border = '#FECACA';
+        $bar_color = '#DC2626';
+    } elseif ($lvl <= $reord) {
+        $low_fuel_count++;
+        $alert_type = 'low'; $alert_status = 'LOW';
+        $badge_bg = '#FEF9C3'; $badge_color = '#B45309'; $badge_border = '#FDE68A';
+        $bar_color = '#D97706';
+    } else {
+        $alert_type = 'normal'; $alert_status = 'NORMAL';
+        $badge_bg = '#DCFCE7'; $badge_color = '#15803D'; $badge_border = '#BBF7D0';
+        $bar_color = '#16A34A';
+    }
+
+    $fuel_tanks[] = [
+        'id'           => $inv['id'] ?? 0,
+        'fuel_type'    => $tc['fuel_type'],
+        'ugt'          => $tc['tank'],
+        'label'        => $tc['label'],
+        'capacity'     => $cap,
+        'current_level'=> $lvl,
+        'reorder_level'=> $reord,
+        'critical_level'=> $crit,
+        'price_per_liter'=> $price,
+        'fill_percent' => $pct,
+        'alert_type'   => $alert_type,
+        'alert_status' => $alert_status,
+        'badge_bg'     => $badge_bg,
+        'badge_color'  => $badge_color,
+        'badge_border' => $badge_border,
+        'bar_color'    => $bar_color,
+    ];
+}
+$normal_fuel_count = max(0, count($fuel_tanks) - $low_fuel_count - $crit_fuel_count);
+
+// Merchandise Inventory Counts & Valuation — Exact matching query from manager_inventory_merchandise.php
+$merch_inv_stats = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT
+            ip.id,
+            ip.product_name                              AS product_name,
+            COALESCE(ip.category,'Merchandise')          AS category,
+            COALESCE(ip.unit_price, 0)                   AS price,
+            COALESCE(ip.unit_cost, 0)                    AS unit_cost,
+            ip.sku,
+            COALESCE(ip.brand,'Petron Corporation')      AS supplier,
+            COALESCE(ip.status,'active')                 AS product_status,
+            COALESCE(ip.min_stock, 0)                    AS min_stock,
+            COALESCE(ip.max_stock, 0)                    AS max_stock,
+            COALESCE(si.stock_level, ip.stock, 0)        AS stock_level,
+            COALESCE(si.capacity, ip.max_stock, 480)     AS capacity,
+            COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
+            COALESCE(si.critical_level, 10)              AS critical_level,
+            COALESCE(si.unit, ip.size, 'pcs')            AS unit,
+            COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
+            si.physical_count,
+            si.variance
+        FROM inventory_products ip
+        LEFT JOIN station_inventory si ON si.product_id = ip.id AND (si.station_id = ? OR si.station_id = 0 OR si.station_id IS NULL)
+        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+
+        UNION
+
+        SELECT
+            p.id,
+            p.name                                       AS product_name,
+            COALESCE(pc.name,'General')                  AS category,
+            COALESCE(si2.price, p.price, 0)              AS price,
+            COALESCE(p.cost, si2.cost, 0)                AS unit_cost,
+            COALESCE(NULLIF(p.sku,''), CONCAT('P', LPAD(p.id,4,'0'))) AS sku,
+            'Petron Corporation'                         AS supplier,
+            COALESCE(NULLIF(si2.status,''), NULLIF(p.status,''), 'active') AS product_status,
+            COALESCE(p.min_stock_level, 0)               AS min_stock,
+            COALESCE(p.max_stock_level, 0)               AS max_stock,
+            COALESCE(si2.stock_level, p.current_stock, 0) AS stock_level,
+            COALESCE(NULLIF(si2.capacity,0), NULLIF(p.capacity,0), NULLIF(p.max_stock_level,0), 480) AS capacity,
+            COALESCE(NULLIF(si2.reorder_level,0), NULLIF(p.min_stock_level,0), 24) AS reorder_level,
+            COALESCE(NULLIF(si2.critical_level,0), 10)   AS critical_level,
+            COALESCE(NULLIF(p.unit,''), NULLIF(si2.unit,''), 'pcs') AS unit,
+            COALESCE(si2.last_updated, p.updated_at, p.created_at) AS last_updated,
+            si2.physical_count,
+            si2.variance
+        FROM products p
+        LEFT JOIN product_categories pc ON pc.id = p.category_id
+        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND (si2.station_id = ? OR si2.station_id = 0 OR si2.station_id IS NULL)
+        WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
+          AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
+          AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products'))
+
+        ORDER BY category, product_name
+    ");
+    $stmt->execute([$station_id, $station_id]);
+    $merch_inv_stats = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+$total_products_count  = count($merch_inv_stats);
+$available_merch_count = 0;
+$low_merch_count       = 0;
+$crit_merch_count      = 0;
+$out_merch_count       = 0;
+$variance_merch_count  = 0;
+$merch_inventory_value = 0.0;
+$inventory_alerts      = [];
+$merch_alert_items     = [];
+
+foreach ($merch_inv_stats as &$item) {
+    $stock     = (float)($item['stock_level'] ?? 0);
+    $reorder   = (float)($item['reorder_level'] ?? 24);
+    $critical  = (float)($item['critical_level'] ?? 10);
+    $variance  = $item['variance'];
+    $has_var   = ($variance !== null && (float)$variance != 0);
+    $cost      = (float)($item['unit_cost'] > 0 ? $item['unit_cost'] : ($item['price'] ?? 0));
+    $merch_inventory_value += ($stock * $cost);
+
+    if ($has_var) {
+        $variance_merch_count++;
+    }
+
+    if ($stock <= 0) {
+        $out_merch_count++;
+        $item['alert_type']   = 'out';
+        $item['alert_status'] = 'OUT OF STOCK';
+        $item['badge_bg']     = '#FEE2E2';
+        $item['badge_color']  = '#991B1B';
+        $item['badge_border'] = '#FECACA';
+        $merch_alert_items[]  = $item;
+    } elseif ($stock <= $critical) {
+        $crit_merch_count++;
+        $item['alert_type']   = 'critical';
+        $item['alert_status'] = 'CRITICAL';
+        $item['badge_bg']     = '#FEE2E2';
+        $item['badge_color']  = '#DC2626';
+        $item['badge_border'] = '#FECACA';
+        $merch_alert_items[]  = $item;
+    } elseif ($stock <= $reorder) {
+        $low_merch_count++;
+        $item['alert_type']   = 'low';
+        $item['alert_status'] = 'LOW';
+        $item['badge_bg']     = '#FEF9C3';
+        $item['badge_color']  = '#B45309';
+        $item['badge_border'] = '#FDE68A';
+        $merch_alert_items[]  = $item;
+    } else {
+        $available_merch_count++;
+        $item['alert_type']   = 'available';
+        $item['alert_status'] = 'AVAILABLE';
+        $item['badge_bg']     = '#DCFCE7';
+        $item['badge_color']  = '#15803D';
+        $item['badge_border'] = '#BBF7D0';
+    }
+    $item['has_variance'] = $has_var;
+}
+unset($item);
+
+$low_stock_items       = $low_fuel_count + $low_merch_count;
+$critical_stock_items  = $crit_fuel_count + $crit_merch_count;
+$out_of_stock_items    = $out_fuel_count + $out_merch_count;
+$total_inventory_value = $fuel_inventory_value + $merch_inventory_value;
+
+// ── 4. FUEL MANAGEMENT SUMMARY & VALIDATION QUEUES ───────────────────────────
+$shift1_fuel_sales = (float) mgr_value($pdo, "
+    SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions 
+    WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) = ? 
+      AND TIME(COALESCE(transaction_date, created_at)) >= '06:00:00' 
+      AND TIME(COALESCE(transaction_date, created_at)) < '14:00:00'
+      AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
+", array_merge($st_params, [$date_to]));
+
+$shift2_fuel_sales = (float) mgr_value($pdo, "
+    SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions 
+    WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) = ? 
+      AND (TIME(COALESCE(transaction_date, created_at)) >= '14:00:00' OR TIME(COALESCE(transaction_date, created_at)) < '06:00:00')
+      AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
+", array_merge($st_params, [$date_to]));
+
+$fuel_volume_sold = (float) mgr_value($pdo, "
+    SELECT COALESCE(SUM(liters), 0) FROM fuel_transactions
+    WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+      AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
+", $date_params);
+
+$shift1_status = 'Pending';
+$shift2_status = 'Pending';
+
+$closings_today = mgr_rows($pdo, "
+    SELECT shift, shift_period, status
+    FROM fuel_sales_closing
+    WHERE {$st_sql} AND DATE(report_date) = ?
+", array_merge($st_params, [$date_to]));
+
+foreach ($closings_today as $c) {
+    $shift_name = strtolower(trim($c['shift'] . ' ' . $c['shift_period']));
+    $c_status = strtolower(trim($c['status']));
+    $is_done = in_array($c_status, ['closing_completed', 'completed', 'approved', 'verified', 'checked']);
+    $is_sub  = in_array($c_status, ['readings_submitted', 'submitted', 'pending manager review']);
+    $is_ret  = in_array($c_status, ['returned', 'for_revision']);
+
+    if (str_contains($shift_name, '1') || str_contains($shift_name, 'first') || str_contains($shift_name, 'morning')) {
+        $shift1_status = $is_done ? 'Completed' : ($is_ret ? 'Returned' : ($is_sub ? 'Submitted' : 'Pending'));
+    } elseif (str_contains($shift_name, '2') || str_contains($shift_name, 'second') || str_contains($shift_name, 'afternoon')) {
+        $shift2_status = $is_done ? 'Completed' : ($is_ret ? 'Returned' : ($is_sub ? 'Submitted' : 'Pending'));
     }
 }
 
-$low_merch_count = mgr_table_exists($pdo, 'station_inventory')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM station_inventory WHERE {$station_sql} AND status = 'active' AND COALESCE(stock_level, 0) <= COALESCE(reorder_level, 0)", $station_params)
-    : 0;
-
-$out_merch_count = mgr_table_exists($pdo, 'station_inventory')
-    ? (int) mgr_value($pdo, "SELECT COUNT(*) FROM station_inventory WHERE {$station_sql} AND status = 'active' AND COALESCE(stock_level, 0) <= 0", $station_params)
-    : 0;
-
-$out_stock_count = $out_fuel_count + $out_merch_count;
-$total_inventory_alerts = $low_fuel_count + $low_merch_count + $out_stock_count;
-
-$pending_po_deliveries = mgr_table_exists($pdo, 'purchase_orders')
-    ? (int) mgr_value(
-        $pdo,
-        "SELECT COUNT(*) FROM purchase_orders
-         WHERE {$station_sql}
-           AND admin_finalized = 1
-           AND delivery_validated = 0
-           AND stock_in_done = 0",
-        $station_params
+// Meter readings validation statuses
+$pending_meter_validations = (int) mgr_value($pdo, "
+    SELECT COUNT(*) FROM fuel_transactions
+    WHERE {$st_sql} AND (
+        LOWER(TRIM(COALESCE(status, ''))) IN ('readings_submitted', 'pending validation', 'pending', 'awaiting validation')
+        OR LOWER(TRIM(COALESCE(validation_status, ''))) IN ('pending', 'pending validation')
     )
-    : 0;
+", $st_params);
 
-$pending_encoded_deliveries = mgr_table_exists($pdo, 'deliveries_oversight')
-    ? (int) mgr_value(
-        $pdo,
-        "SELECT COUNT(*) FROM deliveries_oversight
-         WHERE {$station_sql}
-           AND LOWER(status) IN ('pending manager approval', 'pending validation', 'pending verification', 'pending manager confirmation', 'approved - ready for stock-in', 'adjusted - ready for stock-in')",
-        $station_params
-    )
-    : 0;
+$fuel_closings_for_review = (int) mgr_value($pdo, "
+    SELECT COUNT(*) FROM fuel_sales_closing
+    WHERE {$st_sql} AND LOWER(TRIM(COALESCE(status, 'pending'))) IN ('pending', 'readings_submitted', 'submitted', 'pending manager review')
+", $st_params);
 
-$pending_deliveries_count = $pending_po_deliveries + $pending_encoded_deliveries;
+$fuel_returned_corrections = (int) mgr_value($pdo, "
+    SELECT COUNT(*) FROM fuel_transactions
+    WHERE {$st_sql} AND LOWER(TRIM(COALESCE(status, ''))) IN ('returned', 'returned for correction', 'rejected', 'for revision')
+", $st_params);
 
-$active_services_count = 0;
-if (mgr_table_exists($pdo, 'job_orders')) {
-    $active_services_count += (int) mgr_value(
-        $pdo,
-        "SELECT COUNT(*) FROM job_orders
-         WHERE {$station_sql}
-           AND LOWER(COALESCE(status, 'pending')) NOT IN ('cancelled', 'rejected')",
-        $station_params
-    );
-}
-if (mgr_table_exists($pdo, 'merchandise_transactions')) {
-    $active_services_count += (int) mgr_value(
-        $pdo,
-        "SELECT COUNT(*) FROM merchandise_transactions
-         WHERE {$station_sql}
-           AND transaction_type IN ('job_order', 'combined')
-           AND LOWER(COALESCE(workflow_status, validation_status, 'pending')) NOT IN ('cancelled', 'rejected')",
-        $station_params
-    );
-}
+// ── 5. STOCK REQUESTS & STOCK-IN MONITORING ──────────────────────────────────
+$sr_pending_merch  = (int) mgr_value($pdo, "SELECT COUNT(*) FROM stock_requests WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'pending manager review', 'for review')", $st_params);
+$sr_pending_fuel   = (int) mgr_value($pdo, "SELECT COUNT(*) FROM fuel_stock_requests WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'pending manager review', 'for review')", $st_params);
+$pending_stock_reqs = $sr_pending_merch + $sr_pending_fuel;
 
-$staff_shift_counts = ['Shift 1' => 0, 'Shift 2' => 0];
-if (mgr_table_exists($pdo, 'labor_sessions')) {
-    $staff_rows = mgr_rows(
-        $pdo,
-        "SELECT COALESCE(NULLIF(shift_name, ''), NULLIF(shift_period, ''), 'Unassigned') AS shift_label,
-                COUNT(DISTINCT user_id) AS staff_count
-         FROM labor_sessions
-         WHERE {$station_sql}
-           AND end_time IS NULL
-         GROUP BY shift_label",
-        $station_params
-    );
-    foreach ($staff_rows as $row) {
-        $label = (string) ($row['shift_label'] ?? 'Unassigned');
-        $label_lower = strtolower($label);
-        $count = (int) ($row['staff_count'] ?? 0);
-        if (str_contains($label_lower, 'first') || str_contains($label_lower, 'shift 1') || str_contains($label_lower, 'morning') || $label_lower === 'shift 1' || $label_lower === 'first shift') {
-            $staff_shift_counts['Shift 1'] += $count;
-        } elseif (str_contains($label_lower, 'second') || str_contains($label_lower, 'shift 2') || str_contains($label_lower, 'afternoon') || $label_lower === 'shift 2' || $label_lower === 'second shift') {
-            $staff_shift_counts['Shift 2'] += $count;
-        } else {
-            $staff_shift_counts[$label] = ($staff_shift_counts[$label] ?? 0) + $count;
-        }
-    }
-}
-$active_staff_total = array_sum($staff_shift_counts);
+$sr_approved_count = (int) mgr_value($pdo, "SELECT COUNT(*) FROM stock_requests WHERE {$st_sql} AND LOWER(COALESCE(status, '')) IN ('approved', 'completed')", $st_params)
+                   + (int) mgr_value($pdo, "SELECT COUNT(*) FROM fuel_stock_requests WHERE {$st_sql} AND LOWER(COALESCE(status, '')) IN ('approved', 'completed')", $st_params);
 
-// Service Queue Status Counts (from job_orders and merchandise_transactions)
-$service_status_counts = ['Pending' => 0, 'In Progress' => 0, 'Ready' => 0, 'Released' => 0];
-if (mgr_table_exists($pdo, 'job_orders')) {
-    $service_status_counts['Pending']     += (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND LOWER(COALESCE(status,'pending')) IN ('pending', 'reviewed', 'pending validation')", $station_params);
-    $service_status_counts['In Progress'] += (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND LOWER(COALESCE(status,'pending')) IN ('in progress', 'awaiting parts')", $station_params);
-    $service_status_counts['Ready']       += (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND LOWER(COALESCE(status,'pending')) IN ('completed', 'verified', 'ready')", $station_params);
-    $service_status_counts['Released']    += (int) mgr_value($pdo, "SELECT COUNT(*) FROM job_orders WHERE {$station_sql} AND LOWER(COALESCE(status,'pending')) IN ('released', 'finalized', 'approved')", $station_params);
-}
-if (mgr_table_exists($pdo, 'merchandise_transactions')) {
-    $mt_cond = "{$station_sql} AND transaction_type IN ('job_order', 'combined')";
-    $service_status_counts['Pending']     += (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$mt_cond} AND LOWER(COALESCE(workflow_status, validation_status, 'pending')) IN ('pending', 'reviewed', 'pending validation')", $station_params);
-    $service_status_counts['In Progress'] += (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$mt_cond} AND LOWER(COALESCE(workflow_status, validation_status, 'pending')) IN ('in progress', 'awaiting parts')", $station_params);
-    $service_status_counts['Ready']       += (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$mt_cond} AND LOWER(COALESCE(workflow_status, validation_status, 'pending')) IN ('completed', 'verified', 'ready')", $station_params);
-    $service_status_counts['Released']    += (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_transactions WHERE {$mt_cond} AND LOWER(COALESCE(workflow_status, validation_status, 'pending')) IN ('released', 'finalized', 'approved')", $station_params);
-}
+$sr_rejected_count = (int) mgr_value($pdo, "SELECT COUNT(*) FROM stock_requests WHERE {$st_sql} AND LOWER(COALESCE(status, '')) IN ('rejected', 'cancelled')", $st_params)
+                   + (int) mgr_value($pdo, "SELECT COUNT(*) FROM fuel_stock_requests WHERE {$st_sql} AND LOWER(COALESCE(status, '')) IN ('rejected', 'cancelled')", $st_params);
 
-// Chart data.
-$hour_labels = [];
-$hourly_sales = [];
-for ($h = 0; $h <= 23; $h++) {
-    $hour_labels[] = date('ga', strtotime(sprintf('%02d:00:00', $h)));
-    $start = $date_filter . ' ' . sprintf('%02d:00:00', $h);
-    $end = $date_filter . ' ' . sprintf('%02d:59:59', $h);
+$sr_revision_count = (int) mgr_value($pdo, "SELECT COUNT(*) FROM stock_requests WHERE {$st_sql} AND LOWER(COALESCE(status, '')) IN ('for revision', 'returned')", $st_params);
 
-    $fuel_hour = mgr_table_exists($pdo, 'fuel_transactions')
-        ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND {$fuel_dt_expr} BETWEEN ? AND ? {$fuel_status_ok}", array_merge($station_params, [$start, $end]))
-        : 0.0;
-    $merch_hour = mgr_table_exists($pdo, 'merchandise_transactions')
-        ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND {$merch_dt_expr} BETWEEN ? AND ? {$merch_status_ok}", array_merge($station_params, [$start, $end]))
-        : 0.0;
-    $service_hour = mgr_table_exists($pdo, 'job_orders')
-        ? (float) mgr_value(
-            $pdo,
-            "SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, actual_labor_cost + actual_parts_cost, 0)), 0)
-             FROM job_orders
-             WHERE {$station_sql}
-               AND {$job_dt_expr} BETWEEN ? AND ?
-               AND LOWER(COALESCE(status, '')) IN ('completed', 'verified', 'finalized', 'released')",
-            array_merge($station_params, [$start, $end])
-        )
-        : 0.0;
+// Stock-In verification counts
+$stockin_received_count = (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_stock_in WHERE {$st_sql}", $st_params);
+$stockin_pending_verif  = (int) mgr_value($pdo, "SELECT COUNT(*) FROM merchandise_stock_in WHERE {$st_sql} AND (condition_flag IS NULL OR condition_flag = '' OR condition_flag = 'Good')", $st_params);
 
-    $hourly_sales[] = $fuel_hour + $merch_hour + $service_hour;
-}
+// ── 6. APPROVAL CENTER & REQUEST DATA ─────────────────────────────────────────
+$pending_master_data = (int) mgr_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) = 'pending'", $st_params);
 
-$fuel_products = [];
-$fuel_sales_data = [];
-$ugt_mgr_chart = [
-    'UGT #1 (DIESEL 1)'       => 0.0,
-    'UGT #2 (DIESEL 2)'       => 0.0,
-    'UGT #3 (TURBO DIESEL)'   => 0.0,
-    'UGT #4 (XCS PLUS)'       => 0.0,
-    'UGT #5 (XTRA ADVANCE 1)' => 0.0,
-    'UGT #6 (XTRA ADVANCE 2)' => 0.0,
-    'UGT #7 (KEROSENE)'       => 0.0,
-];
+$pending_void_reqs = (int) mgr_value($pdo, "SELECT COUNT(*) FROM transaction_requests WHERE {$st_sql} AND LOWER(COALESCE(request_type, '')) = 'void' AND LOWER(COALESCE(status, 'pending')) = 'pending'", $st_params);
 
-if (mgr_table_exists($pdo, 'fuel_transactions')) {
-    $fuel_sales_rows = mgr_rows(
-        $pdo,
-        "SELECT 
-            COALESCE(NULLIF(fp.pump_number, ''), ft.fuel_type) AS pump_name,
-            ft.fuel_type,
-            COALESCE(ft.liters_sold, 0) AS total_liters
-        FROM fuel_transactions ft
-        LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
-        INNER JOIN (
-            SELECT MAX(id) AS max_id
-            FROM fuel_transactions
-            WHERE station_id = ? AND (DATE(transaction_date) BETWEEN ? AND ? OR (transaction_date IS NULL AND DATE(created_at) BETWEEN ? AND ?))
-              AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
-            GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
-        ) latest ON ft.id = latest.max_id",
-        array_merge($station_params, [$date_from, $date_to, $date_from, $date_to])
-    );
-    foreach ($fuel_sales_rows as $row) {
-        $pName  = strtoupper(trim($row['pump_name'] ?: $row['fuel_type']));
-        $ftype  = strtolower(trim($row['fuel_type']));
-        $liters = (float)$row['total_liters'];
+$pending_adjustment_reqs = (int) mgr_value($pdo, "SELECT COUNT(*) FROM transaction_requests WHERE {$st_sql} AND LOWER(COALESCE(request_type, '')) = 'adjustment' AND LOWER(COALESCE(status, 'pending')) = 'pending'", $st_params);
 
-        if (strpos($pName, 'DIESEL 1') !== false) {
-            $ugt_mgr_chart['UGT #1 (DIESEL 1)'] += $liters;
-        } elseif (strpos($pName, 'DIESEL 2') !== false) {
-            $ugt_mgr_chart['UGT #2 (DIESEL 2)'] += $liters;
-        } elseif (strpos($pName, 'TURBO') !== false) {
-            $ugt_mgr_chart['UGT #3 (TURBO DIESEL)'] += $liters;
-        } elseif (strpos($pName, 'XCS') !== false) {
-            $ugt_mgr_chart['UGT #4 (XCS PLUS)'] += $liters;
-        } elseif (strpos($pName, 'XTRA UNL 1') !== false || strpos($pName, 'XTRA AD 1') !== false || strpos($pName, 'ADVANCE 1') !== false) {
-            $ugt_mgr_chart['UGT #5 (XTRA ADVANCE 1)'] += $liters;
-        } elseif (strpos($pName, 'XTRA UNL 2') !== false || strpos($pName, 'XTRA AD 2') !== false || strpos($pName, 'ADVANCE 2') !== false) {
-            $ugt_mgr_chart['UGT #6 (XTRA ADVANCE 2)'] += $liters;
-        } elseif (strpos($pName, 'KERO') !== false) {
-            $ugt_mgr_chart['UGT #7 (KEROSENE)'] += $liters;
-        } else {
-            if (strpos($ftype, 'turbo') !== false) {
-                $ugt_mgr_chart['UGT #3 (TURBO DIESEL)'] += $liters;
-            } elseif (strpos($ftype, 'diesel') !== false) {
-                $ugt_mgr_chart['UGT #1 (DIESEL 1)'] += $liters;
-            } elseif (strpos($ftype, 'xcs') !== false) {
-                $ugt_mgr_chart['UGT #4 (XCS PLUS)'] += $liters;
-            } elseif (strpos($ftype, 'xtra') !== false || strpos($ftype, 'advance') !== false) {
-                $ugt_mgr_chart['UGT #5 (XTRA ADVANCE 1)'] += $liters;
-            } elseif (strpos($ftype, 'kero') !== false) {
-                $ugt_mgr_chart['UGT #7 (KEROSENE)'] += $liters;
+$total_pending_approvals = $pending_stock_reqs + $pending_master_data + $pending_void_reqs + $pending_adjustment_reqs + $pending_meter_validations + $fuel_closings_for_review;
+
+// Consolidated Approval Center List (Top 6 pending items)
+$approval_center_items = [];
+
+// A. Stock Requests
+$app_sr = mgr_rows($pdo, "
+    SELECT request_no, item_name AS title, COALESCE(item_category, 'Merchandise') AS category, 'Stock Request' AS request_type, status, created_at, 'manager_stock_request_review.php' AS link_url
+    FROM stock_requests WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'pending manager review')
+    UNION ALL
+    SELECT request_no, fuel_type AS title, 'Fuel' AS category, 'Fuel Stock Request' AS request_type, status, created_at, 'manager_stock_request_review.php' AS link_url
+    FROM fuel_stock_requests WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'pending manager review')
+    ORDER BY created_at DESC LIMIT 4
+", array_merge($st_params, $st_params));
+foreach ($app_sr as $r) { $approval_center_items[] = $r; }
+
+// B. Master Data Requests
+$app_md = mgr_rows($pdo, "
+    SELECT request_no, category AS title, category, 'Master Data' AS request_type, status, created_at, 'manager_request_data_management.php' AS link_url
+    FROM master_data_requests WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) = 'pending'
+    ORDER BY created_at DESC LIMIT 3
+", $st_params);
+foreach ($app_md as $r) { $approval_center_items[] = $r; }
+
+// C. Void & Adjustment Requests
+$app_tr = mgr_rows($pdo, "
+    SELECT CONCAT('REQ-', id) AS request_no, request_reason AS title, record_source AS category, CONCAT(request_type, ' Request') AS request_type, status, requested_at AS created_at, 
+           CASE WHEN LOWER(request_type) = 'void' THEN 'manager_validated_transactions.php?status=Void+Requested' ELSE 'manager_validated_transactions.php?status=Adjustment+Requested' END AS link_url
+    FROM transaction_requests WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) = 'pending'
+    ORDER BY requested_at DESC LIMIT 3
+", $st_params);
+foreach ($app_tr as $r) { $approval_center_items[] = $r; }
+
+// ── 7. MASTER DATA REQUESTS MONITORING ────────────────────────────────────────
+$master_data_list = mgr_rows($pdo, "
+    SELECT request_no, category, data_payload, status, created_at
+    FROM master_data_requests
+    WHERE {$st_sql}
+    ORDER BY created_at DESC
+    LIMIT 5
+", $st_params);
+
+// ── 8. VOID & ADJUSTMENT REQUESTS MONITORING ──────────────────────────────────
+$void_adjust_list = mgr_rows($pdo, "
+    SELECT id, transaction_id, record_source, request_type, request_reason, status, requested_at, reviewed_at
+    FROM transaction_requests
+    WHERE {$st_sql}
+    ORDER BY requested_at DESC
+    LIMIT 5
+", $st_params);
+
+// ── 9. ACCOUNTS RECEIVABLE (Merchandise + Job Orders; Fuel Excluded) ──────────
+$ar_total_outstanding = (float) mgr_value($pdo, "
+    SELECT COALESCE(SUM(total_amount), 0)
+    FROM merchandise_transactions
+    WHERE {$st_sql}
+      AND (payment_method = 'Credit Account' OR payment_method = 'Credit')
+      AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+", $st_params);
+
+$ar_due_amount = (float) mgr_value($pdo, "
+    SELECT COALESCE(SUM(total_amount), 0)
+    FROM merchandise_transactions
+    WHERE {$st_sql}
+      AND (payment_method = 'Credit Account' OR payment_method = 'Credit')
+      AND due_date IS NOT NULL AND due_date >= CURDATE()
+      AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+", $st_params);
+
+$ar_overdue_amount = (float) mgr_value($pdo, "
+    SELECT COALESCE(SUM(total_amount), 0)
+    FROM merchandise_transactions
+    WHERE {$st_sql}
+      AND (payment_method = 'Credit Account' OR payment_method = 'Credit')
+      AND due_date IS NOT NULL AND due_date < CURDATE()
+      AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+", $st_params);
+
+$ar_recently_paid = (float) mgr_value($pdo, "
+    SELECT COALESCE(SUM(amount), 0)
+    FROM customer_credit_transactions
+    WHERE {$st_sql} AND DATE(created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+", $st_params);
+
+// ── 10. RECENT TRANSACTIONS (Consolidated Fuel, Merch, Job Orders) ────────────
+$recent_transactions = mgr_rows($pdo, "
+    SELECT 
+        COALESCE(t.transaction_id, CONCAT('TRX-', t.id)) AS ref_no,
+        'Merchandise' AS txn_type,
+        COALESCE(NULLIF(TRIM(t.customer_name), ''), 'Walk-in Customer') AS customer_name,
+        COALESCE(t.total_amount, 0) AS amount,
+        COALESCE(t.payment_method, 'Cash') AS payment_method,
+        COALESCE(t.workflow_status, t.validation_status, 'Completed') AS status,
+        COALESCE(t.transaction_date, t.created_at) AS created_at
+    FROM merchandise_transactions t
+    WHERE {$st_sql}
+    
+    UNION ALL
+    
+    SELECT 
+        COALESCE(ft.transaction_id, CONCAT('FUEL-', ft.id)) AS ref_no,
+        'Fuel' AS txn_type,
+        CONCAT(ft.fuel_type, ' - Pump #', COALESCE(ft.pump_id, 1)) AS customer_name,
+        COALESCE(ft.total_amount, 0) AS amount,
+        COALESCE(ft.payment_method, 'Internal') AS payment_method,
+        COALESCE(ft.status, 'Completed') AS status,
+        COALESCE(ft.transaction_date, ft.created_at) AS created_at
+    FROM fuel_transactions ft
+    WHERE {$st_sql}
+    
+    UNION ALL
+    
+    SELECT 
+        COALESCE(jo.job_order_number, CONCAT('JO-', jo.id)) AS ref_no,
+        'Job Order' AS txn_type,
+        COALESCE(NULLIF(TRIM(jo.customer_name), ''), 'Walk-in Customer') AS customer_name,
+        COALESCE(jo.total_cost, jo.estimated_cost, 0) AS amount,
+        'Cash' AS payment_method,
+        COALESCE(jo.status, 'Completed') AS status,
+        COALESCE(jo.created_at, jo.updated_at) AS created_at
+    FROM job_orders jo
+    WHERE {$st_sql}
+    
+    ORDER BY created_at DESC
+    LIMIT 7
+", array_merge($st_params, $st_params, $st_params));
+
+$total_branch_transactions = (int) mgr_value($pdo, "
+    SELECT (SELECT COUNT(*) FROM fuel_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?)
+         + (SELECT COUNT(*) FROM merchandise_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?)
+         + (SELECT COUNT(*) FROM job_orders WHERE {$st_sql} AND DATE(COALESCE(completed_at, created_at)) BETWEEN ? AND ?)
+", array_merge($date_params, $date_params, $date_params));
+
+// ── 11. RECENT INVENTORY MOVEMENTS ───────────────────────────────────────────
+$recent_inventory_movements = mgr_rows($pdo, "
+    SELECT il.id, 
+           COALESCE(p.name, ip.product_name, CONCAT('Product #', il.product_id)) AS product_name,
+           il.action, il.movement_type, il.quantity_change, il.reason, il.reference_no, il.created_at
+    FROM inventory_logs il
+    LEFT JOIN products p ON p.id = il.product_id
+    LEFT JOIN inventory_products ip ON ip.id = il.product_id
+    WHERE (il.station_id = ? OR il.station_id = 0 OR il.station_id IS NULL)
+    ORDER BY il.id DESC 
+    LIMIT 6
+", $st_params);
+
+// ── 12. NOTIFICATION PREVIEW ──────────────────────────────────────────────────
+$notifications_list = mgr_rows($pdo, "
+    SELECT id, title, message, type, severity, status, redirect_url, created_at, read_at
+    FROM notifications
+    WHERE (user_id = ? OR user_id = 0 OR recipient_role = 'manager' OR recipient_role = 'all' OR recipient_role IS NULL)
+    ORDER BY created_at DESC
+    LIMIT 6
+", [$user_id]);
+
+// ── 13. STAFF ACTIVITY OVERVIEW ───────────────────────────────────────────────
+$staff_activity_list = mgr_rows($pdo, "
+    SELECT al.id, al.action, al.details, al.reference, al.created_at, u.first_name, u.last_name, u.role
+    FROM activity_logs al
+    LEFT JOIN users u ON u.id = al.user_id
+    WHERE (u.station_id = ? OR al.user_id = ? OR u.station_id = 0)
+      AND LOWER(COALESCE(u.role, 'staff')) IN ('staff', 'cashier', 'pump_attendant')
+    ORDER BY al.id DESC
+    LIMIT 6
+", [$station_id, $user_id]);
+
+foreach ($staff_activity_list as &$sa) {
+    $ref = trim((string)($sa['reference'] ?? ''));
+    if (empty($ref)) {
+        $action_lower = strtolower($sa['action'] ?? '');
+        $details = $sa['details'] ?? '';
+        
+        if (str_contains($action_lower, 'clock in')) {
+            if (preg_match('/(First|Second)\s+Shift/i', $details, $m)) {
+                $ref = strtoupper($m[1]) . '-SHIFT';
+            } else {
+                $ref = 'CLK-' . str_pad((string)$sa['id'], 4, '0', STR_PAD_LEFT);
             }
-        }
-    }
-}
-$fuel_products   = array_keys($ugt_mgr_chart);
-$fuel_sales_data = array_values($ugt_mgr_chart);
-
-$merch_sales_data = [];
-$merch_categories = [];
-if (mgr_table_exists($pdo, 'merchandise_transaction_items') && mgr_table_exists($pdo, 'merchandise_transactions')) {
-    $merch_sales_rows = mgr_rows(
-        $pdo,
-        "SELECT COALESCE(NULLIF(TRIM(mti.category), ''), 'Others') AS label,
-                COALESCE(SUM(mti.subtotal), 0) AS total_sales
-         FROM merchandise_transaction_items mti
-         INNER JOIN merchandise_transactions mt ON mt.id = mti.transaction_id
-         WHERE " . mgr_station_clause($station_id, 'mt') . "
-           AND DATE({$merch_dt_expr_mt}) BETWEEN ? AND ?
-           {$merch_status_ok_mt}
-         GROUP BY label
-         ORDER BY total_sales DESC, label ASC",
-        array_merge($station_params, [$date_from, $date_to])
-    );
-    foreach ($merch_sales_rows as $row) {
-        $merch_categories[] = (string) ($row['label'] ?? 'Others');
-        $merch_sales_data[] = (float) ($row['total_sales'] ?? 0);
-    }
-}
-
-// Period label for cards — e.g. "Jul 22, 2026" or "Jun 1 – Jul 22, 2026"
-$period_label = ($date_from === $date_to)
-    ? date('M j, Y', strtotime($date_from))
-    : date('M j', strtotime($date_from)) . ' – ' . date('M j, Y', strtotime($date_to));
-$is_today = ($date_from === date('Y-m-d') && $date_to === date('Y-m-d'));
-$selected_ts = strtotime($date_from);
-$week_start = date('Y-m-d', strtotime('monday this week', $selected_ts));
-$weekly_labels = [];
-$weekly_revenue = [];
-for ($i = 0; $i < 7; $i++) {
-    $day = date('Y-m-d', strtotime($week_start . " +{$i} days"));
-    $weekly_labels[] = date('D', strtotime($day));
-
-    $fuel_day = mgr_table_exists($pdo, 'fuel_transactions')
-        ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$station_sql} AND DATE({$fuel_dt_expr}) = ? {$fuel_status_ok}", array_merge($station_params, [$day]))
-        : 0.0;
-    $merch_day = mgr_table_exists($pdo, 'merchandise_transactions')
-        ? (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$station_sql} AND DATE({$merch_dt_expr}) = ? {$merch_status_ok}", array_merge($station_params, [$day]))
-        : 0.0;
-    $service_day = mgr_table_exists($pdo, 'job_orders')
-        ? (float) mgr_value(
-            $pdo,
-            "SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, actual_labor_cost + actual_parts_cost, 0)), 0)
-             FROM job_orders
-             WHERE {$station_sql}
-               AND DATE({$job_dt_expr}) = ?
-               AND LOWER(COALESCE(status, '')) IN ('completed', 'verified', 'finalized', 'released')",
-            array_merge($station_params, [$day])
-        )
-        : 0.0;
-    $weekly_revenue[] = $fuel_day + $merch_day + $service_day;
-}
-
-$inventory_labels = [];
-$inventory_current = [];
-$inventory_remaining = [];
-$inventory_colors = [];
-if (mgr_table_exists($pdo, 'fuel_inventory')) {
-    $fuel_inventory_rows = mgr_rows(
-        $pdo,
-        "SELECT fuel_type AS label,
-                COALESCE(current_level, current_stock, 0) AS current_qty,
-                COALESCE(NULLIF(capacity, 0), COALESCE(current_level, current_stock, 0)) AS capacity_qty,
-                COALESCE(reorder_level, 0) AS reorder_level,
-                COALESCE(critical_level, 0) AS critical_level
-         FROM fuel_inventory
-         WHERE {$station_sql}
-         ORDER BY fuel_type
-         LIMIT 8",
-        $station_params
-    );
-    foreach ($fuel_inventory_rows as $row) {
-        $capacity = (float) $row['capacity_qty'];
-        $current = min(max(0, (float) $row['current_qty']), $capacity);
-        if ($capacity == 14000)    { $critical_lvl = 2500; $low_lvl = 5000; } elseif ($capacity == 7000) {
-            $critical_lvl = 1000; $low_lvl = 2000;
+        } elseif (str_contains($action_lower, 'clock out')) {
+            $ref = 'CLK-OUT-' . str_pad((string)$sa['id'], 4, '0', STR_PAD_LEFT);
+        } elseif (str_contains($action_lower, 'login failed')) {
+            $ref = 'AUTH-FAIL-' . str_pad((string)$sa['id'], 4, '0', STR_PAD_LEFT);
+        } elseif (str_contains($action_lower, 'login')) {
+            $ref = 'AUTH-' . str_pad((string)$sa['id'], 4, '0', STR_PAD_LEFT);
+        } elseif (str_contains($action_lower, 'logout')) {
+            $ref = 'SES-' . str_pad((string)$sa['id'], 4, '0', STR_PAD_LEFT);
+        } elseif (preg_match('/(PR-\d+-\d+|MDR-\d+|MERCH\d+|FUEL\d+|JO-\d+|BATCH-\w+|BT-\w+)/i', $details, $m)) {
+            $ref = strtoupper($m[1]);
         } else {
-            $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20;
+            $ref = 'ACT-' . str_pad((string)$sa['id'], 4, '0', STR_PAD_LEFT);
         }
-        $inventory_labels[] = 'Fuel: ' . ($row['label'] ?: 'Tank');
-        $inventory_current[] = $current;
-        $inventory_remaining[] = max($capacity - $current, 0);
-        $inventory_colors[] = $current <= $critical_lvl ? '#dc2626' : ($current <= $low_lvl ? '#f97316' : '#22c55e');
+    }
+    $sa['reference'] = $ref;
+}
+unset($sa);
+
+// ── 14. CHARTS & ANALYTICS DATA ──────────────────────────────────────────────
+// Top 5 Selling Products
+$top_products = mgr_rows($pdo, "
+    SELECT COALESCE(NULLIF(TRIM(mti.product_name), ''), 'Product') AS product_name,
+           COALESCE(SUM(mti.quantity), 0) AS total_qty,
+           COALESCE(SUM(mti.subtotal), 0) AS total_revenue
+    FROM merchandise_transaction_items mti
+    INNER JOIN merchandise_transactions mt ON mt.id = mti.transaction_id
+    WHERE {$st_sql}
+      AND LOWER(COALESCE(mt.workflow_status, mt.validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+    GROUP BY product_name
+    ORDER BY total_qty DESC, total_revenue DESC
+    LIMIT 5
+", $st_params);
+
+$top_prod_labels = [];
+$top_prod_quantities = [];
+foreach ($top_products as $tp) {
+    $top_prod_labels[] = $tp['product_name'];
+    $top_prod_quantities[] = (float) $tp['total_qty'];
+}
+if (empty($top_prod_labels)) {
+    $top_prod_labels = ['No Products Sold'];
+    $top_prod_quantities = [0];
+}
+
+// Top 5 Most Requested Services
+$services_map = [];
+$jo_srv_rows = mgr_rows($pdo, "
+    SELECT COALESCE(NULLIF(TRIM(service_type), ''), 'General Service') AS service_name,
+           COUNT(*) AS request_count
+    FROM job_orders
+    WHERE {$st_sql} AND LOWER(COALESCE(status, 'completed')) NOT IN ('voided','cancelled','rejected')
+    GROUP BY service_name
+", $st_params);
+foreach ($jo_srv_rows as $jsr) {
+    $sname = trim($jsr['service_name']);
+    if ($sname !== '') $services_map[$sname] = ($services_map[$sname] ?? 0) + (int)$jsr['request_count'];
+}
+
+$mt_srv_rows = mgr_rows($pdo, "
+    SELECT job_order_service FROM merchandise_transactions
+    WHERE {$st_sql} AND job_order_service IS NOT NULL AND job_order_service != ''
+      AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+", $st_params);
+foreach ($mt_srv_rows as $msr) {
+    $srv_items = explode(',', (string)$msr['job_order_service']);
+    foreach ($srv_items as $si) {
+        $si = trim($si);
+        if ($si !== '') $services_map[$si] = ($services_map[$si] ?? 0) + 1;
     }
 }
+arsort($services_map);
+$top_services_final = array_slice($services_map, 0, 5, true);
+$top_service_labels = !empty($top_services_final) ? array_keys($top_services_final) : ['No Services Recorded'];
+$top_service_counts = !empty($top_services_final) ? array_values($top_services_final) : [0];
 
-if (mgr_table_exists($pdo, 'station_inventory')) {
-    $merch_inventory_rows = mgr_rows(
-        $pdo,
-        "SELECT COALESCE(pc.name, ip.category, p.name, 'Merchandise') AS label,
-                SUM(COALESCE(si.stock_level, 0)) AS current_qty,
-                SUM(CASE
-                    WHEN COALESCE(si.capacity, 0) > 0 THEN si.capacity
-                    WHEN COALESCE(si.reorder_level, 0) > 0 THEN si.reorder_level * 2
-                    ELSE COALESCE(si.stock_level, 0)
-                END) AS capacity_qty,
-                SUM(COALESCE(si.reorder_level, 0)) AS reorder_qty
-         FROM station_inventory si
-         LEFT JOIN products p ON p.id = si.product_id
-         LEFT JOIN product_categories pc ON pc.id = p.category_id
-         LEFT JOIN inventory_products ip ON ip.id = si.product_id
-         WHERE " . mgr_station_clause($station_id, 'si') . "
-           AND si.status = 'active'
-         GROUP BY label
-         ORDER BY current_qty ASC
-         LIMIT 6",
-        $station_params
-    );
-    foreach ($merch_inventory_rows as $row) {
-        $current = (float) $row['current_qty'];
-        $capacity = max((float) $row['capacity_qty'], $current);
-        $reorder = (float) $row['reorder_qty'];
-        $inventory_labels[] = 'Merch: ' . ($row['label'] ?: 'Products');
-        $inventory_current[] = $current;
-        $inventory_remaining[] = max($capacity - $current, 0);
-        $inventory_colors[] = $current <= 0 ? '#dc2626' : ($current <= $reorder ? '#f59e0b' : '#22c55e');
+// Exact 7 System Payment Methods
+$official_payment_types = ['Cash', 'Credit Card', 'Debit Card', 'GCash', 'Maya', 'Petron Fleet Card', 'Credit Account'];
+$payment_map = array_fill_keys($official_payment_types, 0.0);
+
+$pm_rows = mgr_rows($pdo, "
+    SELECT TRIM(payment_method) AS pm, COALESCE(SUM(total_amount), 0) AS amt
+    FROM (
+        SELECT payment_method, total_amount FROM merchandise_transactions WHERE {$st_sql} AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+        UNION ALL
+        SELECT payment_method, total_amount FROM fuel_transactions WHERE {$st_sql} AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
+        UNION ALL
+        SELECT 'Cash' AS payment_method, COALESCE(total_cost, estimated_cost, 0) AS total_amount FROM job_orders WHERE {$st_sql} AND LOWER(COALESCE(status, 'completed')) NOT IN ('voided','cancelled','rejected')
+    ) AS all_pms
+    WHERE payment_method IS NOT NULL AND TRIM(payment_method) != ''
+    GROUP BY TRIM(payment_method)
+", array_merge($st_params, $st_params, $st_params));
+
+foreach ($pm_rows as $pr) {
+    $pm_name = strtolower(trim((string)$pr['pm']));
+    $amt = (float)$pr['amt'];
+    if (str_contains($pm_name, 'debit')) {
+        $payment_map['Debit Card'] += $amt;
+    } elseif (str_contains($pm_name, 'credit card') || ($pm_name === 'card' && !str_contains($pm_name, 'fleet'))) {
+        $payment_map['Credit Card'] += $amt;
+    } elseif (str_contains($pm_name, 'gcash')) {
+        $payment_map['GCash'] += $amt;
+    } elseif (str_contains($pm_name, 'maya') || str_contains($pm_name, 'paymaya')) {
+        $payment_map['Maya'] += $amt;
+    } elseif (str_contains($pm_name, 'fleet')) {
+        $payment_map['Petron Fleet Card'] += $amt;
+    } elseif (str_contains($pm_name, 'credit account') || str_contains($pm_name, 'credit') || str_contains($pm_name, 'account') || str_contains($pm_name, 'ar') || str_contains($pm_name, 'utang')) {
+        $payment_map['Credit Account'] += $amt;
+    } else {
+        $payment_map['Cash'] += $amt;
     }
 }
+$payment_types = array_keys($payment_map);
+$payment_data  = array_values($payment_map);
 
-// Manager panels.
-$stock_request_rows = [];
-if (mgr_table_exists($pdo, 'stock_requests')) {
-    $rows = mgr_rows(
-        $pdo,
-        "SELECT sr.id,
-                COALESCE(sr.request_no, CONCAT('PR-', LPAD(sr.id, 4, '0'))) AS request_no,
-                'Merchandise' AS request_type,
-                sr.item_name AS item_name,
-                sr.requested_quantity AS requested_qty,
-                sr.status,
-                sr.created_at,
-                COALESCE(NULLIF(CONCAT_WS(' ', u.first_name, u.last_name), ''), u.username, 'Staff') AS requested_by,
-                'manager_stock_request_review.php' AS action_url
-         FROM stock_requests sr
-         LEFT JOIN users u ON u.id = sr.staff_id
-         WHERE " . mgr_station_clause($station_id, 'sr') . "
-           AND LOWER(sr.status) IN ('pending', 'pending manager review')
-         ORDER BY sr.created_at DESC
-         LIMIT 8",
-        $station_params
-    );
-    $stock_request_rows = array_merge($stock_request_rows, $rows);
-}
-if (mgr_table_exists($pdo, 'fuel_stock_requests')) {
-    $rows = mgr_rows(
-        $pdo,
-        "SELECT fsr.id,
-                COALESCE(fsr.request_no, CONCAT('PR-', LPAD(fsr.id, 4, '0'))) AS request_no,
-                'Fuel' AS request_type,
-                fsr.fuel_type AS item_name,
-                fsr.requested_liters AS requested_qty,
-                fsr.status,
-                fsr.created_at,
-                COALESCE(NULLIF(CONCAT_WS(' ', u.first_name, u.last_name), ''), u.username, 'Staff') AS requested_by,
-                'manager_stock_request_review.php?subtab=fuel' AS action_url
-         FROM fuel_stock_requests fsr
-         LEFT JOIN users u ON u.id = fsr.staff_id
-         WHERE " . mgr_station_clause($station_id, 'fsr') . "
-           AND LOWER(fsr.status) IN ('pending', 'pending manager review')
-         ORDER BY fsr.created_at DESC
-         LIMIT 8",
-        $station_params
-    );
-    $stock_request_rows = array_merge($stock_request_rows, $rows);
-}
-usort($stock_request_rows, fn($a, $b) => strcmp((string) ($b['created_at'] ?? ''), (string) ($a['created_at'] ?? '')));
-$stock_request_rows = array_slice($stock_request_rows, 0, 8);
+// Daily Sales Trend (Hourly Progression)
+$trend_hours = ($active_shift_num === 1) 
+    ? ['6 AM', '7 AM', '8 AM', '9 AM', '10 AM', '11 AM', '12 PM', '1 PM', '2 PM']
+    : ['2 PM', '3 PM', '4 PM', '5 PM', '6 PM', '7 PM', '8 PM', '9 PM', '10 PM', '11 PM', '12 MN'];
 
-$customer_request_rows = mgr_table_exists($pdo, 'customers')
-    ? mgr_rows(
-        $pdo,
-        "SELECT id,
-                name AS customer_name,
-                COALESCE(NULLIF(contact_number, ''), NULLIF(phone, ''), NULLIF(email, ''), 'No contact') AS contact,
-                COALESCE(NULLIF(contact_person, ''), 'Customer Form') AS requested_by,
-                COALESCE(verification_status, mgr_status, 'pending') AS status,
-                created_at
-         FROM customers
-         WHERE {$station_sql}
-           AND LOWER(COALESCE(status, 'active')) <> 'inactive'
-           {$registered_customer_only}
-           AND (
-                LOWER(COALESCE(verification_status, '')) = 'pending'
-                OR LOWER(COALESCE(mgr_status, '')) = 'pending'
-           )
-         ORDER BY created_at DESC
-         LIMIT 8",
-        $station_params
-    )
-    : [];
+$trend_hourly_total = array_fill(0, count($trend_hours), 0.0);
+$hourly_all = mgr_rows($pdo, "
+    SELECT HOUR(COALESCE(transaction_date, created_at)) AS hr, COALESCE(SUM(total_amount), 0) AS amt
+    FROM (
+        SELECT transaction_date, created_at, total_amount FROM merchandise_transactions
+        WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) = ? AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+        UNION ALL
+        SELECT transaction_date, created_at, total_amount FROM fuel_transactions
+        WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) = ? AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
+        UNION ALL
+        SELECT created_at AS transaction_date, created_at, COALESCE(total_cost, estimated_cost, 0) AS total_amount FROM job_orders
+        WHERE {$st_sql} AND DATE(COALESCE(completed_at, created_at)) = ? AND LOWER(COALESCE(status, '')) NOT IN ('voided','cancelled','rejected')
+    ) AS all_hourly
+    GROUP BY HOUR(COALESCE(transaction_date, created_at))
+", array_merge($st_params, [$date_to], $st_params, [$date_to], $st_params, [$date_to]));
 
-$delivery_rows = [];
-if (mgr_table_exists($pdo, 'purchase_orders')) {
-    $delivery_rows = array_merge($delivery_rows, mgr_rows(
-        $pdo,
-        "SELECT po.id,
-                po.po_number AS delivery_no,
-                COALESCE(s.name, 'Supplier pending') AS supplier,
-                po.status,
-                COALESCE(po.expected_delivery_date, po.admin_finalized_at, po.created_at) AS event_date,
-                'Purchase Order' AS delivery_type,
-                'manager_delivery_validation.php' AS receive_url,
-                'manager_delivery_validation.php' AS view_url,
-                'manager_stock_in.php' AS stock_url
-         FROM purchase_orders po
-         LEFT JOIN suppliers s ON s.id = po.supplier_id
-         WHERE " . mgr_station_clause($station_id, 'po') . "
-           AND po.admin_finalized = 1
-           AND po.delivery_validated = 0
-           AND po.stock_in_done = 0
-         ORDER BY COALESCE(po.expected_delivery_date, po.admin_finalized_at, po.created_at) ASC
-         LIMIT 8",
-        $station_params
-    ));
-}
-if (mgr_table_exists($pdo, 'deliveries_oversight')) {
-    $delivery_rows = array_merge($delivery_rows, mgr_rows(
-        $pdo,
-        "SELECT id,
-                delivery_ref AS delivery_no,
-                supplier,
-                status,
-                delivery_date AS event_date,
-                delivery_type,
-                'manager_merchandise_deliveries.php' AS receive_url,
-                'manager_merchandise_deliveries.php' AS view_url,
-                'manager_stock_in.php' AS stock_url
-         FROM deliveries_oversight
-         WHERE {$station_sql}
-           AND LOWER(status) IN ('pending manager approval', 'pending validation', 'pending verification', 'pending manager confirmation', 'approved - ready for stock-in', 'adjusted - ready for stock-in')
-         ORDER BY delivery_date ASC, created_at DESC
-         LIMIT 8",
-        $station_params
-    ));
-}
-usort($delivery_rows, fn($a, $b) => strcmp((string) ($a['event_date'] ?? ''), (string) ($b['event_date'] ?? '')));
-$delivery_rows = array_slice($delivery_rows, 0, 8);
-
-$price_rows = mgr_table_exists($pdo, 'pending_price_approvals')
-    ? mgr_rows(
-        $pdo,
-        "SELECT p.id,
-                p.product_type,
-                COALESCE(NULLIF(p.product_name, ''), fi.fuel_type, ip.product_name, pr.name, CONCAT('Product #', p.product_id)) AS product_name,
-                COALESCE(NULLIF(p.old_price, 0), NULLIF(p.old_value, 0), p.old_cost, 0) AS old_price,
-                COALESCE(NULLIF(p.new_price, 0), NULLIF(p.new_value, 0), p.new_cost, 0) AS new_price,
-                p.status,
-                p.created_at,
-                p.reviewed_at,
-                COALESCE(NULLIF(CONCAT_WS(' ', u.first_name, u.last_name), ''), u.username, 'Manager') AS updated_by
-         FROM pending_price_approvals p
-         LEFT JOIN users u ON u.id = COALESCE(p.manager_id, p.requested_by, p.reviewed_by)
-         LEFT JOIN fuel_inventory fi ON fi.id = p.product_id AND p.product_type LIKE '%fuel%'
-         LEFT JOIN inventory_products ip ON ip.id = p.product_id AND p.product_type = 'merchandise'
-         LEFT JOIN products pr ON pr.id = p.product_id
-         WHERE " . mgr_station_clause($station_id, 'p') . "
-         ORDER BY COALESCE(p.reviewed_at, p.created_at) DESC
-         LIMIT 10",
-        $station_params
-    )
-    : [];
-
-$recent_transactions = [];
-if (mgr_table_exists($pdo, 'fuel_transactions')) {
-    $recent_transactions = array_merge($recent_transactions, mgr_rows(
-        $pdo,
-        "SELECT {$fuel_dt_expr} AS txn_time,
-                'Fuel' AS txn_type,
-                transaction_id AS reference_no,
-                fuel_type AS detail,
-                'Walk-in' AS customer_name,
-                total_amount AS amount,
-                status
-         FROM fuel_transactions
-         WHERE {$station_sql}
-           {$fuel_status_ok}
-         ORDER BY {$fuel_dt_expr} DESC
-         LIMIT 10",
-        $station_params
-    ));
-}
-if (mgr_table_exists($pdo, 'merchandise_transactions')) {
-    $recent_transactions = array_merge($recent_transactions, mgr_rows(
-        $pdo,
-        "SELECT {$merch_dt_expr} AS txn_time,
-                'Merchandise' AS txn_type,
-                transaction_id AS reference_no,
-                item_sku AS detail,
-                COALESCE(NULLIF(customer_name, ''), 'Walk-in') AS customer_name,
-                total_amount AS amount,
-                validation_status AS status
-         FROM merchandise_transactions
-         WHERE {$station_sql}
-           {$merch_status_ok}
-         ORDER BY {$merch_dt_expr} DESC
-         LIMIT 10",
-        $station_params
-    ));
-}
-if (mgr_table_exists($pdo, 'job_orders')) {
-    $recent_transactions = array_merge($recent_transactions, mgr_rows(
-        $pdo,
-        "SELECT {$job_dt_expr} AS txn_time,
-                'Service' AS txn_type,
-                COALESCE(job_order_number, job_order_id, CONCAT('JO-', id)) AS reference_no,
-                service_type AS detail,
-                COALESCE(NULLIF(customer_name, ''), 'Walk-in') AS customer_name,
-                COALESCE(total_cost, estimated_cost, actual_labor_cost + actual_parts_cost, 0) AS amount,
-                status
-         FROM job_orders
-         WHERE {$station_sql}
-           {$job_status_ok}
-         ORDER BY {$job_dt_expr} DESC
-         LIMIT 10",
-        $station_params
-    ));
-}
-usort($recent_transactions, fn($a, $b) => strcmp((string) ($b['txn_time'] ?? ''), (string) ($a['txn_time'] ?? '')));
-$recent_transactions = array_slice($recent_transactions, 0, 10);
-
-$low_inventory_rows = [];
-if (mgr_table_exists($pdo, 'fuel_inventory')) {
-    $fuel_all = mgr_rows($pdo, "SELECT fuel_type, current_level, current_stock, capacity FROM fuel_inventory WHERE {$station_sql}", $station_params);
-    foreach ($fuel_all as $fi_row) {
-        $capacity = (float)($fi_row['capacity'] ?? 0);
-        $level = min(max(0, (float)($fi_row['current_level'] ?? $fi_row['current_stock'] ?? 0)), $capacity);
-        if ($capacity == 14000)    { $critical_lvl = 2500; $low_lvl = 5000; }
-        elseif ($capacity == 7000) { $critical_lvl = 1000; $low_lvl = 2000; }
-        else                       { $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20; }
-        if ($level <= 0) {
-            $status = 'Out of Stock';
-        } elseif ($level <= $critical_lvl) {
-            $status = 'Critical';
-        } elseif ($level <= $low_lvl) {
-            $status = 'Low';
-        } else {
-            $status = 'Normal';
-        }
-        if ($status !== 'Normal') {
-            $low_inventory_rows[] = [
-                'product_name' => $fi_row['fuel_type'],
-                'item_type' => 'Fuel',
-                'current_qty' => $level,
-                'reorder_qty' => $low_lvl,
-                'critical_qty' => $critical_lvl,
-                'status' => $status
-            ];
+foreach ($hourly_all as $hr) {
+    $h = (int)$hr['hr'];
+    $amt = (float)$hr['amt'];
+    if ($active_shift_num === 1 && $h >= 6 && $h <= 14) {
+        $idx = $h - 6;
+        if (isset($trend_hourly_total[$idx])) $trend_hourly_total[$idx] += $amt;
+    } elseif ($active_shift_num === 2) {
+        if ($h >= 14 && $h <= 23) {
+            $idx = $h - 14;
+            if (isset($trend_hourly_total[$idx])) $trend_hourly_total[$idx] += $amt;
+        } elseif ($h === 0) {
+            $trend_hourly_total[count($trend_hourly_total) - 1] += $amt;
         }
     }
 }
-if (mgr_table_exists($pdo, 'station_inventory')) {
-    $low_inventory_rows = array_merge($low_inventory_rows, mgr_rows(
-        $pdo,
-        "SELECT COALESCE(p.name, ip.product_name, CONCAT('Product #', si.product_id)) AS product_name,
-                'Merchandise' AS item_type,
-                COALESCE(si.stock_level, 0) AS current_qty,
-                COALESCE(si.reorder_level, 0) AS reorder_qty,
-                0 AS critical_qty,
-                CASE
-                    WHEN COALESCE(si.stock_level, 0) <= 0 THEN 'Out of Stock'
-                    WHEN COALESCE(si.stock_level, 0) <= COALESCE(si.reorder_level, 0) THEN 'Low'
-                    ELSE 'Normal'
-                END AS status
-         FROM station_inventory si
-         LEFT JOIN products p ON p.id = si.product_id
-         LEFT JOIN inventory_products ip ON ip.id = si.product_id
-         WHERE " . mgr_station_clause($station_id, 'si') . "
-           AND si.status = 'active'
-           AND COALESCE(si.stock_level, 0) <= COALESCE(si.reorder_level, 0)
-         ORDER BY current_qty ASC, product_name ASC
-         LIMIT 10",
-        $station_params
-    ));
-}
-usort($low_inventory_rows, function ($a, $b) {
-    $rank = ['Out of Stock' => 0, 'Critical' => 1, 'Low' => 2, 'Normal' => 3];
-    return ($rank[$a['status'] ?? 'Normal'] ?? 3) <=> ($rank[$b['status'] ?? 'Normal'] ?? 3);
-});
-$low_inventory_rows = array_slice($low_inventory_rows, 0, 12);
 
-// Service Queue Rows (from job_orders and merchandise_transactions)
-$service_queue_rows = [];
-if (mgr_table_exists($pdo, 'job_orders')) {
-    $rows_jo = mgr_rows(
-        $pdo,
-        "SELECT jo.id,
-                COALESCE(NULLIF(jo.job_order_number,''), jo.job_order_id, CONCAT('#', jo.id)) AS service_no,
-                COALESCE(NULLIF(jo.customer_name,''), c.name, 'Walk-in') AS customer_name,
-                COALESCE(NULLIF(jo.service_type,''), 'Service') AS service_type,
-                COALESCE(NULLIF(jo.vehicle_plate,''), '—') AS vehicle_plate,
-                COALESCE(NULLIF(jo.workflow_status,''), jo.status, jo.validation_status, 'Pending') AS status,
-                jo.created_at
-         FROM job_orders jo
-         LEFT JOIN customers c ON c.id = jo.customer_id
-         WHERE jo.{$station_sql}
-           AND LOWER(COALESCE(jo.status,'pending')) NOT IN ('cancelled','rejected')
-         ORDER BY jo.created_at DESC",
-        $station_params
-    );
-    $service_queue_rows = array_merge($service_queue_rows, $rows_jo);
-}
-if (mgr_table_exists($pdo, 'merchandise_transactions')) {
-    $has_plate = mgr_column_exists($pdo, 'merchandise_transactions', 'job_order_vehicle_plate');
-    $plate_col = $has_plate ? "COALESCE(NULLIF(mt.job_order_vehicle_plate,''), '—')" : "'—'";
+// Monthly Revenue Trend (Last 6 Months)
+$monthly_labels = [];
+$monthly_data   = [];
+for ($i = 5; $i >= 0; $i--) {
+    $m_time  = strtotime("-$i months");
+    $m_label = date('M Y', $m_time);
+    $m_start = date('Y-m-01', $m_time);
+    $m_end   = date('Y-m-t', $m_time);
+    $m_p = array_merge($st_params, [$m_start, $m_end]);
 
-    $rows_mt = mgr_rows(
-        $pdo,
-        "SELECT mt.id,
-                CONCAT('#', mt.id) AS service_no,
-                COALESCE(NULLIF(TRIM(mt.customer_name),''), 'Walk-in') AS customer_name,
-                COALESCE(NULLIF(TRIM(mt.job_order_service),''), 'Service') AS service_type,
-                {$plate_col} AS vehicle_plate,
-                COALESCE(NULLIF(mt.workflow_status,''), NULLIF(mt.validation_status,''), 'Pending') AS status,
-                COALESCE(mt.transaction_date, mt.created_at) AS created_at
-         FROM merchandise_transactions mt
-         WHERE mt.{$station_sql}
-           AND mt.transaction_type IN ('job_order','combined')
-           AND LOWER(COALESCE(mt.workflow_status, mt.validation_status, 'pending')) NOT IN ('cancelled','rejected')
-         ORDER BY mt.created_at DESC",
-        $station_params
-    );
-    $service_queue_rows = array_merge($service_queue_rows, $rows_mt);
+    $rev = (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM fuel_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(status,'')) NOT IN ('voided','rejected','cancelled')", $m_p)
+         + (float) mgr_value($pdo, "SELECT COALESCE(SUM(total_amount), 0) FROM merchandise_transactions WHERE {$st_sql} AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')", $m_p)
+         + (float) mgr_value($pdo, "SELECT COALESCE(SUM(COALESCE(total_cost, estimated_cost, 0)), 0) FROM job_orders WHERE {$st_sql} AND DATE(COALESCE(completed_at, created_at)) BETWEEN ? AND ? AND LOWER(COALESCE(status, '')) NOT IN ('voided','cancelled','rejected')", $m_p);
+
+    $monthly_labels[] = $m_label;
+    $monthly_data[]   = $rev;
 }
 
-// Order Service Queue: Pending -> In Progress -> Ready / Completed -> Released, then created_at DESC
-usort($service_queue_rows, function ($a, $b) {
-    $priority = function ($status) {
-        $s = strtolower(trim((string)$status));
-        if (in_array($s, ['pending', 'reviewed', 'pending validation'])) return 1;
-        if (in_array($s, ['in progress', 'awaiting parts'])) return 2;
-        if (in_array($s, ['completed', 'verified', 'ready'])) return 3;
-        if (in_array($s, ['released', 'finalized', 'approved'])) return 4;
-        return 5;
-    };
-    $pA = $priority($a['status'] ?? '');
-    $pB = $priority($b['status'] ?? '');
-    if ($pA !== $pB) return $pA <=> $pB;
-    return strcmp((string)($b['created_at'] ?? ''), (string)($a['created_at'] ?? ''));
-});
-$service_queue_rows = array_slice($service_queue_rows, 0, 10);
-
-$calendar_rows = [];
-$today = date('Y-m-d');
-if (mgr_table_exists($pdo, 'purchase_orders')) {
-    $calendar_rows = array_merge($calendar_rows, mgr_rows(
-        $pdo,
-        "SELECT COALESCE(expected_delivery_date, DATE(admin_finalized_at), DATE(created_at)) AS event_date,
-                'Upcoming Delivery' AS event_type,
-                CONCAT(COALESCE(po_number, 'PO'), ' - ', COALESCE(product_name, 'Merchandise')) AS title,
-                status
-         FROM purchase_orders
-         WHERE {$station_sql}
-           AND stock_in_done = 0
-           AND COALESCE(expected_delivery_date, DATE(admin_finalized_at), DATE(created_at)) >= ?
-         ORDER BY event_date ASC
-         LIMIT 8",
-        array_merge($station_params, [$today])
-    ));
+// ── 15. AJAX JSON POLLING ENDPOINT (10-Second Auto Refresh) ───────────────────
+if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'kpis' => [
+            'fuel_sales_today'     => number_format($fuel_today_sales, 2),
+            'merch_sales_today'    => number_format($merch_today_sales, 2),
+            'job_sales_today'      => number_format($job_today_sales, 2),
+            'total_sales_today'    => number_format($total_today_sales, 2),
+            'active_job_orders'    => number_format($active_job_orders),
+            'completed_job_orders' => number_format($completed_job_orders),
+            'low_stock_items'      => number_format($low_stock_items),
+            'critical_stock_items' => number_format($critical_stock_items),
+            'pending_approvals'    => number_format($total_pending_approvals),
+            'monthly_revenue'      => number_format($monthly_revenue, 2),
+            'inventory_value'      => number_format($total_inventory_value, 2),
+            'ar_outstanding'       => number_format($ar_total_outstanding, 2)
+        ],
+        'charts' => [
+            'payment_data'    => $payment_data,
+            'jo_status_data'  => $jo_status_counts,
+            'daily_sales'     => $trend_hourly_total,
+            'monthly_revenue' => $monthly_data
+        ],
+        'queues' => [
+            'stock_reqs'   => $pending_stock_reqs,
+            'master_data'  => $pending_master_data,
+            'void_reqs'    => $pending_void_reqs,
+            'adj_reqs'     => $pending_adjustment_reqs,
+            'meter_val'    => $pending_meter_validations,
+            'closing_rev'  => $fuel_closings_for_review,
+            'returned_val' => $fuel_returned_corrections
+        ]
+    ]);
+    exit;
 }
-if (mgr_table_exists($pdo, 'deliveries_oversight')) {
-    $calendar_rows = array_merge($calendar_rows, mgr_rows(
-        $pdo,
-        "SELECT delivery_date AS event_date,
-                'Upcoming Delivery' AS event_type,
-                CONCAT(delivery_ref, ' - ', product) AS title,
-                status
-         FROM deliveries_oversight
-         WHERE {$station_sql}
-           AND delivery_date >= ?
-           AND LOWER(status) NOT IN ('rejected', 'returned', 'cancelled')
-         ORDER BY delivery_date ASC
-         LIMIT 8",
-        array_merge($station_params, [$today])
-    ));
-}
-if (mgr_table_exists($pdo, 'calendar_events')) {
-    $calendar_rows = array_merge($calendar_rows, mgr_rows(
-        $pdo,
-        "SELECT event_date,
-                REPLACE(event_type, '_', ' ') AS event_type,
-                work_description AS title,
-                status
-         FROM calendar_events
-         WHERE {$station_sql}
-           AND event_date >= ?
-         ORDER BY event_date ASC, event_time ASC
-         LIMIT 8",
-        array_merge($station_params, [$today])
-    ));
-}
-if (mgr_table_exists($pdo, 'staff_calendar_events')) {
-    $calendar_rows = array_merge($calendar_rows, mgr_rows(
-        $pdo,
-        "SELECT event_date,
-                'Staff Meeting / Schedule' AS event_type,
-                work_description AS title,
-                status
-         FROM staff_calendar_events
-         WHERE {$station_sql}
-           AND event_date >= ?
-         ORDER BY event_date ASC, start_time ASC
-         LIMIT 8",
-        array_merge($station_params, [$today])
-    ));
-}
-usort($calendar_rows, fn($a, $b) => strcmp((string) ($a['event_date'] ?? ''), (string) ($b['event_date'] ?? '')));
-$calendar_rows = array_slice($calendar_rows, 0, 10);
 
-$chart_empty = [
-    'revenue' => $total_revenue <= 0,
-    'hourly' => array_sum($hourly_sales) <= 0,
-    'fuel' => array_sum($fuel_sales_data) <= 0,
-    'merch' => array_sum($merch_sales_data) <= 0,
-    'weekly' => array_sum($weekly_revenue) <= 0,
-    'inventory' => array_sum($inventory_current) <= 0,
-];
-
-$pending_fuel_transactions = mgr_table_exists($pdo, 'fuel_transactions')
-    ? (int) mgr_value(
-        $pdo,
-        "SELECT COUNT(*)
-         FROM fuel_transactions
-         WHERE {$station_sql}
-           AND LOWER(TRIM(COALESCE(status, ''))) IN ('pending', 'pending validation', 'pendingvalidation', 'awaiting validation')",
-        $station_params
-    )
-    : 0;
-
-$merch_pending_parts = [];
-if (mgr_column_exists($pdo, 'merchandise_transactions', 'validation_status')) {
-    $merch_pending_parts[] = "LOWER(TRIM(COALESCE(validation_status, ''))) IN ('', 'pending', 'pending validation', 'pendingvalidation')";
-}
-if (mgr_column_exists($pdo, 'merchandise_transactions', 'workflow_status')) {
-    $merch_pending_parts[] = "LOWER(TRIM(COALESCE(workflow_status, ''))) IN ('', 'pending', 'pending validation', 'pendingvalidation', 'pending manager review')";
-}
-$pending_merch_transactions = mgr_table_exists($pdo, 'merchandise_transactions') && $merch_pending_parts
-    ? (int) mgr_value(
-        $pdo,
-        "SELECT COUNT(*)
-         FROM merchandise_transactions
-         WHERE {$station_sql}
-           AND (" . implode(' OR ', $merch_pending_parts) . ')',
-        $station_params
-    )
-    : 0;
-
-$service_pending_parts = ["LOWER(TRIM(COALESCE(status, ''))) IN ('pending', 'pending validation', 'reviewed')"];
-if (mgr_column_exists($pdo, 'job_orders', 'validation_status')) {
-    $service_pending_parts[] = "LOWER(TRIM(COALESCE(validation_status, ''))) IN ('pending', 'pending validation')";
-}
-$pending_service_validation = mgr_table_exists($pdo, 'job_orders')
-    ? (int) mgr_value(
-        $pdo,
-        "SELECT COUNT(*)
-         FROM job_orders
-         WHERE {$station_sql}
-           AND (" . implode(' OR ', $service_pending_parts) . ')',
-        $station_params
-    )
-    : 0;
-
-$stock_approval_count = $pending_merch_stock + $pending_fuel_stock;
-$delivery_action_url = $pending_encoded_deliveries > 0
-    ? 'manager_merchandise_deliveries.php?tab=manage'
-    : 'manager_delivery_validation.php';
-
-$quick_actions = [
-    [
-        'label' => 'Fuel Transaction Validation',
-        'href' => 'manager_fuel_transaction_validation.php?status_filter=pending',
-        'icon' => 'fas fa-gas-pump',
-        'class' => 'mgr-btn-blue',
-        'badge' => $pending_fuel_transactions,
-        'meta' => 'Pending pump readings',
-    ],
-    [
-        'label' => 'Merchandise Transaction Review',
-        'href' => 'transactions_pending.php',
-        'icon' => 'fas fa-basket-shopping',
-        'class' => 'mgr-btn-green',
-        'badge' => $pending_merch_transactions,
-        'meta' => 'Pending validation queue',
-    ],
-    [
-        'label' => 'Service Transaction Review',
-        'href' => 'manager_validated_transactions.php?type=job_order&status=Pending',
-        'icon' => 'fas fa-screwdriver-wrench',
-        'class' => 'mgr-btn-amber',
-        'badge' => $pending_service_validation,
-        'meta' => 'Pending job order approvals',
-    ],
-    [
-        'label' => 'Review Stock Requests',
-        'href' => 'manager_stock_request_review.php',
-        'icon' => 'fas fa-list-check',
-        'class' => 'mgr-btn-blue',
-        'badge' => $stock_approval_count,
-        'meta' => 'Fuel and merchandise requests',
-    ],
-    [
-        'label' => 'Receive Deliveries',
-        'href' => $delivery_action_url,
-        'icon' => 'fas fa-truck-fast',
-        'class' => 'mgr-btn-green',
-        'badge' => $pending_deliveries_count,
-        'meta' => 'PO ' . number_format($pending_po_deliveries) . ' | Encoded ' . number_format($pending_encoded_deliveries),
-    ],
-    [
-        'label' => 'Pricing Management',
-        'href' => 'manager_set_prices.php',
-        'icon' => 'fas fa-tags',
-        'class' => 'mgr-btn-amber',
-        'badge' => $pending_price_requests,
-        'meta' => 'Pending price approvals',
-    ],
-    [
-        'label' => 'Inventory Management',
-        'href' => 'manager_inventory_merchandise.php',
-        'icon' => 'fas fa-warehouse',
-        'class' => 'mgr-btn-blue',
-        'badge' => $total_inventory_alerts,
-        'meta' => 'Low and out-of-stock alerts',
-    ],
-    [
-        'label' => 'Reports',
-        'href' => 'manager_reports.php',
-        'icon' => 'fas fa-chart-column',
-        'class' => 'mgr-btn-gray',
-        'badge' => null,
-        'meta' => 'Operations, finance, compliance',
-    ],
-];
-
-include __DIR__ . '/../partials/header.php';
+include_once __DIR__ . '/../partials/header.php';
 ?>
-
-<script src="../assets/vendor/chart.js/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
 <style>
-    body[data-page="manager_dashboard"] .main {
-        padding: 20px 20px 60px 20px !important;
-        background: #f6f8fb;
+    /* Spacing Parity with Staff/System Design Rules */
+    .main {
+        padding: 20px 24px 60px 24px !important;
         box-sizing: border-box;
     }
-
-    .mgr-dashboard {
-        width: 100%;
-        max-width: none;
-        margin: 0;
+    .mgr-dash-wrapper {
         padding: 0 !important;
-        min-height: calc(100vh - 110px);
-        background: #f6f8fb;
-        color: #0f172a;
-        box-sizing: border-box;
+        margin: 0 !important;
+        width: 100%;
+        max-width: 100%;
+    }
+    :root {
+        --petron-blue: #002F6C;
+        --petron-navy: #001E47;
+        --petron-red: #ED1C24;
+        --card-bg: #FFFFFF;
+        --border-color: #E2E8F0;
+        --text-dark: #0F172A;
+        --text-muted: #64748B;
+        --bg-light: #F8FAFC;
     }
 
-    .mgr-card,
-    .mgr-panel {
-        background: #ffffff;
-        border: 1px solid #dbe3ee;
-        border-radius: 8px;
-        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
-    }
-
-    .mgr-page-header {
+    /* Header & Filter Bar */
+    .mgr-header {
         display: flex;
-        align-items: center;
         justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
         flex-wrap: wrap;
-        gap: 15px;
-        margin-bottom: 25px;
+        gap: 12px;
     }
-
-    .mgr-title-block {
-        flex: 1 1 520px;
-        min-width: 0;
-    }
-
-    .mgr-title-block h1 {
+    .mgr-header-left h1 {
+        font-size: 22px;
+        font-weight: 800;
+        color: var(--text-dark);
         margin: 0;
-        color: #002f70;
-        font-size: 24px;
-        font-weight: 800;
-        line-height: 1.2;
-    }
-
-    .mgr-title-block p {
-        margin: 8px 0 0;
-        max-width: 760px;
-        color: #56657a;
-        font-size: 13px;
-        font-weight: 600;
-    }
-
-    .mgr-filter-form {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin-left: auto;
-    }
-
-    .mgr-filter-form input[type="date"] {
-        min-width: 160px;
-        height: 40px;
-        border: 1px solid #c7d2e2;
-        border-radius: 8px;
-        padding: 0 12px;
-        font-size: 13px;
-        color: #0f172a;
-        background: #ffffff;
-    }
-
-    .mgr-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 7px;
-        min-height: 34px;
-        padding: 8px 12px;
-        border-radius: 7px;
-        border: 1px solid transparent;
-        font-size: 12px;
-        font-weight: 800;
-        text-decoration: none;
-        cursor: pointer;
-        white-space: nowrap;
-        transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
-    }
-
-    .mgr-btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
-        text-decoration: none;
-    }
-
-    /* ── Action button variants: outline style (no fill, border + colored text) ── */
-    .mgr-btn-blue  { background: transparent; color: #002f70; border-color: #002f70; }
-    .mgr-btn-blue:hover { background: #002f70; color: #ffffff; }
-
-    /* ── Filter button: solid filled style to match staff ── */
-    .mgr-filter-form .mgr-btn-blue {
-        background: #002F70 !important;
-        color: #ffffff !important;
-        border: none !important;
-    }
-    .mgr-filter-form .mgr-btn-blue:hover {
-        background: #001f4d !important;
-    }
-
-    .mgr-btn-gray  { background: transparent; color: #475569; border-color: #94a3b8; }
-    .mgr-btn-gray:hover { background: #f1f5f9; color: #1e293b; }
-
-    .mgr-btn-green { background: transparent; color: #128143; border-color: #128143; }
-    .mgr-btn-green:hover { background: #128143; color: #ffffff; }
-
-    .mgr-btn-red   { background: transparent; color: #c81e2d; border-color: #c81e2d; }
-    .mgr-btn-red:hover { background: #c81e2d; color: #ffffff; }
-
-    .mgr-btn-amber { background: transparent; color: #b45309; border-color: #b45309; }
-    .mgr-btn-amber:hover { background: #b45309; color: #ffffff; }
-
-    .mgr-summary-grid {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 16px;
-        margin-bottom: 22px;
-    }
-
-    .mgr-card {
-        min-height: 126px;
-        display: flex;
-        justify-content: space-between;
-        gap: 14px;
-        padding: 18px;
-        overflow: hidden;
-    }
-
-    .mgr-card-label {
-        color: #56657a;
-        font-size: 11px;
-        font-weight: 900;
         text-transform: uppercase;
-        letter-spacing: 0;
-        line-height: 1.25;
+        letter-spacing: -0.5px;
     }
-
-    .mgr-card-value {
-        margin-top: 8px;
-        color: #071225;
-        font-size: 25px;
-        line-height: 1.15;
-        font-weight: 900;
+    .mgr-filter-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: #FFFFFF;
+        padding: 6px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     }
-
-    .mgr-card-sub {
-        margin-top: 8px;
-        color: #6b7a90;
+    .mgr-filter-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .mgr-filter-group label {
         font-size: 11px;
         font-weight: 700;
-        line-height: 1.45;
+        color: var(--text-muted);
+        text-transform: uppercase;
     }
-
-    .mgr-icon {
-        width: 44px;
-        height: 44px;
-        flex: 0 0 44px;
-        display: inline-flex;
+    .mgr-filter-group input[type="date"] {
+        border: 1px solid #CBD5E1;
+        border-radius: 6px;
+        padding: 5px 8px;
+        font-size: 11px;
+        color: var(--text-dark);
+        font-weight: 600;
+        outline: none;
+    }
+    .mgr-filter-btn {
+        background: var(--petron-blue);
+        color: #FFFFFF;
+        border: none;
+        border-radius: 6px;
+        padding: 6px 14px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
         align-items: center;
-        justify-content: center;
-        border-radius: 50%;
-        font-size: 18px;
-        background: #eef4ff;
-        color: #002f70;
+        gap: 6px;
+        transition: background 0.2s ease;
+    }
+    .mgr-filter-btn:hover {
+        background: var(--petron-navy);
     }
 
-    .mgr-charts-grid {
+    /* 11 KPI Cards Grid */
+    .mgr-kpi-grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 18px;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
         margin-bottom: 22px;
     }
-
-    .mgr-panel {
-        padding: 20px;
-        margin-bottom: 18px;
-    }
-
-    .mgr-panel-header {
+    .mgr-kpi-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 14px 16px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         display: flex;
-        align-items: flex-start;
+        flex-direction: column;
         justify-content: space-between;
-        gap: 12px;
-        padding-bottom: 14px;
-        border-bottom: 1px solid #edf2f7;
-        margin-bottom: 16px;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
-
-    .mgr-panel-title {
+    .mgr-kpi-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+    .mgr-kpi-header {
         display: flex;
+        justify-content: space-between;
         align-items: center;
-        gap: 10px;
-        color: #002f70;
-        font-size: 17px;
-        font-weight: 900;
-        line-height: 1.25;
+        margin-bottom: 8px;
     }
-
-    .mgr-panel-sub {
-        margin-top: 4px;
-        color: #6b7a90;
-        font-size: 12px;
-        font-weight: 600;
+    .mgr-kpi-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
     }
-
-    .mgr-chart-body {
-        position: relative;
-        height: 292px;
-        min-height: 292px;
-    }
-
-    .mgr-chart-empty {
-        position: absolute;
-        inset: 0;
+    .mgr-kpi-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 2;
-        color: #718096;
-        font-size: 13px;
+        font-size: 14px;
+        background: var(--icon-bg, #EFF6FF);
+        color: var(--icon-color, var(--petron-blue));
+    }
+    .mgr-kpi-value {
+        font-size: 20px;
         font-weight: 800;
-        text-align: center;
-        background: rgba(255, 255, 255, 0.82);
-        pointer-events: none;
+        color: var(--text-dark);
+        line-height: 1.1;
+        margin-bottom: 4px;
+    }
+    .mgr-kpi-sub {
+        font-size: 11px;
+        color: var(--text-muted);
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
-    .mgr-table-wrap {
+    /* Grids & Cards */
+    .mgr-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        overflow: hidden;
+        margin-bottom: 20px;
+    }
+    .mgr-card-header {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #FFFFFF;
+    }
+    .mgr-card-header h2 {
+        font-size: 13px;
+        font-weight: 800;
+        color: var(--petron-blue);
+        margin: 0;
+        text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        letter-spacing: 0.3px;
+    }
+    .mgr-card-body {
+        padding: 14px 16px;
+    }
+    .mgr-grid-2col {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+    .mgr-grid-3col {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+    .mgr-grid-4col {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin-bottom: 20px;
+    }
+
+    /* Metric Lists & Action Rows */
+    .mgr-metric-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .mgr-metric-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 7px 12px;
+        background: #F8FAFC;
+        border-radius: 6px;
+        border: 1px solid #F1F5F9;
+    }
+    .mgr-metric-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-muted);
+    }
+    .mgr-metric-value {
+        font-size: 12px;
+        font-weight: 800;
+        color: var(--text-dark);
+    }
+
+    /* Action Links within Approval/Verification Centers */
+    .mgr-action-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 9px 12px;
+        border-radius: 6px;
+        background: #F8FAFC;
+        border: 1px solid #F1F5F9;
+        margin-bottom: 6px;
+        text-decoration: none;
+        color: var(--text-dark);
+        transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .mgr-action-row:hover {
+        background: #EFF6FF;
+        border-color: #BFDBFE;
+    }
+    .mgr-action-title {
+        font-size: 11px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .mgr-action-count {
+        font-size: 11px;
+        font-weight: 800;
+        padding: 2px 8px;
+        border-radius: 10px;
+        background: #E2E8F0;
+        color: #334155;
+    }
+    .mgr-action-count.has-pending {
+        background: #FEF3C7;
+        color: #B45309;
+    }
+    .mgr-action-count.has-danger {
+        background: #FEE2E2;
+        color: #B91C1C;
+    }
+
+    /* Tables */
+    .mgr-table-responsive {
         width: 100%;
         overflow-x: auto;
     }
-
     .mgr-table {
         width: 100%;
-        min-width: 720px;
         border-collapse: collapse;
         font-size: 12px;
     }
-
     .mgr-table th {
-        background: #f4f7fb;
-        color: #4b5d74;
+        background: #F8FAFC;
+        color: #475569;
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0;
         font-size: 11px;
-        font-weight: 900;
+        letter-spacing: 0.3px;
+        padding: 9px 12px;
+        border-bottom: 1px solid var(--border-color);
         text-align: left;
-        padding: 12px 14px;
-        border-bottom: 1px solid #dbe3ee;
     }
-
     .mgr-table td {
-        padding: 13px 14px;
-        border-bottom: 1px solid #edf2f7;
-        color: #26364c;
+        padding: 9px 12px;
+        border-bottom: 1px solid #F1F5F9;
+        color: var(--text-dark);
         vertical-align: middle;
     }
-
-    .mgr-table tr:last-child td {
-        border-bottom: 0;
+    .mgr-table tr:hover td {
+        background: #F8FAFC;
     }
 
-    .mgr-table code {
-        color: #002f70;
-        font-weight: 900;
-        font-size: 11px;
-    }
-
-    .mgr-actions-cell {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        align-items: stretch;
-        width: 100%;
-        max-width: 170px;
-    }
-
-    .mgr-actions-cell .mgr-btn {
-        width: 100%;
-        min-height: 32px;
-        padding: 6px 12px;
-        white-space: nowrap;
-        line-height: 1.15;
-        justify-content: center;
-        text-align: center;
-    }
-
+    /* Badges */
     .mgr-badge {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 24px;
-        padding: 4px 9px;
-        border-radius: 999px;
-        font-size: 11px;
-        font-weight: 900;
-        white-space: nowrap;
-    }
-
-    .mgr-badge.success { background: #e4f8ec; color: #0c6b35; }
-    .mgr-badge.warning { background: #fff6d8; color: #8a5800; }
-    .mgr-badge.danger { background: #ffe5e8; color: #9f1623; }
-    .mgr-badge.info { background: #e5efff; color: #17458f; }
-    .mgr-badge.neutral { background: #edf2f7; color: #526174; }
-
-    .mgr-empty {
-        padding: 28px 16px;
-        text-align: center;
-        color: #718096;
-        font-size: 13px;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 10px;
         font-weight: 700;
-        background: #fbfdff;
-        border: 1px dashed #d7e0ea;
-        border-radius: 8px;
+        line-height: 1;
+    }
+    .mgr-badge-success { background: #DCFCE7; color: #15803D; }
+    .mgr-badge-warning { background: #FEF3C7; color: #B45309; }
+    .mgr-badge-danger  { background: #FEE2E2; color: #B91C1C; }
+    .mgr-badge-info    { background: #E0F2FE; color: #0369A1; }
+    .mgr-badge-neutral { background: #F1F5F9; color: #475569; }
+
+    /* Chart Containers */
+    .mgr-chart-wrap {
+        position: relative;
+        height: 220px;
+        width: 100%;
     }
 
-    .mgr-empty i {
-        display: block;
-        margin-bottom: 9px;
-        font-size: 24px;
-        color: #9aa9ba;
-    }
-
-    .mgr-split {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 18px;
-        margin-bottom: 18px;
-    }
-
-    .mgr-mini-list {
-        display: grid;
+    /* Notifications List */
+    .mgr-notif-item {
+        display: flex;
+        align-items: flex-start;
         gap: 10px;
+        padding: 10px 14px;
+        border-bottom: 1px solid #F1F5F9;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.15s ease;
     }
-
-    .mgr-mini-item {
+    .mgr-notif-item:last-child {
+        border-bottom: none;
+    }
+    .mgr-notif-item:hover {
+        background: #F8FAFC;
+    }
+    .mgr-notif-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: #EFF6FF;
+        color: var(--petron-blue);
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        padding: 12px;
-        background: #f8fbff;
-        border: 1px solid #e2e9f3;
-        border-radius: 8px;
+        justify-content: center;
+        font-size: 12px;
+        flex-shrink: 0;
     }
-
-    .mgr-mini-title {
-        color: #17243a;
-        font-size: 13px;
-        font-weight: 900;
+    .mgr-notif-content {
+        flex: 1;
     }
-
-    .mgr-mini-meta {
-        margin-top: 3px;
-        color: #6b7a90;
+    .mgr-notif-title {
         font-size: 11px;
         font-weight: 700;
+        color: var(--text-dark);
+        margin: 0 0 2px 0;
+    }
+    .mgr-notif-msg {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin: 0 0 2px 0;
+        line-height: 1.3;
+    }
+    .mgr-notif-time {
+        font-size: 10px;
+        color: #94A3B8;
+        font-weight: 600;
     }
 
-    /* ── Quick Actions Grid — matches staff dashboard style ── */
+    /* Shortcuts & Quick Actions Grid */
     .mgr-quick-grid {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 14px;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
     }
-
-    .mgr-quick-grid .mgr-btn {
-        position: relative;
-        width: 100%;
-        min-height: 90px;
+    .mgr-quick-btn {
         display: flex;
-        flex-direction: column;
         align-items: center;
-        justify-content: center;
-        gap: 9px;
-        padding: 16px 12px;
-        text-align: center;
-        white-space: normal;
-        /* Staff-style: white bg, light border, no color fill */
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        color: #334155;
-        font-weight: 700;
-        font-size: 12px;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04);
-        transition: all 0.25s ease;
+        gap: 10px;
+        padding: 10px 14px;
+        background: #F8FAFC;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
         text-decoration: none;
-        cursor: pointer;
-    }
-
-    /* Override color variants to all use white bg */
-    .mgr-quick-grid .mgr-btn-blue,
-    .mgr-quick-grid .mgr-btn-green,
-    .mgr-quick-grid .mgr-btn-red,
-    .mgr-quick-grid .mgr-btn-amber,
-    .mgr-quick-grid .mgr-btn-gray {
-        background: #ffffff;
-        color: #334155;
-        border-color: #e2e8f0;
-    }
-
-    .mgr-quick-grid .mgr-btn:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
-        border-color: #002f70;
-        color: #002f70;
-        background: #ffffff;
-    }
-
-    .mgr-quick-main {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 6px;
-        min-width: 0;
-        width: 100%;
-        padding-right: 0;
-    }
-
-    .mgr-quick-main i {
-        font-size: 20px;
-        color: #002f70;
-        transition: transform 0.25s ease;
-        flex: unset;
-        width: unset;
-        margin-top: 0;
-    }
-
-    .mgr-quick-grid .mgr-btn:hover .mgr-quick-main i {
-        transform: scale(1.15);
-    }
-
-    .mgr-quick-label {
-        min-width: 0;
-        line-height: 1.3;
-        font-size: 12px;
+        color: var(--text-dark);
+        font-size: 11px;
         font-weight: 700;
-        color: inherit;
+        transition: all 0.15s ease;
     }
-
-    .mgr-action-count {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 22px;
-        height: 22px;
-        padding: 0 6px;
-        border-radius: 999px;
-        background: #002f70;
-        color: #ffffff;
-        font-size: 10px;
-        font-weight: 900;
-        line-height: 1;
+    .mgr-quick-btn:hover {
+        background: #EFF6FF;
+        border-color: #BFDBFE;
+        color: var(--petron-blue);
+        transform: translateY(-1px);
     }
-
-    /* Neutralise count badge override from colored variants */
-    .mgr-btn-gray .mgr-action-count {
-        background: #002f70;
-        color: #ffffff;
-    }
-
-    .mgr-action-meta {
-        display: block;
-        font-size: 10px;
-        font-weight: 600;
-        line-height: 1.35;
-        color: #64748b;
-        opacity: 1;
-    }
-
-    .mgr-calendar-list {
-        display: grid;
-        gap: 10px;
-    }
-
-    .mgr-calendar-item {
-        display: grid;
-        grid-template-columns: 82px 1fr auto;
-        gap: 12px;
-        align-items: center;
-        padding: 12px;
-        background: #f8fbff;
-        border: 1px solid #e2e9f3;
-        border-radius: 8px;
-    }
-
-    .mgr-date-chip {
+    .mgr-quick-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        min-height: 54px;
-        border-radius: 8px;
-        background: #002f70;
-        color: #ffffff;
-        font-weight: 900;
+        font-size: 12px;
+        color: var(--petron-blue);
+        flex-shrink: 0;
     }
 
-    .mgr-date-chip span:first-child {
-        font-size: 18px;
-        line-height: 1;
+    @media (max-width: 1200px) {
+        .mgr-kpi-grid, .mgr-grid-4col, .mgr-quick-grid { grid-template-columns: repeat(2, 1fr); }
+        .mgr-grid-3col { grid-template-columns: 1fr; }
+        .mgr-grid-2col { grid-template-columns: 1fr; }
     }
-
-    .mgr-date-chip span:last-child {
-        margin-top: 3px;
-        font-size: 11px;
-        text-transform: uppercase;
-    }
-
-    .mgr-service-summary {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 10px;
-        margin-bottom: 14px;
-    }
-
-    .mgr-service-pill {
-        padding: 12px;
-        background: #f8fbff;
-        border: 1px solid #e2e9f3;
-        border-radius: 8px;
-        text-align: center;
-    }
-
-    .mgr-service-pill strong {
-        display: block;
-        color: #002f70;
-        font-size: 20px;
-        font-weight: 900;
-    }
-
-    .mgr-service-pill span {
-        color: #5b6d82;
-        font-size: 11px;
-        font-weight: 800;
-        text-transform: uppercase;
-    }
-
-    @media (max-width: 1280px) {
-        .mgr-summary-grid,
-        .mgr-quick-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-    }
-
-    @media (max-width: 980px) {
-        .mgr-page-header,
-        .mgr-split,
-        .mgr-charts-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .mgr-page-header {
-            align-items: stretch;
-            flex-direction: column;
-        }
-
-        .mgr-filter-form {
-            width: 100%;
-        }
-
-        .mgr-filter-form input[type="date"],
-        .mgr-filter-form .mgr-btn {
-            flex: 1 1 160px;
-        }
-    }
-
-    @media (max-width: 720px) {
-        .mgr-dashboard {
-            padding: 16px 14px 72px;
-        }
-
-        .mgr-summary-grid,
-        .mgr-quick-grid,
-        .mgr-service-summary {
-            grid-template-columns: 1fr;
-        }
-
-        .mgr-calendar-item {
-            grid-template-columns: 1fr;
-            align-items: stretch;
-        }
-
-        .mgr-date-chip {
-            width: 82px;
-        }
+    @media (max-width: 640px) {
+        .mgr-kpi-grid, .mgr-grid-4col, .mgr-quick-grid { grid-template-columns: 1fr; }
     }
 </style>
 
-<section class="mgr-dashboard">
-    <div class="mgr-page-header">
-        <div class="mgr-title-block">
-            <h1>Welcome, <?= mgr_h($display_name) ?>!</h1>
-            <p><i class="fas fa-tachometer-alt"></i> Manager Dashboard</p>
+<div class="mgr-dash-wrapper">
+
+    <!-- Header & Date Range Filter -->
+    <div class="mgr-header">
+        <div class="mgr-header-left">
+            <h1>WELCOME, <?= mgr_h($display_name) ?>!</h1>
         </div>
-        <form method="get" class="mgr-filter-form">
-            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-right:4px;">From</label>
-            <input type="date" name="date_from" value="<?= mgr_h($date_from) ?>" required>
-            <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin:0 4px;">To</label>
-            <input type="date" name="date_to" value="<?= mgr_h($date_to) ?>" required>
-            <button class="mgr-btn mgr-btn-blue" type="submit"><i class="fas fa-filter"></i> Filter</button>
+        <form method="GET" action="manager_dashboard.php" class="mgr-filter-bar">
+            <div class="mgr-filter-group">
+                <label for="date_from">From</label>
+                <input type="date" id="date_from" name="date_from" value="<?= mgr_h($date_from) ?>">
+            </div>
+            <div class="mgr-filter-group">
+                <label for="date_to">To</label>
+                <input type="date" id="date_to" name="date_to" value="<?= mgr_h($date_to) ?>">
+            </div>
+            <button type="submit" class="mgr-filter-btn"><i class="fas fa-filter"></i> Filter</button>
         </form>
     </div>
 
-    <?php 
-    $enable_kpi_cards        = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_kpi_cards', true) : true;
-    $enable_charts           = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_charts', true) : true;
-    $enable_quick_actions    = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_quick_actions', true) : true;
-    $enable_calendar_widget  = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_calendar_widget', true) : true;
-    ?>
-
-    <?php if ($enable_kpi_cards): ?>
-    <div class="mgr-summary-grid">
-        <div class="mgr-card" data-tone="blue">
-            <div>
-                <div class="mgr-card-label"><?= $is_today ? "Today's Transactions" : "Transactions" ?></div>
-                <div class="mgr-card-value"><?= number_format($total_transactions) ?></div>
-                <div class="mgr-card-sub">Fuel <?= number_format($fuel_count) ?> | Merchandise <?= number_format($merch_count) ?> | Service <?= number_format($service_count) ?></div>
+    <!-- 1. 11 KPI CARDS -->
+    <div class="mgr-kpi-grid">
+        <!-- 1. Fuel Sales Today -->
+        <div class="mgr-kpi-card" style="--icon-bg: #EFF6FF; --icon-color: #002F6C;">
+            <div class="mgr-kpi-header">
+                <span class="mgr-kpi-title">Fuel Sales Today</span>
+                <div class="mgr-kpi-icon"><i class="fas fa-gas-pump"></i></div>
             </div>
-            <div class="mgr-icon"><i class="fas fa-right-left"></i></div>
+            <div class="mgr-kpi-value" id="kpi_fuel_sales"><?= mgr_money($fuel_today_sales) ?></div>
+            <div class="mgr-kpi-sub">Finalized fuel sales</div>
         </div>
 
-        <div class="mgr-card" data-tone="green">
-            <div>
-                <div class="mgr-card-label"><?= $is_today ? "Today's Revenue" : "Revenue" ?></div>
-                <div class="mgr-card-value"><?= mgr_money($total_revenue) ?></div>
-                <div class="mgr-card-sub"><?= mgr_h($period_label) ?> · Fuel, merchandise &amp; services</div>
+        <!-- 2. Merchandise Sales Today -->
+        <div class="mgr-kpi-card" style="--icon-bg: #F0FDF4; --icon-color: #16A34A;">
+            <div class="mgr-kpi-header">
+                <span class="mgr-kpi-title">Merchandise Sales</span>
+                <div class="mgr-kpi-icon"><i class="fas fa-shopping-cart"></i></div>
             </div>
-            <div class="mgr-icon" style="background:#e7f7ee;color:#128143;"><i class="fas fa-peso-sign"></i></div>
+            <div class="mgr-kpi-value" id="kpi_merch_sales"><?= mgr_money($merch_today_sales) ?></div>
+            <div class="mgr-kpi-sub">Finalized store sales</div>
         </div>
 
-        <div class="mgr-card" data-tone="amber">
-            <div>
-                <div class="mgr-card-label"><?= $is_today ? "Fuel Sold Today" : "Fuel Sold" ?></div>
-                <div class="mgr-card-value"><?= mgr_qty($total_fuel_liters) ?> L</div>
-                <div class="mgr-card-sub">Total liters sold · <?= mgr_h($period_label) ?></div>
+        <!-- 3. Job Order Sales Today -->
+        <a href="manager_validated_transactions.php?type=job_order" class="mgr-kpi-card" style="--icon-bg: #FEF3C7; --icon-color: #D97706; text-decoration: none; color: inherit; display: block;">
+            <div class="mgr-kpi-header">
+                <span class="mgr-kpi-title">Job Order Sales</span>
+                <div class="mgr-kpi-icon"><i class="fas fa-wrench"></i></div>
             </div>
-            <div class="mgr-icon" style="background:#fff2dc;color:#c56b00;"><i class="fas fa-gas-pump"></i></div>
+            <div class="mgr-kpi-value" id="kpi_job_sales"><?= mgr_money($job_today_sales) ?></div>
+            <div class="mgr-kpi-sub">Service &amp; repair income</div>
+        </a>
+
+        <!-- 4. Total Sales Today -->
+        <div class="mgr-kpi-card" style="--icon-bg: #EFF6FF; --icon-color: #002F6C;">
+            <div class="mgr-kpi-header">
+                <span class="mgr-kpi-title">Total Sales Today</span>
+                <div class="mgr-kpi-icon"><i class="fas fa-coins"></i></div>
+            </div>
+            <div class="mgr-kpi-value" id="kpi_total_sales"><?= mgr_money($total_today_sales) ?></div>
+            <div class="mgr-kpi-sub">Fuel + Merch + Job Orders</div>
         </div>
 
-        <div class="mgr-card" data-tone="red">
-            <div>
-                <div class="mgr-card-label">Pending Approvals</div>
-                <div class="mgr-card-value"><?= number_format($total_pending_approvals) ?></div>
-                <div class="mgr-card-sub">Stock <?= number_format($pending_merch_stock + $pending_fuel_stock) ?> | Customers <?= number_format($pending_customer_requests) ?> | Prices <?= number_format($pending_price_requests) ?></div>
+        <!-- 5. Active Job Orders -->
+        <a href="manager_validated_transactions.php?type=job_order&status=In+Progress" class="mgr-kpi-card" style="--icon-bg: #FEF3C7; --icon-color: #D97706; text-decoration: none; color: inherit; display: block;">
+            <div class="mgr-kpi-header">
+                <span class="mgr-kpi-title">Active Job Orders</span>
+                <div class="mgr-kpi-icon"><i class="fas fa-screwdriver-wrench"></i></div>
             </div>
-            <div class="mgr-icon" style="background:#ffe8eb;color:#c81e2d;"><i class="fas fa-clipboard-check"></i></div>
+            <div class="mgr-kpi-value" id="kpi_active_jobs"><?= number_format($active_job_orders) ?></div>
+            <div class="mgr-kpi-sub">Pending + In Progress</div>
+        </a>
+
+        <!-- 6. Completed Job Orders -->
+        <a href="manager_validated_transactions.php?type=job_order&status=Completed" class="mgr-kpi-card" style="--icon-bg: #ECFDF5; --icon-color: #059669; text-decoration: none; color: inherit; display: block;">
+            <div class="mgr-kpi-header">
+                <span class="mgr-kpi-title">Completed Job Orders</span>
+                <div class="mgr-kpi-icon"><i class="fas fa-circle-check"></i></div>
+            </div>
+            <div class="mgr-kpi-value" id="kpi_completed_jobs"><?= number_format($completed_job_orders) ?></div>
+            <div class="mgr-kpi-sub">Completed + Released</div>
+        </a>
+
+        <!-- 7. Low Stock Items -->
+        <div class="mgr-kpi-card" style="--icon-bg: #FFFBEB; --icon-color: #B45309;">
+            <div class="mgr-kpi-header">
+                <span class="mgr-kpi-title">Low Stock Items</span>
+                <div class="mgr-kpi-icon"><i class="fas fa-triangle-exclamation"></i></div>
+            </div>
+            <div class="mgr-kpi-value" id="kpi_low_stock"><?= number_format($low_stock_items) ?></div>
+            <div class="mgr-kpi-sub">Below reorder level</div>
         </div>
 
-        <div class="mgr-card" data-tone="violet">
-            <div>
-                <div class="mgr-card-label">Inventory Alerts</div>
-                <div class="mgr-card-value"><?= number_format($total_inventory_alerts) ?></div>
-                <div class="mgr-card-sub">Low fuel <?= number_format($low_fuel_count) ?> | Low merch <?= number_format($low_merch_count) ?> | Out <?= number_format($out_stock_count) ?></div>
+        <!-- 8. Critical Stock Items -->
+        <div class="mgr-kpi-card" style="--icon-bg: #FEE2E2; --icon-color: #DC2626;">
+            <div class="mgr-kpi-header">
+                <span class="mgr-kpi-title">Critical Stock</span>
+                <div class="mgr-kpi-icon"><i class="fas fa-circle-exclamation"></i></div>
             </div>
-            <div class="mgr-icon" style="background:#f0eaff;color:#6d3bd1;"><i class="fas fa-triangle-exclamation"></i></div>
+            <div class="mgr-kpi-value" id="kpi_critical_stock"><?= number_format($critical_stock_items) ?></div>
+            <div class="mgr-kpi-sub">Urgent replenishment</div>
         </div>
 
-        <div class="mgr-card" data-tone="cyan">
-            <div>
-                <div class="mgr-card-label">Pending Deliveries</div>
-                <div class="mgr-card-value"><?= number_format($pending_deliveries_count) ?></div>
-                <div class="mgr-card-sub">Purchase orders and encoded deliveries awaiting action</div>
+        <!-- 9. Pending Approvals -->
+        <div class="mgr-kpi-card" style="--icon-bg: #F5F3FF; --icon-color: #7C3AED;">
+            <div class="mgr-kpi-header">
+                <span class="mgr-kpi-title">Pending Approvals</span>
+                <div class="mgr-kpi-icon"><i class="fas fa-clipboard-check"></i></div>
             </div>
-            <div class="mgr-icon" style="background:#e4f8fb;color:#087990;"><i class="fas fa-truck"></i></div>
+            <div class="mgr-kpi-value" id="kpi_pending_approvals"><?= number_format($total_pending_approvals) ?></div>
+            <div class="mgr-kpi-sub">Requests waiting for review</div>
         </div>
 
-        <div class="mgr-card" data-tone="amber">
-            <div>
-                <div class="mgr-card-label">Active Services</div>
-                <div class="mgr-card-value"><?= number_format($active_services_count) ?></div>
-                <div class="mgr-card-sub">Pending <?= number_format($service_status_counts['Pending']) ?> | In progress <?= number_format($service_status_counts['In Progress']) ?> | Ready <?= number_format($service_status_counts['Ready']) ?></div>
+        <!-- 10. Monthly Revenue -->
+        <div class="mgr-kpi-card" style="--icon-bg: #E0F2FE; --icon-color: #0284C7;">
+            <div class="mgr-kpi-header">
+                <span class="mgr-kpi-title">Monthly Revenue</span>
+                <div class="mgr-kpi-icon"><i class="fas fa-chart-line"></i></div>
             </div>
-            <div class="mgr-icon" style="background:#fff8db;color:#b98300;"><i class="fas fa-screwdriver-wrench"></i></div>
+            <div class="mgr-kpi-value" id="kpi_monthly_rev"><?= mgr_money($monthly_revenue) ?></div>
+            <div class="mgr-kpi-sub"><?= date('F Y') ?> Station Revenue</div>
         </div>
 
-        <div class="mgr-card" data-tone="blue">
-            <div>
-                <div class="mgr-card-label">Active Staff</div>
-                <div class="mgr-card-value"><?= number_format($active_staff_total) ?></div>
-                <div class="mgr-card-sub">
-                    <?php foreach ($staff_shift_counts as $shift => $count): ?>
-                        <?= mgr_h($shift) ?>: <?= number_format($count) ?> Staff<?= $shift !== array_key_last($staff_shift_counts) ? ' | ' : '' ?>
-                    <?php endforeach; ?>
-                </div>
+        <!-- 11. Total Inventory Value -->
+        <div class="mgr-kpi-card" style="--icon-bg: #F0FDFA; --icon-color: #0D9488;">
+            <div class="mgr-kpi-header">
+                <span class="mgr-kpi-title">Total Inventory Value</span>
+                <div class="mgr-kpi-icon"><i class="fas fa-boxes-stacked"></i></div>
             </div>
-            <div class="mgr-icon"><i class="fas fa-users"></i></div>
-        </div>
-    </div>
-    <?php endif; ?>
-
-    <?php if ($enable_charts): ?>
-    <div class="mgr-charts-grid">
-        <div class="mgr-panel">
-            <div class="mgr-panel-header">
-                <div>
-                    <div class="mgr-panel-title"><i class="fas fa-chart-pie"></i> Revenue Breakdown</div>
-                    <div class="mgr-panel-sub">Fuel, merchandise, and service revenue split</div>
-                </div>
-            </div>
-            <div class="mgr-chart-body">
-                <?php if ($chart_empty['revenue']): ?><div class="mgr-chart-empty">No revenue for the selected date</div><?php endif; ?>
-                <canvas id="revenueBreakdownChart"></canvas>
-            </div>
+            <div class="mgr-kpi-value" id="kpi_inventory_val"><?= mgr_money($total_inventory_value) ?></div>
+            <div class="mgr-kpi-sub">Fuel: <?= mgr_money($fuel_inventory_value) ?> &bull; Merch: <?= mgr_money($merch_inventory_value) ?></div>
         </div>
 
-        <div class="mgr-panel">
-            <div class="mgr-panel-header">
-                <div>
-                    <div class="mgr-panel-title"><i class="fas fa-chart-line"></i> Hourly Sales Trend</div>
-                    <div class="mgr-panel-sub">Revenue by hour for the selected date</div>
-                </div>
+        <!-- 12. Accounts Receivable -->
+        <a href="manager_customers.php" class="mgr-kpi-card" style="--icon-bg: #FDF2F8; --icon-color: #DB2777; text-decoration: none; color: inherit; display: block;">
+            <div class="mgr-kpi-header">
+                <span class="mgr-kpi-title">Accounts Receivable</span>
+                <div class="mgr-kpi-icon"><i class="fas fa-file-invoice-dollar"></i></div>
             </div>
-            <div class="mgr-chart-body">
-                <?php if ($chart_empty['hourly']): ?><div class="mgr-chart-empty">No hourly sales recorded yet</div><?php endif; ?>
-                <canvas id="hourlySalesChart"></canvas>
-            </div>
-        </div>
-
-        <div class="mgr-panel">
-            <div class="mgr-panel-header">
-                <div>
-                    <div class="mgr-panel-title"><i class="fas fa-gas-pump"></i> Fuel Sales by Product</div>
-                    <div class="mgr-panel-sub">Liters sold by fuel type</div>
-                </div>
-            </div>
-            <div class="mgr-chart-body">
-                <?php if ($chart_empty['fuel']): ?><div class="mgr-chart-empty">No fuel sales for the selected date</div><?php endif; ?>
-                <canvas id="fuelSalesChart"></canvas>
-            </div>
-        </div>
-
-        <div class="mgr-panel">
-            <div class="mgr-panel-header">
-                <div>
-                    <div class="mgr-panel-title"><i class="fas fa-basket-shopping"></i> Merchandise Sales by Category</div>
-                    <div class="mgr-panel-sub">Sales amount grouped by category</div>
-                </div>
-            </div>
-            <div class="mgr-chart-body">
-                <?php if ($chart_empty['merch']): ?><div class="mgr-chart-empty">No merchandise sales for the selected date</div><?php endif; ?>
-                <canvas id="merchSalesChart"></canvas>
-            </div>
-        </div>
-
-        <div class="mgr-panel">
-            <div class="mgr-panel-header">
-                <div>
-                    <div class="mgr-panel-title"><i class="fas fa-calendar-week"></i> Weekly Revenue Trend</div>
-                    <div class="mgr-panel-sub">Monday to Sunday revenue for the selected week</div>
-                </div>
-            </div>
-            <div class="mgr-chart-body">
-                <?php if ($chart_empty['weekly']): ?><div class="mgr-chart-empty">No revenue in the selected week</div><?php endif; ?>
-                <canvas id="weeklyRevenueChart"></canvas>
-            </div>
-        </div>
-
-        <div class="mgr-panel">
-            <div class="mgr-panel-header">
-                <div>
-                    <div class="mgr-panel-title"><i class="fas fa-boxes-stacked"></i> Inventory Status</div>
-                    <div class="mgr-panel-sub">Fuel tanks and merchandise current stock</div>
-                </div>
-            </div>
-            <div class="mgr-chart-body">
-                <?php if ($chart_empty['inventory']): ?><div class="mgr-chart-empty">No inventory stock data available</div><?php endif; ?>
-                <canvas id="inventoryStatusChart"></canvas>
-            </div>
-        </div>
-    </div>
-    <?php endif; ?>
-
-    <div class="mgr-panel">
-        <div class="mgr-panel-header">
-            <div>
-                <div class="mgr-panel-title"><i class="fas fa-file-signature"></i> Pending Stock Requests</div>
-                <div class="mgr-panel-sub">Fuel and merchandise requests waiting for manager review</div>
-            </div>
-            <a href="manager_stock_request_review.php" class="mgr-btn mgr-btn-blue"><i class="fas fa-list-check"></i> Review All</a>
-        </div>
-        <?php if ($stock_request_rows): ?>
-            <div class="mgr-table-wrap">
-                <table class="mgr-table">
-                    <thead>
-                        <tr>
-                            <th>Request No</th>
-                            <th>Type</th>
-                            <th>Requested By</th>
-                            <th>Status</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <?php foreach ($stock_request_rows as $row):
-                        $req_id   = (int)($row['id'] ?? 0);
-                        $req_type = strtolower($row['request_type'] ?? 'merchandise');
-                        $subtab   = $req_type === 'fuel' ? '&subtab=fuel' : '';
-                        $review_url = "manager_stock_request_review.php?tab=pending_requests{$subtab}&highlight={$req_id}";
-                    ?>
-                        <tr id="dash-req-<?= $req_id ?>">
-                            <td><code><?= mgr_h($row['request_no']) ?></code><div class="mgr-panel-sub"><?= mgr_h($row['item_name']) ?> - <?= mgr_qty($row['requested_qty'], $row['request_type'] === 'Fuel' ? 2 : 0) ?><?= $row['request_type'] === 'Fuel' ? ' L' : '' ?></div></td>
-                            <td><?= mgr_h($row['request_type']) ?></td>
-                            <td><?= mgr_h($row['requested_by']) ?></td>
-                            <td><span class="mgr-badge <?= mgr_badge_class($row['status']) ?>"><?= mgr_h(mgr_status_label($row['status'])) ?></span></td>
-                            <td>
-                                <div class="mgr-actions-cell">
-                                    <a class="mgr-btn mgr-btn-gray" href="<?= mgr_h($review_url) ?>"><i class="fas fa-eye"></i> Review</a>
-                                    <a class="mgr-btn mgr-btn-green" href="<?= mgr_h($review_url) ?>&action=approve"><i class="fas fa-check"></i> Approve</a>
-                                    <a class="mgr-btn mgr-btn-red" href="<?= mgr_h($review_url) ?>&action=reject"><i class="fas fa-xmark"></i> Reject</a>
-                                    <a class="mgr-btn mgr-btn-amber" href="<?= mgr_h($review_url) ?>&action=generate_po"><i class="fas fa-file-invoice"></i> Generate PO</a>
-                                </div>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php else: ?>
-            <div class="mgr-empty"><i class="fas fa-circle-check"></i>No pending stock requests.</div>
-        <?php endif; ?>
+            <div class="mgr-kpi-value" id="kpi_ar_total"><?= mgr_money($ar_total_outstanding) ?></div>
+            <div class="mgr-kpi-sub">Customer Module &bull; Overdue: <?= mgr_money($ar_overdue_amount) ?></div>
+        </a>
     </div>
 
-    <div class="mgr-panel">
-        <div class="mgr-panel-header">
-            <div>
-                <div class="mgr-panel-title"><i class="fas fa-user-plus"></i> Pending Customer Registration</div>
-                <div class="mgr-panel-sub">Customer accounts still waiting for registration review</div>
+    <!-- 2. BRANCH SALES OVERVIEW & OPERATIONAL STATUS (4 WIDGETS) -->
+    <div class="mgr-grid-4col">
+        <!-- Branch Sales Overview -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-chart-pie"></i> Branch Sales Overview</h2>
             </div>
-            <a href="manager_customers.php" class="mgr-btn mgr-btn-blue"><i class="fas fa-users-gear"></i> Manage Customers</a>
-        </div>
-        <?php if ($customer_request_rows): ?>
-            <div class="mgr-table-wrap">
-                <table class="mgr-table">
-                    <thead>
-                        <tr>
-                            <th>Customer</th>
-                            <th>Contact</th>
-                            <th>Requested By</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($customer_request_rows as $row): ?>
-                        <tr>
-                            <td><strong><?= mgr_h($row['customer_name']) ?></strong><div class="mgr-panel-sub"><?= mgr_h(date('M d, Y', strtotime($row['created_at'] ?? 'now'))) ?></div></td>
-                            <td><?= mgr_h($row['contact']) ?></td>
-                            <td><?= mgr_h($row['requested_by']) ?></td>
-                            <td>
-                                <div class="mgr-actions-cell">
-                                    <a class="mgr-btn mgr-btn-green" href="manager_customers.php"><i class="fas fa-check"></i> Approve</a>
-                                    <a class="mgr-btn mgr-btn-red" href="manager_customers.php"><i class="fas fa-xmark"></i> Reject</a>
-                                </div>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php else: ?>
-            <div class="mgr-empty"><i class="fas fa-user-check"></i>No pending customer registrations.</div>
-        <?php endif; ?>
-    </div>
-
-    <div class="mgr-panel">
-        <div class="mgr-panel-header">
-            <div>
-                <div class="mgr-panel-title"><i class="fas fa-truck-ramp-box"></i> Pending Deliveries</div>
-                <div class="mgr-panel-sub">Deliveries ready for receiving, viewing, or stock-in workflow</div>
-            </div>
-            <a href="manager_delivery_validation.php" class="mgr-btn mgr-btn-blue"><i class="fas fa-truck-fast"></i> Receive Deliveries</a>
-        </div>
-        <?php if ($delivery_rows): ?>
-            <div class="mgr-table-wrap">
-                <table class="mgr-table">
-                    <thead>
-                        <tr>
-                            <th>Delivery No</th>
-                            <th>Supplier</th>
-                            <th>Status</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($delivery_rows as $row): ?>
-                        <tr>
-                            <td><code><?= mgr_h($row['delivery_no']) ?></code><div class="mgr-panel-sub"><?= mgr_h(ucwords((string) $row['delivery_type'])) ?></div></td>
-                            <td><?= mgr_h($row['supplier']) ?></td>
-                            <td><span class="mgr-badge <?= mgr_badge_class($row['status']) ?>"><?= mgr_h(mgr_status_label($row['status'])) ?></span></td>
-                            <td>
-                                <div class="mgr-actions-cell">
-                                    <a class="mgr-btn mgr-btn-green" href="<?= mgr_h($row['receive_url']) ?>"><i class="fas fa-clipboard-check"></i> Receive Delivery</a>
-                                    <a class="mgr-btn mgr-btn-gray" href="<?= mgr_h($row['view_url']) ?>"><i class="fas fa-eye"></i> View</a>
-                                    <a class="mgr-btn mgr-btn-amber" href="<?= mgr_h($row['stock_url']) ?>"><i class="fas fa-dolly"></i> Stock-In</a>
-                                </div>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php else: ?>
-            <div class="mgr-empty"><i class="fas fa-truck"></i>No pending deliveries.</div>
-        <?php endif; ?>
-    </div>
-
-    <div class="mgr-split">
-        <div class="mgr-panel">
-            <div class="mgr-panel-header">
-                <div>
-                    <div class="mgr-panel-title"><i class="fas fa-tags"></i> Price Update Summary</div>
-                    <div class="mgr-panel-sub">Recent fuel, merchandise, and service price changes</div>
+            <div class="mgr-card-body">
+                <div class="mgr-metric-list">
+                    <div class="mgr-metric-item">
+                        <span class="mgr-metric-label">Fuel Sales</span>
+                        <span class="mgr-metric-value" id="op_fuel_sales"><?= mgr_money($fuel_today_sales) ?></span>
+                    </div>
+                    <div class="mgr-metric-item">
+                        <span class="mgr-metric-label">Merchandise Sales</span>
+                        <span class="mgr-metric-value" id="op_merch_sales"><?= mgr_money($merch_today_sales) ?></span>
+                    </div>
+                    <a href="manager_validated_transactions.php?type=job_order" class="mgr-metric-item" style="text-decoration: none; color: inherit; transition: background 0.15s ease;">
+                        <span class="mgr-metric-label">Job Orders / Services</span>
+                        <span class="mgr-metric-value" id="op_job_sales"><?= mgr_money($job_today_sales) ?></span>
+                    </a>
+                    <div class="mgr-metric-item" style="background: #EFF6FF; border-color: #BFDBFE;">
+                        <span class="mgr-metric-label" style="color: var(--petron-blue); font-weight: 700;">Total Sales (<?= $total_branch_transactions ?> Txns)</span>
+                        <span class="mgr-metric-value" style="color: var(--petron-blue);" id="op_total_sales"><?= mgr_money($total_today_sales) ?></span>
+                    </div>
                 </div>
-                <a href="manager_set_prices.php" class="mgr-btn mgr-btn-blue"><i class="fas fa-sliders"></i> Manage Pricing</a>
             </div>
-            <?php if ($price_rows): ?>
-                <div class="mgr-mini-list">
-                    <?php foreach ($price_rows as $row): ?>
-                        <div class="mgr-mini-item">
-                            <div>
-                                <div class="mgr-mini-title"><?= mgr_h($row['product_name']) ?></div>
-                                <div class="mgr-mini-meta"><?= mgr_h(ucwords(str_replace('_', ' ', (string) $row['product_type']))) ?> | <?= mgr_h($row['updated_by']) ?> | <?= mgr_h(date('M d, Y', strtotime($row['reviewed_at'] ?: $row['created_at'] ?: 'now'))) ?></div>
-                            </div>
-                            <div style="text-align:right;">
-                                <div class="mgr-mini-title"><?= mgr_money($row['old_price']) ?> &rarr; <?= mgr_money($row['new_price']) ?></div>
-                                <span class="mgr-badge <?= mgr_badge_class($row['status']) ?>"><?= mgr_h(mgr_status_label($row['status'])) ?></span>
-                            </div>
+        </div>
+
+        <!-- 3. Fuel Management Summary -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-gas-pump"></i> Fuel Management Summary</h2>
+                <a href="manager_fuel_transaction_validation.php" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;">Validate</a>
+            </div>
+            <div class="mgr-card-body">
+                <div class="mgr-metric-list">
+                    <div class="mgr-metric-item">
+                        <span class="mgr-metric-label">Shift 1 Fuel Closing</span>
+                        <span class="mgr-badge mgr-badge-<?= $shift1_status === 'Completed' ? 'success' : ($shift1_status === 'Submitted' ? 'warning' : 'neutral') ?>" id="op_shift1">
+                            <?= mgr_h($shift1_status) ?>
+                        </span>
+                    </div>
+                    <div class="mgr-metric-item">
+                        <span class="mgr-metric-label">Shift 2 Fuel Closing</span>
+                        <span class="mgr-badge mgr-badge-<?= $shift2_status === 'Completed' ? 'success' : ($shift2_status === 'Submitted' ? 'warning' : 'neutral') ?>" id="op_shift2">
+                            <?= mgr_h($shift2_status) ?>
+                        </span>
+                    </div>
+                    <div class="mgr-metric-item">
+                        <span class="mgr-metric-label">Volume Sold Today</span>
+                        <span class="mgr-metric-value" style="color: var(--petron-blue);"><?= number_format($fuel_volume_sold, 2) ?> L</span>
+                    </div>
+                    <div class="mgr-metric-item">
+                        <span class="mgr-metric-label">Pending Meter Validation</span>
+                        <span class="mgr-metric-value" id="op_pending_meters" style="color: #DC2626;"><?= number_format($pending_meter_validations) ?> Readings</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. Merchandise & Fuel Inventory Status -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header" style="flex-wrap: wrap; gap: 8px;">
+                <h2 id="mgr_inv_widget_heading"><i class="fas fa-warehouse"></i> Merchandise Inventory (<?= number_format($total_products_count) ?> Products)</h2>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="display:inline-flex; background:#F1F5F9; padding:2px; border-radius:6px; border:1px solid #CBD5E1;">
+                        <button type="button" id="mgr_btn_tab_merch" onclick="switchMgrInvWidgetTab('merch')" style="padding:3px 9px; font-size:11px; font-weight:700; border-radius:4px; border:none; background:#002F6C; color:#FFFFFF; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.15s ease;">
+                            <i class="fas fa-boxes"></i> Merchandise
+                        </button>
+                        <button type="button" id="mgr_btn_tab_fuel" onclick="switchMgrInvWidgetTab('fuel')" style="padding:3px 9px; font-size:11px; font-weight:700; border-radius:4px; border:none; background:transparent; color:#64748B; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.15s ease;">
+                            <i class="fas fa-gas-pump"></i> Fuel Tanks (<?= count($fuel_tanks) ?>)
+                        </button>
+                    </div>
+                    <a id="mgr_inv_direct_link" href="manager_inventory_merchandise.php" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;" title="Open in Module">
+                        <i class="fas fa-arrow-up-right-from-square"></i> Open Module
+                    </a>
+                </div>
+            </div>
+            <div class="mgr-card-body">
+                <!-- MERCHANDISE VIEW -->
+                <div id="mgr_inv_view_merchandise">
+                    <div class="mgr-metric-list">
+                        <div onclick="openMgrMerchInvModal('available')" class="mgr-metric-item" style="cursor:pointer; transition:background 0.15s ease;" title="Click to view available/healthy stock merchandise items">
+                            <span class="mgr-metric-label" style="color: #15803D;"><i class="fas fa-circle-check"></i> Available (In Stock)</span>
+                            <span class="mgr-metric-value" id="op_inv_available" style="color: #15803D;"><?= number_format($available_merch_count) ?></span>
                         </div>
-                    <?php endforeach; ?>
+                        <div onclick="openMgrMerchInvModal('low')" class="mgr-metric-item" style="cursor:pointer; transition:background 0.15s ease;" title="Click to view low stock merchandise items">
+                            <span class="mgr-metric-label" style="color: #D97706;"><i class="fas fa-triangle-exclamation"></i> Low Stock</span>
+                            <span class="mgr-metric-value" id="op_inv_low" style="color: #D97706;"><?= number_format($low_merch_count) ?></span>
+                        </div>
+                        <div onclick="openMgrMerchInvModal('critical')" class="mgr-metric-item" style="cursor:pointer; transition:background 0.15s ease;" title="Click to view critical stock merchandise items">
+                            <span class="mgr-metric-label" style="color: #DC2626;"><i class="fas fa-circle-exclamation"></i> Critical Stock</span>
+                            <span class="mgr-metric-value" id="op_inv_critical" style="color: #DC2626;"><?= number_format($crit_merch_count) ?></span>
+                        </div>
+                        <div onclick="openMgrMerchInvModal('out')" class="mgr-metric-item" style="cursor:pointer; transition:background 0.15s ease;" title="Click to view out-of-stock merchandise items">
+                            <span class="mgr-metric-label" style="color: #991B1B;"><i class="fas fa-circle-xmark"></i> Out of Stock</span>
+                            <span class="mgr-metric-value" id="op_inv_out" style="color: #991B1B;"><?= number_format($out_merch_count) ?></span>
+                        </div>
+                        <div onclick="openMgrMerchInvModal('variance')" class="mgr-metric-item" style="cursor:pointer; transition:background 0.15s ease;" title="Click to view physical count variances detected">
+                            <span class="mgr-metric-label" style="color: #7C3AED;"><i class="fas fa-clipboard-check"></i> Variance Detected (P-Count)</span>
+                            <span class="mgr-metric-value" id="op_inv_variance" style="color: #7C3AED;"><?= number_format($variance_merch_count) ?></span>
+                        </div>
+                    </div>
                 </div>
-            <?php else: ?>
-                <div class="mgr-empty"><i class="fas fa-tags"></i>No recent price updates.</div>
-            <?php endif; ?>
+
+                <!-- FUEL VIEW -->
+                <div id="mgr_inv_view_fuel" style="display:none;">
+                    <!-- Summary badges row -->
+                    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-bottom:10px;">
+                        <div onclick="openMgrFuelInvModal('normal')" style="background:#F0FDF4; border:1px solid #BBF7D0; padding:6px 8px; border-radius:8px; text-align:center; cursor:pointer;" title="Normal tanks">
+                            <div style="font-size:10px; font-weight:700; color:#15803D; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-circle-check"></i> Normal</div>
+                            <div style="font-size:16px; font-weight:800; color:#15803D;"><?= $normal_fuel_count ?></div>
+                        </div>
+                        <div onclick="openMgrFuelInvModal('low')" style="background:#FFFBEB; border:1px solid #FDE68A; padding:6px 8px; border-radius:8px; text-align:center; cursor:pointer;" title="Low tanks">
+                            <div style="font-size:10px; font-weight:700; color:#B45309; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-triangle-exclamation"></i> Low</div>
+                            <div style="font-size:16px; font-weight:800; color:#B45309;"><?= $low_fuel_count ?></div>
+                        </div>
+                        <div onclick="openMgrFuelInvModal('critical')" style="background:#FEF2F2; border:1px solid #FECACA; padding:6px 8px; border-radius:8px; text-align:center; cursor:pointer;" title="Critical tanks">
+                            <div style="font-size:10px; font-weight:700; color:#DC2626; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-circle-exclamation"></i> Critical</div>
+                            <div style="font-size:16px; font-weight:800; color:#DC2626;"><?= $crit_fuel_count ?></div>
+                        </div>
+                        <div onclick="openMgrFuelInvModal('out')" style="background:#FEF2F2; border:1px solid #FECACA; padding:6px 8px; border-radius:8px; text-align:center; cursor:pointer;" title="Out of stock tanks">
+                            <div style="font-size:10px; font-weight:700; color:#991B1B; text-transform:uppercase; white-space:nowrap; overflow:hidden;"><i class="fas fa-circle-xmark"></i> Out</div>
+                            <div style="font-size:16px; font-weight:800; color:#991B1B;"><?= $out_fuel_count ?></div>
+                        </div>
+                    </div>
+                    <!-- Per-tank status list -->
+                    <div style="border:1px solid #E2E8F0; border-radius:8px; overflow:hidden;">
+                        <?php if (empty($fuel_tanks)): ?>
+                            <div style="padding:14px; text-align:center; color:#64748B; font-size:12px;">No active fuel tanks found.</div>
+                        <?php else: ?>
+                            <?php foreach ($fuel_tanks as $ft_row): 
+                                $ft_lvl = (float)($ft_row['current_level'] ?? 0);
+                                $ft_cap = (float)($ft_row['capacity'] ?? 14000);
+                                $ft_pct = $ft_cap > 0 ? min(100, round(($ft_lvl / $ft_cap) * 100, 1)) : 0;
+                            ?>
+                                <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 12px; border-bottom:1px solid #F1F5F9; gap:8px;">
+                                    <div style="flex:1; min-width:0;">
+                                        <div style="font-size:12px; font-weight:700; color:#1E293B; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><?= mgr_h($ft_row['fuel_type']) ?></div>
+                                        <div style="display:flex; align-items:center; gap:5px; margin-top:3px;">
+                                            <div style="flex:1; height:5px; background:#E2E8F0; border-radius:999px; overflow:hidden;">
+                                                <div style="height:100%; width:<?= $ft_pct ?>%; background:<?= $ft_row['bar_color'] ?? '#002F6C' ?>; border-radius:999px;"></div>
+                                            </div>
+                                            <span style="font-size:10px; color:#64748B; font-weight:600; white-space:nowrap;"><?= number_format($ft_lvl, 0) ?> L</span>
+                                        </div>
+                                    </div>
+                                    <span style="display:inline-block; padding:2px 8px; font-size:9.5px; font-weight:800; border-radius:999px; background:<?= $ft_row['badge_bg'] ?? '#64748B' ?>; color:#FFF; letter-spacing:0.4px; text-transform:uppercase; white-space:nowrap; flex-shrink:0;"><?= mgr_h($ft_row['alert_status'] ?? 'NORMAL') ?></span>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <div class="mgr-panel">
-            <div class="mgr-panel-header">
-                <div>
-                    <div class="mgr-panel-title"><i class="fas fa-receipt"></i> Recent Transactions</div>
-                    <div class="mgr-panel-sub">Latest 10 fuel, merchandise, and service records</div>
-                </div>
-                <a href="manager_validated_transactions.php" class="mgr-btn mgr-btn-blue"><i class="fas fa-magnifying-glass-chart"></i> View All</a>
+        <!-- 6. Job Order Monitoring -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-list-check"></i> Job Order Monitoring</h2>
+                <a href="manager_validated_transactions.php?type=job_order" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;"><i class="fas fa-arrow-up-right-from-square" style="font-size: 10px; margin-right: 3px;"></i> Track All</a>
             </div>
-            <?php if ($recent_transactions): ?>
-                <div class="mgr-table-wrap">
+            <div class="mgr-card-body">
+                <div class="mgr-metric-list">
+                    <a href="manager_validated_transactions.php?type=job_order&status=Pending" class="mgr-metric-item" style="text-decoration: none; color: inherit; transition: background 0.15s ease;">
+                        <span class="mgr-metric-label">Pending</span>
+                        <span class="mgr-metric-value" id="op_jo_pending" style="color: #B45309;"><?= number_format($jo_pending_count) ?></span>
+                    </a>
+                    <a href="manager_validated_transactions.php?type=job_order&status=In+Progress" class="mgr-metric-item" style="text-decoration: none; color: inherit; transition: background 0.15s ease;">
+                        <span class="mgr-metric-label">In Progress</span>
+                        <span class="mgr-metric-value" id="op_jo_inprogress" style="color: #0284C7;"><?= number_format($jo_inprogress_count) ?></span>
+                    </a>
+                    <a href="manager_validated_transactions.php?type=job_order&status=Completed" class="mgr-metric-item" style="text-decoration: none; color: inherit; transition: background 0.15s ease;">
+                        <span class="mgr-metric-label">Completed</span>
+                        <span class="mgr-metric-value" id="op_jo_completed" style="color: #16A34A;"><?= number_format($jo_completed_count) ?></span>
+                    </a>
+                    <a href="manager_validated_transactions.php?type=job_order&status=Released" class="mgr-metric-item" style="text-decoration: none; color: inherit; transition: background 0.15s ease;">
+                        <span class="mgr-metric-label">Released</span>
+                        <span class="mgr-metric-value" id="op_jo_released" style="color: #7C3AED;"><?= number_format($jo_released_count) ?></span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. APPROVAL CENTER & FUEL VERIFICATION QUEUE (2-COL) -->
+    <div class="mgr-grid-2col">
+        <!-- 13. Approval Center -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-stamp" style="color: #7C3AED;"></i> Approval Center (Pending Requests)</h2>
+                <span class="mgr-badge mgr-badge-info"><?= number_format($total_pending_approvals) ?> Total Pending</span>
+            </div>
+            <div class="mgr-card-body">
+                <a href="manager_stock_request_review.php" class="mgr-action-row">
+                    <span class="mgr-action-title"><i class="fas fa-boxes-stacked" style="color: var(--petron-blue);"></i> Stock Requests (Merchandise &amp; Fuel)</span>
+                    <span class="mgr-action-count <?= $pending_stock_reqs > 0 ? 'has-pending' : '' ?>" id="ac_stock_reqs"><?= number_format($pending_stock_reqs) ?></span>
+                </a>
+                <a href="manager_request_data_management.php" class="mgr-action-row">
+                    <span class="mgr-action-title"><i class="fas fa-database" style="color: #0284C7;"></i> Master Data Requests (Vehicle, Product, Service)</span>
+                    <span class="mgr-action-count <?= $pending_master_data > 0 ? 'has-pending' : '' ?>" id="ac_master_data"><?= number_format($pending_master_data) ?></span>
+                </a>
+                <a href="manager_validated_transactions.php?status=Void+Requested" class="mgr-action-row">
+                    <span class="mgr-action-title"><i class="fas fa-ban" style="color: #DC2626;"></i> Void Requests</span>
+                    <span class="mgr-action-count <?= $pending_void_reqs > 0 ? 'has-danger' : '' ?>" id="ac_void_reqs"><?= number_format($pending_void_reqs) ?></span>
+                </a>
+                <a href="manager_validated_transactions.php?status=Adjustment+Requested" class="mgr-action-row">
+                    <span class="mgr-action-title"><i class="fas fa-sliders" style="color: #D97706;"></i> Adjustment Requests</span>
+                    <span class="mgr-action-count <?= $pending_adjustment_reqs > 0 ? 'has-pending' : '' ?>" id="ac_adj_reqs"><?= number_format($pending_adjustment_reqs) ?></span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Fuel Verification Queue -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-gas-pump" style="color: var(--petron-red);"></i> Fuel Verification Queue</h2>
+                <span class="mgr-badge mgr-badge-warning">Operational Validation</span>
+            </div>
+            <div class="mgr-card-body">
+                <a href="manager_fuel_transaction_validation.php?status_filter=pending" class="mgr-action-row">
+                    <span class="mgr-action-title"><i class="fas fa-tachometer-alt" style="color: var(--petron-blue);"></i> Meter Readings for Validation</span>
+                    <span class="mgr-action-count <?= $pending_meter_validations > 0 ? 'has-pending' : '' ?>" id="fq_meter_val"><?= number_format($pending_meter_validations) ?></span>
+                </a>
+                <a href="manager_fuel_transaction_validation.php" class="mgr-action-row">
+                    <span class="mgr-action-title"><i class="fas fa-file-invoice-dollar" style="color: #16A34A;"></i> Fuel Closing for Review</span>
+                    <span class="mgr-action-count <?= $fuel_closings_for_review > 0 ? 'has-pending' : '' ?>" id="fq_closing_rev"><?= number_format($fuel_closings_for_review) ?></span>
+                </a>
+                <a href="manager_fuel_transaction_validation.php?status_filter=returned" class="mgr-action-row">
+                    <span class="mgr-action-title"><i class="fas fa-rotate-left" style="color: #DC2626;"></i> Returned for Correction</span>
+                    <span class="mgr-action-count <?= $fuel_returned_corrections > 0 ? 'has-danger' : '' ?>" id="fq_returned"><?= number_format($fuel_returned_corrections) ?></span>
+                </a>
+                <a href="manager_inventory_fuel.php" class="mgr-action-row">
+                    <span class="mgr-action-title"><i class="fas fa-oil-can" style="color: #0D9488;"></i> Available Fuel Volume (<?= number_format($total_available_fuel, 2) ?> L)</span>
+                    <span class="mgr-action-count" style="background:#E0F2FE; color:#0369A1;"><?= number_format(($total_available_fuel / max(1, $total_fuel_capacity)) * 100, 1) ?>%</span>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. CHARTS: TOP PRODUCTS, SERVICES & PAYMENT TYPES (3-COL) -->
+    <div class="mgr-grid-3col">
+        <!-- 10. Top Selling Products -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-trophy" style="color: #F59E0B;"></i> Top Selling Products</h2>
+            </div>
+            <div class="mgr-card-body">
+                <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 10px 0;">Top merchandise products based on finalized sales.</p>
+                <div class="mgr-chart-wrap">
+                    <canvas id="topProductsChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 11. Most Requested Services -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-wrench" style="color: #0284C7;"></i> Most Requested Services</h2>
+            </div>
+            <div class="mgr-card-body">
+                <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 10px 0;">Top services based on completed job orders.</p>
+                <div class="mgr-chart-wrap">
+                    <canvas id="topServicesChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 7. Payment Type Pie Chart -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-credit-card" style="color: #10B981;"></i> Payment Type Distribution</h2>
+            </div>
+            <div class="mgr-card-body">
+                <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 10px 0;">Real-time breakdown of all 7 payment methods.</p>
+                <div class="mgr-chart-wrap">
+                    <canvas id="paymentTypeChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. CHARTS: DAILY SALES TREND, JOB ORDER STATUS & MONTHLY REVENUE (3-COL) -->
+    <div class="mgr-grid-3col">
+        <!-- 8. Daily Sales Trend Line Graph -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-chart-line" style="color: var(--petron-blue);"></i> Daily / Shift Sales Trend</h2>
+                <span class="mgr-badge mgr-badge-info"><?= mgr_h($active_shift_name) ?></span>
+            </div>
+            <div class="mgr-card-body">
+                <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 10px 0;">Finalized sales progression throughout active shift hours.</p>
+                <div class="mgr-chart-wrap">
+                    <canvas id="dailySalesTrendChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 12. Job Order Status Analytics -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-circle-notch" style="color: #D97706;"></i> Job Order Status Distribution</h2>
+            </div>
+            <div class="mgr-card-body">
+                <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 10px 0;">Pending, In Progress, Completed, Released.</p>
+                <div class="mgr-chart-wrap">
+                    <canvas id="joStatusChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 9. Monthly Revenue Trend -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-arrow-trend-up" style="color: var(--petron-red);"></i> Monthly Revenue Trend</h2>
+            </div>
+            <div class="mgr-card-body">
+                <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 10px 0;">Monthly finalized revenue performance (Fuel + Merch + Jobs).</p>
+                <div class="mgr-chart-wrap">
+                    <canvas id="monthlyRevenueChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. MASTER DATA REQUESTS, VOID & ADJUSTMENT, ACCOUNTS RECEIVABLE (3-COL) -->
+    <div class="mgr-grid-3col">
+        <!-- 14. Master Data Requests -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-database" style="color: #0284C7;"></i> Master Data Requests</h2>
+                <a href="manager_request_data_management.php" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;">Manage</a>
+            </div>
+            <div class="mgr-card-body" style="padding: 0;">
+                <div class="mgr-table-responsive">
                     <table class="mgr-table">
                         <thead>
                             <tr>
-                                <th>Time</th>
-                                <th>Type</th>
-                                <th>Customer</th>
-                                <th>Amount</th>
+                                <th>Ref</th>
+                                <th>Category</th>
                                 <th>Status</th>
                             </tr>
                         </thead>
                         <tbody>
-                        <?php foreach ($recent_transactions as $row): ?>
-                            <tr>
-                                <td><?= mgr_h(date('M d, h:i A', strtotime($row['txn_time'] ?? 'now'))) ?><div class="mgr-panel-sub"><?= mgr_h($row['reference_no']) ?></div></td>
-                                <td><?= mgr_h($row['txn_type']) ?><div class="mgr-panel-sub"><?= mgr_h($row['detail']) ?></div></td>
-                                <td><?= mgr_h($row['customer_name']) ?></td>
-                                <td><strong><?= mgr_money($row['amount']) ?></strong></td>
-                                <td><span class="mgr-badge <?= mgr_badge_class($row['status']) ?>"><?= mgr_h(mgr_status_label($row['status'])) ?></span></td>
-                            </tr>
-                        <?php endforeach; ?>
+                            <?php if (empty($master_data_list)): ?>
+                                <tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 14px;">No master data requests submitted.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($master_data_list as $md): ?>
+                                    <tr>
+                                        <td><code><?= mgr_h($md['request_no']) ?></code></td>
+                                        <td><strong><?= mgr_h($md['category']) ?></strong></td>
+                                        <td>
+                                            <span class="mgr-badge mgr-badge-<?= in_array(strtolower($md['status']), ['approved','verified']) ? 'success' : (strtolower($md['status']) === 'for revision' ? 'danger' : 'warning') ?>">
+                                                <?= mgr_h($md['status']) ?>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
-            <?php else: ?>
-                <div class="mgr-empty"><i class="fas fa-receipt"></i>No transactions recorded yet.</div>
-            <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- 15. Void & Adjustment Monitoring -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-sliders" style="color: #D97706;"></i> Void &amp; Adjustment Monitoring</h2>
+                <a href="manager_validated_transactions.php?status=Void+Requested" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;"><i class="fas fa-arrow-up-right-from-square" style="font-size: 10px; margin-right: 3px;"></i> All Transactions</a>
+            </div>
+            <div class="mgr-card-body" style="padding: 0;">
+                <div class="mgr-table-responsive">
+                    <table class="mgr-table">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>Reason</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($void_adjust_list)): ?>
+                                <tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 14px;">No void or adjustment requests recorded.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($void_adjust_list as $va): 
+                                    $req_stat = (strtolower($va['request_type']) === 'void') ? 'Void+Requested' : 'Adjustment+Requested';
+                                ?>
+                                    <tr onclick="location.href='manager_validated_transactions.php?status=<?= $req_stat ?>'" style="cursor: pointer; transition: background 0.15s ease;" title="View in All Transactions">
+                                        <td><strong><?= mgr_h($va['request_type']) ?></strong></td>
+                                        <td><small style="color: var(--text-muted);"><?= mgr_h($va['request_reason'] ?: '—') ?></small></td>
+                                        <td>
+                                            <span class="mgr-badge mgr-badge-<?= strtolower($va['status']) === 'approved' ? 'success' : (strtolower($va['status']) === 'rejected' ? 'danger' : 'warning') ?>">
+                                                <?= mgr_h($va['status']) ?>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 16. Accounts Receivable (Customer Module) -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-file-invoice-dollar" style="color: #10B981;"></i> Accounts Receivable</h2>
+                <a href="manager_customers.php" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;"><i class="fas fa-arrow-up-right-from-square" style="font-size: 10px; margin-right: 3px;"></i> Customer Module</a>
+            </div>
+            <div class="mgr-card-body">
+                <div class="mgr-metric-list">
+                    <a href="manager_customers.php" class="mgr-metric-item" style="text-decoration: none; color: inherit; transition: background 0.15s ease;">
+                        <span class="mgr-metric-label">Total Outstanding AR</span>
+                        <span class="mgr-metric-value" style="color: #B45309;"><?= mgr_money($ar_total_outstanding) ?></span>
+                    </a>
+                    <a href="manager_customers.php" class="mgr-metric-item" style="text-decoration: none; color: inherit; transition: background 0.15s ease;">
+                        <span class="mgr-metric-label">Current Due</span>
+                        <span class="mgr-metric-value" style="color: #0284C7;"><?= mgr_money($ar_due_amount) ?></span>
+                    </a>
+                    <a href="manager_customers.php" class="mgr-metric-item" style="text-decoration: none; color: inherit; transition: background 0.15s ease;">
+                        <span class="mgr-metric-label">Overdue Balance</span>
+                        <span class="mgr-metric-value" style="color: #DC2626;"><?= mgr_money($ar_overdue_amount) ?></span>
+                    </a>
+                    <a href="manager_customers.php" class="mgr-metric-item" style="background: #F0FDF4; border-color: #BBF7D0; text-decoration: none; color: inherit; transition: background 0.15s ease;">
+                        <span class="mgr-metric-label" style="color: #15803D; font-weight: 700;">Recently Collected</span>
+                        <span class="mgr-metric-value" style="color: #15803D;"><?= mgr_money($ar_recently_paid) ?></span>
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div class="mgr-split">
-        <div class="mgr-panel">
-            <div class="mgr-panel-header">
-                <div>
-                    <div class="mgr-panel-title"><i class="fas fa-warehouse"></i> Low Inventory</div>
-                    <div class="mgr-panel-sub">Fuel and merchandise items below reorder levels</div>
-                </div>
-                <a href="manager_inventory_fuel.php" class="mgr-btn mgr-btn-blue"><i class="fas fa-boxes-stacked"></i> Inventory</a>
+    <!-- 7. RECENT TRANSACTIONS, INVENTORY MOVEMENTS, NOTIFICATIONS (3-COL) -->
+    <div class="mgr-grid-3col">
+        <!-- 17. Recent Transactions -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-receipt"></i> Recent Transactions</h2>
+                <a href="manager_validated_transactions.php" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;">View All</a>
             </div>
-            <?php if ($low_inventory_rows): ?>
-                <div class="mgr-table-wrap">
+            <div class="mgr-card-body" style="padding: 0;">
+                <div class="mgr-table-responsive">
+                    <table class="mgr-table">
+                        <thead>
+                            <tr>
+                                <th>Reference</th>
+                                <th>Type</th>
+                                <th style="text-align: right;">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recent_txn_tbody">
+                            <?php if (empty($recent_transactions)): ?>
+                                <tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 16px;">No finalized transactions yet today.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($recent_transactions as $rt): ?>
+                                    <tr>
+                                        <td>
+                                            <code><?= mgr_h($rt['ref_no']) ?></code>
+                                            <br><small style="color: var(--text-muted);"><?= mgr_h($rt['customer_name']) ?></small>
+                                        </td>
+                                        <td>
+                                            <span class="mgr-badge mgr-badge-<?= $rt['txn_type'] === 'Job Order' ? 'info' : ($rt['txn_type'] === 'Fuel' ? 'warning' : 'neutral') ?>">
+                                                <?= mgr_h($rt['txn_type']) ?>
+                                            </span>
+                                        </td>
+                                        <td style="text-align: right;"><strong><?= mgr_money($rt['amount']) ?></strong></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 18. Recent Inventory Movements -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header" style="flex-wrap: wrap; gap: 8px;">
+                <h2><i class="fas fa-right-left" style="color: #059669;"></i> Inventory Movements</h2>
+                <a href="manager_reports.php?cat=audit&tab=inventory_logs" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;"><i class="fas fa-arrow-up-right-from-square" style="font-size: 10px; margin-right: 3px;"></i> Audit Log</a>
+            </div>
+            <div class="mgr-card-body" style="padding: 0;">
+                <div class="mgr-table-responsive">
                     <table class="mgr-table">
                         <thead>
                             <tr>
                                 <th>Product</th>
                                 <th>Type</th>
-                                <th>Current</th>
-                                <th>Reorder Level</th>
-                                <th>Status</th>
+                                <th style="text-align: right;">Qty</th>
                             </tr>
                         </thead>
-                        <tbody>
-                        <?php foreach ($low_inventory_rows as $row): ?>
-                            <tr>
-                                <td><?= mgr_h($row['product_name']) ?></td>
-                                <td><?= mgr_h($row['item_type']) ?></td>
-                                <td><?= mgr_qty($row['current_qty']) ?></td>
-                                <td><?= mgr_qty($row['reorder_qty']) ?></td>
-                                <td><span class="mgr-badge <?= mgr_badge_class($row['status']) ?>"><?= mgr_h($row['status']) ?></span></td>
-                            </tr>
-                        <?php endforeach; ?>
+                        <tbody id="recent_mov_tbody">
+                            <?php if (empty($recent_inventory_movements)): ?>
+                                <tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 16px;">No inventory movements logged yet.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($recent_inventory_movements as $im): 
+                                    $is_in = strtoupper($im['movement_type'] ?? '') === 'IN' || (float)$im['quantity_change'] > 0;
+                                ?>
+                                    <tr onclick="location.href='manager_reports.php?cat=audit&tab=inventory_logs'" style="cursor: pointer; transition: background 0.15s ease;" title="View in Audit Log">
+                                        <td>
+                                            <strong><?= mgr_h($im['product_name']) ?></strong>
+                                            <br><small style="color: var(--text-muted);"><?= mgr_h($im['reason'] ?: $im['action']) ?></small>
+                                        </td>
+                                        <td>
+                                            <span class="mgr-badge mgr-badge-<?= $is_in ? 'success' : 'danger' ?>">
+                                                <?= $is_in ? 'IN' : 'OUT' ?>
+                                            </span>
+                                        </td>
+                                        <td style="text-align: right; font-weight: 700; color: <?= $is_in ? '#15803D' : '#DC2626' ?>;">
+                                            <?= $is_in ? '+' : '-' ?><?= number_format((float)$im['quantity_change']) ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
-            <?php else: ?>
-                <div class="mgr-empty"><i class="fas fa-circle-check"></i>Inventory levels are normal.</div>
-            <?php endif; ?>
+            </div>
         </div>
 
-        <div class="mgr-panel">
-            <div class="mgr-panel-header">
-                <div>
-                    <div class="mgr-panel-title"><i class="fas fa-screwdriver-wrench"></i> Service Queue</div>
-                    <div class="mgr-panel-sub">Pending, in progress, ready, and released job orders</div>
-                </div>
-                <a href="manager_validated_transactions.php?type=job_order" class="mgr-btn mgr-btn-blue"><i class="fas fa-clipboard-list"></i> Job Orders</a>
+        <!-- 19. Notification Preview -->
+        <div class="mgr-card" style="margin-bottom: 0;">
+            <div class="mgr-card-header">
+                <h2><i class="fas fa-bell" style="color: #D97706;"></i> Notification Preview</h2>
+                <a href="notifications.php" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;">Hub</a>
             </div>
-            <div class="mgr-service-summary">
-                <?php foreach ($service_status_counts as $label => $count): ?>
-                    <div class="mgr-service-pill">
-                        <strong><?= number_format($count) ?></strong>
-                        <span><?= mgr_h($label) ?></span>
+            <div class="mgr-card-body" style="padding: 0;" id="mgr_notif_container">
+                <?php if (empty($notifications_list)): ?>
+                    <div style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 11px;">
+                        <i class="fas fa-check-circle" style="font-size: 20px; opacity: 0.4; margin-bottom: 6px;"></i>
+                        <p style="margin: 0;">No active notifications for manager.</p>
                     </div>
-                <?php endforeach; ?>
+                <?php else: ?>
+                    <?php foreach ($notifications_list as $notif): 
+                        $is_unread = ($notif['status'] ?? '') === 'unread';
+                        $title_lower = strtolower($notif['title'] ?? '');
+                        $icon_class = 'fas fa-info';
+                        $icon_bg = '#EFF6FF';
+                        $icon_color = 'var(--petron-blue)';
+                        
+                        if (str_contains($title_lower, 'fuel')) {
+                            $icon_class = 'fas fa-gas-pump';
+                            $icon_bg = '#EFF6FF';
+                            $icon_color = '#002F6C';
+                        } elseif (str_contains($title_lower, 'stock') || str_contains($title_lower, 'inventory')) {
+                            $icon_class = 'fas fa-boxes-stacked';
+                            $icon_bg = '#F0FDF4';
+                            $icon_color = '#16A34A';
+                        } elseif (str_contains($title_lower, 'master data')) {
+                            $icon_class = 'fas fa-database';
+                            $icon_bg = '#E0F2FE';
+                            $icon_color = '#0284C7';
+                        } elseif (str_contains($title_lower, 'void') || str_contains($title_lower, 'adjustment')) {
+                            $icon_class = 'fas fa-triangle-exclamation';
+                            $icon_bg = '#FEF3C7';
+                            $icon_color = '#D97706';
+                        }
+                    ?>
+                        <a href="manager_dashboard.php?open_notif=<?= (int)$notif['id'] ?>" class="mgr-notif-item" style="<?= $is_unread ? 'background:#FFFBEB; border-left:3px solid #F59E0B;' : '' ?>">
+                            <div class="mgr-notif-icon" style="background:<?= $icon_bg ?>; color:<?= $icon_color ?>;"><i class="<?= $icon_class ?>"></i></div>
+                            <div class="mgr-notif-content">
+                                <div class="mgr-notif-title" style="<?= $is_unread ? 'font-weight:800; color:#0F172A;' : '' ?>">
+                                    <?= mgr_h($notif['title']) ?>
+                                    <?php if ($is_unread): ?>
+                                        <span class="mgr-badge mgr-badge-warning" style="font-size:8px; padding:2px 5px; margin-left:4px;">NEW</span>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="mgr-notif-msg"><?= mgr_h($notif['message']) ?></div>
+                                <div class="mgr-notif-time"><i class="fas fa-clock"></i> <?= date('M j, g:i A', strtotime($notif['created_at'])) ?></div>
+                            </div>
+                        </a>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </div>
-            <?php if ($service_queue_rows): ?>
-                <div class="mgr-table-wrap">
-                    <table class="mgr-table">
-                        <thead>
-                            <tr>
-                                <th>Service No</th>
-                                <th>Customer</th>
-                                <th>Vehicle</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                        <?php foreach ($service_queue_rows as $row):
-                            // Map DB status to display label
-                            $svc_status = $row['status'] ?? '';
-                            $svc_label  = match(strtolower($svc_status)) {
-                                'finalized'      => 'Released',
-                                'reviewed'       => 'Pending',
-                                'awaiting parts' => 'Awaiting Parts',
-                                default          => $svc_status,
-                            };
-                        ?>
-                            <tr>
+        </div>
+    </div>
+
+    <!-- 8. 20. STAFF ACTIVITY OVERVIEW -->
+    <div class="mgr-card">
+        <div class="mgr-card-header">
+            <h2><i class="fas fa-user-shield" style="color: #002F6C;"></i> Staff Operational Activity Overview</h2>
+            <a href="manager_reports.php?cat=audit&tab=login_history" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;"><i class="fas fa-arrow-up-right-from-square" style="font-size: 10px; margin-right: 3px;"></i> Login History</a>
+        </div>
+        <div class="mgr-card-body" style="padding: 0;">
+            <div class="mgr-table-responsive">
+                <table class="mgr-table">
+                    <thead>
+                        <tr>
+                            <th>Staff Member</th>
+                            <th>Action</th>
+                            <th>Details</th>
+                            <th>Reference</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($staff_activity_list)): ?>
+                            <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 16px;">No recent staff operational activity logged.</td></tr>
+                        <?php else: ?>
+                            <?php foreach ($staff_activity_list as $sa): ?>
+                                <tr onclick="location.href='manager_reports.php?cat=audit&tab=login_history'" style="cursor: pointer; transition: background 0.15s ease;" title="View in Login History">
+                                    <td><strong><?= mgr_h(trim($sa['first_name'] . ' ' . $sa['last_name']) ?: 'Staff') ?></strong></td>
+                                    <td><span class="mgr-badge mgr-badge-neutral"><?= mgr_h($sa['action']) ?></span></td>
+                                    <td><span style="color: var(--text-dark);"><?= mgr_h($sa['details']) ?></span></td>
+                                    <td><code style="color: var(--petron-blue);"><?= mgr_h($sa['reference']) ?></code></td>
+                                    <td style="color: #94A3B8; font-size: 11px; white-space: nowrap;"><?= date('M d, Y g:i A', strtotime($sa['created_at'])) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 9. 21. REPORT SHORTCUTS -->
+    <div class="mgr-card">
+        <div class="mgr-card-header">
+            <h2><i class="fas fa-file-contract" style="color: #0284C7;"></i> Manager Report Shortcuts</h2>
+            <span class="mgr-badge mgr-badge-neutral">Direct Analytics Access</span>
+        </div>
+        <div class="mgr-card-body">
+            <div class="mgr-quick-grid">
+                <a href="manager_reports.php?cat=sales&tab=daily_merch_service" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-cart-shopping"></i></div>
+                    <span>Daily Merch &amp; JO Report</span>
+                </a>
+                <a href="manager_reports.php?cat=sales&tab=fuel_sales" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-gas-pump"></i></div>
+                    <span>Daily Fuel Sales Report</span>
+                </a>
+                <a href="manager_reports.php?cat=procurement&tab=fuel_reconciliation" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-scale-balanced"></i></div>
+                    <span>Fuel Reconciliation Report</span>
+                </a>
+                <a href="manager_reports.php?cat=inventory&tab=merch_inventory" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-boxes-stacked"></i></div>
+                    <span>Inventory Valuation Report</span>
+                </a>
+                <a href="manager_reports.php?cat=inventory&tab=inventory_movement" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-right-left"></i></div>
+                    <span>Stock Movement Report</span>
+                </a>
+                <a href="manager_reports.php?cat=operations&tab=job_order" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-screwdriver-wrench"></i></div>
+                    <span>Job Order Services Report</span>
+                </a>
+                <a href="manager_reports.php?cat=financial&tab=receivables" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-file-invoice-dollar"></i></div>
+                    <span>Customer AR Ledger</span>
+                </a>
+                <a href="manager_reports.php?cat=audit&tab=transaction_logs" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-shield-halved"></i></div>
+                    <span>Manager Audit Trail</span>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 10. 22. MANAGER QUICK ACTIONS -->
+    <div class="mgr-card" style="margin-bottom: 24px;">
+        <div class="mgr-card-header">
+            <h2><i class="fas fa-bolt" style="color: var(--petron-red);"></i> Manager Operational Quick Actions</h2>
+            <span class="mgr-badge mgr-badge-neutral">Direct Shortcuts</span>
+        </div>
+        <div class="mgr-card-body">
+            <div class="mgr-quick-grid">
+                <a href="manager_fuel_transaction_validation.php" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-check-double"></i></div>
+                    <span>Validate Meter Readings</span>
+                </a>
+                <a href="manager_fuel_transaction_validation.php" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-file-signature"></i></div>
+                    <span>Review Fuel Sales Closing</span>
+                </a>
+                <a href="manager_stock_request_review.php" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-box-open"></i></div>
+                    <span>Review Stock Requests</span>
+                </a>
+                <a href="manager_stock_in.php" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-truck-ramp-box"></i></div>
+                    <span>Verify Stock-In</span>
+                </a>
+                <a href="manager_stock_request_review.php" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-file-circle-plus"></i></div>
+                    <span>Generate Purchase Order</span>
+                </a>
+                <a href="manager_validated_transactions.php?status=Void+Requested" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-ban"></i></div>
+                    <span>Review Void Requests</span>
+                </a>
+                <a href="manager_validated_transactions.php?status=Adjustment+Requested" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-sliders"></i></div>
+                    <span>Review Adjustment Requests</span>
+                </a>
+                <a href="manager_request_data_management.php" class="mgr-quick-btn">
+                    <div class="mgr-quick-icon"><i class="fas fa-database"></i></div>
+                    <span>Review Master Data Requests</span>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- MANAGER MERCHANDISE INVENTORY MODAL -->
+<!-- ========================================================================= -->
+<div id="mgrMerchInvModal" style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(15,23,42,0.6); backdrop-filter:blur(3px); align-items:center; justify-content:center; padding:16px;">
+    <div style="background:#ffffff; border-radius:12px; max-width:900px; width:100%; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25); border:1px solid #E2E8F0; overflow:hidden;">
+        <!-- Header -->
+        <div style="padding:16px 20px; background:#002F6C; color:#FFFFFF; display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <i class="fas fa-boxes" style="font-size:20px; color:#FCD34D;"></i>
+                <div>
+                    <h3 style="margin:0; font-size:16px; font-weight:800; color:#FFFFFF;">Merchandise Inventory Catalog &amp; Stock Status</h3>
+                    <p style="margin:0; font-size:11px; color:#93C5FD;">Live overview of all products, stock levels, reorder thresholds &amp; physical counts</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeMgrMerchInvModal()" style="background:transparent; border:none; color:#FFFFFF; font-size:20px; cursor:pointer; line-height:1;">&times;</button>
+        </div>
+
+        <!-- Controls / Filter Tabs -->
+        <div style="padding:12px 20px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
+                <button type="button" class="mgrmerch-flt-btn active" id="mgrmflt_all" onclick="filterMgrMerchModal('all')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#002F6C; color:#FFF; cursor:pointer;">
+                    All (<?= $total_products_count ?>)
+                </button>
+                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_available" onclick="filterMgrMerchModal('available')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#15803D; cursor:pointer;">
+                    <i class="fas fa-circle-check"></i> Available (<?= $available_merch_count ?>)
+                </button>
+                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_low" onclick="filterMgrMerchModal('low')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#B45309; cursor:pointer;">
+                    <i class="fas fa-triangle-exclamation"></i> Low Stock (<?= $low_merch_count ?>)
+                </button>
+                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_critical" onclick="filterMgrMerchModal('critical')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#DC2626; cursor:pointer;">
+                    <i class="fas fa-circle-exclamation"></i> Critical (<?= $crit_merch_count ?>)
+                </button>
+                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_out" onclick="filterMgrMerchModal('out')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#991B1B; cursor:pointer;">
+                    <i class="fas fa-circle-xmark"></i> Out of Stock (<?= $out_merch_count ?>)
+                </button>
+                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_variance" onclick="filterMgrMerchModal('variance')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#7C3AED; cursor:pointer;">
+                    <i class="fas fa-clipboard-check"></i> Variance (<?= $variance_merch_count ?>)
+                </button>
+            </div>
+            <input type="text" id="mgrMerchModalSearch" placeholder="Search product..." onkeyup="searchMgrMerchModal()" style="padding:5px 10px; font-size:12px; border:1px solid #CBD5E1; border-radius:6px; width:180px;">
+        </div>
+
+        <!-- Table Body -->
+        <div style="padding:0; overflow-y:auto; flex:1;">
+            <table class="mgr-table" style="margin:0; width:100%;">
+                <thead>
+                    <tr>
+                        <th>Product Name</th>
+                        <th>Category</th>
+                        <th style="text-align:right;">Current Stock</th>
+                        <th style="text-align:right;">Reorder Level</th>
+                        <th style="text-align:right;">Critical Level</th>
+                        <th style="text-align:center;">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="mgrMerchModalTableBody">
+                    <?php if (empty($merch_inv_stats)): ?>
+                        <tr><td colspan="6" style="text-align:center; color:#64748B; padding:24px;">No merchandise products found.</td></tr>
+                    <?php else: ?>
+                        <?php foreach ($merch_inv_stats as $item): ?>
+                            <tr class="mgrmerch-modal-row" data-type="<?= $item['alert_type'] ?>" data-has-variance="<?= $item['has_variance'] ? 'true' : 'false' ?>" data-name="<?= strtolower(htmlspecialchars($item['product_name'] . ' ' . $item['category'])) ?>">
                                 <td>
-                                    <code><?= mgr_h($row['service_no']) ?></code>
-                                    <div class="mgr-panel-sub"><?= mgr_h($row['service_type']) ?></div>
+                                    <strong><?= mgr_h($item['product_name']) ?></strong>
+                                    <?php if ($item['has_variance']): ?>
+                                        <span style="display:inline-block; margin-left:6px; padding:1px 6px; font-size:9px; font-weight:800; border-radius:4px; background:#F5F3FF; color:#7C3AED; border:1px solid #DDD6FE;">Variance <?= ($item['variance'] > 0 ? '+' : '') . (float)$item['variance'] ?></span>
+                                    <?php endif; ?>
                                 </td>
-                                <td><?= mgr_h($row['customer_name']) ?></td>
-                                <td><?= mgr_h($row['vehicle_plate']) ?></td>
-                                <td><span class="mgr-badge <?= mgr_badge_class($svc_status) ?>"><?= mgr_h($svc_label) ?></span></td>
-                                <td><a class="mgr-btn mgr-btn-gray" href="manager_validated_transactions.php?type=job_order&search=<?= urlencode($row['service_no']) ?>"><i class="fas fa-eye"></i> View</a></td>
+                                <td><span style="color:#64748B; font-size:11px;"><?= mgr_h($item['category']) ?></span></td>
+                                <td style="text-align:right; font-weight:800; color:<?= $item['alert_type'] === 'out' ? '#991B1B' : ($item['alert_type'] === 'critical' ? '#DC2626' : ($item['alert_type'] === 'low' ? '#B45309' : '#15803D')) ?>;">
+                                    <?= number_format((float)$item['stock_level']) ?> <?= mgr_h($item['unit']) ?>
+                                </td>
+                                <td style="text-align:right; color:#64748B;"><?= number_format((float)$item['reorder_level']) ?></td>
+                                <td style="text-align:right; color:#64748B;"><?= number_format((float)$item['critical_level']) ?></td>
+                                <td style="text-align:center;">
+                                    <span style="display:inline-block; padding:3px 10px; font-size:10px; font-weight:800; border-radius:999px; background:<?= $item['badge_bg'] ?? '#F1F5F9' ?>; color:<?= $item['badge_color'] ?? '#475569' ?>; border:1.5px solid <?= $item['badge_border'] ?? '#CBD5E1' ?>; letter-spacing:0.5px; text-transform:uppercase;"><?= mgr_h($item['alert_status']) ?></span>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php else: ?>
-                <div class="mgr-empty"><i class="fas fa-circle-check"></i>No active services in queue.</div>
-            <?php endif; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Footer -->
+        <div style="padding:12px 20px; background:#F8FAFC; border-top:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:11px; color:#64748B;">Total Products Catalog: <strong><?= number_format($total_products_count) ?></strong></span>
+            <div style="display:flex; gap:8px;">
+                <button type="button" onclick="closeMgrMerchInvModal()" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFFFFF; color:#475569; cursor:pointer;">Close</button>
+                <a href="manager_inventory_merchandise.php" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:none; background:#002F6C; color:#FFFFFF; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+                    <i class="fas fa-boxes"></i> Open Merchandise Module
+                </a>
+            </div>
         </div>
     </div>
+</div>
 
-    <?php if ($enable_quick_actions || $enable_calendar_widget): ?>
-    <div class="mgr-split" style="<?= (!$enable_quick_actions || !$enable_calendar_widget) ? 'grid-template-columns: 1fr;' : '' ?>">
-        <?php if ($enable_quick_actions): ?>
-        <div class="mgr-panel">
-            <div class="mgr-panel-header">
+<!-- ========================================================================= -->
+<!-- MANAGER FUEL INVENTORY ALERT MODAL -->
+<!-- ========================================================================= -->
+<div id="mgrFuelInvModal" style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(15,23,42,0.6); backdrop-filter:blur(3px); align-items:center; justify-content:center; padding:16px;">
+    <div style="background:#ffffff; border-radius:12px; max-width:850px; width:100%; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25); border:1px solid #E2E8F0; overflow:hidden;">
+        <!-- Header -->
+        <div style="padding:16px 20px; background:#002F6C; color:#FFFFFF; display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <i class="fas fa-gas-pump" style="font-size:20px; color:#FCD34D;"></i>
                 <div>
-                    <div class="mgr-panel-title"><i class="fas fa-bolt"></i> Quick Actions</div>
-                    <div class="mgr-panel-sub">Common manager workflows</div>
+                    <h3 style="margin:0; font-size:16px; font-weight:800; color:#FFFFFF;">Manager Fuel Tanks Inventory &amp; Status</h3>
+                    <p style="margin:0; font-size:11px; color:#93C5FD;">Station Underground Tanks (UGT) capacity, volume, and stock levels</p>
                 </div>
             </div>
-            <div class="mgr-quick-grid">
-                <?php foreach ($quick_actions as $action): ?>
-                    <a class="mgr-btn <?= mgr_h($action['class']) ?>" href="<?= mgr_h($action['href']) ?>">
-                        <span class="mgr-quick-main">
-                            <i class="<?= mgr_h($action['icon']) ?>"></i>
-                            <span class="mgr-quick-label"><?= mgr_h($action['label']) ?></span>
-                        </span>
-                        <?php if ($action['badge'] !== null): ?>
-                            <span class="mgr-action-count"><?= number_format((int) $action['badge']) ?></span>
-                        <?php endif; ?>
-                        <span class="mgr-action-meta"><?= mgr_h($action['meta']) ?></span>
-                    </a>
-                <?php endforeach; ?>
+            <button type="button" onclick="closeMgrFuelInvModal()" style="background:transparent; border:none; color:#FFFFFF; font-size:20px; cursor:pointer; line-height:1;">&times;</button>
+        </div>
+
+        <!-- Controls / Filter Tabs -->
+        <div style="padding:12px 20px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
+                <button type="button" class="mgrfuel-flt-btn active" id="mgrfflt_all" onclick="filterMgrFuelModal('all')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#002F6C; color:#FFF; cursor:pointer;">
+                    All Tanks (<?= count($fuel_tanks) ?>)
+                </button>
+                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_normal" onclick="filterMgrFuelModal('normal')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#15803D; cursor:pointer;">
+                    <i class="fas fa-circle-check"></i> Normal (<?= $normal_fuel_count ?>)
+                </button>
+                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_low" onclick="filterMgrFuelModal('low')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#B45309; cursor:pointer;">
+                    <i class="fas fa-triangle-exclamation"></i> Low (<?= $low_fuel_count ?>)
+                </button>
+                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_critical" onclick="filterMgrFuelModal('critical')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#DC2626; cursor:pointer;">
+                    <i class="fas fa-circle-exclamation"></i> Critical (<?= $crit_fuel_count ?>)
+                </button>
+                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_out" onclick="filterMgrFuelModal('out')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#991B1B; cursor:pointer;">
+                    <i class="fas fa-circle-xmark"></i> Out of Stock (<?= $out_fuel_count ?>)
+                </button>
+            </div>
+            <input type="text" id="mgrFuelModalSearch" placeholder="Search fuel tank..." onkeyup="searchMgrFuelModal()" style="padding:5px 10px; font-size:12px; border:1px solid #CBD5E1; border-radius:6px; width:180px;">
+        </div>
+
+        <!-- Table Body -->
+        <div style="padding:0; overflow-y:auto; flex:1;">
+            <table class="mgr-table" style="margin:0; width:100%;">
+                <thead>
+                    <tr>
+                        <th>Fuel Tank / UGT</th>
+                        <th style="text-align:right;">Current Volume</th>
+                        <th style="text-align:right;">Capacity</th>
+                        <th style="text-align:center; width:28%;">Level Gauge</th>
+                        <th style="text-align:center;">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="mgrFuelModalTableBody">
+                    <?php if (empty($fuel_tanks)): ?>
+                        <tr><td colspan="5" style="text-align:center; color:#64748B; padding:24px;">No active fuel tanks found for this station.</td></tr>
+                    <?php else: ?>
+                        <?php foreach ($fuel_tanks as $ft): 
+                            $lvl_num = (float)$ft['current_level'];
+                            $cap_num = (float)$ft['capacity'];
+                            $pct_num = $cap_num > 0 ? min(100, round(($lvl_num / $cap_num) * 100, 1)) : 0;
+                        ?>
+                            <tr class="mgrfuel-modal-row" data-type="<?= $ft['alert_type'] ?>" data-name="<?= strtolower(htmlspecialchars($ft['fuel_type'])) ?>">
+                                <td><strong><?= mgr_h($ft['fuel_type']) ?></strong></td>
+                                <td style="text-align:right; font-weight:800; color:var(--petron-blue);"><?= number_format($lvl_num, 2) ?> L</td>
+                                <td style="text-align:right; color:#64748B;"><?= number_format($cap_num) ?> L</td>
+                                <td style="text-align:center; vertical-align:middle;">
+                                    <div style="display:flex; align-items:center; gap:6px;">
+                                        <div style="flex:1; height:8px; background:#E2E8F0; border-radius:999px; overflow:hidden;">
+                                            <div style="height:100%; width:<?= $pct_num ?>%; background:<?= $ft['bar_color'] ?? '#002F6C' ?>; border-radius:999px;"></div>
+                                        </div>
+                                        <span style="font-size:11px; font-weight:700; min-width:34px;"><?= $pct_num ?>%</span>
+                                    </div>
+                                </td>
+                                <td style="text-align:center;">
+                                    <span style="display:inline-block; padding:3px 10px; font-size:10px; font-weight:800; border-radius:999px; background:<?= $ft['badge_bg'] ?? '#64748B' ?>; color:<?= $ft['badge_color'] ?? '#FFF' ?>; letter-spacing:0.5px; text-transform:uppercase;"><?= mgr_h($ft['alert_status'] ?? 'NORMAL') ?></span>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Footer -->
+        <div style="padding:12px 20px; background:#F8FAFC; border-top:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:11px; color:#64748B;">Total Fuel Tanks: <strong><?= count($fuel_tanks) ?></strong></span>
+            <div style="display:flex; gap:8px;">
+                <button type="button" onclick="closeMgrFuelInvModal()" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFFFFF; color:#475569; cursor:pointer;">Close</button>
+                <a href="manager_inventory_fuel.php" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:none; background:#002F6C; color:#FFFFFF; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+                    <i class="fas fa-gas-pump"></i> Open Fuel Module
+                </a>
             </div>
         </div>
-        <?php endif; ?>
-
-        <?php if ($enable_calendar_widget): ?>
-        <div class="mgr-panel">
-            <div class="mgr-panel-header">
-                <div>
-                    <div class="mgr-panel-title"><i class="fas fa-calendar-days"></i> Manager Calendar</div>
-                    <div class="mgr-panel-sub">Upcoming deliveries, inventory counts, staff meetings, and scheduled maintenance</div>
-                </div>
-                <a href="manager_calendar.php" class="mgr-btn mgr-btn-blue"><i class="fas fa-calendar-plus"></i> Calendar</a>
-            </div>
-            <?php if ($calendar_rows): ?>
-                <div class="mgr-calendar-list">
-                    <?php foreach ($calendar_rows as $row): ?>
-                        <?php $event_ts = strtotime($row['event_date'] ?? 'now'); ?>
-                        <div class="mgr-calendar-item">
-                            <div class="mgr-date-chip">
-                                <span><?= mgr_h(date('d', $event_ts)) ?></span>
-                                <span><?= mgr_h(date('M', $event_ts)) ?></span>
-                            </div>
-                            <div>
-                                <div class="mgr-mini-title"><?= mgr_h($row['title']) ?></div>
-                                <div class="mgr-mini-meta"><?= mgr_h(ucwords(str_replace('_', ' ', (string) $row['event_type']))) ?></div>
-                            </div>
-                            <span class="mgr-badge <?= mgr_badge_class($row['status']) ?>"><?= mgr_h(mgr_status_label($row['status'])) ?></span>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            <?php else: ?>
-                <div class="mgr-empty"><i class="fas fa-calendar-check"></i>No upcoming calendar entries.</div>
-            <?php endif; ?>
-        </div>
-        <?php endif; ?>
     </div>
-    <?php endif; ?>
-</section>
+</div>
 
 <script>
-    (function () {
-        const chartReady = typeof Chart !== 'undefined';
-        if (!chartReady) {
-            document.querySelectorAll('.mgr-chart-body').forEach(function (body) {
-                if (!body.querySelector('.mgr-chart-empty')) {
-                    const empty = document.createElement('div');
-                    empty.className = 'mgr-chart-empty';
-                    empty.textContent = 'Chart library unavailable';
-                    body.appendChild(empty);
-                }
-            });
-            return;
+function switchMgrInvWidgetTab(type) {
+    const btnMerch = document.getElementById('mgr_btn_tab_merch');
+    const btnFuel = document.getElementById('mgr_btn_tab_fuel');
+    const viewMerch = document.getElementById('mgr_inv_view_merchandise');
+    const viewFuel = document.getElementById('mgr_inv_view_fuel');
+    const heading = document.getElementById('mgr_inv_widget_heading');
+    const directLink = document.getElementById('mgr_inv_direct_link');
+
+    if (type === 'fuel') {
+        if (btnMerch) { btnMerch.style.background = 'transparent'; btnMerch.style.color = '#64748B'; }
+        if (btnFuel) { btnFuel.style.background = '#002F6C'; btnFuel.style.color = '#FFFFFF'; }
+        if (viewMerch) viewMerch.style.display = 'none';
+        if (viewFuel) viewFuel.style.display = 'block';
+        if (heading) heading.innerHTML = '<i class="fas fa-gas-pump" style="color:#0369A1;"></i> Fuel Inventory Status (<?= count($fuel_tanks) ?> Tanks)';
+        if (directLink) { directLink.href = 'manager_inventory_fuel.php'; directLink.innerHTML = '<i class="fas fa-arrow-up-right-from-square"></i> Open Module'; }
+    } else {
+        if (btnMerch) { btnMerch.style.background = '#002F6C'; btnMerch.style.color = '#FFFFFF'; }
+        if (btnFuel) { btnFuel.style.background = 'transparent'; btnFuel.style.color = '#64748B'; }
+        if (viewMerch) viewMerch.style.display = 'block';
+        if (viewFuel) viewFuel.style.display = 'none';
+        if (heading) heading.innerHTML = '<i class="fas fa-warehouse" style="color:#0369A1;"></i> Merchandise Inventory (<?= number_format($total_products_count) ?> Products)';
+        if (directLink) { directLink.href = 'manager_inventory_merchandise.php'; directLink.innerHTML = '<i class="fas fa-arrow-up-right-from-square"></i> Open Module'; }
+    }
+}
+
+function openMgrMerchInvModal(filterType = 'all') {
+    const modal = document.getElementById('mgrMerchInvModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        filterMgrMerchModal(filterType);
+    }
+}
+function closeMgrMerchInvModal() {
+    const modal = document.getElementById('mgrMerchInvModal');
+    if (modal) modal.style.display = 'none';
+}
+function filterMgrMerchModal(type) {
+    document.querySelectorAll('.mgrmerch-flt-btn').forEach(b => {
+        b.style.background = '#FFFFFF';
+        b.style.color = '#475569';
+    });
+    const activeBtn = document.getElementById('mgrmflt_' + type);
+    if (activeBtn) {
+        activeBtn.style.background = '#002F6C';
+        activeBtn.style.color = '#FFFFFF';
+    }
+    const rows = document.querySelectorAll('.mgrmerch-modal-row');
+    rows.forEach(r => {
+        const rowType = r.getAttribute('data-type');
+        const hasVar  = r.getAttribute('data-has-variance');
+        if (type === 'all') {
+            r.style.display = '';
+        } else if (type === 'variance') {
+            r.style.display = (hasVar === 'true') ? '' : 'none';
+        } else if (rowType === type) {
+            r.style.display = '';
+        } else {
+            r.style.display = 'none';
         }
-
-        Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif';
-        Chart.defaults.color = '#56657a';
-
-        const money = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
-        const number = new Intl.NumberFormat('en-PH', { maximumFractionDigits: 2 });
-
-        function makeChart(id, config) {
-            const canvas = document.getElementById(id);
-            if (!canvas) return;
-            new Chart(canvas, config);
+    });
+}
+function searchMgrMerchModal() {
+    const q = (document.getElementById('mgrMerchModalSearch')?.value || '').toLowerCase().trim();
+    document.querySelectorAll('.mgrmerch-modal-row').forEach(r => {
+        const name = r.getAttribute('data-name') || '';
+        if (!q || name.includes(q)) {
+            r.style.display = '';
+        } else {
+            r.style.display = 'none';
         }
+    });
+}
 
-        makeChart('revenueBreakdownChart', {
-            type: 'doughnut',
+function openMgrFuelInvModal(filterType = 'all') {
+    const modal = document.getElementById('mgrFuelInvModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        filterMgrFuelModal(filterType);
+    }
+}
+function closeMgrFuelInvModal() {
+    const modal = document.getElementById('mgrFuelInvModal');
+    if (modal) modal.style.display = 'none';
+}
+function filterMgrFuelModal(type) {
+    document.querySelectorAll('.mgrfuel-flt-btn').forEach(b => {
+        b.style.background = '#FFFFFF';
+        b.style.color = '#475569';
+    });
+    const activeBtn = document.getElementById('mgrfflt_' + type);
+    if (activeBtn) {
+        activeBtn.style.background = '#002F6C';
+        activeBtn.style.color = '#FFFFFF';
+    }
+    const rows = document.querySelectorAll('.mgrfuel-modal-row');
+    rows.forEach(r => {
+        const rowType = r.getAttribute('data-type');
+        if (type === 'all' || rowType === type) {
+            r.style.display = '';
+        } else {
+            r.style.display = 'none';
+        }
+    });
+}
+function searchMgrFuelModal() {
+    const q = (document.getElementById('mgrFuelModalSearch')?.value || '').toLowerCase().trim();
+    document.querySelectorAll('.mgrfuel-modal-row').forEach(r => {
+        const name = r.getAttribute('data-name') || '';
+        if (!q || name.includes(q)) {
+            r.style.display = '';
+        } else {
+            r.style.display = 'none';
+        }
+    });
+}
+</script>
+
+<!-- CHART.JS & REAL-TIME AUTO REFRESH SCRIPT -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const money = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 2 });
+    const num = new Intl.NumberFormat('en-US');
+
+    // Chart 1: Top Selling Products
+    const ctxTopProd = document.getElementById('topProductsChart');
+    let topProductsChartInstance = null;
+    if (ctxTopProd) {
+        topProductsChartInstance = new Chart(ctxTopProd, {
+            type: 'bar',
             data: {
-                labels: ['Fuel', 'Merchandise', 'Services'],
+                labels: <?= json_encode($top_prod_labels) ?>,
                 datasets: [{
-                    data: <?= json_encode([$fuel_revenue, $merch_revenue, $service_revenue], JSON_NUMERIC_CHECK) ?>,
-                    backgroundColor: ['#dc2626', '#16a34a', '#3b82f6'],
-                    borderWidth: 0
+                    label: 'Units Sold',
+                    data: <?= json_encode($top_prod_quantities, JSON_NUMERIC_CHECK) ?>,
+                    backgroundColor: '#002F6C',
+                    borderRadius: 6
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                cutout: '62%',
                 plugins: {
-                    legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 12, weight: '700' } } },
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => 'Sold: ' + num.format(ctx.parsed.y || 0) + ' pcs' } }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { stepSize: 1, callback: v => num.format(v) }, grid: { color: '#F1F5F9' } },
+                    x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 25, minRotation: 0 } }
+                }
+            }
+        });
+    }
+
+    // Chart 2: Most Requested Services
+    const ctxTopServ = document.getElementById('topServicesChart');
+    let topServicesChartInstance = null;
+    if (ctxTopServ) {
+        topServicesChartInstance = new Chart(ctxTopServ, {
+            type: 'bar',
+            data: {
+                labels: <?= json_encode($top_service_labels) ?>,
+                datasets: [{
+                    label: 'Job Requests',
+                    data: <?= json_encode($top_service_counts, JSON_NUMERIC_CHECK) ?>,
+                    backgroundColor: '#0284C7',
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => 'Completed: ' + num.format(ctx.parsed.y || 0) + ' jobs' } }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { stepSize: 1, callback: v => num.format(v) }, grid: { color: '#F1F5F9' } },
+                    x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 25, minRotation: 0 } }
+                }
+            }
+        });
+    }
+
+    // Chart 3: Payment Type Pie Chart (7 Payment Methods)
+    const ctxPay = document.getElementById('paymentTypeChart');
+    let paymentChartInstance = null;
+    if (ctxPay) {
+        paymentChartInstance = new Chart(ctxPay, {
+            type: 'pie',
+            data: {
+                labels: <?= json_encode($payment_types) ?>,
+                datasets: [{
+                    data: <?= json_encode($payment_data, JSON_NUMERIC_CHECK) ?>,
+                    backgroundColor: ['#10B981', '#002F6C', '#0284C7', '#007DFE', '#7C3AED', '#1E293B', '#F59E0B'],
+                    borderWidth: 2,
+                    borderColor: '#FFFFFF'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
                     tooltip: { callbacks: { label: ctx => ctx.label + ': ' + money.format(ctx.parsed || 0) } }
                 }
             }
         });
+    }
 
-        makeChart('hourlySalesChart', {
+    // Chart 4: Daily Sales Trend Line Graph
+    const ctxDaily = document.getElementById('dailySalesTrendChart');
+    let dailySalesChartInstance = null;
+    if (ctxDaily) {
+        dailySalesChartInstance = new Chart(ctxDaily, {
             type: 'line',
             data: {
-                labels: <?= json_encode($hour_labels) ?>,
+                labels: <?= json_encode($trend_hours) ?>,
                 datasets: [{
-                    label: 'Revenue',
-                    data: <?= json_encode($hourly_sales, JSON_NUMERIC_CHECK) ?>,
-                    borderColor: '#002f70',
-                    backgroundColor: 'rgba(0, 47, 112, 0.12)',
+                    label: 'Total Sales (₱)',
+                    data: <?= json_encode($trend_hourly_total, JSON_NUMERIC_CHECK) ?>,
+                    borderColor: '#002F6C',
+                    backgroundColor: 'rgba(0, 47, 108, 0.08)',
                     fill: true,
                     tension: 0.35,
-                    pointRadius: 3,
-                    pointHoverRadius: 5
+                    borderWidth: 2.5,
+                    pointBackgroundColor: '#ED1C24',
+                    pointRadius: 4
                 }]
             },
             options: {
@@ -2386,77 +2597,60 @@ include __DIR__ . '/../partials/header.php';
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { display: false },
-                    tooltip: { callbacks: { label: ctx => money.format(ctx.parsed.y || 0) } }
+                    tooltip: { callbacks: { label: ctx => 'Total Sales: ' + money.format(ctx.parsed.y || 0) } }
                 },
                 scales: {
-                    y: { beginAtZero: true, ticks: { callback: value => money.format(value) } }
+                    y: { beginAtZero: true, ticks: { callback: v => '₱' + Number(v).toLocaleString('en-US') }, grid: { color: '#F1F5F9' } },
+                    x: { grid: { display: false } }
                 }
             }
         });
+    }
 
-        makeChart('fuelSalesChart', {
-            type: 'bar',
+    // Chart 5: Job Order Status Analytics
+    const ctxJo = document.getElementById('joStatusChart');
+    let joStatusChartInstance = null;
+    if (ctxJo) {
+        joStatusChartInstance = new Chart(ctxJo, {
+            type: 'doughnut',
             data: {
-                labels: <?= json_encode($fuel_products) ?>,
+                labels: ['Pending', 'In Progress', 'Completed', 'Released'],
                 datasets: [{
-                    label: 'Liters Sold',
-                    data: <?= json_encode($fuel_sales_data, JSON_NUMERIC_CHECK) ?>,
-                    backgroundColor: '#e46f00',
-                    borderRadius: 6,
-                    maxBarThickness: 46
+                    data: <?= json_encode($jo_status_counts, JSON_NUMERIC_CHECK) ?>,
+                    backgroundColor: ['#F59E0B', '#0284C7', '#10B981', '#7C3AED'],
+                    borderWidth: 2,
+                    borderColor: '#FFFFFF'
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                cutout: '65%',
                 plugins: {
-                    legend: { display: false },
-                    tooltip: { callbacks: { label: ctx => number.format(ctx.parsed.y || 0) + ' L' } }
-                },
-                scales: {
-                    y: { beginAtZero: true, ticks: { callback: value => number.format(value) + ' L' } }
+                    legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } }
                 }
             }
         });
+    }
 
-        makeChart('merchSalesChart', {
-            type: 'bar',
-            data: {
-                labels: <?= json_encode($merch_categories) ?>,
-                datasets: [{
-                    label: 'Sales Amount',
-                    data: <?= json_encode($merch_sales_data, JSON_NUMERIC_CHECK) ?>,
-                    backgroundColor: '#128143',
-                    borderRadius: 6,
-                    maxBarThickness: 46
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { callbacks: { label: ctx => money.format(ctx.parsed.y || 0) } }
-                },
-                scales: {
-                    y: { beginAtZero: true, ticks: { callback: value => money.format(value) } }
-                }
-            }
-        });
-
-        makeChart('weeklyRevenueChart', {
+    // Chart 6: Monthly Revenue Trend
+    const ctxMonth = document.getElementById('monthlyRevenueChart');
+    let monthlyRevenueChartInstance = null;
+    if (ctxMonth) {
+        monthlyRevenueChartInstance = new Chart(ctxMonth, {
             type: 'line',
             data: {
-                labels: <?= json_encode($weekly_labels) ?>,
+                labels: <?= json_encode($monthly_labels) ?>,
                 datasets: [{
-                    label: 'Revenue',
-                    data: <?= json_encode($weekly_revenue, JSON_NUMERIC_CHECK) ?>,
-                    borderColor: '#6d3bd1',
-                    backgroundColor: 'rgba(109, 59, 209, 0.12)',
+                    label: 'Monthly Revenue (₱)',
+                    data: <?= json_encode($monthly_data, JSON_NUMERIC_CHECK) ?>,
+                    borderColor: '#ED1C24',
+                    backgroundColor: 'rgba(237, 28, 36, 0.08)',
                     fill: true,
                     tension: 0.35,
-                    pointRadius: 4,
-                    pointHoverRadius: 6
+                    borderWidth: 2.5,
+                    pointBackgroundColor: '#002F6C',
+                    pointRadius: 4
                 }]
             },
             options: {
@@ -2464,51 +2658,74 @@ include __DIR__ . '/../partials/header.php';
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { display: false },
-                    tooltip: { callbacks: { label: ctx => money.format(ctx.parsed.y || 0) } }
+                    tooltip: { callbacks: { label: ctx => 'Revenue: ' + money.format(ctx.parsed.y || 0) } }
                 },
                 scales: {
-                    y: { beginAtZero: true, ticks: { callback: value => money.format(value) } }
+                    y: { beginAtZero: true, ticks: { callback: v => '₱' + Number(v).toLocaleString('en-US') }, grid: { color: '#F1F5F9' } },
+                    x: { grid: { display: false } }
                 }
             }
         });
+    }
 
-        makeChart('inventoryStatusChart', {
-            type: 'bar',
-            data: {
-                labels: <?= json_encode($inventory_labels) ?>,
-                datasets: [
-                    {
-                        label: 'Current Stock',
-                        data: <?= json_encode($inventory_current, JSON_NUMERIC_CHECK) ?>,
-                        backgroundColor: <?= json_encode($inventory_colors) ?>,
-                        borderRadius: 6
-                    },
-                    {
-                        label: 'Remaining Capacity',
-                        data: <?= json_encode($inventory_remaining, JSON_NUMERIC_CHECK) ?>,
-                        backgroundColor: '#d7e0ea',
-                        borderRadius: 6
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 12, weight: '700' } } },
-                    tooltip: {
-                        callbacks: {
-                            label: ctx => ctx.dataset.label + ': ' + number.format(ctx.parsed.y || 0)
-                        }
-                    }
-                },
-                scales: {
-                    x: { stacked: true, ticks: { maxRotation: 35, minRotation: 0 } },
-                    y: { stacked: true, beginAtZero: true, ticks: { callback: value => number.format(value) } }
+    // ── AUTOMATIC BACKGROUND DATA FETCHING (Every 10 Seconds) ──
+    async function refreshManagerDashboard() {
+        try {
+            const resp = await fetch('manager_dashboard.php?ajax=1&date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>');
+            if (!resp.ok) return;
+            const data = await resp.json();
+
+            // Update KPI cards
+            if (data.kpis) {
+                if (document.getElementById('kpi_fuel_sales')) document.getElementById('kpi_fuel_sales').innerHTML = '&#8369; ' + data.kpis.fuel_sales_today;
+                if (document.getElementById('kpi_merch_sales')) document.getElementById('kpi_merch_sales').innerHTML = '&#8369; ' + data.kpis.merch_sales_today;
+                if (document.getElementById('kpi_job_sales')) document.getElementById('kpi_job_sales').innerHTML = '&#8369; ' + data.kpis.job_sales_today;
+                if (document.getElementById('kpi_total_sales')) document.getElementById('kpi_total_sales').innerHTML = '&#8369; ' + data.kpis.total_sales_today;
+                if (document.getElementById('kpi_active_jobs')) document.getElementById('kpi_active_jobs').textContent = data.kpis.active_job_orders;
+                if (document.getElementById('kpi_completed_jobs')) document.getElementById('kpi_completed_jobs').textContent = data.kpis.completed_job_orders;
+                if (document.getElementById('kpi_low_stock')) document.getElementById('kpi_low_stock').textContent = data.kpis.low_stock_items;
+                if (document.getElementById('kpi_critical_stock')) document.getElementById('kpi_critical_stock').textContent = data.kpis.critical_stock_items;
+                if (document.getElementById('kpi_pending_approvals')) document.getElementById('kpi_pending_approvals').textContent = data.kpis.pending_approvals;
+                if (document.getElementById('kpi_monthly_rev')) document.getElementById('kpi_monthly_rev').innerHTML = '&#8369; ' + data.kpis.monthly_revenue;
+                if (document.getElementById('kpi_inventory_val')) document.getElementById('kpi_inventory_val').innerHTML = '&#8369; ' + data.kpis.inventory_value;
+                if (document.getElementById('kpi_ar_total')) document.getElementById('kpi_ar_total').innerHTML = '&#8369; ' + data.kpis.ar_outstanding;
+            }
+
+            // Update Queues
+            if (data.queues) {
+                if (document.getElementById('ac_stock_reqs')) document.getElementById('ac_stock_reqs').textContent = data.queues.stock_reqs;
+                if (document.getElementById('ac_master_data')) document.getElementById('ac_master_data').textContent = data.queues.master_data;
+                if (document.getElementById('ac_void_reqs')) document.getElementById('ac_void_reqs').textContent = data.queues.void_reqs;
+                if (document.getElementById('ac_adj_reqs')) document.getElementById('ac_adj_reqs').textContent = data.queues.adj_reqs;
+                if (document.getElementById('fq_meter_val')) document.getElementById('fq_meter_val').textContent = data.queues.meter_val;
+                if (document.getElementById('fq_closing_rev')) document.getElementById('fq_closing_rev').textContent = data.queues.closing_rev;
+                if (document.getElementById('fq_returned')) document.getElementById('fq_returned').textContent = data.queues.returned_val;
+            }
+
+            // Update Charts
+            if (data.charts) {
+                if (paymentChartInstance && data.charts.payment_data) {
+                    paymentChartInstance.data.datasets[0].data = data.charts.payment_data;
+                    paymentChartInstance.update();
+                }
+                if (joStatusChartInstance && data.charts.jo_status_data) {
+                    joStatusChartInstance.data.datasets[0].data = data.charts.jo_status_data;
+                    joStatusChartInstance.update();
+                }
+                if (dailySalesChartInstance && data.charts.daily_sales) {
+                    dailySalesChartInstance.data.datasets[0].data = data.charts.daily_sales;
+                    dailySalesChartInstance.update();
                 }
             }
-        });
-    })();
+        } catch (e) {
+            console.error('Manager auto-refresh error:', e);
+        }
+    }
+
+    setInterval(refreshManagerDashboard, 10000);
+});
 </script>
 
-<?php include __DIR__ . '/../partials/footer.php'; ?>
+<?php
+include_once __DIR__ . '/../partials/footer.php';
+?>

@@ -3381,27 +3381,28 @@ require_once __DIR__ . '/rbac_menu.php';
 
   $base_path = '/group31petron_system_official4/public/';
   
-  // Helper function to map hrefs to absolute paths
-  function map_hrefs(&$items, $base_path) {
-    foreach ($items as &$item) {
-      if (isset($item['href']) && !empty($item['href']) && strpos($item['href'], 'http') === false && strpos($item['href'], '#') !== 0) {
-        // Make all hrefs absolute paths to /public/, preserving query strings
-        $href = $item['href'];
-        // Split on '?' to preserve query string
-        $qpos = strpos($href, '?');
-        if ($qpos !== false) {
-            $file_part  = substr($href, 0, $qpos);
-            $query_part = substr($href, $qpos); // includes the '?'
-            $item['href'] = $base_path . basename($file_part) . $query_part;
-        } else {
-            $item['href'] = $base_path . basename($href);
+  if (!function_exists('map_hrefs')) {
+      function map_hrefs(&$items, $base_path) {
+        foreach ($items as &$item) {
+          if (isset($item['href']) && !empty($item['href']) && strpos($item['href'], 'http') === false && strpos($item['href'], '#') !== 0) {
+            // Make all hrefs absolute paths to /public/, preserving query strings
+            $href = $item['href'];
+            // Split on '?' to preserve query string
+            $qpos = strpos($href, '?');
+            if ($qpos !== false) {
+                $file_part  = substr($href, 0, $qpos);
+                $query_part = substr($href, $qpos); // includes the '?'
+                $item['href'] = $base_path . basename($file_part) . $query_part;
+            } else {
+                $item['href'] = $base_path . basename($href);
+            }
+          }
+
+          if (isset($item['sub_items']) && !empty($item['sub_items'])) {
+            map_hrefs($item['sub_items'], $base_path);
+          }
         }
       }
-
-      if (isset($item['sub_items']) && !empty($item['sub_items'])) {
-        map_hrefs($item['sub_items'], $base_path);
-      }
-    }
   }
 
   map_hrefs($items, $base_path);

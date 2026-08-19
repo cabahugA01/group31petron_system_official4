@@ -1490,6 +1490,9 @@ body { overflow-x: hidden; }
     <a href="manager_inventory_merchandise.php?tab=inventory" class="tab-btn <?= $active_tab === 'inventory' ? 'active' : '' ?>">
         <i class="fas fa-boxes"></i> Inventory Overview
     </a>
+    <a href="manager_inventory_merchandise.php?tab=movement" class="tab-btn <?= in_array($active_tab, ['movement', 'stockin', 'stockout', 'transfers', 'damaged', 'expired']) ? 'active' : '' ?>">
+        <i class="fas fa-exchange-alt"></i> Stock Movement Monitoring
+    </a>
     <a href="manager_inventory_merchandise.php?tab=alerts" class="tab-btn <?= $active_tab === 'alerts' ? 'active' : '' ?>">
         <i class="fas fa-exclamation-triangle"></i> Stock Alerts
         <?php if (($summary_low + $summary_out) > 0): ?>
@@ -1729,7 +1732,123 @@ body { overflow-x: hidden; }
 </div>
 <?php endif; ?>
 
+<!-- ══ TAB: STOCK MOVEMENT MONITORING ══ -->
+<?php if ($active_tab === 'movement' || in_array($active_tab, ['stockin', 'stockout', 'transfers', 'damaged', 'expired'])): ?>
+<?php
+    $tot_in = 0;
+    $tot_out = 0;
+    foreach ($movement_history as $m) {
+        $q = (float)($m['quantity'] ?? 0);
+        if ($q > 0) $tot_in += $q;
+        elseif ($q < 0) $tot_out += abs($q);
+    }
+?>
+<!-- Movement Summary KPI Cards -->
+<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:20px;">
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
+        <div>
+            <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Movement Logs</div>
+            <div style="font-size:24px; font-weight:800; color:#002F70; margin-top:4px;"><?= number_format(count($movement_history)) ?></div>
+        </div>
+        <div style="background:#f0f4ff; color:#002F70; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-history"></i></div>
+    </div>
+    <div style="background:#fff; border:1px solid #bbf7d0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
+        <div>
+            <div style="font-size:11px; font-weight:700; color:#15803d; text-transform:uppercase; letter-spacing:.3px;">Stock Added (Inflow)</div>
+            <div style="font-size:24px; font-weight:800; color:#15803d; margin-top:4px;">+<?= number_format($tot_in) ?></div>
+        </div>
+        <div style="background:#dcfce7; color:#15803d; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-arrow-down"></i></div>
+    </div>
+    <div style="background:#fff; border:1px solid #fed7aa; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
+        <div>
+            <div style="font-size:11px; font-weight:700; color:#c2410c; text-transform:uppercase; letter-spacing:.3px;">Stock Deducted (Outflow)</div>
+            <div style="font-size:24px; font-weight:800; color:#c2410c; margin-top:4px;">-<?= number_format($tot_out) ?></div>
+        </div>
+        <div style="background:#ffedd5; color:#c2410c; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-arrow-up"></i></div>
+    </div>
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
+        <div>
+            <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Adjustments &amp; Variances</div>
+            <div style="font-size:24px; font-weight:800; color:#0f172a; margin-top:4px;"><?= number_format($mov_variance_count + $mov_adjustment_count) ?></div>
+        </div>
+        <div style="background:#f1f5f9; color:#475569; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-sliders"></i></div>
+    </div>
+</div>
 
+<!-- Stock Movement Monitoring Table Card -->
+<div style="background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; margin-bottom:20px;">
+    <div style="padding:14px 20px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <div style="font-size:1rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px;">
+            <i class="fas fa-exchange-alt"></i> Stock Movement Logs
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <input type="text" id="mgrMovSearchInput" placeholder="Search product, SKU, user..." oninput="filterMgrMovTable()" style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:220px;">
+            <select id="mgrMovTypeFilter" onchange="filterMgrMovTable()" style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#002F70;">
+                <option value="">All Movement Types</option>
+                <option value="stock_in">Stock In (Delivery)</option>
+                <option value="stock-in">Stock In</option>
+                <option value="delivery">Delivery</option>
+                <option value="sale">Sales / Job Order (OUT)</option>
+                <option value="release">Release (OUT)</option>
+                <option value="adjustment">Adjustment</option>
+                <option value="transfer">Transfer</option>
+                <option value="damage">Damaged / Write-off</option>
+            </select>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table class="table" id="mgrMerchMovTable" style="width:100%;">
+            <thead>
+                <tr style="background:#002F70; color:#fff;">
+                    <th>Reference</th>
+                    <th>Date &amp; Time</th>
+                    <th>Product Name</th>
+                    <th>SKU</th>
+                    <th style="text-align:center;">Type</th>
+                    <th style="text-align:right;">Quantity Change</th>
+                    <th style="text-align:right;">Stock Level</th>
+                    <th>Performed By</th>
+                    <th>Remarks / Notes</th>
+                </tr>
+            </thead>
+            <tbody id="mgrMerchMovTbody">
+            <?php if (empty($movement_history)): ?>
+                <tr><td colspan="9" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-info-circle" style="font-size:1.8em; display:block; margin-bottom:8px;"></i> No merchandise movement records found.</td></tr>
+            <?php else: ?>
+                <?php foreach ($movement_history as $log):
+                    $mtype = strtolower($log['movement_type'] ?? 'log');
+                    $qty = (float)($log['quantity'] ?? 0);
+                    $qty_color = $qty > 0 ? '#16a34a' : ($qty < 0 ? '#dc2626' : '#64748b');
+                    $qty_str = ($qty > 0 ? '+' : '') . number_format($qty);
+                    $ref = !empty($log['reference_id']) ? $log['reference_id'] : ('LOG-' . str_pad($log['log_id'], 4, '0', STR_PAD_LEFT));
+                    
+                    $is_in = ($qty > 0) || in_array($mtype, ['stock_in', 'stock-in', 'delivery', 'transfer_in']);
+                    $is_out = ($qty < 0) || in_array($mtype, ['sale', 'release', 'stock_out', 'stock-out', 'job_order']);
+                    $badge_bg = $is_in ? '#dcfce7' : ($is_out ? '#fee2e2' : '#fef3c7');
+                    $badge_color = $is_in ? '#15803d' : ($is_out ? '#b91c1c' : '#b45309');
+                ?>
+                <tr class="mgr-mmov-row"
+                    data-search="<?= strtolower(htmlspecialchars($ref . ' ' . $log['product_name'] . ' ' . $log['sku'] . ' ' . $log['movement_type'] . ' ' . $log['user_name'] . ' ' . $log['notes'])) ?>"
+                    data-type="<?= strtolower(htmlspecialchars($log['movement_type'])) ?>"
+                    style="border-bottom:1px solid #f1f5f9;">
+                    <td><code style="font-size:11px; font-weight:700; color:#002F70;"><?= htmlspecialchars($ref) ?></code></td>
+                    <td style="font-size:11px; color:#64748b; white-space:nowrap;"><?= date('M d, Y h:i A', strtotime($log['created_at'])) ?></td>
+                    <td><strong><?= htmlspecialchars($log['product_name']) ?></strong></td>
+                    <td><code style="font-size:10px; color:#64748b;"><?= htmlspecialchars($log['sku'] ?: '—') ?></code></td>
+                    <td style="text-align:center;"><span style="background:<?= $badge_bg ?>; color:<?= $badge_color ?>; padding:3px 8px; border-radius:12px; font-size:10.5px; font-weight:700; text-transform:uppercase;"><?= htmlspecialchars($log['movement_type']) ?></span></td>
+                    <td style="text-align:right; font-weight:800; font-size:13px; color:<?= $qty_color ?>;"><?= $qty_str ?> <span style="font-size:10.5px; font-weight:600; color:#64748b;"><?= htmlspecialchars($log['unit']) ?></span></td>
+                    <td style="text-align:right; font-size:11px; color:#475569;"><span style="color:#94a3b8;"><?= number_format((float)$log['quantity_before']) ?></span> &rarr; <strong style="color:#002F70;"><?= number_format((float)$log['quantity_after']) ?></strong></td>
+                    <td style="font-size:11px; color:#334155;"><strong><?= htmlspecialchars($log['user_name']) ?></strong></td>
+                    <td style="font-size:11px; color:#64748b; max-width:200px;"><?= htmlspecialchars($log['notes'] ?: '—') ?></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <div id="mgrMerchMovPagination" style="padding:10px 20px;"></div>
+</div>
+<?php endif; ?>
 
 <!-- TAB CONTENT 2: Stock Alerts -->
 <?php if ($active_tab === 'alerts'): ?>
@@ -3859,13 +3978,34 @@ function openEditProductModal(productId) {
     });
 }
 
-function closeEditProductModal() {
-    var modal = document.getElementById('editProductModal');
-    if (modal) {
-        modal.classList.remove('open');
-        modal.style.display = 'none';
-    }
+function filterMgrMovTable() {
+    var sq = (document.getElementById('mgrMovSearchInput') ? document.getElementById('mgrMovSearchInput').value : '').toLowerCase().trim();
+    var tp = (document.getElementById('mgrMovTypeFilter') ? document.getElementById('mgrMovTypeFilter').value : '').toLowerCase().trim();
+
+    var rows = document.querySelectorAll('#mgrMerchMovTbody tr.mgr-mmov-row');
+    rows.forEach(function(row) {
+        var sText = row.getAttribute('data-search') || '';
+        var mType = row.getAttribute('data-type') || '';
+
+        var matchS = !sq || sText.indexOf(sq) !== -1;
+        var matchT = !tp || mType.indexOf(tp) !== -1;
+
+        if (matchS && matchT) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof setupTablePagination === 'function') {
+        setupTablePagination('mgrMerchTable', null, 'mgrMerchPagination', 25);
+        setupTablePagination('mgrMerchMovTable', null, 'mgrMerchMovPagination', 25);
+        setupTablePagination('mgrAlertTable', null, 'mgrAlertPagination', 25);
+        setupTablePagination('mgrAdjustmentsTable', null, 'mgrAdjPagination', 25);
+    }
+});
 </script>
 
 </div> <!-- /.mim-wrap -->
