@@ -30,26 +30,11 @@ if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csr
     exit;
 }
 
-// Generate new strong CAPTCHA
-$operations = ['+', '-', 'x'];
-$op = $operations[random_int(0, count($operations) - 1)];
-
-if ($op === '+') {
-    $a = random_int(5, 35);
-    $b = random_int(3, 25);
-    $answer = $a + $b;
-    $question = "{$a} + {$b}";
-} elseif ($op === '-') {
-    $a = random_int(12, 45);
-    $b = random_int(2, $a - 1);
-    $answer = $a - $b;
-    $question = "{$a} - {$b}";
-} else {
-    $a = random_int(2, 9);
-    $b = random_int(2, 9);
-    $answer = $a * $b;
-    $question = "{$a} × {$b}";
-}
+// Generate new CAPTCHA (Addition only)
+$a = random_int(5, 35);
+$b = random_int(3, 25);
+$answer = $a + $b;
+$question = "{$a} + {$b}";
 
 $_SESSION['captcha_answer'] = $answer;
 $_SESSION['captcha_question'] = $question;

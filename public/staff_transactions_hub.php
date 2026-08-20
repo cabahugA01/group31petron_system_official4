@@ -10932,7 +10932,7 @@ setTimeout(function() {
                 <!-- Service Type -->
                 <div style="display:flex;flex-direction:column;gap:4px;">
                     <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Service Type</label>
-                    <select id="joFilterServiceType" onchange="joApplyFilters()" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;max-width:180px;">
+                    <select id="joFilterServiceType" onchange="joApplyFilters()" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;max-width:180px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;">
                         <option value="">All Service Types</option>
                         <?php
                         $jo_service_list = [];
@@ -10943,8 +10943,10 @@ setTimeout(function() {
                             }
                         }
                         sort($jo_service_list);
-                        foreach ($jo_service_list as $st): ?>
-                        <option value="<?= htmlspecialchars($st) ?>"><?= htmlspecialchars($st) ?></option>
+                        foreach ($jo_service_list as $st): 
+                            $disp_st = (mb_strlen($st) > 38) ? (mb_substr($st, 0, 36) . '...') : $st;
+                        ?>
+                        <option value="<?= htmlspecialchars($st) ?>" title="<?= htmlspecialchars($st) ?>"><?= htmlspecialchars($disp_st) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>

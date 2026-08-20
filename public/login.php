@@ -56,28 +56,13 @@ $system_name = "Petron Station & Service Center Management System";
 $current_year = date("Y");
 $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
 
-// Helper to generate strong math captcha
+// Helper to generate math captcha (Addition only)
 if (!function_exists('generate_strong_captcha')) {
     function generate_strong_captcha() {
-        $operations = ['+', '-', 'x'];
-        $op = $operations[random_int(0, count($operations) - 1)];
-
-        if ($op === '+') {
-            $a = random_int(5, 35);
-            $b = random_int(3, 25);
-            $answer = $a + $b;
-            $question = "{$a} + {$b}";
-        } elseif ($op === '-') {
-            $a = random_int(12, 45);
-            $b = random_int(2, $a - 1);
-            $answer = $a - $b;
-            $question = "{$a} - {$b}";
-        } else {
-            $a = random_int(2, 9);
-            $b = random_int(2, 9);
-            $answer = $a * $b;
-            $question = "{$a} × {$b}";
-        }
+        $a = random_int(5, 35);
+        $b = random_int(3, 25);
+        $answer = $a + $b;
+        $question = "{$a} + {$b}";
 
         $_SESSION['captcha_answer'] = $answer;
         $_SESSION['captcha_question'] = $question;
@@ -1751,7 +1736,7 @@ $_asset_base = $_login_base . '/assets';
                     <span>Login Successfully</span>
                 </div>
                 <p style="text-align:center;color:rgba(200,225,255,.85);font-size:13px;margin:16px 0 8px;">
-                    <i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Redirecting to your dashboard…
+                    <i class="fas fa-circle-notch fa-spin" style="margin-right:8px;"></i>Redirecting to your dashboard…
                 </p>
                 <script>
                 setTimeout(function(){
@@ -2065,15 +2050,9 @@ $_asset_base = $_login_base . '/assets';
         if (!captchaQuestion) return null;
         var text = (captchaQuestion.textContent || '').trim();
         var matchAdd = text.match(/^(\d+)\s*\+\s*(\d+)$/);
-        var matchSub = text.match(/^(\d+)\s*[-–—]\s*(\d+)$/);
-        var matchMul = text.match(/^(\d+)\s*[×x*]\s*(\d+)$/);
 
         if (matchAdd) {
             return parseInt(matchAdd[1], 10) + parseInt(matchAdd[2], 10);
-        } else if (matchSub) {
-            return parseInt(matchSub[1], 10) - parseInt(matchSub[2], 10);
-        } else if (matchMul) {
-            return parseInt(matchMul[1], 10) * parseInt(matchMul[2], 10);
         }
         return null;
     }
@@ -2236,8 +2215,8 @@ $_asset_base = $_login_base . '/assets';
             return false;
         }
         submitBtn.disabled = true;
-        spinner.style.display = 'block';
-        btnText.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;font-size:13px;"></i>Signing in\u2026';
+        if (spinner) spinner.style.display = 'none';
+        btnText.innerHTML = '<i class="fas fa-circle-notch fa-spin" style="margin-right:6px;font-size:14px;"></i>Signing in\u2026';
     });
 
     // If PHP returned an error (page reload), always reset the button

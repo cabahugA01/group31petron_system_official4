@@ -168,21 +168,28 @@ if (in_array($export, ['excel', 'pdf'])) {
         $rows_fmt = [];
         foreach ($adjustments as $adj) {
             $notes_data = json_decode($adj['notes'], true) ?: [];
-            $prev_cal = $notes_data['prev_calibration'] ?? 0;
-            $new_cal = $notes_data['new_calibration'] ?? 0;
-            $diff = $new_cal - $prev_cal;
             
+            $txn_no = !empty($notes_data['transaction_id']) ? $notes_data['transaction_id'] : ('FTX-' . sprintf('%04d', $adj['id']));
+            $fuel_line = !empty($notes_data['fuel_line']) ? $notes_data['fuel_line'] : (!empty($adj['ugt_no']) ? ($adj['ugt_no'] . ' (' . ($adj['fuel_type'] ?: 'Fuel Tank') . ')') : (($adj['fuel_type'] ?: 'Fuel') . ' Line 1'));
+            $shift_name = !empty($notes_data['shift']) ? $notes_data['shift'] : (!empty($notes_data['shift_name']) ? $notes_data['shift_name'] : 'First Shift (06:00 - 14:00)');
+            $staff_name = !empty($notes_data['staff_name']) ? $notes_data['staff_name'] : (!empty($notes_data['encoded_by']) ? $notes_data['encoded_by'] : ($adj['manager_name'] ?: 'Station Staff'));
+
+            $prev_cal = (isset($notes_data['prev_calibration']) && $notes_data['prev_calibration'] !== '') ? (float)$notes_data['prev_calibration'] : (float)($adj['previous_value'] ?? 0);
+            $new_cal = (isset($notes_data['new_calibration']) && $notes_data['new_calibration'] !== '') ? (float)$notes_data['new_calibration'] : (float)($adj['new_value'] ?? 0);
+            $diff = $new_cal - $prev_cal;
+            $reason_text = !empty($adj['reason']) ? $adj['reason'] : (!empty($adj['adjustment_type']) ? $adj['adjustment_type'] : 'Physical Count / Tank Dip');
+
             $rows_fmt[] = [
                 'ADJ-' . $adj['id'],
-                $notes_data['transaction_id'] ?? '—',
-                $notes_data['fuel_line'] ?? '—',
+                $txn_no,
+                $fuel_line,
                 $adj['fuel_type'],
-                $notes_data['shift'] ?? '—',
-                $notes_data['staff_name'] ?? '—',
+                $shift_name,
+                $staff_name,
                 number_format($prev_cal, 2),
                 number_format($new_cal, 2),
                 ($diff >= 0 ? '+' : '') . number_format($diff, 2),
-                $adj['reason'] ?? '—',
+                $reason_text,
                 $adj['manager_name'],
                 date('M d, Y h:i A', strtotime($adj['created_at']))
             ];
@@ -511,36 +518,43 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                         <?php else: ?>
                             <?php foreach ($adjustments as $adj): 
                                 $notes_data = json_decode($adj['notes'], true) ?: [];
-                                $prev_cal = $notes_data['prev_calibration'] ?? 0;
-                                $new_cal = $notes_data['new_calibration'] ?? 0;
+                                
+                                $txn_no = !empty($notes_data['transaction_id']) ? $notes_data['transaction_id'] : ('FTX-' . sprintf('%04d', $adj['id']));
+                                $fuel_line = !empty($notes_data['fuel_line']) ? $notes_data['fuel_line'] : (!empty($adj['ugt_no']) ? ($adj['ugt_no'] . ' (' . ($adj['fuel_type'] ?: 'Fuel Tank') . ')') : (($adj['fuel_type'] ?: 'Fuel') . ' Line 1'));
+                                $shift_name = !empty($notes_data['shift']) ? $notes_data['shift'] : (!empty($notes_data['shift_name']) ? $notes_data['shift_name'] : 'First Shift (06:00 - 14:00)');
+                                $staff_name = !empty($notes_data['staff_name']) ? $notes_data['staff_name'] : (!empty($notes_data['encoded_by']) ? $notes_data['encoded_by'] : ($adj['manager_name'] ?: 'Station Staff'));
+
+                                $prev_cal = (isset($notes_data['prev_calibration']) && $notes_data['prev_calibration'] !== '') ? (float)$notes_data['prev_calibration'] : (float)($adj['previous_value'] ?? 0);
+                                $new_cal = (isset($notes_data['new_calibration']) && $notes_data['new_calibration'] !== '') ? (float)$notes_data['new_calibration'] : (float)($adj['new_value'] ?? 0);
+                                $reason_text = !empty($adj['reason']) ? $adj['reason'] : (!empty($adj['adjustment_type']) ? $adj['adjustment_type'] : 'Physical Count / Tank Dip');
                             ?>
                                 <tr>
                                     <td><strong>ADJ-<?= $adj['id'] ?></strong></td>
-                                    <td><?= htmlspecialchars($notes_data['transaction_id'] ?? '—') ?></td>
-                                    <td><?= htmlspecialchars($notes_data['fuel_line'] ?? '—') ?></td>
+                                    <td><?= htmlspecialchars($txn_no) ?></td>
+                                    <td><?= htmlspecialchars($fuel_line) ?></td>
                                     <td><?= htmlspecialchars($adj['fuel_type']) ?></td>
-                                    <td><?= htmlspecialchars($notes_data['shift'] ?? '—') ?></td>
-                                    <td><?= htmlspecialchars($notes_data['staff_name'] ?? '—') ?></td>
+                                    <td><?= htmlspecialchars($shift_name) ?></td>
+                                    <td><?= htmlspecialchars($staff_name) ?></td>
                                     <td style="text-align:right;"><?= number_format($prev_cal, 2) ?></td>
                                     <td style="text-align:right;"><?= number_format($new_cal, 2) ?></td>
-                                    <td><?= htmlspecialchars($adj['reason'] ?: '—') ?></td>
+                                    <td><?= htmlspecialchars($reason_text) ?></td>
                                     <td><?= htmlspecialchars($adj['manager_name']) ?></td>
                                     <td><?= date('M d, Y h:i A', strtotime($adj['created_at'])) ?></td>
                                     <td style="text-align:center;">
                                         <button class="row-btn" onclick="viewTxDetails(<?= htmlspecialchars(json_encode([
                                             'adj_id' => 'ADJ-' . $adj['id'],
-                                            'transaction_id' => $notes_data['transaction_id'] ?? '—',
-                                            'fuel_line' => $notes_data['fuel_line'] ?? '—',
+                                            'transaction_id' => $txn_no,
+                                            'fuel_line' => $fuel_line,
                                             'fuel_type' => $adj['fuel_type'],
-                                            'prev_beginning' => number_format($notes_data['prev_beginning'] ?? 0, 2),
-                                            'prev_ending' => number_format($notes_data['prev_ending'] ?? 0, 2),
+                                            'prev_beginning' => number_format($notes_data['prev_beginning'] ?? $prev_cal, 2),
+                                            'prev_ending' => number_format($notes_data['prev_ending'] ?? $prev_cal, 2),
                                             'prev_calibration' => number_format($prev_cal, 2),
-                                            'new_beginning' => number_format($notes_data['new_beginning'] ?? 0, 2),
-                                            'new_ending' => number_format($notes_data['new_ending'] ?? 0, 2),
+                                            'new_beginning' => number_format($notes_data['new_beginning'] ?? $new_cal, 2),
+                                            'new_ending' => number_format($notes_data['new_ending'] ?? $new_cal, 2),
                                             'new_calibration' => number_format($new_cal, 2),
                                             'diff' => number_format($new_cal - $prev_cal, 2),
-                                            'reason' => $adj['reason'] ?: '—',
-                                            'staff_name' => $notes_data['staff_name'] ?? '—',
+                                            'reason' => $reason_text,
+                                            'staff_name' => $staff_name,
                                             'manager_name' => $adj['manager_name'],
                                             'date_time' => date('M d, Y h:i A', strtotime($adj['created_at']))
                                         ])) ?>)"><i class="fas fa-eye"></i> View</button>

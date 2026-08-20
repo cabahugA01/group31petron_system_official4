@@ -1575,18 +1575,36 @@ function srHandleSubmit(btn) {
             }
             document.getElementById('srSuccessMsg').innerHTML = msg;
         } else {
-            if (popupIcon) {
-                popupIcon.style.background = 'linear-gradient(135deg,#dc2626,#ef4444)';
-                popupIcon.innerHTML = '<i class="fas fa-exclamation-triangle" style="color:#fff;font-size:22px;"></i>';
-            }
-            if (popupTitle) {
-                popupTitle.style.color = '#dc2626';
-                popupTitle.innerText = 'SUBMISSION ERROR';
-            }
-            if (popupStatus) popupStatus.style.display = 'none';
+            var isPendingNotice = res.pending_exists || (res.message && (res.message.indexOf('pending') !== -1 || res.message.indexOf('already') !== -1));
+            
+            if (isPendingNotice) {
+                if (popupIcon) {
+                    popupIcon.style.background = 'linear-gradient(135deg,#f59e0b,#d97706)';
+                    popupIcon.innerHTML = '<i class="fas fa-clock" style="color:#fff;font-size:22px;"></i>';
+                }
+                if (popupTitle) {
+                    popupTitle.style.color = '#d97706';
+                    popupTitle.innerText = 'REQUEST ALREADY PENDING';
+                }
+                if (popupStatus) popupStatus.style.display = 'none';
 
-            document.getElementById('srSuccessMsg').innerHTML =
-                '<span style="color:#dc2626;">' + escHtml(res.message || 'Submission failed. Please try again.') + '</span>';
+                var cleanMsg = res.message || 'A stock request for the selected item(s) is already pending Manager review.';
+                document.getElementById('srSuccessMsg').innerHTML =
+                    '<span style="color:#d97706;font-weight:600;">' + escHtml(cleanMsg) + '</span>';
+            } else {
+                if (popupIcon) {
+                    popupIcon.style.background = 'linear-gradient(135deg,#dc2626,#ef4444)';
+                    popupIcon.innerHTML = '<i class="fas fa-exclamation-triangle" style="color:#fff;font-size:22px;"></i>';
+                }
+                if (popupTitle) {
+                    popupTitle.style.color = '#dc2626';
+                    popupTitle.innerText = 'SUBMISSION ERROR';
+                }
+                if (popupStatus) popupStatus.style.display = 'none';
+
+                document.getElementById('srSuccessMsg').innerHTML =
+                    '<span style="color:#dc2626;">' + escHtml(res.message || 'Submission failed. Please try again.') + '</span>';
+            }
         }
 
         document.getElementById('srSuccessPopup').style.display = 'block';

@@ -4,8 +4,8 @@
  * Handles staff stock requests, manager approval/rejection, and admin oversight.
  * Endpoint: backend/api/stock_request.php
  */
-require_once '../lib.php';
-require_once '../../public/db_connect.php';
+require_once __DIR__ . '/../lib.php';
+require_once __DIR__ . '/../../public/db_connect.php';
 
 header('Content-Type: application/json');
 
@@ -325,12 +325,12 @@ function handle_create($pdo, $me, $role, $station_id) {
         }
 
         if (empty($inserted_ids)) {
-            $pdo->rollBack();
-            $msg = 'No items were requested.';
-            if (!empty($skipped_items)) {
-                $msg .= ' The following items already have pending requests: ' . implode(', ', $skipped_items);
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
             }
-            echo json_encode(['success' => false, 'message' => $msg]);
+            $item_str = !empty($skipped_items) ? implode(', ', $skipped_items) : 'selected item(s)';
+            $msg = 'A stock request for ' . $item_str . ' has already been submitted and is currently pending Manager review.';
+            echo json_encode(['success' => false, 'pending_exists' => true, 'message' => $msg]);
             return;
         }
 
@@ -347,7 +347,7 @@ function handle_create($pdo, $me, $role, $station_id) {
             );
         }
 
-        $pdo->commit();
+        if ($pdo->inTransaction()) { $pdo->commit(); }
         
         $msg = 'Stock request submitted successfully.';
         if (!empty($skipped_items)) {
@@ -362,7 +362,7 @@ function handle_create($pdo, $me, $role, $station_id) {
             'status'             => 'Pending Manager Review'
         ]);
     } catch (Exception $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) { $pdo->rollBack(); }
         throw $e;
     }
 }
@@ -700,7 +700,7 @@ function handle_approve($pdo, $me, $role, $station_id) {
                 "Request #{$request_id} | {$req['item_name']} | Qty: {$approved_quantity} | PR: {$pr_id} | PO: {$po_number} | By: {$me['name']}");
         }
 
-        $pdo->commit();
+        if ($pdo->inTransaction()) { $pdo->commit(); }
         echo json_encode([
             'success'              => true,
             'message'              => "Request approved and forwarded to Admin. Purchase Request ID: {$pr_id}",
@@ -735,7 +735,7 @@ function handle_approve($pdo, $me, $role, $station_id) {
         );
     } catch (Exception $e) {
         if ($pdo->inTransaction()) {
-            $pdo->rollBack();
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
         }
         throw $e;
     }
@@ -797,7 +797,7 @@ function handle_reject($pdo, $me, $role, $station_id) {
                 "Request #{$request_id} | {$req['item_name']} | Reason: {$manager_notes} | By: {$me['name']}");
         }
 
-        $pdo->commit();
+        if ($pdo->inTransaction()) { $pdo->commit(); }
         echo json_encode(['success' => true, 'message' => 'Request rejected successfully']);
 
         // ── Audit log ──
@@ -818,7 +818,7 @@ function handle_reject($pdo, $me, $role, $station_id) {
             'stock_request', $request_id
         );
     } catch (Exception $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) { $pdo->rollBack(); }
         throw $e;
     }
 }
