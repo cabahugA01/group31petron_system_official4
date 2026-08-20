@@ -1761,6 +1761,7 @@ if ($section === 'merchandise') {
                 LEFT JOIN users u_mech ON u_mech.id = jo_ref.assigned_mechanic_id
                 WHERE mt.station_id = ?
                   AND mt.transaction_type IN ('job_order', 'combined')
+                GROUP BY mt.id
                 ORDER BY mt.created_at DESC
             ");
             $stmt2->execute([$station_id]);
@@ -1770,8 +1771,27 @@ if ($section === 'merchandise') {
             $mt_rows = [];
         }
 
+        // Build a set of native job_orders IDs so we can suppress duplicate mt rows
+        $native_jo_ids = array_column($jo_rows, 'id');
+        $native_jo_ids = array_flip(array_map('intval', $native_jo_ids));
+
+        // Remove any merchandise_transactions rows that are already represented by a
+        // native job_orders row (linked via job_order_db_id).  This prevents double
+        // entries in the tracker when a JO was encoded through the POS (which creates
+        // both a job_orders record and a merchandise_transactions record).
+        $mt_rows_filtered = array_values(array_filter($mt_rows, function($r) use ($native_jo_ids) {
+            // Each mt row stores the linked job_orders PK in the 'job_order_db_id' column,
+            // which was aliased to job_order_id by the SELECT (or left NULL when absent).
+            // We check both field names for safety.
+            $linked_id = (int)($r['job_order_db_id'] ?? $r['job_order_number'] ?? 0);
+            if ($linked_id > 0 && isset($native_jo_ids[$linked_id])) {
+                return false; // suppress — the native jo_row covers this JO
+            }
+            return true;
+        }));
+
         // Merge and sort by created_at DESC
-        $job_orders = array_merge($jo_rows, $mt_rows);
+        $job_orders = array_merge($jo_rows, $mt_rows_filtered);
         usort($job_orders, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['created_at']));
 
         // ── Pre-fetch pending transaction_requests for Job Order Tracker ────────
@@ -2147,6 +2167,37 @@ window.openRequestAdjustModal = function(arg1, arg2) {
 
     modal.style.display = 'flex';
     modal.style.zIndex = '9999999';
+    return false;
+};
+
+window.submitJOAction = function(action, id, source, confirmMsg) {
+    if (confirmMsg && !confirm(confirmMsg)) {
+        return false;
+    }
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'staff_transactions_hub.php?section=merchandise&active_tab=tracker';
+
+    var inputAction = document.createElement('input');
+    inputAction.type = 'hidden';
+    inputAction.name = 'jo_action';
+    inputAction.value = action;
+    form.appendChild(inputAction);
+
+    var inputId = document.createElement('input');
+    inputId.type = 'hidden';
+    inputId.name = 'jo_id';
+    inputId.value = id;
+    form.appendChild(inputId);
+
+    var inputSource = document.createElement('input');
+    inputSource.type = 'hidden';
+    inputSource.name = 'jo_source';
+    inputSource.value = source;
+    form.appendChild(inputSource);
+
+    document.body.appendChild(form);
+    form.submit();
     return false;
 };
 
@@ -5262,6 +5313,47 @@ setTimeout(function() {
                SECTION: MERCHANDISE TRANSACTION (Customer-facing)
         ══════════════════════════════════════════════════════ */ ?>
         <?php elseif ($section === 'merchandise'): ?>
+        <script>
+        /* ── Auto-clear stale POS / Job-Order draft data on section load ────────
+           When the staff lands on the Merchandise section (fresh page load), any
+           leftover draft from a previously submitted or abandoned transaction is
+           cleared from both localStorage AND the server drafts API.
+           This runs synchronously before DOMContentLoaded so the draft engine
+           never restores stale data into the empty form.                       */
+        (function () {
+            var userId = (window.pageData && window.pageData.userId) ? window.pageData.userId : 0;
+            var basePath = (window.pageData && window.pageData.appBasePath)
+                ? window.pageData.appBasePath.replace(/\/$/, '')
+                : (window.location.pathname.includes('/public/') ? window.location.pathname.split('/public/')[0] : '');
+            var DRAFTS_API = basePath + '/backend/api/drafts_api.php';
+
+            // All module keys the draft engine can create for this page/section
+            var draftKeys = [
+                'pos_merchandise_joborder',
+                'pos_merchandise_joborder_merchandise',
+                'pos_merchandise_joborder_tracker',
+                'job_order',
+                'merchandise_transaction',
+                'form_staff_transactions_hub_merchandise_merchandiseForm',
+                'form_staff_transactions_hub_merchandise_jobOrderForm'
+            ];
+
+            draftKeys.forEach(function (key) {
+                // 1. Clear from localStorage immediately
+                try { localStorage.removeItem('petron_draft_' + userId + '_' + key); } catch (e) {}
+
+                // 2. Clear from server asynchronously (fire-and-forget)
+                try {
+                    fetch(DRAFTS_API + '?action=clear', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ module: key }),
+                        credentials: 'same-origin'
+                    }).catch(function () {});
+                } catch (e) {}
+            });
+        })();
+        </script>
         <?php
         // Active inner tab: merchandise | tracker
         $active_tab  = $_GET['active_tab'] ?? 'merchandise';
@@ -8750,11 +8842,93 @@ setTimeout(function() {
             resultsDiv.style.display = 'block';
         }
 
+        // ── Clear Job Order services, inspection, complaint, remarks, cart & payment ─────
+        function clearJobOrderDetailsOnly() {
+            // Clear Vehicle Inspection checkboxes & remarks
+            document.querySelectorAll('input[name="jo_inspection[]"]').forEach(cb => cb.checked = false);
+            const inspRemarks = document.getElementById('joInspectionRemarks');
+            if (inspRemarks) inspRemarks.value = '';
+
+            // Clear Complaint & Initial Assessment / Repair Recommendation
+            const joComplaint = document.getElementById('joCustomerComplaint');
+            if (joComplaint) joComplaint.value = '';
+            const joRec = document.getElementById('joRepairRecommendation');
+            if (joRec) joRec.value = '';
+
+            // Reset Priority to Normal & Clear Expected Release Date
+            const priNormal = document.getElementById('joPriorityNormal');
+            if (priNormal) priNormal.checked = true;
+            const joExpectedRelease = document.getElementById('joExpectedRelease');
+            if (joExpectedRelease) joExpectedRelease.value = '';
+
+            // Clear Service Details
+            const joServiceCategory = document.getElementById('joServiceCategory');
+            const joServiceType = document.getElementById('joServiceType');
+            const joServiceTypeValue = document.getElementById('joServiceTypeValue');
+            const joServicePrice = document.getElementById('joServicePrice');
+            const joLaborCharge = document.getElementById('joLaborCharge');
+            const joNotes = document.getElementById('joNotes');
+            const joEstimatedDuration = document.getElementById('joEstimatedDuration');
+            if (joServiceCategory) joServiceCategory.selectedIndex = 0;
+            if (joServiceType) joServiceType.value = '';
+            if (joServiceTypeValue) joServiceTypeValue.value = '';
+            if (joServicePrice) joServicePrice.value = '';
+            if (joLaborCharge) joLaborCharge.value = '';
+            if (joNotes) joNotes.value = '';
+            if (joEstimatedDuration) joEstimatedDuration.value = '';
+
+            // Reset mechanic
+            const joMechanic = document.getElementById('joMechanic');
+            if (joMechanic) joMechanic.value = '';
+            const joMechanicId = document.getElementById('joMechanicId');
+            if (joMechanicId) joMechanicId.value = '';
+            const joMechanicName = document.getElementById('joMechanicName');
+            if (joMechanicName) joMechanicName.value = '';
+            if (typeof hideMechanicDropdown === 'function') hideMechanicDropdown();
+
+            // Clear Cart & Payment details
+            if (window.cart) window.cart = [];
+            if (typeof cart !== 'undefined') cart = [];
+            if (typeof updateCartDisplay === 'function') updateCartDisplay();
+            if (typeof renderCart === 'function') renderCart();
+
+            const pmSel = document.getElementById('paymentMethod');
+            if (pmSel) pmSel.selectedIndex = 0;
+            if (typeof onPaymentChange === 'function') onPaymentChange();
+            ['amountTendered', 'changeAmount', 'cashBalanceDue', 'ccAmount', 'ccLastFour', 'ccRefNumber', 'dcAmount', 'dcRefNumber', 'ewAmount', 'ewRefNumber', 'fcAmount', 'fcNumber', 'fcCompanyName', 'fcAuthNumber'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+
+            // Hide previews & warnings
+            const notesWrap = document.getElementById('joServicePriceNotes');
+            const partsWrap = document.getElementById('joSuggestedParts');
+            if (notesWrap) notesWrap.style.display = 'none';
+            if (partsWrap) partsWrap.style.display = 'none';
+            const mechanicBusyWarn = document.getElementById('joMechanicBusyWarn');
+            if (mechanicBusyWarn) mechanicBusyWarn.style.display = 'none';
+
+            // Clear stored drafts for job order
+            try {
+                sessionStorage.removeItem('jo_draft');
+                localStorage.removeItem('jo_draft');
+                if (window.PetronDraft) {
+                    PetronDraft.clear('jo');
+                    PetronDraft.clear('job_orders');
+                }
+            } catch (e) {}
+        }
+
         function selectCustomer(prefix, customerId) {
             const customer = customerData.find(c => c.id == customerId);
             if (!customer) return;
             selectedCustomerIds[prefix] = parseInt(customer.id, 10) || null;
             
+            // Clear any previously filled service types, inspection items, complaints, remarks, cart, and payment details
+            if (prefix === 'jo') {
+                clearJobOrderDetailsOnly();
+            }
+
             // Fill in all customer fields
             const firstNameInput = document.getElementById(prefix + 'FirstName');
             const lastNameInput = document.getElementById(prefix + 'LastName');
@@ -8892,6 +9066,11 @@ setTimeout(function() {
             
             console.log('Selected customer from name field:', customer);
             
+            // Clear any previously filled service types, inspection items, complaints, remarks, cart, and payment details
+            if (prefix === 'jo') {
+                clearJobOrderDetailsOnly();
+            }
+
             // Fill in all customer fields
             const firstNameInput = document.getElementById(prefix + 'FirstName');
             const lastNameInput = document.getElementById(prefix + 'LastName');
@@ -9506,7 +9685,7 @@ setTimeout(function() {
             if (fnResults) fnResults.style.display = 'none';
 
             // Clear vehicle details
-            ['joVehicleType','joVehicleBrand','joVehicleModel','joVehiclePlate','joYearModel','joOdometer'].forEach(id => {
+            ['joVehicleType','joVehicleBrand','joVehicleModel','joVehiclePlate','joYearModel','joOdometer','joEngineNumber','joChassisNumber'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.value = '';
             });
@@ -9555,6 +9734,24 @@ setTimeout(function() {
             const joMechanicName = document.getElementById('joMechanicName');
             if (joMechanicName) joMechanicName.value = '';
             hideMechanicDropdown();
+
+            // Clear payment and loyalty fields
+            const pmSel = document.getElementById('paymentMethod');
+            if (pmSel) pmSel.selectedIndex = 0;
+            if (typeof onPaymentChange === 'function') onPaymentChange();
+            ['amountTendered', 'changeAmount', 'cashBalanceDue', 'ccAmount', 'ccLastFour', 'ccRefNumber', 'dcAmount', 'dcRefNumber', 'ewAmount', 'ewRefNumber', 'fcAmount', 'fcNumber', 'fcCompanyName', 'fcAuthNumber'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            const loyaltyProgram = document.getElementById('loyaltyProgram');
+            if (loyaltyProgram) {
+                loyaltyProgram.value = 'No Loyalty';
+                if (typeof onLoyaltyChange === 'function') onLoyaltyChange();
+            }
+            ['loyaltyCardNo', 'loyaltyPointsBalance', 'loyaltyPointsEarned', 'loyaltyPointsAfter'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = (id === 'loyaltyCardNo') ? '' : '0';
+            });
 
             // Hide previews/warnings
             const notesWrap = document.getElementById('joServicePriceNotes');
