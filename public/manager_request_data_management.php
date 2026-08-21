@@ -40,6 +40,21 @@ try {
 } catch (Exception $e) {}
 
 // ── Filters ───────────────────────────────────────────────────────────────────
+// ── AJAX JSON POLLING ENDPOINT FOR MASTER DATA REQUESTS ────────────────
+if (isset($_GET['ajax_mdr']) && $_GET['ajax_mdr'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'kpis' => [
+            'pending'        => $kpi_pending,
+            'approved_today' => $kpi_approved_today,
+            'rejected_today' => $kpi_rejected_today,
+            'total'          => $kpi_total
+        ]
+    ]);
+    exit;
+}
+
 $f_status = trim($_GET['status'] ?? '');
 $f_category = trim($_GET['category'] ?? '');
 $date_from = trim($_GET['date_from'] ?? '');
@@ -452,19 +467,19 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="txn-kpi-grid">
     <div class="txn-kpi-card yellow">
         <div class="txn-kpi-lbl"><i class="fas fa-clock" style="color:#d97706;margin-right:4px;"></i> Pending Requests</div>
-        <div class="txn-kpi-val"><?= number_format($kpi_pending) ?></div>
+        <div class="txn-kpi-val" id="mdr_kpi_pending"><?= number_format($kpi_pending) ?></div>
     </div>
     <div class="txn-kpi-card green">
         <div class="txn-kpi-lbl"><i class="fas fa-check-circle" style="color:#16a34a;margin-right:4px;"></i> Approved Today</div>
-        <div class="txn-kpi-val"><?= number_format($kpi_approved_today) ?></div>
+        <div class="txn-kpi-val" id="mdr_kpi_approved"><?= number_format($kpi_approved_today) ?></div>
     </div>
     <div class="txn-kpi-card danger">
         <div class="txn-kpi-lbl"><i class="fas fa-times-circle" style="color:#dc2626;margin-right:4px;"></i> Rejected Today</div>
-        <div class="txn-kpi-val"><?= number_format($kpi_rejected_today) ?></div>
+        <div class="txn-kpi-val" id="mdr_kpi_rejected"><?= number_format($kpi_rejected_today) ?></div>
     </div>
     <div class="txn-kpi-card blue">
         <div class="txn-kpi-lbl"><i class="fas fa-list-alt" style="color:#0284c7;margin-right:4px;"></i> Total Requests</div>
-        <div class="txn-kpi-val"><?= number_format($kpi_total) ?></div>
+        <div class="txn-kpi-val" id="mdr_kpi_total"><?= number_format($kpi_total) ?></div>
     </div>
 </div>
 

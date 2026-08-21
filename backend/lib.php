@@ -31,7 +31,7 @@ function require_login(){
     session_start();
   }
 
-  $timeout = 300; // 5 minutes inactivity timeout (300 seconds)
+  $timeout = 900; // 15 minutes inactivity timeout (900 seconds)
   $script = $_SERVER['SCRIPT_NAME'] ?? '';
   $root = rtrim(dirname($script), '/\\');
   if($root === '' || $root === '.') $root = '/';
@@ -226,6 +226,9 @@ define('MODULE_PAGE_MAP', [
 // Maps module_key → sidebar item IDs that belong to that module.
 define('MODULE_MENU_MAP', [
     // ── Core Operational Modules ──────────────────────────────────────────────
+    'dashboard'             => [
+        'dashboard', 'manager_dashboard', 'admin_dashboard', 'staff_dashboard'
+    ],
     'transactions'          => [
         'transactions', 'admin_transactions', 'fuel_merch_transactions', 'variance_alerts',
         'shift_transactions_view', 'merchandise_transaction', 'shift_transactions',
@@ -264,12 +267,15 @@ define('MODULE_MENU_MAP', [
         'mgr_stock_review', 'mgr_stock_in', 'inv_history', 'mgr_prod_merchandise',
         'mgr_prod_prices', 'mgr_inv_merch', 'mgr_inv_fuel', 'mgr_inv_stock_request',
         'mgr_inv_po_gen', 'mgr_del_validate', 'admin_inventory_merchandise', 'admin_purchase_orders',
-        'admin_stock_requests', 'admin_stock_requests_monitor', 'admin_stock_in', 'admin_stock_in_oversight', 'admin_inventory_history',
-        'admin_product_pricing'
+        'admin_stock_requests', 'admin_stock_requests_monitor', 'admin_stock_in', 'admin_stock_in_oversight', 'admin_inventory_history'
     ],
     'product_management'    => [
         'product_management', 'mgr_prod_merchandise', 'mgr_prod_fuel', 'mgr_prod_services',
-        'mgr_prod_prices', 'mgr_prod_adjustment', 'admin_product_pricing'
+        'mgr_prod_prices', 'mgr_prod_adjustment', 'admin_product_pricing', 'mgr_product_pricing'
+    ],
+    'product_pricing'       => [
+        'admin_product_pricing', 'mgr_product_pricing', 'product_management', 'mgr_prod_merchandise',
+        'mgr_prod_fuel', 'mgr_prod_prices', 'mgr_prod_adjustment'
     ],
     'purchase_orders'       => [
         'mgr_inv_po_gen', 'admin_purchase_orders', 'purchase_orders'
@@ -288,19 +294,18 @@ define('MODULE_MENU_MAP', [
         'mgr_report_audit'
     ],
     'customers'             => [
-        'customers', 'customer_add', 'customer_list', 'customer_history'
+        'customers', 'customer_add', 'customer_list', 'customer_history', 'mgr_customers'
     ],
     'payments'              => [
-        // Payments module controls payment method related items in Transactions
-        // No dedicated sidebar item — toggling this hides the entire transactions flow
         'transactions', 'admin_transactions', 'pending_transactions_manager', 'validated_transactions_manager'
     ],
     'staff_management'      => [
-        // Staff Management controls the staff oversight/attendance sidebar items
         'staff_oversight_admin', 'users'
     ],
+    'users'                 => [
+        'users'
+    ],
     'admin_unlock'          => [
-        // Admin Unlock is a privilege module — no direct sidebar item, controls override access
     ],
 ]);
 
@@ -315,8 +320,9 @@ function get_module_states(): array {
 
     global $pdo;
     
-    // Default modules (all enabled by default) — must include every key used in station_modules table
+    // Default modules (all enabled by default)
     $cache = [
+        'dashboard'              => true,
         'transactions'           => true,
         'job_orders'             => true,
         'fuel_management'        => true,
@@ -326,48 +332,43 @@ function get_module_states(): array {
         'payments'               => true,
         'inventory'              => true,
         'product_management'     => true,
+        'product_pricing'        => true,
         'purchase_orders'        => true,
         'calendar'               => true,
         'reports'                => true,
         'customers'              => true,
         'staff_management'       => true,
         'admin_unlock'           => true,
+        'notifications'          => true,
+        'backup_restore'         => true,
+        'audit_trail'            => true,
+        'api_integration'        => true,
+        'users'                  => true,
     ];
 
     if (!isset($pdo)) return $cache;
 
-    // ══════════════════════════════════════════════════════════════
-    // STATION-DEPENDENT MODULE CONFIGURATION
-    // Get module states for the current user's station
-    // ══════════════════════════════════════════════════════════════
-    
     try {
-        // Get current user's station_id dynamically
-        $station_id = user_station_id();
-        
-        if ($station_id) {
-            // Query station_modules table for this station's configuration
-            $stmt = $pdo->prepare("
-                SELECT module_key, is_enabled 
-                FROM station_modules 
-                WHERE station_id = ?
-            ");
-            $stmt->execute([$station_id]);
+        // 1. Read module_settings global table first
+        $stmt = $pdo->query("SELECT module_key, is_enabled FROM module_settings");
+        if ($stmt) {
             $rows = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
-            
-            foreach ($rows as $key => $val) {
-                $cache[$key] = (bool)(int)$val;
-            }
-        } else {
-            // Fallback: Try old module_settings table (if exists)
-            $rows = $pdo->query("SELECT module_key, is_enabled FROM module_settings")->fetchAll(PDO::FETCH_KEY_PAIR);
             foreach ($rows as $key => $val) {
                 $cache[$key] = (bool)(int)$val;
             }
         }
-    } catch (Exception $e) { 
-        /* table may not exist yet — use defaults */ 
-    }
+        
+        // 2. Override with station-dependent module settings if applicable
+        $station_id = user_station_id();
+        if ($station_id) {
+            $stmt = $pdo->prepare("SELECT module_key, is_enabled FROM station_modules WHERE station_id = ?");
+            $stmt->execute([$station_id]);
+            $stRows = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+            foreach ($stRows as $key => $val) {
+                $cache[$key] = (bool)(int)$val;
+            }
+        }
+    } catch (Exception $e) { }
 
     return $cache;
 }
@@ -1256,83 +1257,45 @@ function load_merchandise_pricing_catalog(PDO $pdo, int $station_id): array {
 
     try {
         $stmt = $pdo->prepare("
-            SELECT ip.id,
-                   ip.product_name AS product_name,
-                   ip.product_name AS name,
-                   COALESCE(ip.category, 'Merchandise') AS category,
-                   COALESCE(ip.category, 'Merchandise') AS category_name,
-                   '' AS description,
-                   COALESCE(NULLIF(ip.sku, ''), CONCAT('P', LPAD(ip.id, 4, '0'))) AS sku,
+            SELECT COALESCE(ip.id, p.id, si.product_id) AS id,
+                   COALESCE(ip.product_name, p.name, 'Unknown Product') AS product_name,
+                   COALESCE(ip.product_name, p.name, 'Unknown Product') AS name,
+                   COALESCE(ip.category, pc.name, 'Merchandise') AS category,
+                   COALESCE(ip.category, pc.name, 'Merchandise') AS category_name,
+                   COALESCE(p.description, '') AS description,
+                   COALESCE(ip.sku, p.sku, CONCAT('P', LPAD(si.product_id, 4, '0'))) AS sku,
                    ip.barcode AS barcode,
-                   ip.brand AS brand,
-                   COALESCE(si.unit, ip.size, 'pcs') AS unit,
-                   COALESCE(ip.unit_cost, 0) AS unit_cost,
-                   COALESCE(ip.unit_price, 0) AS unit_price,
-                   COALESCE(si.status, ip.status, 'active') AS status,
-                   COALESCE(si.stock_level, ip.stock_quantity, ip.stock, 0) AS stock_quantity,
-                   COALESCE(si.capacity, 480) AS capacity,
-                   COALESCE(ip.reorder_level, si.reorder_level, 24) AS reorder_level,
-                   COALESCE(ip.critical_level, si.critical_level, 10) AS critical_level,
+                   COALESCE(ip.brand, p.brand, 'Petron Corporation') AS brand,
+                   COALESCE(si.unit, ip.size, p.unit, 'pcs') AS unit,
+                   COALESCE(si.cost, ip.unit_cost, p.cost, 0) AS unit_cost,
+                   COALESCE(si.price, ip.unit_price, p.price, 0) AS unit_price,
+                   COALESCE(si.status, ip.status, p.status, 'active') AS status,
+                   COALESCE(si.stock_level, 0) AS stock_quantity,
+                   COALESCE(si.capacity, ip.max_stock, p.capacity, 480) AS capacity,
+                   COALESCE(si.reorder_level, ip.min_stock, p.min_stock_level, 24) AS reorder_level,
+                   COALESCE(si.critical_level, 10) AS critical_level,
                    si.physical_count,
                    COALESCE(si.variance, 0) AS variance,
-                   COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
+                   COALESCE(si.last_updated, NOW()) AS last_updated,
                    'Petron Corporation' AS supplier,
                    COALESCE(pa.new_cost, pa.new_value) AS pending_cost,
                    COALESCE(pa.new_price, pa.new_value) AS pending_price,
                    pa.status AS approval_status,
                    pa.id AS approval_id
-            FROM inventory_products ip
-            LEFT JOIN station_inventory si
-                   ON si.product_id = ip.id AND si.station_id = ?
+            FROM station_inventory si
+            LEFT JOIN inventory_products ip ON ip.id = si.product_id
+            LEFT JOIN products p ON p.id = si.product_id
+            LEFT JOIN product_categories pc ON pc.id = p.category_id
             LEFT JOIN pending_price_approvals pa
-                   ON pa.product_id = ip.id
+                   ON pa.product_id = si.product_id
                   AND pa.product_type = 'merchandise'
                   AND pa.status = 'pending'
                   AND pa.station_id = ?
-            WHERE LOWER(COALESCE(ip.category, '')) NOT IN ('fuel', 'fuel products')
-
-            UNION
-
-            SELECT p.id,
-                   p.name AS product_name,
-                   p.name AS name,
-                   COALESCE(pc.name, 'General') AS category,
-                   COALESCE(pc.name, 'General') AS category_name,
-                   p.description,
-                   COALESCE(NULLIF(p.sku, ''), CONCAT('P', LPAD(p.id, 4, '0'))) AS sku,
-                   NULL AS barcode,
-                   p.brand AS brand,
-                   COALESCE(NULLIF(p.unit, ''), NULLIF(si2.unit, ''), 'pcs') AS unit,
-                   COALESCE(p.cost, si2.cost, 0) AS unit_cost,
-                   COALESCE(si2.price, p.price, si2.cost, p.cost, 0) AS unit_price,
-                   COALESCE(NULLIF(si2.status, ''), NULLIF(p.status, ''), 'active') AS status,
-                   COALESCE(si2.stock_level, p.current_stock, 0) AS stock_quantity,
-                   COALESCE(NULLIF(si2.capacity, 0), NULLIF(p.capacity, 0), NULLIF(p.max_stock_level, 0), 480) AS capacity,
-                   COALESCE(NULLIF(si2.reorder_level, 0), NULLIF(p.min_stock_level, 0), 24) AS reorder_level,
-                   COALESCE(NULLIF(si2.critical_level, 0), 10) AS critical_level,
-                   si2.physical_count,
-                   COALESCE(si2.variance, 0) AS variance,
-                   COALESCE(si2.last_updated, p.updated_at, p.created_at) AS last_updated,
-                   'Petron Corporation' AS supplier,
-                   COALESCE(p2.new_cost, p2.new_value) AS pending_cost,
-                   COALESCE(p2.new_price, p2.new_value) AS pending_price,
-                   p2.status AS approval_status,
-                   p2.id AS approval_id
-            FROM products p
-            LEFT JOIN product_categories pc ON pc.id = p.category_id
-            LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND si2.station_id = ?
-            LEFT JOIN pending_price_approvals p2
-                   ON p2.product_id = p.id
-                  AND p2.product_type = 'merchandise'
-                  AND p2.status = 'pending'
-                  AND p2.station_id = ?
-            WHERE LOWER(COALESCE(pc.name, '')) NOT IN ('fuel', 'fuel products', 'services', 'service')
-              AND LOWER(COALESCE(p.status, 'active')) NOT IN ('deleted', 'archived')
-              AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(category, '')) NOT IN ('fuel', 'fuel products'))
-
+            WHERE si.station_id = ?
+              AND (LOWER(COALESCE(ip.category, pc.name, '')) NOT IN ('fuel', 'fuel products', 'services', 'service') OR (ip.category IS NULL AND pc.name IS NULL))
             ORDER BY category_name, product_name
         ");
-        $stmt->execute([$station_id, $station_id, $station_id, $station_id]);
+        $stmt->execute([$station_id, $station_id]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
         $rows = [];
@@ -2088,9 +2051,17 @@ function get_tank_config(int $station_id = null): array {
                 }
             }
         } catch (Throwable $e) {}
+
+        // Station 1253 (Vamenta Carmen) default tanks
+        if ($station_id === 1253) {
+            return array_map('_normalize_tank_row', PETRON_7_UGT_CONFIG);
+        }
+
+        // New branches start with 0 tanks until configured
+        return [];
     }
 
-    return array_map('_normalize_tank_row', PETRON_7_UGT_CONFIG);
+    return [];
 }
 
 /** Internal helper: ensure expected keys exist and are properly typed. */
@@ -2629,43 +2600,54 @@ function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', i
 
     } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
         // ADMIN
-        $admin_crit_stock = $safe_count(
-            "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.critical_level, ip.critical_level, 10)",
-            []
-        );
-        $admin_pos = $safe_count(
-            "SELECT COUNT(*) FROM purchase_orders WHERE status IN ('Pending Admin Review', 'Submitted', 'Pending Approval')",
-            []
-        );
-        $admin_inv_total = $admin_crit_stock + $admin_pos;
-        $counts['inventory']       = $admin_inv_total;
-        $counts['admin_inventory'] = $admin_inv_total;
+        if ($station_id > 0) {
+            $admin_crit_stock = $safe_count(
+                "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.critical_level, ip.critical_level, 10)",
+                [$station_id]
+            );
+            $admin_pos = $safe_count(
+                "SELECT COUNT(*) FROM purchase_orders WHERE station_id = ? AND status IN ('Pending Admin Review', 'Submitted', 'Pending Approval')",
+                [$station_id]
+            );
+            $admin_inv_total = $admin_crit_stock + $admin_pos;
+            $counts['inventory']       = $admin_inv_total;
+            $counts['admin_inventory'] = $admin_inv_total;
 
-        $admin_price_change = $safe_count(
-            "SELECT COUNT(*) FROM pending_price_approvals WHERE status = 'pending'",
-            []
-        );
-        $counts['prod_pricing']          = $admin_price_change;
-        $counts['mgr_product_pricing']   = $admin_price_change;
-        $counts['admin_product_pricing'] = $admin_price_change;
+            $admin_price_change = $safe_count(
+                "SELECT COUNT(*) FROM pending_price_approvals WHERE station_id = ? AND status = 'pending'",
+                [$station_id]
+            );
+            $counts['prod_pricing']          = $admin_price_change;
+            $counts['mgr_product_pricing']   = $admin_price_change;
+            $counts['admin_product_pricing'] = $admin_price_change;
 
-        $admin_system_alerts = $safe_count(
-            "SELECT COUNT(*) FROM notifications WHERE severity IN ('critical','error') AND status = 'unread'",
-            []
-        );
-        $counts['reports']       = $admin_system_alerts;
-        $counts['admin_reports'] = $admin_system_alerts;
+            $admin_system_alerts = $safe_count(
+                "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND severity IN ('critical','error') AND status = 'unread'",
+                [$user_id]
+            );
+            $counts['reports']       = $admin_system_alerts;
+            $counts['admin_reports'] = $admin_system_alerts;
 
-        // Fuel Management Oversight: Pending Fuel Transactions requiring admin attention
-        $admin_fuel_pending = $safe_count(
-            "SELECT COUNT(*) FROM fuel_transactions WHERE LOWER(COALESCE(status,'')) IN ('pending','pending validation')",
-            []
-        );
-        $counts['fuel']                  = $admin_fuel_pending;
-        $counts['admin_fuel']            = $admin_fuel_pending;
-        $counts['admin_fuel_management'] = $admin_fuel_pending;
+            $admin_fuel_pending = $safe_count(
+                "SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation')",
+                [$station_id]
+            );
+            $counts['fuel']                  = $admin_fuel_pending;
+            $counts['admin_fuel']            = $admin_fuel_pending;
+            $counts['admin_fuel_management'] = $admin_fuel_pending;
+        } else {
+            $counts['inventory']             = 0;
+            $counts['admin_inventory']       = 0;
+            $counts['prod_pricing']          = 0;
+            $counts['mgr_product_pricing']   = 0;
+            $counts['admin_product_pricing'] = 0;
+            $counts['reports']               = 0;
+            $counts['admin_reports']         = 0;
+            $counts['fuel']                  = 0;
+            $counts['admin_fuel']            = 0;
+            $counts['admin_fuel_management'] = 0;
+        }
     }
-
     return $counts;
 }
 }

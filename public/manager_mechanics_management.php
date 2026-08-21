@@ -29,8 +29,9 @@ try {
     if ($to_add) $pdo->exec("ALTER TABLE mechanics " . implode(', ', $to_add));
 } catch (Exception $e) {}
 
-$error_msg   = '';
-$success_msg = '';
+$error_msg   = $_SESSION['error']   ?? '';
+$success_msg = $_SESSION['success'] ?? '';
+unset($_SESSION['error'], $_SESSION['success']);
 
 // ── AJAX / POST Handlers ──────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -241,25 +242,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $status         = ($_POST['status'] ?? 'active') === 'active' ? 'active' : 'inactive';
         $full_name      = trim($first_name . ($middle_name !== '' ? ' ' . $middle_name : '') . ' ' . $last_name);
 
-        if (empty($first_name))     { $error_msg = 'First Name is required.'; }
-        elseif (empty($last_name))  { $error_msg = 'Last Name is required.'; }
-        elseif (empty($contact_no)) { $error_msg = 'Contact Number is required.'; }
+        if (empty($first_name))     { $_SESSION['error'] = 'First Name is required.'; }
+        elseif (empty($last_name))  { $_SESSION['error'] = 'Last Name is required.'; }
+        elseif (empty($contact_no)) { $_SESSION['error'] = 'Contact Number is required.'; }
         elseif (!preg_match('/^(09\d{9}|\+639\d{9}|639\d{9})$/', preg_replace('/[\s\-\(\)\.]/', '', $contact_no))) {
-            $error_msg = 'Invalid Philippine contact number. Must be an 11-digit mobile number starting with 09 (e.g. 09171234567 or +639171234567).';
+            $_SESSION['error'] = 'Invalid Philippine contact number. Must be an 11-digit mobile number starting with 09 (e.g. 09171234567 or +639171234567).';
         }
-        elseif (empty($specialization)) { $error_msg = 'Specialty is required.'; }
+        elseif (empty($specialization)) { $_SESSION['error'] = 'Specialty is required.'; }
         else {
             $clean_c = preg_replace('/[\s\-\(\)\.]/', '', $contact_no);
             if (str_starts_with($clean_c, '+639')) { $contact_no = '09' . substr($clean_c, 4); }
             elseif (str_starts_with($clean_c, '639')) { $contact_no = '09' . substr($clean_c, 3); }
             else { $contact_no = $clean_c; }
 
+            // ── DUPLICATE CHECK: Prevent adding duplicate mechanic name or contact ──
             try {
+                $chk_sql = "SELECT COUNT(*) FROM mechanics WHERE archived = 0 AND ( (LOWER(TRIM(first_name)) = LOWER(TRIM(?)) AND LOWER(TRIM(last_name)) = LOWER(TRIM(?))) OR (contact_no != '' AND contact_no = ?) ) " . ($station_id > 0 ? "AND station_id = ?" : "");
+                $chk_params = $station_id > 0 ? [$first_name, $last_name, $contact_no, $station_id] : [$first_name, $last_name, $contact_no];
+                $chk_stmt = $pdo->prepare($chk_sql);
+                $chk_stmt->execute($chk_params);
+
+                if ((int)$chk_stmt->fetchColumn() > 0) {
+                    $_SESSION['error'] = 'Cannot add duplicate: A mechanic named "' . htmlspecialchars($full_name) . '" or with contact number "' . htmlspecialchars($contact_no) . '" already exists.';
+                    header('Location: manager_mechanics_management.php');
+                    exit;
+                }
+
                 $pdo->prepare("INSERT INTO mechanics (first_name,middle_name,last_name,full_name,specialization,shift_assignment,date_hired,contact_no,address,status,station_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
                     ->execute([$first_name,$middle_name,$last_name,$full_name,$specialization,$shift_assignment,$date_hired,$contact_no,$address,$status,$station_id]);
-                $success_msg = 'New mechanic added successfully.';
-            } catch (Exception $e) { $error_msg = 'Failed to add mechanic: ' . $e->getMessage(); }
+                $_SESSION['success'] = 'New mechanic "' . htmlspecialchars($full_name) . '" added successfully.';
+                header('Location: manager_mechanics_management.php');
+                exit;
+            } catch (Exception $e) { 
+                $_SESSION['error'] = 'Failed to add mechanic: ' . $e->getMessage(); 
+            }
         }
+        header('Location: manager_mechanics_management.php');
+        exit;
     }
 
     // Edit Mechanic
@@ -276,38 +295,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $status         = ($_POST['status'] ?? 'active') === 'active' ? 'active' : 'inactive';
         $full_name      = trim($first_name . ($middle_name !== '' ? ' ' . $middle_name : '') . ' ' . $last_name);
 
-        if (empty($first_name))     { $error_msg = 'First Name is required.'; }
-        elseif (empty($last_name))  { $error_msg = 'Last Name is required.'; }
-        elseif (empty($contact_no)) { $error_msg = 'Contact Number is required.'; }
+        if (empty($first_name))     { $_SESSION['error'] = 'First Name is required.'; }
+        elseif (empty($last_name))  { $_SESSION['error'] = 'Last Name is required.'; }
+        elseif (empty($contact_no)) { $_SESSION['error'] = 'Contact Number is required.'; }
         elseif (!preg_match('/^(09\d{9}|\+639\d{9}|639\d{9})$/', preg_replace('/[\s\-\(\)\.]/', '', $contact_no))) {
-            $error_msg = 'Invalid Philippine contact number. Must be an 11-digit mobile number starting with 09 (e.g. 09171234567 or +639171234567).';
+            $_SESSION['error'] = 'Invalid Philippine contact number. Must be an 11-digit mobile number starting with 09 (e.g. 09171234567 or +639171234567).';
         }
-        elseif (empty($specialization)) { $error_msg = 'Specialty is required.'; }
+        elseif (empty($specialization)) { $_SESSION['error'] = 'Specialty is required.'; }
         else {
             $clean_c = preg_replace('/[\s\-\(\)\.]/', '', $contact_no);
             if (str_starts_with($clean_c, '+639')) { $contact_no = '09' . substr($clean_c, 4); }
             elseif (str_starts_with($clean_c, '639')) { $contact_no = '09' . substr($clean_c, 3); }
             else { $contact_no = $clean_c; }
-            $can_update = true;
-            if ($status === 'inactive') {
-                try {
+
+            // ── DUPLICATE CHECK: Exclude current mechanic ID ──
+            try {
+                $chk_sql = "SELECT COUNT(*) FROM mechanics WHERE archived = 0 AND id != ? AND ( (LOWER(TRIM(first_name)) = LOWER(TRIM(?)) AND LOWER(TRIM(last_name)) = LOWER(TRIM(?))) OR (contact_no != '' AND contact_no = ?) ) " . ($station_id > 0 ? "AND station_id = ?" : "");
+                $chk_params = $station_id > 0 ? [$id, $first_name, $last_name, $contact_no, $station_id] : [$id, $first_name, $last_name, $contact_no];
+                $chk_stmt = $pdo->prepare($chk_sql);
+                $chk_stmt->execute($chk_params);
+
+                if ((int)$chk_stmt->fetchColumn() > 0) {
+                    $_SESSION['error'] = 'Cannot update mechanic: Another mechanic named "' . htmlspecialchars($full_name) . '" or with contact number "' . htmlspecialchars($contact_no) . '" already exists.';
+                    header('Location: manager_mechanics_management.php');
+                    exit;
+                }
+
+                $can_update = true;
+                if ($status === 'inactive') {
                     $chk = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE assigned_mechanic_id = ? AND status IN ('Pending','Reviewed','In Progress','Awaiting Parts')");
                     $chk->execute([$id]);
-                    if ((int)$chk->fetchColumn() > 0) { $can_update = false; $error_msg = 'Cannot deactivate: mechanic has active job order(s).'; }
-                } catch (Exception $e) {}
-            }
-            if ($can_update) {
-                try {
+                    if ((int)$chk->fetchColumn() > 0) { 
+                        $can_update = false; 
+                        $_SESSION['error'] = 'Cannot deactivate: mechanic has active job order(s).'; 
+                    }
+                }
+                if ($can_update) {
                     $where_id = $station_id > 0 ? "id = ? AND station_id = ?" : "id = ?";
                     $params   = $station_id > 0
                         ? [$first_name,$middle_name,$last_name,$full_name,$specialization,$shift_assignment,$date_hired,$contact_no,$address,$status,$id,$station_id]
                         : [$first_name,$middle_name,$last_name,$full_name,$specialization,$shift_assignment,$date_hired,$contact_no,$address,$status,$id];
                     $pdo->prepare("UPDATE mechanics SET first_name=?,middle_name=?,last_name=?,full_name=?,specialization=?,shift_assignment=?,date_hired=?,contact_no=?,address=?,status=?,archived=0,updated_at=NOW() WHERE {$where_id}")
                         ->execute($params);
-                    $success_msg = 'Mechanic updated successfully.';
-                } catch (Exception $e) { $error_msg = 'Failed to update: ' . $e->getMessage(); }
+                    $_SESSION['success'] = 'Mechanic "' . htmlspecialchars($full_name) . '" updated successfully.';
+                    header('Location: manager_mechanics_management.php');
+                    exit;
+                }
+            } catch (Exception $e) { 
+                $_SESSION['error'] = 'Failed to update: ' . $e->getMessage(); 
             }
         }
+        header('Location: manager_mechanics_management.php');
+        exit;
     }
 }
 
@@ -415,14 +454,14 @@ try {
                 WHERE mt.job_order_mechanic_id = m.id
                   AND mt.transaction_type IN ('job_order','combined')
                   AND mt.workflow_status IN ('Released','Completed')
-                  AND DATE(mt.transaction_date) = CURDATE()
+                  AND DATE(COALESCE(mt.updated_at, mt.transaction_date)) = CURDATE()
             ) +
             (
                 SELECT COUNT(*)
                 FROM job_orders jo
                 WHERE jo.assigned_mechanic_id = m.id
                   AND jo.status IN ('Completed','Verified','finalized')
-                  AND DATE(jo.completed_at) = CURDATE()
+                  AND DATE(COALESCE(jo.completed_at, jo.updated_at, jo.created_at)) = CURDATE()
             ) AS completed_today,
             0 AS mt_active_count
         FROM mechanics m
@@ -433,6 +472,34 @@ try {
     $stmt->execute($station_id > 0 ? [$station_id] : []);
     $mechanics_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
+
+// ── AJAX JSON POLLING ENDPOINT FOR MECHANICS MANAGEMENT ─────────────────
+if (isset($_GET['ajax_mm']) && $_GET['ajax_mm'] == '1') {
+    header('Content-Type: application/json');
+    $mechs_summary = array_map(function($m) {
+        return [
+            'id' => (int)$m['id'],
+            'assigned' => (int)($m['assigned_jo_count'] ?? 0) + (int)($m['mt_active_count'] ?? 0),
+            'completed_today' => (int)($m['completed_today'] ?? 0),
+            'status' => $m['status']
+        ];
+    }, $mechanics_list);
+
+    echo json_encode([
+        'success' => true,
+        'kpis' => [
+            'total'     => $total_mechanics,
+            'active'    => $active_mechanics,
+            'inactive'  => $inactive_mechanics,
+            'assigned'  => $assigned_today,
+            'available' => $available_mechanics,
+            'onduty'    => $on_duty
+        ],
+        'mechanics_summary' => $mechs_summary,
+        'mechanics_count'   => count($mechanics_list)
+    ]);
+    exit;
+}
 
 require_once __DIR__ . '/../partials/header.php';
 ?>
@@ -565,27 +632,27 @@ button.tbl-btn.wkld { color:#475569!important; }
 <div class="txn-kpi-grid">
     <div class="txn-kpi-card blue">
         <div class="txn-kpi-lbl"><i class="fas fa-users"></i> Total Mechanics</div>
-        <div class="txn-kpi-val"><?= $total_mechanics ?></div>
+        <div class="txn-kpi-val" id="mm_kpi_total"><?= $total_mechanics ?></div>
     </div>
     <div class="txn-kpi-card green">
         <div class="txn-kpi-lbl"><i class="fas fa-check-circle"></i> Active</div>
-        <div class="txn-kpi-val"><?= $active_mechanics ?></div>
+        <div class="txn-kpi-val" id="mm_kpi_active"><?= $active_mechanics ?></div>
     </div>
     <div class="txn-kpi-card danger">
         <div class="txn-kpi-lbl"><i class="fas fa-times-circle"></i> Inactive</div>
-        <div class="txn-kpi-val"><?= $inactive_mechanics ?></div>
+        <div class="txn-kpi-val" id="mm_kpi_inactive"><?= $inactive_mechanics ?></div>
     </div>
     <div class="txn-kpi-card orange">
         <div class="txn-kpi-lbl"><i class="fas fa-wrench"></i> Assigned Today</div>
-        <div class="txn-kpi-val"><?= $assigned_today ?></div>
+        <div class="txn-kpi-val" id="mm_kpi_assigned"><?= $assigned_today ?></div>
     </div>
     <div class="txn-kpi-card purple">
         <div class="txn-kpi-lbl"><i class="fas fa-user-check"></i> Available</div>
-        <div class="txn-kpi-val"><?= $available_mechanics ?></div>
+        <div class="txn-kpi-val" id="mm_kpi_available"><?= $available_mechanics ?></div>
     </div>
     <div class="txn-kpi-card teal">
         <div class="txn-kpi-lbl"><i class="fas fa-hard-hat"></i> On Duty Today</div>
-        <div class="txn-kpi-val"><?= $on_duty ?></div>
+        <div class="txn-kpi-val" id="mm_kpi_onduty"><?= $on_duty ?></div>
     </div>
 </div>
 
@@ -704,11 +771,13 @@ button.tbl-btn.wkld { color:#475569!important; }
                     </td>
                     <td style="text-align:center;">
                         <?php if ($completedToday > 0): ?>
-                        <span style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;font-weight:700;padding:2px 8px;border-radius:12px;font-size:11px;display:inline-flex;align-items:center;gap:4px;">
-                            <i class="fas fa-check"></i> <?= $completedToday ?>
+                        <span style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;font-weight:700;padding:3px 10px;border-radius:12px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px;" id="completed-badge-<?= (int)$row['id'] ?>">
+                            <i class="fas fa-check-circle"></i> <?= $completedToday ?> Done
                         </span>
                         <?php else: ?>
-                        <span style="color:#94a3b8;font-size:11px;font-weight:600;">—</span>
+                        <span style="background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;font-weight:600;padding:3px 10px;border-radius:12px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px;" id="completed-badge-<?= (int)$row['id'] ?>">
+                            <i class="fas fa-check-circle" style="color:#cbd5e1;"></i> 0 Done
+                        </span>
                         <?php endif; ?>
                     </td>
                     <td style="text-align:center;">
@@ -783,25 +852,44 @@ button.tbl-btn.wkld { color:#475569!important; }
                         <div style="font-size:13px;font-weight:700;color:#002F70;margin-top:4px;" id="perfLast">—</div>
                     </div>
                 </div>
-                <!-- Current Workload -->
-                <div class="form-section-title"><i class="fas fa-wrench"></i> Current Workload</div>
-                <div style="overflow-x:auto;margin-bottom:16px;">
-                    <table class="wkld-table">
-                        <thead><tr><th>JO No.</th><th>Customer</th><th>Vehicle</th><th>Service</th><th>Status</th></tr></thead>
-                        <tbody id="wkldTableBody">
-                            <tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8;">No active job orders.</td></tr>
-                        </tbody>
-                    </table>
+                <!-- Sub-Tab Header Navigation Bar (EXACT MATCH WITH REPORTS SUB-TAB DESIGN) -->
+                <div style="display:flex !important;flex-wrap:nowrap !important;margin-bottom:22px !important;border:1px solid #d1d9e6 !important;border-radius:4px !important;overflow:hidden !important;border-bottom:3px solid #00264D !important;background:#ffffff !important;width:100% !important;box-sizing:border-box !important;">
+                    <button type="button" id="wkldSubTabBtn_workload" onclick="switchWkldSubTab('workload')" 
+                            style="flex:1 !important;padding:12px 16px !important;font-size:11.5px !important;font-weight:800 !important;color:#ffffff !important;background:#00264D !important;border:none !important;border-right:1px solid #d1d9e6 !important;text-transform:uppercase !important;letter-spacing:0.3px !important;text-align:center !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;gap:7px !important;cursor:pointer !important;transition:all 0.15s ease !important;">
+                        <i class="fas fa-wrench" style="color:#ffffff !important;font-size:13px !important;"></i> <span style="color:#ffffff !important;">Current Workload</span>
+                        <span id="wkldBadgeWorkload" style="background:#ffffff !important;color:#00264D !important;font-weight:800 !important;padding:2px 8px !important;border-radius:12px !important;font-size:11px !important;">0</span>
+                    </button>
+                    <button type="button" id="wkldSubTabBtn_history" onclick="switchWkldSubTab('history')" 
+                            style="flex:1 !important;padding:12px 16px !important;font-size:11.5px !important;font-weight:700 !important;color:#334155 !important;background:#ffffff !important;border:none !important;text-transform:uppercase !important;letter-spacing:0.3px !important;text-align:center !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;gap:7px !important;cursor:pointer !important;transition:all 0.15s ease !important;">
+                        <i class="fas fa-history" style="color:#00264D !important;font-size:13px !important;"></i> <span style="color:#334155 !important;">Service History</span>
+                        <span id="wkldBadgeHistory" style="background:#e2e8f0 !important;color:#00264D !important;font-weight:800 !important;padding:2px 8px !important;border-radius:12px !important;font-size:11px !important;">0</span>
+                    </button>
                 </div>
-                <!-- Service History -->
-                <div class="form-section-title"><i class="fas fa-history"></i> Service History</div>
-                <div style="overflow-x:auto;">
-                    <table class="wkld-table">
-                        <thead><tr><th>JO No.</th><th>Date</th><th>Service</th><th>Vehicle</th><th>Duration (min)</th><th>Status</th></tr></thead>
-                        <tbody id="histTableBody">
-                            <tr><td colspan="6" style="text-align:center;padding:20px;color:#94a3b8;">No service history found.</td></tr>
-                        </tbody>
-                    </table>
+
+                <!-- Sub-Tab 1: Current Workload Panel -->
+                <div id="wkldPanel_workload" style="display:block;">
+                    <div class="form-section-title" style="margin-bottom:8px;"><i class="fas fa-wrench"></i> Current Active Workload</div>
+                    <div style="overflow-x:auto;">
+                        <table class="wkld-table">
+                            <thead><tr><th>JO No.</th><th>Customer</th><th>Vehicle</th><th>Service</th><th>Status</th></tr></thead>
+                            <tbody id="wkldTableBody">
+                                <tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8;">No active job orders.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Sub-Tab 2: Service History Panel -->
+                <div id="wkldPanel_history" style="display:none;">
+                    <div class="form-section-title" style="margin-bottom:8px;"><i class="fas fa-history"></i> Completed Service History</div>
+                    <div style="overflow-x:auto;">
+                        <table class="wkld-table">
+                            <thead><tr><th>JO No.</th><th>Date</th><th>Service</th><th>Vehicle</th><th>Duration (min)</th><th>Status</th></tr></thead>
+                            <tbody id="histTableBody">
+                                <tr><td colspan="6" style="text-align:center;padding:20px;color:#94a3b8;">No service history found.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -986,6 +1074,7 @@ function openWorkloadModal(mechId, mechName) {
     document.getElementById('wkldMechName').textContent = mechName;
     document.getElementById('wkldLoading').style.display = 'block';
     document.getElementById('wkldContent').style.display = 'none';
+        switchWkldSubTab('workload');
     document.getElementById('workloadModal').style.display = 'flex';
 
     const fd = new FormData();
@@ -1016,6 +1105,12 @@ function openWorkloadModal(mechId, mechName) {
                 wkldBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8;">No active job orders.</td></tr>';
             }
 
+            // Update badge counts for sub-tabs
+            const wLen = d.workload ? d.workload.length : 0;
+            const hLen = d.history ? d.history.length : 0;
+            if (document.getElementById('wkldBadgeWorkload')) document.getElementById('wkldBadgeWorkload').textContent = wLen;
+            if (document.getElementById('wkldBadgeHistory')) document.getElementById('wkldBadgeHistory').textContent = hLen;
+
             // History table
             const histBody = document.getElementById('histTableBody');
             if (d.history && d.history.length > 0) {
@@ -1035,6 +1130,49 @@ function openWorkloadModal(mechId, mechName) {
             document.getElementById('wkldLoading').innerHTML = '<span style="color:#dc2626;">Network error.</span>';
         });
 }
+function switchWkldSubTab(tab) {
+    const isWkld = (tab === 'workload');
+    const pWkld  = document.getElementById('wkldPanel_workload');
+    const pHist  = document.getElementById('wkldPanel_history');
+    const bWkld  = document.getElementById('wkldSubTabBtn_workload');
+    const bHist  = document.getElementById('wkldSubTabBtn_history');
+    const bgWkld = document.getElementById('wkldBadgeWorkload');
+    const bgHist = document.getElementById('wkldBadgeHistory');
+
+    if (pWkld) pWkld.style.display = isWkld ? 'block' : 'none';
+    if (pHist) pHist.style.display = isWkld ? 'none' : 'block';
+
+    // Workload Tab
+    if (bWkld) {
+        bWkld.style.setProperty('background', isWkld ? '#00264D' : '#ffffff', 'important');
+        bWkld.style.setProperty('color', isWkld ? '#ffffff' : '#334155', 'important');
+        bWkld.style.setProperty('font-weight', isWkld ? '800' : '700', 'important');
+        const icon = bWkld.querySelector('i');
+        const span = bWkld.querySelector('span:not([id])');
+        if (icon) icon.style.setProperty('color', isWkld ? '#ffffff' : '#00264D', 'important');
+        if (span) span.style.setProperty('color', isWkld ? '#ffffff' : '#334155', 'important');
+    }
+    if (bgWkld) {
+        bgWkld.style.setProperty('background', isWkld ? '#ffffff' : '#e2e8f0', 'important');
+        bgWkld.style.setProperty('color', '#00264D', 'important');
+    }
+
+    // History Tab
+    if (bHist) {
+        bHist.style.setProperty('background', isWkld ? '#ffffff' : '#00264D', 'important');
+        bHist.style.setProperty('color', isWkld ? '#334155' : '#ffffff', 'important');
+        bHist.style.setProperty('font-weight', isWkld ? '700' : '800', 'important');
+        const icon = bHist.querySelector('i');
+        const span = bHist.querySelector('span:not([id])');
+        if (icon) icon.style.setProperty('color', isWkld ? '#00264D' : '#ffffff', 'important');
+        if (span) span.style.setProperty('color', isWkld ? '#334155' : '#ffffff', 'important');
+    }
+    if (bgHist) {
+        bgHist.style.setProperty('background', isWkld ? '#e2e8f0' : '#ffffff', 'important');
+        bgHist.style.setProperty('color', '#00264D', 'important');
+    }
+}
+
 function escH(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 
 // ── Archive Modal ─────────────────────────────────────────────────────────────
@@ -1115,4 +1253,44 @@ document.querySelectorAll('.modal-backdrop').forEach(m => {
 });
 </script>
 </div>
+<script>
+// ── 10-SECOND REAL-TIME AUTO REFRESH FOR MECHANICS MANAGEMENT ────────────
+async function autoRefreshMechanicsManagement() {
+    // Pause auto-refresh if user has any modal open
+    const modals = ['addMechanicModal', 'editMechanicModal', 'archiveModal', 'workloadModal'];
+    for (let mId of modals) {
+        const m = document.getElementById(mId);
+        if (m && (m.style.display === 'flex' || m.style.display === 'block')) return;
+    }
+
+    try {
+        const params = new URLSearchParams(window.location.search);
+        params.set('ajax_mm', '1');
+        const resp = await fetch('manager_mechanics_management.php?' + params.toString());
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        if (data.kpis) {
+            if (document.getElementById('mm_kpi_total'))     document.getElementById('mm_kpi_total').textContent     = data.kpis.total;
+            if (document.getElementById('mm_kpi_active'))    document.getElementById('mm_kpi_active').textContent    = data.kpis.active;
+            if (document.getElementById('mm_kpi_inactive'))  document.getElementById('mm_kpi_inactive').textContent  = data.kpis.inactive;
+            if (document.getElementById('mm_kpi_assigned'))  document.getElementById('mm_kpi_assigned').textContent  = data.kpis.assigned;
+            if (document.getElementById('mm_kpi_available')) document.getElementById('mm_kpi_available').textContent = data.kpis.available;
+            if (document.getElementById('mm_kpi_onduty'))    document.getElementById('mm_kpi_onduty').textContent    = data.kpis.onduty;
+        }
+
+        if (typeof data.mechanics_count !== 'undefined') {
+            const rows = document.querySelectorAll('#mechanicsTable tbody tr.mech-row');
+            if (data.mechanics_count !== rows.length) {
+                window.location.reload();
+            }
+        }
+    } catch (e) {
+        console.warn('Mechanics Management refresh notice:', e);
+    }
+}
+
+// Run auto-refresh every 10 seconds
+setInterval(autoRefreshMechanicsManagement, 10000);
+</script>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

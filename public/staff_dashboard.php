@@ -50,14 +50,22 @@ $station_label = htmlspecialchars($me['station_name'] ?? 'Station #' . $station_
 if (isset($_GET['open_notif']) && (int)$_GET['open_notif'] > 0) {
     $notif_id = (int)$_GET['open_notif'];
     try {
-        $stmtN = $pdo->prepare("SELECT redirect_url FROM notifications WHERE id = ? AND user_id = ?");
+        $stmtN = $pdo->prepare("SELECT redirect_url, reference_type, reference_id FROM notifications WHERE id = ? AND user_id = ?");
         $stmtN->execute([$notif_id, $user_id]);
-        $redir = $stmtN->fetchColumn();
-
-        $upd = $pdo->prepare("UPDATE notifications SET status = 'read', read_at = NOW() WHERE id = ?");
-        $upd->execute([$notif_id]);
-
-        if ($redir && $redir !== '#' && $redir !== '') {
+        $n_row = $stmtN->fetch(PDO::FETCH_ASSOC);
+        
+        $updN = $pdo->prepare("UPDATE notifications SET status = 'read', read_at = NOW() WHERE id = ? AND user_id = ?");
+        $updN->execute([$notif_id, $user_id]);
+        
+        $redir = trim((string)($n_row['redirect_url'] ?? ''));
+        $redir = preg_replace('/^\/?(public\/)?/', '', $redir);
+        
+        if (empty($redir) && !empty($n_row['reference_type'])) {
+            $redir = notification_redirect_url($n_row['reference_type'], (int)($n_row['reference_id'] ?? 0), $role);
+            $redir = preg_replace('/^\/?(public\/)?/', '', $redir);
+        }
+        
+        if (!empty($redir) && $redir !== '#' && $redir !== 'null') {
             header("Location: " . $redir);
             exit;
         }
@@ -107,22 +115,48 @@ $st_sql = "station_id = ?";
 $st_params = [$station_id];
 
 // ── 1. AUTOMATIC SHIFT DETERMINATION (Shift 1 vs Shift 2) ───────────────────
-// Shift 1: 6:00 AM – 2:00 PM | Shift 2: 2:00 PM – 12:00 MN
-$cur_hour = (int)date('G');
-if ($cur_hour >= 6 && $cur_hour < 14) {
+// Shift 1: 6:00 AM – 2:00 PM | Shift 2: 2:00 PM – 12:00 MN | Both Shifts: 6:00 AM – 12:00 MN
+$req_shift = strtolower(trim($_GET['shift'] ?? 'auto'));
+$cur_hour  = (int)date('G');
+
+if ($req_shift === '1' || $req_shift === 'shift 1' || $req_shift === 'shift_1' || $req_shift === 'first') {
     $active_shift_num    = 1;
     $active_shift_name   = 'Shift 1';
     $active_shift_period = 'first';
     $active_shift_hours  = '6:00 AM – 2:00 PM';
     $active_shift_start  = '06:00:00';
     $active_shift_end    = '14:00:00';
-} else {
+} elseif ($req_shift === '2' || $req_shift === 'shift 2' || $req_shift === 'shift_2' || $req_shift === 'second') {
     $active_shift_num    = 2;
     $active_shift_name   = 'Shift 2';
     $active_shift_period = 'second';
     $active_shift_hours  = '2:00 PM – 12:00 MN';
     $active_shift_start  = '14:00:00';
     $active_shift_end    = '23:59:59';
+} elseif ($req_shift === 'both' || $req_shift === 'all' || $req_shift === 'combined') {
+    $active_shift_num    = 0;
+    $active_shift_name   = 'Both Shifts (Shift 1 & 2)';
+    $active_shift_period = 'all';
+    $active_shift_hours  = 'Full Day (6:00 AM – 12:00 MN)';
+    $active_shift_start  = '00:00:00';
+    $active_shift_end    = '23:59:59';
+} else {
+    $req_shift = 'auto';
+    if ($cur_hour >= 6 && $cur_hour < 14) {
+        $active_shift_num    = 1;
+        $active_shift_name   = 'Shift 1';
+        $active_shift_period = 'first';
+        $active_shift_hours  = '6:00 AM – 2:00 PM';
+        $active_shift_start  = '06:00:00';
+        $active_shift_end    = '14:00:00';
+    } else {
+        $active_shift_num    = 2;
+        $active_shift_name   = 'Shift 2';
+        $active_shift_period = 'second';
+        $active_shift_hours  = '2:00 PM – 12:00 MN';
+        $active_shift_start  = '14:00:00';
+        $active_shift_end    = '23:59:59';
+    }
 }
 
 // ── 2. KPI METRICS (Fuel + Merchandise + Job Orders + Inventory + Requests) ──
@@ -173,14 +207,14 @@ $all_station_jos = stf_rows($pdo, "
     SELECT 
         COALESCE(jo.status, 'Completed') AS status
     FROM job_orders jo
-    WHERE (jo.station_id = ? OR jo.station_id = 0)
+    WHERE jo.station_id = ?
     
     UNION ALL
     
     SELECT 
         COALESCE(mt.workflow_status, mt.validation_status, 'Completed') AS status
     FROM merchandise_transactions mt
-    WHERE (mt.station_id = ? OR mt.station_id = 0)
+    WHERE mt.station_id = ?
       AND (LOWER(COALESCE(mt.transaction_type, '')) IN ('job_order', 'service', 'combined') OR mt.job_order_service IS NOT NULL)
       AND LOWER(COALESCE(mt.workflow_status, mt.validation_status, '')) NOT IN ('void','voided','cancelled','rejected')
 ", [$station_id, $station_id]);
@@ -228,7 +262,7 @@ try {
             si.physical_count,
             si.variance
         FROM inventory_products ip
-        LEFT JOIN station_inventory si ON si.product_id = ip.id AND (si.station_id = ? OR si.station_id = 0 OR si.station_id IS NULL)
+        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
         WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
 
         UNION
@@ -254,7 +288,7 @@ try {
             si2.variance
         FROM products p
         LEFT JOIN product_categories pc ON pc.id = p.category_id
-        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND (si2.station_id = ? OR si2.station_id = 0 OR si2.station_id IS NULL)
+        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND si2.station_id = ?
         WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
           AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
           AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products'))
@@ -323,19 +357,19 @@ unset($item);
 // KPI 8: Pending Requests (Stock Requests + Fuel Stock Requests + Master Data Requests)
 $pending_stock_reqs = (int)stf_val($pdo, "
     SELECT COUNT(*) FROM stock_requests 
-    WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) 
+    WHERE station_id = ? 
       AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'pending manager review', 'for review', 'for revision')
 ", $st_params);
 
 $pending_fuel_sr = (int)stf_val($pdo, "
     SELECT COUNT(*) FROM fuel_stock_requests 
-    WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) 
+    WHERE station_id = ? 
       AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'pending manager review', 'for review', 'for revision')
 ", $st_params);
 
 $pending_master_reqs = (int)stf_val($pdo, "
     SELECT COUNT(*) FROM master_data_requests 
-    WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) 
+    WHERE station_id = ? 
       AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'pending manager review', 'for review', 'for revision')
 ", $st_params);
 
@@ -439,7 +473,7 @@ $fuel_closing_label = !empty($fsc_status_raw)
 $fi_raw    = [];
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, status, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, status, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
     $s->execute([$station_id]);
     $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fi_raw as $row) {
@@ -545,7 +579,7 @@ $merch_items_released = (int)stf_val($pdo, "
     SELECT COALESCE(SUM(mti.quantity), 0) 
     FROM merchandise_transaction_items mti
     JOIN merchandise_transactions mt ON mt.id = mti.transaction_id
-    WHERE (mt.station_id = ? OR mt.station_id = 0)
+    WHERE mt.station_id = ?
       AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
       AND LOWER(COALESCE(mt.workflow_status, mt.validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
 ", [$station_id, $date_from, $date_to]);
@@ -559,17 +593,17 @@ $recent_merch_transactions = stf_rows($pdo, "
            COALESCE(mt.workflow_status, mt.validation_status, 'Completed') AS status,
            mt.created_at
     FROM merchandise_transactions mt
-    WHERE (mt.station_id = ? OR mt.station_id = 0)
+    WHERE mt.station_id = ?
     ORDER BY mt.created_at DESC
     LIMIT 5
 ", $st_params);
 
 $recent_stockins = stf_rows($pdo, "
-    SELECT msi.id, COALESCE(msi.batch_ref, CONCAT('BATCH-', msi.id)) AS batch_no, msi.product_name, msi.qty_received, msi.encoded_at,
+    SELECT msi.id, COALESCE(msi.batch_ref, CONCAT('BATCH-', msi.id)) AS batch_no, m msi.qty_received, msi.encoded_at,
            COALESCE(si.unit, 'pcs') AS unit
     FROM merchandise_stock_in msi
-    LEFT JOIN station_inventory si ON si.product_id = msi.product_id AND (si.station_id = ? OR si.station_id = 0)
-    WHERE (msi.station_id = ? OR msi.station_id = 0)
+    LEFT JOIN station_inventory si ON si.product_id = msi.product_id AND si.station_id = ?
+    WHERE msi.station_id = ?
     ORDER BY msi.encoded_at DESC
     LIMIT 4
 ", [$station_id, $station_id]);
@@ -585,7 +619,7 @@ $latest_job_orders = stf_rows($pdo, "
         COALESCE(jo.status, 'Completed') AS status,
         COALESCE(jo.created_at, jo.updated_at) AS created_at
     FROM job_orders jo
-    WHERE (jo.station_id = ? OR jo.station_id = 0)
+    WHERE jo.station_id = ?
     
     UNION ALL
     
@@ -598,7 +632,7 @@ $latest_job_orders = stf_rows($pdo, "
         COALESCE(mt.workflow_status, mt.validation_status, 'Completed') AS status,
         COALESCE(mt.transaction_date, mt.created_at) AS created_at
     FROM merchandise_transactions mt
-    WHERE (mt.station_id = ? OR mt.station_id = 0)
+    WHERE mt.station_id = ?
       AND (LOWER(COALESCE(mt.transaction_type, '')) IN ('job_order', 'service', 'combined') OR mt.job_order_service IS NOT NULL)
       AND LOWER(COALESCE(mt.workflow_status, mt.validation_status, '')) NOT IN ('void','voided','cancelled','rejected')
     
@@ -703,7 +737,7 @@ $staff_stock_requests = stf_rows($pdo, "
         status, 
         created_at
     FROM stock_requests 
-    WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)
+    WHERE station_id = ?
     
     UNION ALL
     
@@ -715,7 +749,7 @@ $staff_stock_requests = stf_rows($pdo, "
         status, 
         created_at
     FROM fuel_stock_requests
-    WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)
+    WHERE station_id = ?
     
     ORDER BY created_at DESC
     LIMIT 6
@@ -729,7 +763,7 @@ $staff_master_data_requests = stf_rows($pdo, "
         status, 
         created_at
     FROM master_data_requests 
-    WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)
+    WHERE station_id = ?
     ORDER BY created_at DESC
     LIMIT 6
 ", [$station_id]);
@@ -754,7 +788,7 @@ $recent_consolidated_txns = stf_rows($pdo, "
         COALESCE(t.workflow_status, t.validation_status, 'Completed') AS status,
         COALESCE(t.transaction_date, t.created_at) AS created_at
     FROM merchandise_transactions t
-    WHERE (t.station_id = ? OR t.station_id = 0)
+    WHERE t.station_id = ?
     
     UNION ALL
     
@@ -767,7 +801,7 @@ $recent_consolidated_txns = stf_rows($pdo, "
         COALESCE(ft.status, 'Completed') AS status,
         COALESCE(ft.transaction_date, ft.created_at) AS created_at
     FROM fuel_transactions ft
-    WHERE (ft.station_id = ? OR ft.station_id = 0)
+    WHERE ft.station_id = ?
     
     UNION ALL
     
@@ -780,7 +814,7 @@ $recent_consolidated_txns = stf_rows($pdo, "
         COALESCE(jo.status, 'Completed') AS status,
         COALESCE(jo.created_at, jo.updated_at) AS created_at
     FROM job_orders jo
-    WHERE (jo.station_id = ? OR jo.station_id = 0)
+    WHERE jo.station_id = ?
     
     ORDER BY created_at DESC
     LIMIT 7
@@ -794,7 +828,7 @@ $recent_inventory_movements = stf_rows($pdo, "
     FROM inventory_logs il
     LEFT JOIN products p ON p.id = il.product_id
     LEFT JOIN inventory_products ip ON ip.id = il.product_id
-    WHERE (il.station_id = ? OR il.station_id = 0 OR il.station_id IS NULL)
+    WHERE il.station_id = ?
     ORDER BY il.id DESC 
     LIMIT 5
 ", $st_params);
@@ -1362,8 +1396,8 @@ require_once __DIR__ . '/../partials/header.php';
         <!-- 2. Current Shift Summary -->
         <div class="stf-card">
             <div class="stf-card-header">
-                <h2><i class="fas fa-user-clock" style="color:#002F6C;"></i> Current Shift Summary (<?= $active_shift_name ?>)</h2>
-                <span class="stf-badge stf-badge-info"><?= $active_shift_hours ?></span>
+                <h2 id="sh_title_hdr"><i class="fas fa-user-clock" style="color:#002F6C;"></i> Current Shift Summary (<?= $active_shift_name ?>)</h2>
+                <span class="stf-badge stf-badge-info" id="sh_hours_badge"><?= $active_shift_hours ?></span>
             </div>
             <div class="stf-card-body">
                 <div class="stf-metric-list">
@@ -2492,7 +2526,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // ── AUTOMATIC BACKGROUND DATA FETCHING (Every 10 Seconds) ──
     async function refreshStaffDashboard() {
         try {
-            const resp = await fetch('staff_dashboard.php?ajax=1&date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>');
+            const shiftEl = document.getElementById('shift');
+            const shiftVal = shiftEl ? shiftEl.value : '<?= urlencode($req_shift) ?>';
+            const resp = await fetch('staff_dashboard.php?ajax=1&date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>&shift=' + encodeURIComponent(shiftVal));
             if (!resp.ok) return;
             const data = await resp.json();
 
@@ -2510,6 +2546,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Update Shift Section
             if (data.shift) {
+                if (document.getElementById('sh_title_hdr')) document.getElementById('sh_title_hdr').innerHTML = '<i class="fas fa-user-clock" style="color:#002F6C;"></i> Current Shift Summary (' + data.shift.name + ')';
+                if (document.getElementById('sh_hours_badge')) document.getElementById('sh_hours_badge').textContent = data.shift.hours;
+                if (document.getElementById('sh_name_lbl')) document.getElementById('sh_name_lbl').innerHTML = data.shift.name + ' &bull; ' + data.shift.hours;
                 if (document.getElementById('sh_fuel_sales')) document.getElementById('sh_fuel_sales').innerHTML = '&#8369; ' + data.shift.fuel_sales;
                 if (document.getElementById('sh_merch_sales')) document.getElementById('sh_merch_sales').innerHTML = '&#8369; ' + data.shift.merch_sales;
                 if (document.getElementById('sh_job_sales')) document.getElementById('sh_job_sales').innerHTML = '&#8369; ' + data.shift.job_sales;

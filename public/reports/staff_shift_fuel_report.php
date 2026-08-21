@@ -274,6 +274,16 @@ try {
 
 // Page ID for sidebar highlighting
 $page_id = 'reports';
+// ── AJAX JSON POLLING ENDPOINT FOR STAFF SHIFT FUEL REPORT ────────────────────
+if (isset($_GET['ajax_ssfr']) && $_GET['ajax_ssfr'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'readings_count' => count($meter_readings ?? []),
+        'time' => time()
+    ]);
+    exit;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">

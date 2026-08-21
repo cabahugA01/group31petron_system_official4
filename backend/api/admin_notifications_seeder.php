@@ -158,7 +158,7 @@ if ($action === 'seed') {
             'event_type'  => 'delivery',
             'severity'    => 'high',
             'source_key'  => "admin_del_oversight_{$station_id}",
-            'redirect_url'=> '/public/admin_deliveries_oversight.php',
+            'redirect_url'=> 'admin_deliveries_oversight.php',
         ]);
     }
 
@@ -174,7 +174,7 @@ if ($action === 'seed') {
             'event_type'  => 'delivery',
             'severity'    => 'critical',
             'source_key'  => "flagged_del_{$station_id}",
-            'redirect_url'=> '/public/admin_deliveries_oversight.php',
+            'redirect_url'=> 'admin_deliveries_oversight.php',
         ]);
     }
 
@@ -190,7 +190,7 @@ if ($action === 'seed') {
             'event_type'  => 'transaction',
             'severity'    => 'low',
             'source_key'  => "admin_tx_today_{$station_id}_".date('Y-m-d'),
-            'redirect_url'=> '/public/admin_all_transactions.php',
+            'redirect_url'=> 'admin_all_transactions.php',
         ]);
     }
 
@@ -206,7 +206,7 @@ if ($action === 'seed') {
             'event_type'  => 'delivery',
             'severity'    => 'medium',
             'source_key'  => "pending_po_{$station_id}",
-            'redirect_url'=> '/public/admin_procurement_reports.php?section=po',
+            'redirect_url'=> 'admin_procurement_reports.php?section=po',
         ]);
     }
 
@@ -222,7 +222,7 @@ if ($action === 'seed') {
             'event_type'  => 'joborder',
             'severity'    => 'low',
             'source_key'  => "admin_jo_today_{$station_id}_".date('Y-m-d'),
-            'redirect_url'=> '/public/admin_all_transactions.php',
+            'redirect_url'=> 'admin_all_transactions.php',
         ]);
     }
 
@@ -244,7 +244,7 @@ if ($action === 'seed') {
             'event_type'  => 'report',
             'severity'    => 'critical',
             'source_key'  => "variance_open_{$station_id}",
-            'redirect_url'=> '/public/admin_reports.php?tab=variance',
+            'redirect_url'=> 'admin_reports.php?tab=variance',
         ]);
     }
 
@@ -266,7 +266,7 @@ if ($action === 'seed') {
             'event_type'  => 'customer',
             'severity'    => 'high',
             'source_key'  => "ar_overdue_{$station_id}",
-            'redirect_url'=> '/public/admin_reports.php?tab=receivable',
+            'redirect_url'=> 'admin_reports.php?tab=receivable',
         ]);
     }
 
@@ -294,7 +294,7 @@ if ($action === 'seed') {
             'event_type'  => 'general',
             'severity'    => 'low',
             'source_key'  => "no_shifts_".date('Y-m-d')."_{$station_id}",
-            'redirect_url'=> '/public/users.php',
+            'redirect_url'=> 'users.php',
         ]);
     } else {
         try {
@@ -322,7 +322,7 @@ if ($action === 'seed') {
                 'event_type'  => 'report',
                 'severity'    => 'low',
                 'source_key'  => "mgr_actions_".date('Y-m-d')."_{$station_id}",
-                'redirect_url'=> '/public/admin_audit_trail.php',
+                'redirect_url'=> 'admin_audit_trail.php',
             ]);
         }
     } catch (Exception $e) {}
@@ -345,7 +345,7 @@ if ($action === 'seed') {
                 'event_type'  => 'report',
                 'severity'    => 'critical',
                 'source_key'  => "suspicious_audit_".date('Y-m-d')."_{$station_id}",
-                'redirect_url'=> '/public/admin_audit_trail.php',
+                'redirect_url'=> 'admin_audit_trail.php',
             ]);
         }
     } catch (Exception $e) {}
@@ -365,7 +365,7 @@ if ($action === 'seed') {
                 'event_type'  => 'inventory',
                 'severity'    => 'high',
                 'source_key'  => "low_inv_{$station_id}",
-                'redirect_url'=> '/public/admin_inventory_merchandise.php',
+                'redirect_url'=> 'admin_inventory_merchandise.php',
             ]);
         }
     } catch (Exception $e) {}

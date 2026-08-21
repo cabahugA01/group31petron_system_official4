@@ -915,6 +915,40 @@ if (in_array($export, ['excel', 'pdf'])) {
     }
 }
 
+// ── AJAX JSON POLLING ENDPOINT FOR FUEL TRANSACTION VALIDATION ─────────────────
+if (isset($_GET['ajax_ftv']) && $_GET['ajax_ftv'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'kpis' => [
+            'pending'   => number_format($pending_count),
+            'validated' => number_format($validated_count),
+            'rejected'  => number_format($rejected_count),
+            'liters'    => number_format((float)$total_liters_today, 2) . ' L',
+            'sales'     => '₱' . number_format((float)$total_sales_today, 2)
+        ],
+        'transactions_count' => count($transactions)
+    ]);
+    exit;
+}
+
+// ── AJAX JSON POLLING ENDPOINT FOR FUEL TRANSACTION VALIDATION ─────────────────
+if (isset($_GET['ajax_ftv']) && $_GET['ajax_ftv'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'kpis' => [
+            'pending'   => number_format($pending_count),
+            'validated' => number_format($validated_count),
+            'rejected'  => number_format($rejected_count),
+            'liters'    => number_format((float)$total_liters_today, 2) . ' L',
+            'sales'     => '₱' . number_format((float)$total_sales_today, 2)
+        ],
+        'transactions_count' => count($transactions)
+    ]);
+    exit;
+}
+
 require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
@@ -1365,18 +1399,7 @@ input[type="checkbox"]:indeterminate {
                 </table>
             </div>
 
-            <!-- Pagination Footer Bar -->
-            <div class="afto-footer">
-                <div id="pageInfo" style="font-weight:600; color:#334155;">Showing entries</div>
-                <div style="display:flex; gap:6px; align-items:center;">
-                    <button type="button" id="prevPage" class="page-btn">
-                        <i class="fas fa-chevron-left me-1"></i> Previous
-                    </button>
-                    <button type="button" id="nextPage" class="page-btn">
-                        Next <i class="fas fa-chevron-right ms-1"></i>
-                    </button>
-                </div>
-            </div>
+            
     </div>
 </div>
 
@@ -1915,62 +1938,17 @@ function initManagerPagination() {
     if (!tableBody) return;
 
     const allRows = Array.from(tableBody.querySelectorAll('tr'));
-    let currentPage = 1;
-    let rowsPerPage = 25;
+    const validRows = allRows.filter(r => !r.querySelector('.afto-empty'));
+    const totalRows = validRows.length;
+
+    // Show all valid rows directly without page slicing
+    validRows.forEach(row => row.style.display = '');
 
     const pageInfo = document.getElementById('pageInfo');
-    const prevBtn = document.getElementById('prevPage');
-    const nextBtn = document.getElementById('nextPage');
-
-    function updateTable() {
-        const validRows = allRows.filter(r => !r.querySelector('.afto-empty'));
-        const totalRows = validRows.length;
-        const totalPages = Math.ceil(totalRows / rowsPerPage) || 1;
-        if (currentPage > totalPages) currentPage = totalPages;
-        if (currentPage < 1) currentPage = 1;
-
-        const start = (currentPage - 1) * rowsPerPage;
-        const end = Math.min(start + rowsPerPage, totalRows);
-
-        allRows.forEach(row => row.style.display = 'none');
-        validRows.slice(start, end).forEach(row => row.style.display = '');
-
-        if (pageInfo) {
-            pageInfo.textContent = totalRows === 0 
-                ? 'Showing 0 entries' 
-                : `Showing ${start + 1}–${end} of ${totalRows} entries` + (totalPages > 1 ? ` (Page ${currentPage} of ${totalPages})` : '');
-        }
-        if (prevBtn) prevBtn.disabled = (currentPage === 1);
-        if (nextBtn) nextBtn.disabled = (currentPage === totalPages);
+    if (pageInfo) {
+        pageInfo.textContent = `Showing ${totalRows} entries`;
     }
-
-    if (prevBtn) {
-        prevBtn.addEventListener('click', function() {
-            if (currentPage > 1) {
-                currentPage--;
-                updateTable();
-                const card = document.querySelector('.afto-table-card');
-                if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-        });
-    }
-
-    if (nextBtn) {
-        nextBtn.addEventListener('click', function() {
-            const validRows = allRows.filter(r => !r.querySelector('.afto-empty'));
-            const totalPages = Math.ceil(validRows.length / rowsPerPage) || 1;
-            if (currentPage < totalPages) {
-                currentPage++;
-                updateTable();
-                const card = document.querySelector('.afto-table-card');
-                if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-        });
-    }
-
-    updateTable();
 }
-
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initManagerPagination);
 } else {

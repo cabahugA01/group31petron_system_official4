@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Audit Trail Reports - Standalone Page
  * Complete Report Access Audit Trail
@@ -100,6 +100,21 @@ $by_type = $stmt_by_type->fetchAll(PDO::FETCH_ASSOC);
 // Get available report types and actions for filters
 $available_report_types = ['technical', 'security', 'developer_audit', 'audit_trail'];
 $available_actions = ['view', 'export_csv', 'export_pdf', 'print'];
+
+// ── AJAX JSON POLLING ENDPOINT FOR REPORT AUDIT TRAIL ──────────────────────────
+if (isset($_GET['ajax_rat']) && $_GET['ajax_rat'] == '1') {
+    header('Content-Type: application/json');
+    $count = count($report_accesses ?? []);
+    $firstRows = array_slice($report_accesses ?? [], 0, 30);
+    $signature = md5(json_encode($firstRows) . '_' . $count);
+    echo json_encode([
+        'success'   => true,
+        'count'     => $count,
+        'signature' => $signature,
+        'stats'     => $stats ?? []
+    ]);
+    exit;
+}
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -530,6 +545,39 @@ include __DIR__ . '/../partials/header.php';
             <?php endif; ?>
         </div>
     </div>
-</div>
+<script>
+// ── REAL-TIME 10-SECOND AUTO REFRESH POLLING ─────────────────────────
+let lastRatSignature = null;
+let lastRatCount = null;
 
+function autoRefreshReportAuditTrail() {
+    const openModal = Array.from(document.querySelectorAll('.modal, .modal-overlay, [id*="Modal"]')).some(m => {
+        const style = window.getComputedStyle(m);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    });
+    if (openModal) return;
+
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT')) {
+        return;
+    }
+
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('ajax_rat', '1');
+
+    fetch(currentUrl.toString(), { cache: 'no-store', credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.success) {
+                if (lastRatSignature !== null && (lastRatSignature !== data.signature || lastRatCount !== data.count)) {
+                    window.location.reload();
+                }
+                lastRatSignature = data.signature;
+                lastRatCount = data.count;
+            }
+        })
+        .catch(() => {});
+}
+
+setInterval(autoRefreshReportAuditTrail, 10000);
+</script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

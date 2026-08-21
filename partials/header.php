@@ -3572,40 +3572,53 @@ require_once __DIR__ . '/rbac_menu.php';
       $badges['mgr_customers'] = $mgr_cust_reqs;
   } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
       // ADMIN
-      // 1. Inventory: Critical Stock + Purchase Orders + Inventory Variances + Damaged + Expired
-      $admin_crit_stock = $__badge_count(
-          "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.critical_level, ip.critical_level, 10)",
-          []
-      );
-      $admin_pos = $__badge_count(
-          "SELECT COUNT(*) FROM purchase_orders WHERE status IN ('Pending Admin Review', 'Submitted', 'Pending Approval')",
-          []
-      );
-      $admin_inv_total = $admin_crit_stock + $admin_pos;
-      $badges['inventory']       = $admin_inv_total;
-      $badges['admin_inventory'] = $admin_inv_total;
+      if ($myStationId > 0) {
+          // 1. Inventory: Critical Stock + Purchase Orders
+          $admin_crit_stock = $__badge_count(
+              "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.critical_level, ip.critical_level, 10)",
+              [$myStationId]
+          );
+          $admin_pos = $__badge_count(
+              "SELECT COUNT(*) FROM purchase_orders WHERE station_id = ? AND status IN ('Pending Admin Review', 'Submitted', 'Pending Approval')",
+              [$myStationId]
+          );
+          $admin_inv_total = $admin_crit_stock + $admin_pos;
+          $badges['inventory']       = $admin_inv_total;
+          $badges['admin_inventory'] = $admin_inv_total;
 
-      // 2. Product & Pricing: New Product Requests + Price Change Approvals
-      $admin_price_change = $__badge_count(
-          "SELECT COUNT(*) FROM pending_price_approvals WHERE status = 'pending'",
-          []
-      );
-      $badges['prod_pricing']          = $admin_price_change;
-      $badges['mgr_product_pricing']   = $admin_price_change;
-      $badges['admin_product_pricing'] = $admin_price_change;
+          // 2. Product & Pricing: New Product Requests + Price Change Approvals
+          $admin_price_change = $__badge_count(
+              "SELECT COUNT(*) FROM pending_price_approvals WHERE station_id = ? AND status = 'pending'",
+              [$myStationId]
+          );
+          $badges['prod_pricing']          = $admin_price_change;
+          $badges['mgr_product_pricing']   = $admin_price_change;
+          $badges['admin_product_pricing'] = $admin_price_change;
 
-      // 3. Reports: No action badges (Reports is an analytical inquiry module)
-      $badges['reports']       = 0;
-      $badges['admin_reports'] = 0;
+          // 3. Reports
+          $badges['reports']       = 0;
+          $badges['admin_reports'] = 0;
 
-      // 4. Fuel Management Oversight: Pending Fuel Transactions requiring admin attention
-      $admin_fuel_pending = $__badge_count(
-          "SELECT COUNT(*) FROM fuel_transactions WHERE LOWER(COALESCE(status,'')) IN ('pending','pending validation')",
-          []
-      );
-      $badges['fuel']                  = $admin_fuel_pending;
-      $badges['admin_fuel']            = $admin_fuel_pending;
-      $badges['admin_fuel_management'] = $admin_fuel_pending;
+          // 4. Fuel Management Oversight
+          $admin_fuel_pending = $__badge_count(
+              "SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND LOWER(COALESCE(status,'')) IN ('pending','pending validation')",
+              [$myStationId]
+          );
+          $badges['fuel']                  = $admin_fuel_pending;
+          $badges['admin_fuel']            = $admin_fuel_pending;
+          $badges['admin_fuel_management'] = $admin_fuel_pending;
+      } else {
+          $badges['inventory']             = 0;
+          $badges['admin_inventory']       = 0;
+          $badges['prod_pricing']          = 0;
+          $badges['mgr_product_pricing']   = 0;
+          $badges['admin_product_pricing'] = 0;
+          $badges['reports']               = 0;
+          $badges['admin_reports']         = 0;
+          $badges['fuel']                  = 0;
+          $badges['admin_fuel']            = 0;
+          $badges['admin_fuel_management'] = 0;
+      }
   }
 
   // Calculate Header Bell Unread Count = sum of all visible sidebar badge counts
@@ -3899,11 +3912,14 @@ require_once __DIR__ . '/rbac_menu.php';
                 <i class="fas fa-bars" id="sidebarToggleIcon" style="pointer-events: none !important;"></i>
             </button>
             <?php 
-                $logo_path = $station_settings['logo'] ?? '../assets/img/Petron Logo.png';
+                $raw_logo = $station_settings['logo'] ?? $station_settings['company_logo'] ?? '';
+                $has_logo = (!empty($raw_logo) && $raw_logo !== 'none' && $raw_logo !== 'removed');
+                $logo_path = $has_logo ? $raw_logo : '';
+                $system_name = $station_settings['system_name'] ?? 'Petron Station Management System';
             ?>
-            <img src="<?php echo htmlspecialchars($logo_path); ?>" alt="Petron Logo" class="brand-mark" id="petronLogo">
+            <img src="<?php echo htmlspecialchars($logo_path); ?>" alt="System Logo" class="brand-mark" id="petronLogo" style="<?php echo $has_logo ? 'display: inline-block;' : 'display: none !important;'; ?>">
             <div class="brand-text">
-                <div class="brand-title">Petron Station Management System</div>
+                <div class="brand-title" id="headerSystemName"><?php echo htmlspecialchars($system_name); ?></div>
                 <?php if ($station_name && $role !== 'superadmin'): ?>
                 <div style="font-size: 14px; color: #666; margin-top: 2px; font-weight: 500;">
                     <i class="fas fa-building" style="font-size: 12px;"></i> <?php echo htmlspecialchars($station_name); ?>
@@ -4648,24 +4664,8 @@ require_once __DIR__ . '/rbac_menu.php';
 
     window.resolveRedirectUrl = function(url) {
         if (!url || url === '#' || url === '' || url === 'null') return '#';
-        const base = window.pageData && window.pageData.appBasePath ? window.pageData.appBasePath : '';
-        if (url.startsWith('/public/')) {
-            return base + url;
-        }
-        if (url.startsWith('public/')) {
-            return base + '/' + url;
-        }
-        if (url.startsWith('http://') || url.startsWith('https://')) {
-            return url;
-        }
-        if (url.includes('.php')) {
-            const cleanUrl = url.startsWith('/') ? url : '/' + url;
-            if (!cleanUrl.startsWith('/public/')) {
-                return base + '/public' + cleanUrl;
-            }
-            return base + cleanUrl;
-        }
-        return url;
+        if (url.startsWith('http://') || url.startsWith('https://')) return url;
+        return url.replace(/^\/?(public\/)?/, '');
     };
 
 

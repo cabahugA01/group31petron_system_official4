@@ -55,7 +55,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
         }
         $where_sql = implode(' OR ', $where_parts);
 
-        $stmt = $pdo->prepare("SELECT delivery_date, delivery_liters, invoice_no, supplier, status, fuel_type, tank_assigned FROM fuel_deliveries WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL OR ? = 0 OR ? IS NULL) AND ($where_sql) ORDER BY delivery_date DESC, id DESC LIMIT 10");
+        $stmt = $pdo->prepare("SELECT delivery_date, delivery_liters, invoice_no, supplier, status, fuel_type, tank_assigned FROM fuel_deliveries WHERE station_id = ? AND ($where_sql) ORDER BY delivery_date DESC, id DESC LIMIT 10");
         $stmt->execute($params);
         $deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {}
@@ -70,7 +70,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
         }
         $where_sql = implode(' OR ', $where_parts);
 
-        $stmt = $pdo->prepare("SELECT transaction_date, liters_sold, total_amount, shift_period, status, fuel_type FROM fuel_transactions WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL OR ? = 0 OR ? IS NULL) AND ($where_sql) ORDER BY transaction_date DESC, id DESC LIMIT 10");
+        $stmt = $pdo->prepare("SELECT transaction_date, liters_sold, total_amount, shift_period, status, fuel_type FROM fuel_transactions WHERE station_id = ? AND ($where_sql) ORDER BY transaction_date DESC, id DESC LIMIT 10");
         $stmt->execute($params);
         $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {}
@@ -89,7 +89,7 @@ $TANK_CONFIG_17 = get_tank_config((int)$station_id);
 $fi_raw = [];
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
     $s->execute([$station_id]);
     $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fi_raw as $row) {

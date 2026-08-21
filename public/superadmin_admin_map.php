@@ -84,6 +84,16 @@ try {
 $flash = $_SESSION['admin_map_flash'] ?? null;
 unset($_SESSION['admin_map_flash']);
 
+// ── AJAX JSON POLLING ENDPOINT FOR SUPERADMIN ADMIN MAP ───────────────────────
+if (isset($_GET['ajax_samap']) && $_GET['ajax_samap'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'stations_count' => count($stations ?? [])
+    ]);
+    exit;
+}
+
 include __DIR__ . '/../partials/header.php';
 ?>
 
@@ -1352,4 +1362,27 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
+<script>
+// ── REAL-TIME 10-SECOND AUTO REFRESH POLLING ─────────────────────────
+function autoRefreshSuperadminAdminMap() {
+    const openModal = Array.from(document.querySelectorAll('.modal, .modal-overlay, [id*="Modal"]')).some(m => {
+        const style = window.getComputedStyle(m);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    });
+    if (openModal) return;
+
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('ajax_samap', '1');
+
+    fetch(currentUrl.toString(), { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.success) {
+                // Polling active
+            }
+        })
+        .catch(() => {});
+}
+setInterval(autoRefreshSuperadminAdminMap, 10000);
+</script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

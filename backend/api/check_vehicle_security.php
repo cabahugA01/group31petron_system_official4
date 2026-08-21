@@ -40,7 +40,7 @@ try {
             FROM job_orders 
             WHERE UPPER(TRIM(vehicle_plate)) = ? 
               AND LOWER(COALESCE(status,'pending')) IN ('pending', 'in progress', 'in-progress', 'assigned')
-              AND (station_id = ? OR station_id = 0 OR station_id IS NULL)
+              AND station_id = ?
             ORDER BY id DESC LIMIT 1
         ");
         $jo_stmt->execute([$plate, $station_id]);

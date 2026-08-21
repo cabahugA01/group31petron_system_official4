@@ -614,6 +614,21 @@ if (in_array($export, ['excel', 'pdf'])) {
     }
 }
 
+// ── AJAX JSON POLLING ENDPOINT FOR CALIBRATION REVIEW ─────────────────
+if (isset($_GET['ajax_cr']) && $_GET['ajax_cr'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'kpis' => [
+            'validated'   => number_format((float)$total_liters_validated, 2) . ' L',
+            'calibration' => number_format((float)$total_calibration_liters, 2) . ' L',
+            'pending'     => number_format($pending_reviews_count)
+        ],
+        'records_count' => count($records)
+    ]);
+    exit;
+}
+
 require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 

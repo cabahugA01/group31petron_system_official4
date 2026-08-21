@@ -467,6 +467,24 @@ if (in_array($export, ['csv','excel','pdf'])) {
     }
 }
 
+// ── AJAX JSON POLLING ENDPOINT FOR FUEL TRANSACTION OVERSIGHT ─────────────────
+if (isset($_GET['ajax_fto']) && $_GET['ajax_fto'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'kpis' => [
+            'total'     => number_format($total_txns),
+            'pending'   => number_format($pending_txns),
+            'validated' => number_format($validated_txns),
+            'rejected'  => number_format($rejected_txns),
+            'liters'    => number_format((float)$total_liters, 2) . ' L',
+            'sales'     => '₱' . number_format((float)$total_sales, 2)
+        ],
+        'transactions_count' => count($transactions)
+    ]);
+    exit;
+}
+
 require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>
@@ -923,18 +941,7 @@ require_once __DIR__ . '/../partials/header.php';
         </table>
     </div>
 
-    <!-- Pagination Footer Bar -->
-    <div class="afto-footer" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; background:#ffffff !important; border-top:1px solid #e2e8f0; border-bottom-left-radius:12px; border-bottom-right-radius:12px; font-size:13px; color:#334155 !important; gap:12px; flex-wrap:wrap; margin-bottom:30px;">
-        <div id="pageInfo" style="font-weight:600; color:#334155 !important;">Showing entries</div>
-        <div style="display:flex; gap:6px; align-items:center;">
-            <button type="button" id="prevPage" class="page-btn" style="padding:6px 14px; border:1px solid #cbd5e1 !important; border-radius:6px; background:#ffffff !important; color:#334155 !important; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s ease;">
-                <i class="fas fa-chevron-left me-1"></i> Previous
-            </button>
-            <button type="button" id="nextPage" class="page-btn" style="padding:6px 14px; border:1px solid #cbd5e1 !important; border-radius:6px; background:#ffffff !important; color:#334155 !important; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s ease;">
-                Next <i class="fas fa-chevron-right ms-1"></i>
-            </button>
-        </div>
-    </div>
+    
 </div>
 
 <!-- Reopen Transaction Form -->
@@ -1142,73 +1149,7 @@ function aftoExport(format) {
     window.location.href = '?' + params.toString();
 }
 
-// Client-side pagination logic
-function initAdminFuelTxPagination() {
-    const tableBody = document.querySelector('.afto-tbl tbody');
-    if (!tableBody) return;
 
-    const allRows = Array.from(tableBody.querySelectorAll('tr'));
-    let currentPage = 1;
-    let rowsPerPage = 25;
-
-    const pageInfo = document.getElementById('pageInfo');
-    const prevBtn = document.getElementById('prevPage');
-    const nextBtn = document.getElementById('nextPage');
-
-    function updateTable() {
-        const validRows = allRows.filter(r => !r.querySelector('.afto-empty'));
-        const totalRows = validRows.length;
-        const totalPages = Math.ceil(totalRows / rowsPerPage) || 1;
-        if (currentPage > totalPages) currentPage = totalPages;
-        if (currentPage < 1) currentPage = 1;
-
-        const start = (currentPage - 1) * rowsPerPage;
-        const end = Math.min(start + rowsPerPage, totalRows);
-
-        allRows.forEach(row => row.style.display = 'none');
-        validRows.slice(start, end).forEach(row => row.style.display = '');
-
-        if (pageInfo) {
-            pageInfo.textContent = totalRows === 0 
-                ? 'Showing 0 entries' 
-                : `Showing ${start + 1}–${end} of ${totalRows} entries` + (totalPages > 1 ? ` (Page ${currentPage} of ${totalPages})` : '');
-        }
-        if (prevBtn) prevBtn.disabled = (currentPage === 1);
-        if (nextBtn) nextBtn.disabled = (currentPage === totalPages);
-    }
-
-    if (prevBtn) {
-        prevBtn.addEventListener('click', function() {
-            if (currentPage > 1) {
-                currentPage--;
-                updateTable();
-                const card = document.querySelector('.afto-table-card');
-                if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-        });
-    }
-
-    if (nextBtn) {
-        nextBtn.addEventListener('click', function() {
-            const validRows = allRows.filter(r => !r.querySelector('.afto-empty'));
-            const totalPages = Math.ceil(validRows.length / rowsPerPage) || 1;
-            if (currentPage < totalPages) {
-                currentPage++;
-                updateTable();
-                const card = document.querySelector('.afto-table-card');
-                if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-        });
-    }
-
-    updateTable();
-}
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initAdminFuelTxPagination);
-} else {
-    initAdminFuelTxPagination();
-}
 </script>
 </div> <!-- /.main-content -->
 

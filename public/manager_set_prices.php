@@ -56,14 +56,10 @@ function get_canonical_fuel_name($name) {
 $fuel_products = [];
 $fuel_stats = ['total' => 0, 'active' => 0, 'inactive' => 0, 'last_updated' => null, 'updates_today' => 0];
 try {
-    $TANK_CONFIG_17 = get_tank_config();
+    $TANK_CONFIG_17 = get_tank_config((int)$station_id);
 
     $target_sid = $station_id;
-    $check_stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ?");
-    $check_stmt->execute([$target_sid]);
-    if ((int)$check_stmt->fetchColumn() === 0) {
-        $target_sid = 1;
-    }
+    
 
     $fi_lookup = [];
     $fi_lookup_by_id = [];
@@ -426,6 +422,21 @@ try {
 // ── Active tab (persists across refresh via ?tab= query param) ───────────────
 $active_tab = $_GET['tab'] ?? 'fuel';
 if (!in_array($active_tab, ['fuel', 'merch', 'services'])) $active_tab = 'fuel';
+
+// ── AJAX JSON POLLING ENDPOINT FOR PRODUCT & PRICING MANAGEMENT ─────────────────
+if (isset($_GET['ajax_psp']) && $_GET['ajax_psp'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'counts' => [
+            'fuel_count'    => count($fuel_products),
+            'merch_count'   => count($merch_all),
+            'service_count' => count($service_types),
+            'total_count'   => count($fuel_products) + count($merch_all) + count($service_types)
+        ]
+    ]);
+    exit;
+}
 
 include __DIR__ . '/../partials/header.php';
 ?>

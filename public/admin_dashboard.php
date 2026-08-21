@@ -34,14 +34,22 @@ if (!$station_id && $role === 'admin') {
 if (isset($_GET['open_notif']) && (int)$_GET['open_notif'] > 0) {
     $notif_id = (int)$_GET['open_notif'];
     try {
-        $stmt = $pdo->prepare("SELECT redirect_url FROM notifications WHERE id = ?");
+        $stmt = $pdo->prepare("SELECT redirect_url, reference_type, reference_id FROM notifications WHERE id = ?");
         $stmt->execute([$notif_id]);
-        $redir = $stmt->fetchColumn();
+        $n_row = $stmt->fetch(PDO::FETCH_ASSOC);
         
         $upd = $pdo->prepare("UPDATE notifications SET status = 'read', read_at = NOW() WHERE id = ?");
         $upd->execute([$notif_id]);
         
-        if ($redir && $redir !== '') {
+        $redir = trim((string)($n_row['redirect_url'] ?? ''));
+        $redir = preg_replace('/^\/?(public\/)?/', '', $redir);
+        
+        if (empty($redir) && !empty($n_row['reference_type'])) {
+            $redir = notification_redirect_url($n_row['reference_type'], (int)($n_row['reference_id'] ?? 0), $role);
+            $redir = preg_replace('/^\/?(public\/)?/', '', $redir);
+        }
+        
+        if (!empty($redir) && $redir !== '#' && $redir !== 'null') {
             header("Location: " . $redir);
             exit;
         }
@@ -114,7 +122,7 @@ if ($station_label === '') {
     $station_label = 'Vamenta Blvd., Carmen, City Of Cagayan De Oro , Misamis Oriental';
 }
 
-$st_sql      = $station_id ? "(station_id = ? OR station_id = 0 OR station_id IS NULL)" : "1=1";
+$st_sql      = $station_id ? "station_id = ?" : "1=1";
 $st_params   = $station_id ? [$station_id] : [];
 $date_params = array_merge($st_params, [$date_from, $date_to]);
 $today_str   = date('Y-m-d');
@@ -254,7 +262,7 @@ $total_job_order_revenue = (float) adm_value($pdo, "
 $fi_raw    = [];
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, status, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, status, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
     $s->execute([$station_id]);
     $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fi_raw as $row) {
@@ -389,64 +397,38 @@ if (adm_table_exists($pdo, 'fuel_sales_closing')) {
     }
 }
 
-// ── 4. MERCHANDISE INVENTORY (Exact 269 Product Catalog UNION) ───────────────
+// ── 4. MERCHANDISE INVENTORY (For this station) ─────────────────────────
 $merch_inv_stats = [];
 try {
     $stmt = $pdo->prepare("
         SELECT
-            ip.id,
-            ip.product_name                              AS product_name,
-            COALESCE(ip.category,'Merchandise')          AS category,
-            COALESCE(ip.unit_price, 0)                   AS price,
-            COALESCE(ip.unit_cost, 0)                    AS unit_cost,
-            ip.sku,
-            COALESCE(ip.brand,'Petron Corporation')      AS supplier,
-            COALESCE(ip.status,'active')                 AS product_status,
-            COALESCE(ip.min_stock, 0)                    AS min_stock,
-            COALESCE(ip.max_stock, 0)                    AS max_stock,
-            COALESCE(si.stock_level, ip.stock, 0)        AS stock_level,
-            COALESCE(si.capacity, ip.max_stock, 480)     AS capacity,
-            COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
+            COALESCE(ip.id, p.id, si.product_id)         AS id,
+            COALESCE(ip.product_name, p.name, 'Unknown Product') AS product_name,
+            COALESCE(ip.category, pc.name, 'Merchandise') AS category,
+            COALESCE(si.price, ip.unit_price, p.price, 0) AS price,
+            COALESCE(si.cost, ip.unit_cost, p.cost, 0)   AS unit_cost,
+            COALESCE(ip.sku, p.sku, CONCAT('P', LPAD(si.product_id,4,'0'))) AS sku,
+            COALESCE(ip.brand, 'Petron Corporation')     AS supplier,
+            COALESCE(si.status, ip.status, p.status, 'active') AS product_status,
+            COALESCE(ip.min_stock, p.min_stock_level, 0) AS min_stock,
+            COALESCE(ip.max_stock, p.max_stock_level, 0) AS max_stock,
+            COALESCE(si.stock_level, 0)                  AS stock_level,
+            COALESCE(si.capacity, ip.max_stock, p.capacity, 480) AS capacity,
+            COALESCE(si.reorder_level, ip.min_stock, p.min_stock_level, 24) AS reorder_level,
             COALESCE(si.critical_level, 10)              AS critical_level,
-            COALESCE(si.unit, ip.size, 'pcs')            AS unit,
-            COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
+            COALESCE(si.unit, ip.size, p.unit, 'pcs')    AS unit,
+            COALESCE(si.last_updated, NOW())             AS last_updated,
             si.physical_count,
             si.variance
-        FROM inventory_products ip
-        LEFT JOIN station_inventory si ON si.product_id = ip.id AND (si.station_id = ? OR si.station_id = 0 OR si.station_id IS NULL)
-        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
-
-        UNION
-
-        SELECT
-            p.id,
-            p.name                                       AS product_name,
-            COALESCE(pc.name,'General')                  AS category,
-            COALESCE(si2.price, p.price, 0)              AS price,
-            COALESCE(p.cost, si2.cost, 0)                AS unit_cost,
-            COALESCE(NULLIF(p.sku,''), CONCAT('P', LPAD(p.id,4,'0'))) AS sku,
-            'Petron Corporation'                         AS supplier,
-            COALESCE(NULLIF(si2.status,''), NULLIF(p.status,''), 'active') AS product_status,
-            COALESCE(p.min_stock_level, 0)               AS min_stock,
-            COALESCE(p.max_stock_level, 0)               AS max_stock,
-            COALESCE(si2.stock_level, p.current_stock, 0) AS stock_level,
-            COALESCE(NULLIF(si2.capacity,0), NULLIF(p.capacity,0), NULLIF(p.max_stock_level,0), 480) AS capacity,
-            COALESCE(NULLIF(si2.reorder_level,0), NULLIF(p.min_stock_level,0), 24) AS reorder_level,
-            COALESCE(NULLIF(si2.critical_level,0), 10)   AS critical_level,
-            COALESCE(NULLIF(p.unit,''), NULLIF(si2.unit,''), 'pcs') AS unit,
-            COALESCE(si2.last_updated, p.updated_at, p.created_at) AS last_updated,
-            si2.physical_count,
-            si2.variance
-        FROM products p
+        FROM station_inventory si
+        LEFT JOIN inventory_products ip ON ip.id = si.product_id
+        LEFT JOIN products p ON p.id = si.product_id
         LEFT JOIN product_categories pc ON pc.id = p.category_id
-        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND (si2.station_id = ? OR si2.station_id = 0 OR si2.station_id IS NULL)
-        WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
-          AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
-          AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products'))
-
+        WHERE si.station_id = ?
+          AND (LOWER(COALESCE(ip.category, pc.name, '')) NOT IN ('fuel', 'fuel products', 'services', 'service') OR (ip.category IS NULL AND pc.name IS NULL))
         ORDER BY category, product_name
     ");
-    $stmt->execute([$station_id, $station_id]);
+    $stmt->execute([$station_id]);
     $merch_inv_stats = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
@@ -540,19 +522,19 @@ $pending_stock_reqs      = $sr_pending;
 $pending_stockin         = $si_pending + $si_for_ver;
 $pending_void_reqs       = (int) adm_value($pdo, "SELECT COUNT(*) FROM transaction_requests WHERE {$st_sql} AND LOWER(COALESCE(request_type, '')) = 'void' AND LOWER(COALESCE(status, 'pending')) = 'pending'", $st_params);
 $pending_adjustment_reqs = (int) adm_value($pdo, "SELECT COUNT(*) FROM merchandise_adjustments WHERE {$st_sql} AND LOWER(COALESCE(status, 'pending')) = 'pending'", $st_params);
-$pending_master_data     = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'pending manager review', 'for review')", $st_params);
+$pending_master_data     = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE station_id = ? AND LOWER(COALESCE(status, 'pending')) IN ('pending', 'pending manager review', 'for review')", $st_params);
 
 $total_pending_approvals = $pending_stock_reqs + $pending_stockin + $pending_void_reqs + $pending_adjustment_reqs + $pending_master_data;
 
 // Master Data Request Breakdown
-$md_vehicle_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(request_type, '')) = 'vehicle'", $st_params);
-$md_product_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(request_type, '')) IN ('product', 'merchandise')", $st_params);
-$md_service_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(request_type, '')) = 'service'", $st_params);
+$md_vehicle_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE station_id = ? AND LOWER(COALESCE(request_type, '')) = 'vehicle'", $st_params);
+$md_product_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE station_id = ? AND LOWER(COALESCE(request_type, '')) IN ('product', 'merchandise')", $st_params);
+$md_service_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE station_id = ? AND LOWER(COALESCE(request_type, '')) = 'service'", $st_params);
 
-$md_pending_cnt  = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status, 'pending')) = 'pending'", $st_params);
-$md_approved_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status, '')) = 'approved'", $st_params);
-$md_rejected_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status, '')) = 'rejected'", $st_params);
-$md_revision_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status, '')) IN ('for revision', 'for_revision')", $st_params);
+$md_pending_cnt  = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE station_id = ? AND LOWER(COALESCE(status, 'pending')) = 'pending'", $st_params);
+$md_approved_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE station_id = ? AND LOWER(COALESCE(status, '')) = 'approved'", $st_params);
+$md_rejected_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE station_id = ? AND LOWER(COALESCE(status, '')) = 'rejected'", $st_params);
+$md_revision_cnt = (int) adm_value($pdo, "SELECT COUNT(*) FROM master_data_requests WHERE station_id = ? AND LOWER(COALESCE(status, '')) IN ('for revision', 'for_revision')", $st_params);
 
 // Void & Adjustment Breakdown
 $void_approved = (int) adm_value($pdo, "SELECT COUNT(*) FROM transaction_requests WHERE {$st_sql} AND LOWER(COALESCE(request_type, '')) = 'void' AND LOWER(COALESCE(status, '')) = 'approved'", $st_params);
@@ -895,7 +877,7 @@ if (adm_table_exists($pdo, 'inventory_logs')) {
         SELECT COALESCE(NULLIF(il.reference_no,''), CONCAT('LOG-', LPAD(il.id, 4, '0'))) AS ref_no,
                COALESCE(
                    NULLIF(p.name,''),
-                   NULLIF(msi.product_name,''),
+                   NULLIF(m''),
                    CONCAT('Product #', il.product_id)
                ) AS product_name,
                CASE
@@ -923,7 +905,7 @@ if (adm_table_exists($pdo, 'inventory_logs')) {
 if (adm_table_exists($pdo, 'merchandise_stock_in')) {
     $si_rows = adm_rows($pdo, "
         SELECT COALESCE(NULLIF(msi.po_number,''), CONCAT('SI-', LPAD(msi.id, 4, '0'))) AS ref_no,
-               COALESCE(NULLIF(msi.product_name,''), 'Merchandise Item') AS product_name,
+               COALESCE(NULLIF(m''), 'Merchandise Item') AS product_name,
                'Stock-In (Delivery)' AS movement_type,
                msi.qty_received AS quantity_change,
                'pcs' AS unit,
@@ -2604,14 +2586,20 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // 22. AUTO REFRESH (Background 15-second polling without manual F5)
+    // 22. AUTO REFRESH (Background 10-second real-time polling without manual F5)
     async function autoRefreshAdminDashboard() {
         // Do not update while modal or inputs are open
         const modal = document.getElementById('admMerchInvModal');
         if (modal && modal.style.display === 'flex') return;
 
         try {
-            const resp = await fetch('admin_dashboard.php?ajax=1');
+            const dateFrom = document.getElementById('date_from') ? document.getElementById('date_from').value : '';
+            const dateTo   = document.getElementById('date_to')   ? document.getElementById('date_to').value   : '';
+            let url = 'admin_dashboard.php?ajax=1';
+            if (dateFrom) url += '&date_from=' + encodeURIComponent(dateFrom);
+            if (dateTo)   url += '&date_to='   + encodeURIComponent(dateTo);
+
+            const resp = await fetch(url);
             if (!resp.ok) return;
             const data = await resp.json();
 
@@ -2682,7 +2670,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    setInterval(autoRefreshAdminDashboard, 15000);
+    setInterval(autoRefreshAdminDashboard, 10000);
 });
 </script>
 

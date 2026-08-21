@@ -564,7 +564,21 @@ $mh_kpi_items_released   = 0;
 $mh_kpi_total_encoded    = 0.00;
 
 // Pre-fetch pending transaction_requests for Merchandise History rows
-$mh_pending_requests = [];
+        // ── AJAX JSON POLLING ENDPOINT FOR MERCHANDISE HISTORY ─────────────────
+        if (isset($_GET['ajax_mh']) && $_GET['ajax_mh'] == '1') {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'kpis' => [
+                    'txn_count'     => count($mh_recent),
+                    'total_encoded' => '₱' . number_format($mh_kpi_total_encoded, 2)
+                ],
+                'mh_count' => count($mh_recent)
+            ]);
+            exit;
+        }
+
+        $mh_pending_requests = [];
 try {
     $mhpr_stmt = $pdo->prepare(
         "SELECT * FROM transaction_requests WHERE station_id = ? AND record_source = 'merchandise_transactions' AND status = 'Pending'"
@@ -849,7 +863,7 @@ if ($section === 'merchandise') {
 if ($section === 'history' || $section === 'fuel_history') {
     // Build fuel WHERE clause with optional shift/date filters
     if ($station_id > 0) {
-        $fuel_where  = "WHERE (ft.station_id = ? OR ft.station_id IS NULL OR ft.station_id = 0)";
+        $fuel_where  = "WHERE ft.station_id = ?";
         $fuel_params = [$station_id];
     } else {
         $fuel_where  = "WHERE 1=1";
@@ -904,7 +918,7 @@ if ($section === 'history' || $section === 'fuel_history') {
 
         // Build WHERE — fetch transactions for staff station (station_id)
         if ($station_id > 0) {
-            $merch_where2  = "WHERE (mt.station_id = ? OR mt.station_id IS NULL OR mt.station_id = 0)";
+            $merch_where2  = "WHERE mt.station_id = ?";
             $merch_params2 = [$station_id];
         } else {
             $merch_where2  = "WHERE 1=1";
@@ -1795,6 +1809,23 @@ if ($section === 'merchandise') {
         usort($job_orders, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['created_at']));
 
         // ── Pre-fetch pending transaction_requests for Job Order Tracker ────────
+                // ── AJAX JSON POLLING ENDPOINT FOR JOB ORDER TRACKER ────────────────────
+        if (isset($_GET['ajax_tracker']) && $_GET['ajax_tracker'] == '1') {
+            header('Content-Type: application/json');
+            $completed_jo_count = (int)array_reduce($job_orders, fn($c,$j) => $c + (($j['status']??'')==='Completed'?1:0), 0);
+            echo json_encode([
+                'success' => true,
+                'kpis' => [
+                    'total_txns'   => (int)($mh_kpi_txn_count + $kpi_jo_count),
+                    'total_sales'  => '₱' . number_format($kpi_total_encoded, 2),
+                    'completed_jo' => $completed_jo_count,
+                    'merch_sold'   => (int)$kpi_merch_released
+                ],
+                'jo_count' => count($job_orders)
+            ]);
+            exit;
+        }
+
         $pending_requests = [];
         try {
             $pr_stmt = $pdo->prepare("SELECT * FROM transaction_requests WHERE station_id = ? AND status = 'Pending'");
@@ -2025,7 +2056,7 @@ if ($section === 'merchandise') {
         $mech_where = "status = 'active' AND COALESCE(archived, 0) = 0";
         $mech_params = [];
         if ($station_id > 0) {
-            $mech_where .= " AND (station_id = ? OR station_id IS NULL)";
+            $mech_where .= " AND station_id = ?";
             $mech_params[] = $station_id;
         }
         $stmt = $pdo->prepare("SELECT id, full_name, specialization FROM mechanics WHERE {$mech_where} ORDER BY full_name");
@@ -5024,7 +5055,32 @@ setTimeout(function() {
             if (icon) icon.className = 'fas fa-sync';
         }
 
-        window.todayEntriesPageSize = 10;
+                window.todayEntriesPageSize = 10;
+
+        // ── 10-SECOND REAL-TIME AUTO REFRESH FOR METER READING HISTORY ──────────
+        async function autoRefreshMeterReadingHistory() {
+            // Only refresh if Meter Reading History card is visible
+            const todayCard = document.getElementById('todayEntriesCard');
+            if (!todayCard || todayCard.style.display === 'none') return;
+
+            // Do not refresh if user has any modal open
+            const modals = ['fuelDetailsModal', 'readingEditModal', 'readingVoidModal', 'readingAdjustModal', 'requestVoidModal', 'requestAdjustModal'];
+            for (let mId of modals) {
+                const m = document.getElementById(mId);
+                if (m && (m.style.display === 'flex' || m.style.display === 'block')) return;
+            }
+
+            try {
+                if (typeof loadTodayEntries === 'function') {
+                    await loadTodayEntries();
+                }
+            } catch (e) {
+                console.warn('Meter Reading History refresh notice:', e);
+            }
+        }
+
+        // Run auto-refresh every 10 seconds
+        setInterval(autoRefreshMeterReadingHistory, 10000);
         
         function renderTodayEntriesTable() {
             const body = document.getElementById('todayEntriesBody');
@@ -6286,7 +6342,7 @@ setTimeout(function() {
                                                 border:1px solid #dbeafe;text-align:center;
                                                 box-shadow:0 1px 4px rgba(0,47,110,.06);">
                                         <div style="font-size:18px;font-weight:800;color:#002F6C;line-height:1.2;">
-                                            ₱<?= number_format($mh_kpi_total_encoded, 2) ?>
+                                            <span id="mh_kpi_total_encoded">₱<?= number_format($mh_kpi_total_encoded, 2) ?></span>
                                         </div>
                                         <div style="font-size:10px;font-weight:600;color:#64748b;
                                                     text-transform:uppercase;letter-spacing:.5px;margin-top:4px;">
@@ -10965,19 +11021,19 @@ setTimeout(function() {
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px;">
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;text-align:center;">
                 <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Today's Transactions</div>
-                <div style="font-size:24px;font-weight:800;color:#002F70;"><?= (int)($mh_kpi_txn_count + $kpi_jo_count) ?></div>
+                <div style="font-size:24px;font-weight:800;color:#002F70;" id="jo_kpi_total_txns"><?= (int)($mh_kpi_txn_count + $kpi_jo_count) ?></div>
             </div>
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;text-align:center;">
                 <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Today's Sales</div>
-                <div style="font-size:20px;font-weight:800;color:#002F70;">₱<?= number_format($kpi_total_encoded, 2) ?></div>
+                <div style="font-size:20px;font-weight:800;color:#002F70;" id="jo_kpi_total_sales">₱<?= number_format($kpi_total_encoded, 2) ?></div>
             </div>
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;text-align:center;">
                 <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Completed JO</div>
-                <div style="font-size:24px;font-weight:800;color:#16a34a;"><?= (int)array_reduce($job_orders, fn($c,$j) => $c + (($j['status']??'')==='Completed'?1:0), 0) ?></div>
+                <div style="font-size:24px;font-weight:800;color:#16a34a;" id="jo_kpi_completed_jo"><?= (int)array_reduce($job_orders, fn($c,$j) => $c + (($j['status']??'')==='Completed'?1:0), 0) ?></div>
             </div>
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;text-align:center;">
                 <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Merchandise Sold</div>
-                <div style="font-size:24px;font-weight:800;color:#002F70;"><?= (int)$kpi_merch_released ?></div>
+                <div style="font-size:24px;font-weight:800;color:#002F70;" id="jo_kpi_merch_sold"><?= (int)$kpi_merch_released ?></div>
             </div>
         </div>
 
@@ -11764,7 +11820,44 @@ setTimeout(function() {
             if (sel) { joState.per_page = parseInt(sel.value, 10); joState.page = 1; joRenderTable(); }
         }
 
-        document.addEventListener('DOMContentLoaded', function() { joRenderTable(); });
+                document.addEventListener('DOMContentLoaded', function() { joRenderTable(); });
+
+        // ── 10-SECOND REAL-TIME AUTO REFRESH FOR JOB ORDER TRACKER ───────────
+        async function autoRefreshJobOrderTracker() {
+            // Do not refresh if user has any modal open
+            const modals = ['paymentSettleModal', 'viewJobOrderModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal', 'requestAdjustModal', 'requestVoidModal'];
+            for (let mId of modals) {
+                const m = document.getElementById(mId);
+                if (m && (m.style.display === 'flex' || m.style.display === 'block')) return;
+            }
+
+            try {
+                const resp = await fetch('staff_transactions_hub.php?section=merchandise&active_tab=tracker&ajax_tracker=1');
+                if (!resp.ok) return;
+                const data = await resp.json();
+
+                if (data.kpis) {
+                    if (document.getElementById('jo_kpi_total_txns')) document.getElementById('jo_kpi_total_txns').textContent = data.kpis.total_txns;
+                    if (document.getElementById('jo_kpi_total_sales')) document.getElementById('jo_kpi_total_sales').textContent = data.kpis.total_sales;
+                    if (document.getElementById('jo_kpi_completed_jo')) document.getElementById('jo_kpi_completed_jo').textContent = data.kpis.completed_jo;
+                    if (document.getElementById('jo_kpi_merch_sold')) document.getElementById('jo_kpi_merch_sold').textContent = data.kpis.merch_sold;
+                }
+
+                if (typeof data.jo_count !== 'undefined') {
+                    const rows = document.querySelectorAll('#joUnifiedTable tbody tr.jo-data-row');
+                    const noRecRow = document.getElementById('joNoRecordsRow');
+                    const currentCount = rows.length;
+                    if (data.jo_count !== currentCount) {
+                        window.location.reload();
+                    }
+                }
+            } catch (e) {
+                console.warn('Job Order Tracker refresh notice:', e);
+            }
+        }
+
+        // Run auto-refresh every 10 seconds
+        setInterval(autoRefreshJobOrderTracker, 10000);
         </script>
 
         </div><!-- /innerTab_tracker -->

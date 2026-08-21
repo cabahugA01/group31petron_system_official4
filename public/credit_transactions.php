@@ -138,12 +138,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Fetch Customers for Dropdown
-$customers = $pdo->prepare("SELECT id, name FROM customers WHERE type = 'credit' AND status = 'Active' AND (station_id = ? OR station_id IS NULL) ORDER BY name");
+$customers = $pdo->prepare("SELECT id, name FROM customers WHERE type = 'credit' AND status = 'Active' AND station_id = ? ORDER BY name");
 $customers->execute([$station_id]);
 $customers_list = $customers->fetchAll(PDO::FETCH_ASSOC);
 
 // Fetch Ledger (Customers with outstanding balance)
-$ledger_sql = "SELECT * FROM customers WHERE current_balance > 0 AND (station_id = ? OR station_id IS NULL) ORDER BY current_balance DESC";
+$ledger_sql = "SELECT * FROM customers WHERE current_balance > 0 AND station_id = ? ORDER BY current_balance DESC";
 $ledger_stmt = $pdo->prepare($ledger_sql);
 $ledger_stmt->execute([$station_id]);
 $ledger = $ledger_stmt->fetchAll();
@@ -155,7 +155,7 @@ $sql = "SELECT s.*, u.name as staff_name,
         JOIN sale_items si ON s.id = si.sale_id
         JOIN products p ON si.product_id = p.id
         LEFT JOIN users u ON s.user_id = u.id 
-        WHERE s.payment_method = 'Credit' AND (s.station_id = ? OR s.station_id IS NULL) 
+        WHERE s.payment_method = 'Credit' AND s.station_id = ? 
         ORDER BY FIELD(s.status, 'Pending', 'Approved', 'Rejected') ASC, s.created_at DESC LIMIT 100";
 $stmt = $pdo->prepare($sql);
 $stmt->execute([$station_id]);

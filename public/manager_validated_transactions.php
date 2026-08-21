@@ -605,12 +605,52 @@ foreach ($rows as $r) {
 }
 
 // Fetch staff list for Staff Encoder dropdown
+// ── AJAX JSON POLLING ENDPOINT FOR ALL TRANSACTIONS ──────────────────────
+if (isset($_GET['ajax_vt']) && $_GET['ajax_vt'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'kpis' => [
+            'total_txns'   => $kpi_total_txns,
+            'merch_count'  => $kpi_merch_count,
+            'jo_count'     => $kpi_jo_count,
+            'comb_count'   => $kpi_comb_count,
+            'paid_count'   => $kpi_paid_count,
+            'unpaid_count' => $kpi_unpaid_count,
+            'ar_count'     => $kpi_ar_count,
+            'total_sales'  => '₱' . number_format($kpi_total_sales, 2)
+        ],
+        'rows_count' => count($rows)
+    ]);
+    exit;
+}
+
 $staff_list = [];
 try {
     $stmt = $pdo->prepare("SELECT id, COALESCE(NULLIF(CONCAT(first_name,' ',last_name),' '), username) AS name FROM users WHERE station_id = ? AND role != 'admin' ORDER BY name");
     $stmt->execute([$station_id]);
     $staff_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) { $staff_list = []; }
+} catch (Exception $e) { // ── AJAX JSON POLLING ENDPOINT FOR ALL TRANSACTIONS ──────────────────────
+if (isset($_GET['ajax_vt']) && $_GET['ajax_vt'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'kpis' => [
+            'total_txns'   => $kpi_total_txns,
+            'merch_count'  => $kpi_merch_count,
+            'jo_count'     => $kpi_jo_count,
+            'comb_count'   => $kpi_comb_count,
+            'paid_count'   => $kpi_paid_count,
+            'unpaid_count' => $kpi_unpaid_count,
+            'ar_count'     => $kpi_ar_count,
+            'total_sales'  => '₱' . number_format($kpi_total_sales, 2)
+        ],
+        'rows_count' => count($rows)
+    ]);
+    exit;
+}
+
+$staff_list = []; }
 
 // â”€â”€ Server-Side Exports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $export_type = $_GET['export'] ?? '';
@@ -1210,35 +1250,35 @@ try {
 <div class="txn-kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 10px; margin-bottom: 16px;">
     <div class="txn-kpi-card">
         <div class="txn-kpi-lbl"><i class="fas fa-receipt"></i> Total Txns</div>
-        <div class="txn-kpi-val"><?php echo $kpi_total_txns; ?></div>
+        <div class="txn-kpi-val" id="vt_kpi_total_txns"><?php echo $kpi_total_txns; ?></div>
     </div>
     <div class="txn-kpi-card blue">
         <div class="txn-kpi-lbl"><i class="fas fa-shopping-cart"></i> Merchandise</div>
-        <div class="txn-kpi-val"><?php echo $kpi_merch_count; ?></div>
+        <div class="txn-kpi-val" id="vt_kpi_merch_count"><?php echo $kpi_merch_count; ?></div>
     </div>
     <div class="txn-kpi-card purple">
         <div class="txn-kpi-lbl"><i class="fas fa-wrench"></i> Job Orders</div>
-        <div class="txn-kpi-val"><?php echo $kpi_jo_count; ?></div>
+        <div class="txn-kpi-val" id="vt_kpi_jo_count"><?php echo $kpi_jo_count; ?></div>
     </div>
     <div class="txn-kpi-card teal">
         <div class="txn-kpi-lbl"><i class="fas fa-tools"></i> JO + Merch</div>
-        <div class="txn-kpi-val" style="color:#0d9488;"><?php echo $kpi_comb_count; ?></div>
+        <div class="txn-kpi-val" style="color:#0d9488;" id="vt_kpi_comb_count"><?php echo $kpi_comb_count; ?></div>
     </div>
     <div class="txn-kpi-card green">
         <div class="txn-kpi-lbl"><i class="fas fa-check-circle"></i> Paid</div>
-        <div class="txn-kpi-val"><?php echo $kpi_paid_count; ?></div>
+        <div class="txn-kpi-val" id="vt_kpi_paid_count"><?php echo $kpi_paid_count; ?></div>
     </div>
     <div class="txn-kpi-card danger">
         <div class="txn-kpi-lbl"><i class="fas fa-clock"></i> Pending/Partial</div>
-        <div class="txn-kpi-val"><?php echo $kpi_unpaid_count; ?></div>
+        <div class="txn-kpi-val" id="vt_kpi_unpaid_count"><?php echo $kpi_unpaid_count; ?></div>
     </div>
     <div class="txn-kpi-card purple">
         <div class="txn-kpi-lbl"><i class="fas fa-user-clock"></i> Account Rec.</div>
-        <div class="txn-kpi-val" style="color:#7c3aed;"><?php echo $kpi_ar_count; ?></div>
+        <div class="txn-kpi-val" style="color:#7c3aed;" id="vt_kpi_ar_count"><?php echo $kpi_ar_count; ?></div>
     </div>
     <div class="txn-kpi-card total-amount-card">
         <div class="txn-kpi-lbl"><i class="fas fa-peso-sign"></i> Total Sales</div>
-        <div class="txn-kpi-val">&#8369;<?php echo number_format($kpi_total_sales, 2); ?></div>
+        <div class="txn-kpi-val" id="vt_kpi_total_sales">&#8369;<?php echo number_format($kpi_total_sales, 2); ?></div>
     </div>
 </div>
     </div>

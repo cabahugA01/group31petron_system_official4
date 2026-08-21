@@ -2912,6 +2912,19 @@ $page_title = $active_tab === 'merchandise'
     : "Fuel Sales Summary Report";
 
 // Include system header
+// ── AJAX JSON POLLING ENDPOINT FOR STAFF FUEL SALES SUMMARY ─────────────────
+if (isset($_GET['ajax_sfss']) && $_GET['ajax_sfss'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'tab'     => $active_tab,
+        'readings_count' => count($enhanced_meter_readings ?? []),
+        'merch_count'    => count($filtered_merchandise_rows ?? []),
+        'service_count'  => count($filtered_service_rows ?? [])
+    ]);
+    exit;
+}
+
 require_once __DIR__ . '/../partials/header.php';
 require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
@@ -4502,6 +4515,34 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
     </script>
 
-    <?php require_once __DIR__ . '/../partials/footer.php'; ?>
+    <script>
+// ── REAL-TIME 10-SECOND AUTO REFRESH POLLING ─────────────────────────
+let lastSfssReadingCount = null;
+function autoRefreshStaffFuelSalesSummary() {
+    const openModal = Array.from(document.querySelectorAll('.modal, .modal-overlay, [id*="Modal"]')).some(m => {
+        const style = window.getComputedStyle(m);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    });
+    if (openModal) return;
+
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('ajax_sfss', '1');
+
+    fetch(currentUrl.toString(), { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.success) {
+                const currentTotal = (data.readings_count || 0) + (data.merch_count || 0) + (data.service_count || 0);
+                if (lastSfssReadingCount !== null && lastSfssReadingCount !== currentTotal) {
+                    window.location.reload();
+                }
+                lastSfssReadingCount = currentTotal;
+            }
+        })
+        .catch(() => {});
+}
+setInterval(autoRefreshStaffFuelSalesSummary, 10000);
+</script>
+<?php require_once __DIR__ . '/../partials/footer.php'; ?>
 
 

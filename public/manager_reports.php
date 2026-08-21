@@ -248,6 +248,26 @@ if ($active_tab === 'fuel_sales') {
 // Fetch report data
 $report_data = getAdminReportData($pdo, $station_id, $date_from, $date_to, $active_cat, $active_tab, $active_filters);
 
+// ── AJAX JSON POLLING ENDPOINT FOR MASTER MANAGER REPORTS ───────────────────────
+if (isset($_GET['ajax_mr']) && $_GET['ajax_mr'] == '1') {
+    header('Content-Type: application/json');
+    $rows_count = 0;
+    if (isset($report_data['rows']) && is_array($report_data['rows'])) {
+        $rows_count = count($report_data['rows']);
+    } elseif (isset($report_data['items']) && is_array($report_data['items'])) {
+        $rows_count = count($report_data['items']);
+    } elseif (is_array($report_data)) {
+        $rows_count = count($report_data);
+    }
+    echo json_encode([
+        'success' => true,
+        'cat'     => $active_cat,
+        'tab'     => $active_tab,
+        'count'   => $rows_count
+    ]);
+    exit;
+}
+
 require_once __DIR__ . '/../partials/header.php';
 ?>
 

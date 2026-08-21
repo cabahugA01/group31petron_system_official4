@@ -231,7 +231,7 @@ try {
                         SET current_level = GREATEST(0, COALESCE(current_level, current_stock, 0) - ?),
                             current_stock = GREATEST(0, COALESCE(current_stock, current_level, 0) - ?),
                             last_updated  = NOW()
-                        WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)
+                        WHERE station_id = ?
                           AND (LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) OR LOWER(TRIM(fuel_type)) LIKE CONCAT('%', LOWER(TRIM(?)), '%'))
                     ")->execute([$txn['liters_sold'], $txn['liters_sold'], $station_id, $txn['fuel_type'], $txn['fuel_type']]);
                 } catch (Exception $e) {}

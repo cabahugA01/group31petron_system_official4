@@ -555,6 +555,20 @@ try {
     ];
 }
 
+// ── AJAX JSON POLLING ENDPOINT FOR USER MANAGEMENT ─────────────────
+if (isset($_GET['ajax_um']) && $_GET['ajax_um'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'counts' => [
+            'active'   => count($active_users),
+            'archived' => count($archived_users),
+            'total'    => count($all_users)
+        ]
+    ]);
+    exit;
+}
+
 include __DIR__ . '/../partials/header.php';
 ?>
 
@@ -1049,10 +1063,10 @@ setTimeout(function() {
 <!-- DUAL TAB NAVIGATION -->
 <div class="um-tabs">
     <a href="users.php?tab=active" class="um-tab-btn <?php echo $current_tab === 'active' ? 'active' : ''; ?>">
-        <i class="fas fa-user-check"></i> Active Users <span class="um-badge-cnt"><?php echo count($active_users); ?></span>
+        <i class="fas fa-user-check"></i> Active Users <span class="um-badge-cnt" id="um_badge_active"><?php echo count($active_users); ?></span>
     </a>
     <a href="users.php?tab=archived" class="um-tab-btn <?php echo $current_tab === 'archived' ? 'active' : ''; ?>">
-        <i class="fas fa-archive"></i> Archived Users <span class="um-badge-cnt"><?php echo count($archived_users); ?></span>
+        <i class="fas fa-archive"></i> Archived Users <span class="um-badge-cnt" id="um_badge_archived"><?php echo count($archived_users); ?></span>
     </a>
 </div>
 
@@ -1812,6 +1826,35 @@ document.addEventListener('DOMContentLoaded', function() {
     toggleShiftField('add');
     toggleShiftField('edit');
 });
+// ── REAL-TIME 10-SECOND AUTO REFRESH POLLING ─────────────────────────
+let lastUmTotalCount = null;
+function autoRefreshUserManagement() {
+    // Pause polling if any modal is open
+    const openModal = Array.from(document.querySelectorAll('.modal')).some(m => {
+        const style = window.getComputedStyle(m);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+    });
+    if (openModal) return;
+
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('ajax_um', '1');
+
+    fetch(currentUrl.toString(), { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.success && data.counts) {
+                if (document.getElementById('um_badge_active'))   document.getElementById('um_badge_active').textContent   = data.counts.active;
+                if (document.getElementById('um_badge_archived')) document.getElementById('um_badge_archived').textContent = data.counts.archived;
+                
+                if (lastUmTotalCount !== null && lastUmTotalCount !== data.counts.total) {
+                    window.location.reload();
+                }
+                lastUmTotalCount = data.counts.total;
+            }
+        })
+        .catch(() => {});
+}
+setInterval(autoRefreshUserManagement, 10000);
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

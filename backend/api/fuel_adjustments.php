@@ -84,7 +84,7 @@ try {
             $stmt = $pdo->prepare("
                 SELECT id, fuel_type_id, current_level, capacity, ugt_no
                 FROM fuel_inventory
-                WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)
+                WHERE station_id = ?
                   AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
                 LIMIT 1
             ");
@@ -184,7 +184,7 @@ try {
 
             $stmt = $pdo->prepare("
                 SELECT * FROM fuel_adjustments
-                WHERE id = ? AND (station_id = ? OR station_id = 0 OR station_id IS NULL)
+                WHERE id = ? AND station_id = ?
             ");
             $stmt->execute([$adj_id, $station_id]);
             $adj = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -203,7 +203,7 @@ try {
             // Fetch current tank volume
             $inv_stmt = $pdo->prepare("
                 SELECT id, current_level, capacity FROM fuel_inventory
-                WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)
+                WHERE station_id = ?
                   AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
                 LIMIT 1
             ");
@@ -223,7 +223,7 @@ try {
             $pdo->prepare("
                 UPDATE fuel_inventory
                 SET current_level = ?, current_stock = ?, last_updated = NOW()
-                WHERE id = ? AND (station_id = ? OR station_id = 0 OR station_id IS NULL)
+                WHERE id = ? AND station_id = ?
             ")->execute([$new_vol, $new_vol, $inv['id'], $station_id]);
 
             // 2. Mark adjustment as Approved
@@ -276,7 +276,7 @@ try {
 
             $stmt = $pdo->prepare("
                 SELECT * FROM fuel_adjustments
-                WHERE id = ? AND (station_id = ? OR station_id = 0 OR station_id IS NULL)
+                WHERE id = ? AND station_id = ?
             ");
             $stmt->execute([$adj_id, $station_id]);
             $adj = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -333,7 +333,7 @@ try {
                         'Manager' AS performed_by,
                         fd.status
                     FROM fuel_deliveries fd
-                    WHERE (fd.station_id = ? OR fd.station_id = 0 OR fd.station_id IS NULL)
+                    WHERE fd.station_id = ?
                       AND fd.status IN ('Verified', 'Completed')
                 ";
                 $p1 = [$station_id];
@@ -355,7 +355,7 @@ try {
                         'System' AS performed_by,
                         ft.status
                     FROM fuel_transactions ft
-                    WHERE (ft.station_id = ? OR ft.station_id = 0 OR ft.station_id IS NULL)
+                    WHERE ft.station_id = ?
                       AND LOWER(ft.status) IN ('approved', 'verified')
                 ";
                 $p2 = [$station_id];
@@ -377,7 +377,7 @@ try {
                         'Admin' AS performed_by,
                         fa.status
                     FROM fuel_adjustments fa
-                    WHERE (fa.station_id = ? OR fa.station_id = 0 OR fa.station_id IS NULL)
+                    WHERE fa.station_id = ?
                       AND LOWER(fa.status) = 'approved'
                 ";
                 $p3 = [$station_id];

@@ -411,16 +411,11 @@ if (!function_exists('get_canonical_fuel_name')) {
 }
 
 // ── Fetch fuel inventory ────────────────────────────────────────────────────
+$fuel_products = [];
 try {
-    $TANK_CONFIG_17 = get_tank_config();
-
-    $target_sid = $station_id;
-    // Check if we have inventory for this station. If not, default to station 1
-    $check_stmt = $pdo->prepare("SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ?");
-    $check_stmt->execute([$target_sid]);
-    if ((int)$check_stmt->fetchColumn() === 0) {
-        $target_sid = 1;
-    }
+    $TANK_CONFIG_17 = get_tank_config((int)$station_id);
+    $target_sid = (int)$station_id;
+    
 
     $fi_lookup = [];
     $fi_lookup_by_id = [];
@@ -747,7 +742,7 @@ try {
 $service_types = [];
 $service_error = null;
 try {
-    $stmt = $pdo->query("
+    $stmt = $pdo->prepare("
         SELECT s.id,
                COALESCE(s.service_code, CONCAT('SRV-', LPAD(s.id,4,'0'))) AS service_code,
                s.service_name, s.service_key, s.category, s.service_price,
@@ -767,6 +762,7 @@ try {
               AND p.status = 'pending'
         ORDER BY s.service_name
     ");
+    $stmt->execute([(int)$station_id, (int)$station_id]);
     $service_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Add manager names in a second pass
@@ -792,6 +788,23 @@ try {
 // ── Active tab (persists across refresh via ?tab= query param) ───────────────
 $active_tab = $_GET['tab'] ?? 'fuel';
 if (!in_array($active_tab, ['fuel', 'merch', 'services'])) $active_tab = 'fuel';
+
+// ── AJAX JSON POLLING ENDPOINT FOR ADMIN PRODUCT & PRICING OVERVIEW ─────────
+if (isset($_GET['ajax_asp']) && $_GET['ajax_asp'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'counts' => [
+            'fuel_count'      => count($fuel_products),
+            'merch_count'     => count($merch_all),
+            'service_count'   => count($service_types),
+            'total_count'     => count($fuel_products) + count($merch_all) + count($service_types),
+            'approved_today'  => (int)$approved_today_count,
+            'pending_requests'=> (int)$pending_requests_count
+        ]
+    ]);
+    exit;
+}
 
 include __DIR__ . '/../partials/header.php';
 ?>

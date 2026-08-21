@@ -376,6 +376,20 @@ sort($distinct_actions);
 $distinct_log_types = array_unique(array_column($audit_rows, 'log_type'));
 sort($distinct_log_types);
 
+// ── AJAX JSON POLLING ENDPOINT FOR ADMIN AUDIT TRAIL ───────────────────────────
+if (isset($_GET['ajax_aat']) && $_GET['ajax_aat'] == '1') {
+    header('Content-Type: application/json');
+    $count = count($audit_rows ?? []);
+    $firstRows = array_slice($audit_rows ?? [], 0, 30);
+    $signature = md5(json_encode($firstRows) . '_' . $count);
+    echo json_encode([
+        'success'   => true,
+        'count'     => $count,
+        'signature' => $signature
+    ]);
+    exit;
+}
+
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
@@ -639,5 +653,39 @@ function aatRender(page){
     if(nx){nx.disabled=page>=pages;nx.style.opacity=page>=pages?'.4':'1';}
 }
 document.addEventListener('DOMContentLoaded',function(){ aatRows=aatAllRows(); aatRender(1); });
+
+// ── REAL-TIME 10-SECOND AUTO REFRESH POLLING ─────────────────────────
+let lastAatSignature = null;
+let lastAatCount = null;
+
+function autoRefreshAdminAuditTrail() {
+    const openModal = Array.from(document.querySelectorAll('.modal, .modal-overlay, [id*="Modal"]')).some(m => {
+        const style = window.getComputedStyle(m);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    });
+    if (openModal) return;
+
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT')) {
+        return;
+    }
+
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('ajax_aat', '1');
+
+    fetch(currentUrl.toString(), { cache: 'no-store', credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.success) {
+                if (lastAatSignature !== null && (lastAatSignature !== data.signature || lastAatCount !== data.count)) {
+                    window.location.reload();
+                }
+                lastAatSignature = data.signature;
+                lastAatCount = data.count;
+            }
+        })
+        .catch(() => {});
+}
+
+setInterval(autoRefreshAdminAuditTrail, 10000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

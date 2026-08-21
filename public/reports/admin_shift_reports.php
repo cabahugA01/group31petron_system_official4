@@ -21,7 +21,19 @@ if ($is_standalone) {
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_start)) $date_start = date('Y-m-d');
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_end))   $date_end   = date('Y-m-d');
     $page_id = 'admin_reports';
-    require_once __DIR__ . '/../../partials/header.php';
+    // ── AJAX JSON POLLING ENDPOINT FOR ADMIN SHIFT REPORTS ────────────────────────
+if (isset($_GET['ajax_asr']) && $_GET['ajax_asr'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'section' => $section,
+        'shift'   => $active_shift,
+        'time'    => time()
+    ]);
+    exit;
+}
+
+require_once __DIR__ . '/../../partials/header.php';
 }
 
 require_once __DIR__ . '/../../backend/customer_module_helpers.php';

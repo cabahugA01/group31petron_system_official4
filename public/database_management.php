@@ -51,8 +51,9 @@ $backup_dir           = __DIR__ . '/../backups/';
 $backup_dir_display   = '/backup/database/';
 if (!is_dir($backup_dir)) @mkdir($backup_dir, 0755, true);
 
-$msg     = $_GET['msg']     ?? '';
-$success = $_GET['success'] ?? '';
+$msg     = $_SESSION['db_flash_msg']     ?? $_GET['msg']     ?? '';
+$success = $_SESSION['db_flash_success'] ?? $_GET['success'] ?? '';
+unset($_SESSION['db_flash_msg'], $_SESSION['db_flash_success']);
 $active_tab = $_REQUEST['tab'] ?? 'backup';
 
 // ── POST handler ───────────────────────────────────────────────────────
@@ -238,18 +239,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $msg = "You must type RESTORE exactly to confirm.";
         } elseif ($bid <= 0) {
             $msg = "Please select a backup file to restore.";
+        } elseif (empty($dev_pass)) {
+            $msg = "Please enter your developer password to authorize restore.";
         } else {
-            $row = $pdo->prepare("SELECT * FROM database_backups WHERE id=?");
-            $row->execute([$bid]);
-            $brow = $row->fetch(PDO::FETCH_ASSOC);
-            if ($brow) {
-                // Log the restore attempt
-                $pdo->prepare("INSERT INTO restore_logs (backup_name,restored_by,status,details) VALUES(?,?,?,?)")
-                    ->execute([$brow['backup_name'] ?? "ID:{$bid}", $me['id'], 'completed', 'Restore initiated from Database Management']);
-                log_activity($pdo, $me['id'], 'Database Management', "Restored database from backup: " . ($brow['backup_name'] ?? "ID:{$bid}"));
-                $success = "Database successfully restored from <strong>" . htmlspecialchars($brow['backup_name'] ?? '') . "</strong>.";
+            // Verify developer/superadmin password (users table uses password_hash)
+            $uCols = $pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_COLUMN);
+            $passCol = in_array('password_hash', $uCols) ? 'password_hash' : (in_array('password', $uCols) ? 'password' : 'password_hash');
+            $uStmt = $pdo->prepare("SELECT `{$passCol}` FROM users WHERE id = ?");
+            $uStmt->execute([$me['id']]);
+            $userHash = $uStmt->fetchColumn();
+            $passOk = false;
+            if ($userHash) {
+                if (password_verify($dev_pass, $userHash) || md5($dev_pass) === $userHash || hash('sha256', $dev_pass) === $userHash || $dev_pass === $userHash) {
+                    $passOk = true;
+                }
+            }
+
+            if (!$passOk) {
+                $msg = "Incorrect developer password. Authorization failed.";
             } else {
-                $msg = "Selected backup record not found.";
+                $row = $pdo->prepare("SELECT * FROM database_backups WHERE id=?");
+                $row->execute([$bid]);
+                $brow = $row->fetch(PDO::FETCH_ASSOC);
+                if ($brow) {
+                    // Log the restore attempt
+                    $pdo->prepare("INSERT INTO restore_logs (backup_name,restored_by,status,details) VALUES(?,?,?,?)")
+                        ->execute([$brow['backup_name'] ?? "ID:{$bid}", $me['id'], 'completed', 'Restore initiated from Database Management']);
+                    log_activity($pdo, $me['id'], 'Database Management', "Restored database from backup: " . ($brow['backup_name'] ?? "ID:{$bid}"));
+                    $success = "Database successfully restored from <strong>" . htmlspecialchars($brow['backup_name'] ?? '') . "</strong>.";
+                } else {
+                    $msg = "Selected backup record not found.";
+                }
             }
         }
     }
@@ -283,17 +303,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // Post-Redirect-Get (PRG) pattern to clear POST state and prevent re-submitting on refresh
+    // Post-Redirect-Get (PRG) pattern with Session Flash to prevent stale query string messages
     if ($msg || $success) {
         $target_tab = 'backup';
         if ($action === 'restore') $target_tab = 'restore';
         elseif ($action === 'apply_migration') $target_tab = 'schema';
         elseif (in_array($action, ['save_backup_config','run_backup','archive_backup','verify_backup'])) $target_tab = 'backup';
 
-        $redirect_url = "database_management.php?tab=" . urlencode($target_tab);
-        if ($msg)     $redirect_url .= "&msg=" . urlencode($msg);
-        if ($success) $redirect_url .= "&success=" . urlencode($success);
+        if ($msg)     $_SESSION['db_flash_msg']     = $msg;
+        if ($success) $_SESSION['db_flash_success'] = $success;
 
+        $redirect_url = "database_management.php?tab=" . urlencode($target_tab);
         header("Location: " . $redirect_url);
         exit;
     }
@@ -371,6 +391,31 @@ try {
 } catch (Exception $e) { $db_size_row = ['size_mb' => '—', 'table_count' => '—']; }
 
 $csrf = $_SESSION['csrf_token'] ?? '';
+
+// ── AJAX REAL-TIME AUTO-REFRESH ENDPOINT FOR DATABASE MANAGEMENT ──────────────
+if (isset($_GET['ajax_db']) && $_GET['ajax_db'] == '1') {
+    header('Content-Type: application/json');
+    
+    $verified_cnt = count(array_filter($backup_history, fn($b) => !empty($b['verified'])));
+    $last_b_date  = !empty($backup_history) ? date('M d', strtotime($backup_history[0]['created_at'])) : '—';
+    $last_b_time  = !empty($backup_history) ? date('h:i A', strtotime($backup_history[0]['created_at'])) : 'No backups yet';
+    
+    echo json_encode([
+        'success'            => true,
+        'total_backups'      => count($backup_history),
+        'verified_count'     => $verified_cnt,
+        'db_size_mb'         => $db_size_row['size_mb'] ?? '—',
+        'table_count'        => $db_size_row['table_count'] ?? '—',
+        'last_backup_date'   => $last_b_date,
+        'last_backup_time'   => $last_b_time,
+        'backup_count_text'  => count($backup_history) . ' records',
+        'restore_count_text' => count($restore_history) . ' records',
+        'security_count_text'=> count($security_logs) . ' entries',
+        'migration_count_text'=> count($migration_history) . ' migrations',
+    ]);
+    exit;
+}
+
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
@@ -789,6 +834,39 @@ a.db-btn,
 /* Backup actions inline */
 .db-action-row { display:flex; gap:6px; flex-wrap:wrap; }
 
+/* Password Visibility Toggle */
+.db-pass-toggle-btn,
+button.db-pass-toggle-btn {
+  position: absolute !important;
+  right: 12px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  color: #64748b !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 24px !important;
+  height: 24px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 10 !important;
+  border-radius: 0 !important;
+}
+.db-pass-toggle-btn i {
+  color: #64748b !important;
+  font-size: 15px !important;
+  transition: color 0.15s ease !important;
+}
+.db-pass-toggle-btn:hover i {
+  color: #002F6C !important;
+}
+
 /* Modal overlay */
 .db-modal-overlay {
   display:none; position:fixed; inset:0; background:rgba(0,0,0,.5);
@@ -863,10 +941,16 @@ a.db-btn,
 <?php
 // Determine message type from content for smarter classification
 $_toast_msgs = [];
-if ($success) {
+if (!empty($msg) && !empty($success)) {
+    // URL was polluted with both; show error if error message is distinct, otherwise success
+    if (str_contains(strtolower($msg), 'restore') || str_contains(strtolower($msg), 'failed') || str_contains(strtolower($msg), 'must')) {
+        $_toast_msgs[] = ['type'=>'error', 'text'=>$msg];
+    } else {
+        $_toast_msgs[] = ['type'=>'success', 'text'=>$success];
+    }
+} elseif (!empty($success)) {
     $_toast_msgs[] = ['type'=>'success', 'text'=>$success];
-}
-if ($msg) {
+} elseif (!empty($msg)) {
     $isWarning = preg_match('/low stock|low fuel|critical|warning|unsaved/i', $msg);
     $_toast_msgs[] = ['type'=> $isWarning ? 'warning' : 'error', 'text'=>$msg];
 }
@@ -894,15 +978,15 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
       <div class="db-stat-icon blue"><i class="fas fa-hdd"></i></div>
       <div>
         <div class="db-stat-label">Total Backups</div>
-        <div class="db-stat-val"><?= count($backup_history) ?></div>
-        <div class="db-stat-sub">Records on file</div>
+        <div class="db-stat-val" id="stat_total_backups"><?= count($backup_history) ?></div>
+        <div class="db-stat-sub" id="stat_total_backups_sub">Records on file</div>
       </div>
     </div>
     <div class="db-stat-card">
       <div class="db-stat-icon green"><i class="fas fa-check-double"></i></div>
       <div>
         <div class="db-stat-label">Verified</div>
-        <div class="db-stat-val"><?= count(array_filter($backup_history, fn($b) => !empty($b['verified']))) ?></div>
+        <div class="db-stat-val" id="stat_verified"><?= count(array_filter($backup_history, fn($b) => !empty($b['verified']))) ?></div>
         <div class="db-stat-sub">Integrity confirmed</div>
       </div>
     </div>
@@ -910,18 +994,18 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
       <div class="db-stat-icon yellow"><i class="fas fa-weight-hanging"></i></div>
       <div>
         <div class="db-stat-label">DB Size</div>
-        <div class="db-stat-val"><?= $db_size_row['size_mb'] ?? '—' ?> MB</div>
-        <div class="db-stat-sub"><?= $db_size_row['table_count'] ?? '—' ?> tables</div>
+        <div class="db-stat-val" id="stat_db_size"><?= $db_size_row['size_mb'] ?? '—' ?> MB</div>
+        <div class="db-stat-sub" id="stat_db_tables"><?= $db_size_row['table_count'] ?? '—' ?> tables</div>
       </div>
     </div>
     <div class="db-stat-card">
       <div class="db-stat-icon blue"><i class="fas fa-calendar-alt"></i></div>
       <div>
         <div class="db-stat-label">Last Backup</div>
-        <div class="db-stat-val" style="font-size:14px;">
+        <div class="db-stat-val" id="stat_last_backup_date" style="font-size:14px;">
           <?= !empty($backup_history) ? date('M d', strtotime($backup_history[0]['created_at'])) : '—' ?>
         </div>
-        <div class="db-stat-sub">
+        <div class="db-stat-sub" id="stat_last_backup_time">
           <?= !empty($backup_history) ? date('h:i A', strtotime($backup_history[0]['created_at'])) : 'No backups yet' ?>
         </div>
       </div>
@@ -1593,7 +1677,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
         Confirm Database Restore
       </div>
     </div>
-    <form method="POST">
+    <form method="POST" onsubmit="return validateRestoreForm(event)">
       <input type="hidden" name="tab" value="restore">
       <input type="hidden" name="action" value="restore">
       <input type="hidden" name="backup_id" id="restore_backup_id" value="">
@@ -1610,7 +1694,15 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
         </div>
         <div class="db-form-group">
           <label class="db-label">Developer Password</label>
-          <input type="password" name="dev_password" class="db-input" placeholder="Enter your password to authorize">
+          <div style="position: relative; display: flex; align-items: center;">
+            <input type="password" name="dev_password" id="restore_dev_password" class="db-input"
+              placeholder="Enter your password to authorize"
+              autocomplete="new-password"
+              style="padding-right: 42px; width: 100%;" required>
+            <button type="button" id="toggleRestorePassBtn" class="db-pass-toggle-btn" onclick="toggleRestorePassword()" title="Show / Hide Password">
+              <i class="fas fa-eye" id="toggleRestorePassIcon"></i>
+            </button>
+          </div>
         </div>
       </div>
       <div class="db-modal-footer">
@@ -1721,11 +1813,85 @@ function triggerBackupProgress(e) {
 function openRestoreModal(id, name) {
   document.getElementById('restore_backup_id').value      = id;
   document.getElementById('restore_backup_display').value = name;
-  document.getElementById('restore_confirm_text').value   = '';
+  
+  const confirmInp = document.getElementById('restore_confirm_text');
+  if (confirmInp) {
+    confirmInp.value = '';
+    confirmInp.style.borderColor = '';
+  }
+
+  const passInput = document.getElementById('restore_dev_password');
+  if (passInput) {
+    passInput.value = '';
+    passInput.type  = 'password';
+    passInput.style.borderColor = '';
+  }
+
+  const passIcon = document.getElementById('toggleRestorePassIcon');
+  if (passIcon) {
+    passIcon.className = 'fas fa-eye';
+  }
+
   document.getElementById('restoreModal').classList.add('open');
+
+  // Focus on confirm text after opening
+  setTimeout(() => {
+    if (confirmInp) confirmInp.focus();
+  }, 100);
 }
+
 function closeRestoreModal() {
   document.getElementById('restoreModal').classList.remove('open');
+  const passInput = document.getElementById('restore_dev_password');
+  if (passInput) passInput.value = '';
+  const confirmInp = document.getElementById('restore_confirm_text');
+  if (confirmInp) confirmInp.value = '';
+}
+
+function toggleRestorePassword() {
+  const passInput = document.getElementById('restore_dev_password');
+  const passIcon  = document.getElementById('toggleRestorePassIcon');
+  if (!passInput) return;
+  if (passInput.type === 'password') {
+    passInput.type = 'text';
+    if (passIcon) passIcon.className = 'fas fa-eye-slash';
+  } else {
+    passInput.type = 'password';
+    if (passIcon) passIcon.className = 'fas fa-eye';
+  }
+}
+
+function validateRestoreForm(e) {
+  const inp = document.getElementById('restore_confirm_text');
+  if (!inp || inp.value.trim() !== 'RESTORE') {
+    e.preventDefault();
+    if (typeof window.showErrorToast === 'function') {
+      window.showErrorToast('Confirmation Required', 'You must type RESTORE exactly in all capital letters to confirm.');
+    } else {
+      alert('You must type RESTORE exactly to confirm.');
+    }
+    if (inp) {
+      inp.focus();
+      inp.style.borderColor = '#dc2626';
+    }
+    return false;
+  }
+
+  const passInp = document.getElementById('restore_dev_password');
+  if (!passInp || passInp.value.trim() === '') {
+    e.preventDefault();
+    if (typeof window.showErrorToast === 'function') {
+      window.showErrorToast('Password Required', 'Please enter your developer password to authorize database restore.');
+    } else {
+      alert('Please enter your developer password to authorize restore.');
+    }
+    if (passInp) {
+      passInp.focus();
+      passInp.style.borderColor = '#dc2626';
+    }
+    return false;
+  }
+  return true;
 }
 // Close on backdrop click
 document.getElementById('restoreModal').addEventListener('click', function(e){
@@ -1990,7 +2156,44 @@ function downloadSecLogs() {
   window.showWarningToast = function(t, s) { showToast('warning', t, s, 6500); };
   window.showSuccessToast = function(t, s) { showToast('success', t, s, 4000); };
 
-  // ── Fire PHP-generated toasts on DOM ready ───────────────────────────
+  // ── REAL-TIME BACKGROUND AUTO-REFRESH (10-Second Interval) ────────────────
+  function autoRefreshDatabaseManagement() {
+    if (document.querySelector('.db-modal-overlay.open') || (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT'))) {
+      return;
+    }
+
+    fetch('database_management.php?ajax_db=1', { cache: 'no-store' })
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (data && data.success) {
+          var totalEl = document.getElementById('stat_total_backups');
+          if (totalEl) totalEl.textContent = data.total_backups;
+
+          var verEl = document.getElementById('stat_verified');
+          if (verEl) verEl.textContent = data.verified_count;
+
+          var sizeEl = document.getElementById('stat_db_size');
+          if (sizeEl) sizeEl.textContent = data.db_size_mb + ' MB';
+
+          var tblEl = document.getElementById('stat_db_tables');
+          if (tblEl) tblEl.textContent = data.table_count + ' tables';
+
+          var dateEl = document.getElementById('stat_last_backup_date');
+          if (dateEl) dateEl.textContent = data.last_backup_date;
+
+          var timeEl = document.getElementById('stat_last_backup_time');
+          if (timeEl) timeEl.textContent = data.last_backup_time;
+        }
+      })
+      .catch(function(err) {
+        console.error("Database Management auto-refresh error:", err);
+      });
+  }
+
+  // Start 10s timer for real-time operation auto-refresh
+  setInterval(autoRefreshDatabaseManagement, 10000);
+
+  // ── Fire PHP-generated toasts on DOM ready & clean polluted URL ───────
   document.addEventListener('DOMContentLoaded', function() {
     if (typeof _DB_TOASTS !== 'undefined' && _DB_TOASTS.length) {
       _DB_TOASTS.forEach(function(t, i) {
@@ -1998,6 +2201,16 @@ function downloadSecLogs() {
           showToast(t.type, t.text, t.sub || null);
         }, i * 200);
       });
+    }
+
+    // Clean query parameters from URL so F5/auto-refresh doesn't re-trigger old banners
+    if (window.history && window.history.replaceState) {
+      const cleanUrl = new URL(window.location.href);
+      if (cleanUrl.searchParams.has('msg') || cleanUrl.searchParams.has('success')) {
+        cleanUrl.searchParams.delete('msg');
+        cleanUrl.searchParams.delete('success');
+        window.history.replaceState(null, '', cleanUrl.toString());
+      }
     }
   });
 })();

@@ -78,6 +78,24 @@ header("Cache-Control: no-cache, no-store, must-revalidate");
 header("Pragma: no-cache");
 header("Expires: 0");
 
+// ── AJAX JSON POLLING ENDPOINT FOR SUPERADMIN ADMIN MANAGEMENT ────────────────
+if (isset($_GET['ajax_sam']) && $_GET['ajax_sam'] == '1') {
+    header('Content-Type: application/json');
+    $total = count($admins);
+    $active = count(array_filter($admins, fn($a) => strtolower($a['status']) === 'active'));
+    $inactive = $total - $active;
+    $stations_covered = count(array_unique(array_filter(array_column($admins, 'station_id'))));
+    echo json_encode([
+        'success'          => true,
+        'admins_count'     => $total,
+        'total'            => $total,
+        'active'           => $active,
+        'inactive'         => $inactive,
+        'stations_covered' => $stations_covered
+    ]);
+    exit;
+}
+
 include __DIR__ . '/../partials/header.php';
 require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
@@ -136,16 +154,16 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 .am-btn-activate:hover { background: #16a34a !important; color: white !important; }
 
 /* Modal */
-.am-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9000; align-items: center; justify-content: center; }
+.am-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9000; align-items: center; justify-content: center; padding: 20px; }
 .am-modal-overlay.open { display: flex; }
-.am-modal { background: #fff; border-radius: 20px; width: min(560px, 95vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.2); animation: amSlideIn .25s ease; }
+.am-modal { background: #fff; border-radius: 20px; width: min(560px, 95vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.2); animation: amSlideIn .25s ease; position: relative; }
 @keyframes amSlideIn { from { opacity:0; transform:translateY(-20px); } to { opacity:1; transform:translateY(0); } }
-.am-modal-header { padding: 22px 24px 16px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; }
+.am-modal-header { padding: 20px 24px 16px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: #fff; z-index: 20; }
 .am-modal-header h2 { font-size: 17px !important; font-weight: 700 !important; color: var(--petron-blue) !important; margin: 0 !important; text-transform: uppercase !important; }
 .am-modal-close { display: none !important; }
-.am-modal-body { padding: 22px 24px; }
-.am-modal .am-combo-dropdown { z-index: 10; }
-.am-modal-footer { padding: 16px 24px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; }
+.am-modal-body { padding: 22px 24px 12px; }
+.am-modal .am-combo-dropdown { position: relative !important; top: 6px !important; left: 0 !important; right: 0 !important; width: 100% !important; max-height: 220px !important; margin-bottom: 12px !important; z-index: 5 !important; }
+.am-modal-footer { padding: 16px 24px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; position: sticky; bottom: 0; background: #fff; z-index: 20; box-shadow: 0 -4px 12px rgba(0,0,0,0.03); }
 
 /* Cancel & Primary Button Styling - High Contrast Visibility */
 .am-btn-cancel,
@@ -215,13 +233,58 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 /* Toolbar combo variant — matches toolbar height */
 .am-combo-toolbar .am-combo-input { padding-top: 9px; padding-bottom: 9px; font-size: 13px; }
 .am-combo { position: relative; }
-.am-combo-input { width: 100% !important; padding: 10px 45px 10px 13px; border: 1px solid #ddd; border-radius: 10px; font-size: 13px; outline: none; transition: border-color .2s; background: #fff; box-sizing: border-box; cursor: text; }
+.am-combo-input {
+    width: 100% !important;
+    padding: 10px 65px 10px 13px !important;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    font-size: 13px;
+    outline: none;
+    transition: border-color .2s;
+    background: #fff;
+    box-sizing: border-box;
+    cursor: text;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+}
 .am-combo-input:focus { border-color: var(--petron-blue); box-shadow: 0 0 0 3px rgba(0,38,77,.08); }
 .am-combo-input.has-value { border-color: var(--petron-blue); }
-.am-combo-arrow { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); color: #999; font-size: 12px; pointer-events: none; transition: transform .2s; z-index: 1; }
+.am-combo-arrow { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 12px; pointer-events: none; transition: transform .2s; z-index: 2; }
 .am-combo.open .am-combo-arrow { transform: translateY(-50%) rotate(180deg); }
-.am-combo-clear { position: absolute; right: 33px; top: 50%; transform: translateY(-50%); color: #bbb; font-size: 13px; cursor: pointer; display: none; background: none; border: none; padding: 2px 4px; line-height: 1; z-index: 2; }
-.am-combo-clear:hover { color: #cc0000; }
+.am-combo-clear,
+button.am-combo-clear {
+    position: absolute !important;
+    right: 32px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    color: #94a3b8 !important;
+    font-size: 13px !important;
+    cursor: pointer !important;
+    display: none;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+    padding: 3px 6px !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+    z-index: 5 !important;
+    width: auto !important;
+    height: auto !important;
+    border-radius: 4px !important;
+}
+.am-combo-clear i,
+button.am-combo-clear i {
+    color: #94a3b8 !important;
+    font-size: 13px !important;
+    transition: color 0.15s ease !important;
+}
+.am-combo-clear:hover i,
+button.am-combo-clear:hover i {
+    color: #dc2626 !important;
+}
 .am-combo-dropdown { display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #fff; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 9999; max-height: 220px; overflow: hidden; flex-direction: column; }
 .am-combo.open .am-combo-dropdown { display: flex; }
 .am-combo-search { padding: 9px 12px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -522,13 +585,6 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
               </div>
             </div>
           </div>
-        </div>
-
-        <div style="background:#f8fafc;border:1px solid #e8edf2;border-radius:10px;padding:14px 16px;margin-top:6px;font-size:12px;color:#555;">
-          <i class="fas fa-info-circle" style="color:var(--petron-blue);margin-right:6px;"></i>
-          A secure password will be <strong>auto-generated</strong> and sent to the admin's email or phone.
-          The admin will be required to change their password upon first login.
-          SuperAdmin cannot manually set or reset passwords.
         </div>
       </div>
       <div class="am-modal-footer">
@@ -914,6 +970,12 @@ function initCombo(comboId, searchId, listId, displayId, hiddenId, clearId, onCh
         search.value = '';
         filterOptions('');
         search.focus();
+        const modal = combo.closest('.am-modal');
+        if (modal) {
+            setTimeout(() => {
+                combo.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 60);
+        }
     }
     function closeCombo() {
         combo.classList.remove('open');
@@ -1491,4 +1553,36 @@ function exportAdminsPDF() {
 </script>
 
 
+<script>
+// ── REAL-TIME 10-SECOND AUTO REFRESH POLLING ─────────────────────────
+let lastSuperadminAdminsCount = null;
+function autoRefreshSuperadminAdminManagement() {
+    const openModal = Array.from(document.querySelectorAll('.modal, .modal-overlay, [id*="Modal"]')).some(m => {
+        const style = window.getComputedStyle(m);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    });
+    if (openModal) return;
+
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('ajax_sam', '1');
+
+    fetch(currentUrl.toString(), { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.success) {
+                if (document.getElementById('kpi_total_admins')) document.getElementById('kpi_total_admins').textContent = data.total;
+                if (document.getElementById('kpi_active_admins')) document.getElementById('kpi_active_admins').textContent = data.active;
+                if (document.getElementById('kpi_inactive_admins')) document.getElementById('kpi_inactive_admins').textContent = data.inactive;
+                if (document.getElementById('kpi_stations_covered')) document.getElementById('kpi_stations_covered').textContent = data.stations_covered;
+
+                if (lastSuperadminAdminsCount !== null && lastSuperadminAdminsCount !== data.admins_count) {
+                    window.location.reload();
+                }
+                lastSuperadminAdminsCount = data.admins_count;
+            }
+        })
+        .catch(() => {});
+}
+setInterval(autoRefreshSuperadminAdminManagement, 10000);
+</script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

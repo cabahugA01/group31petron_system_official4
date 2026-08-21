@@ -54,9 +54,9 @@ $generated = 0;
 // Keep older unread notifications aligned with current module routes.
 try {
     $redirect_fixes = [
-        '/public/admin_transactions_oversight.php' => '/public/admin_all_transactions.php',
-        '/public/purchase_orders.php'             => '/public/admin_procurement_reports.php?section=po',
-        '/public/inventory.php'                   => '/public/admin_inventory_merchandise.php',
+        'admin_transactions_oversight.php' => 'admin_all_transactions.php',
+        'purchase_orders.php'             => 'admin_procurement_reports.php?section=po',
+        'inventory.php'                   => 'admin_inventory_merchandise.php',
     ];
     $fix_stmt = $pdo->prepare("UPDATE notifications SET redirect_url=? WHERE user_id=? AND redirect_url=?");
     foreach ($redirect_fixes as $old_url => $new_url) {
@@ -139,7 +139,7 @@ if ($fuel_adj_pending > 0) {
         'event_type'  => 'fuel_transaction',
         'severity'    => 'high',
         'source_key'  => "fuel_adj_pending_{$station_id}",
-        'redirect_url'=> '/public/admin_fuel_transactions_oversight.php',
+        'redirect_url'=> 'admin_fuel_transactions_oversight.php',
     ]);
 }
 
@@ -157,7 +157,7 @@ if ($fuel_txns_recent > 0) {
         'event_type'  => 'fuel_transaction',
         'severity'    => 'low',
         'source_key'  => "fuel_txns_recent_{$station_id}_" . date('Y-m-d'),
-        'redirect_url'=> '/public/admin_fuel_transactions_oversight.php',
+        'redirect_url'=> 'admin_fuel_transactions_oversight.php',
     ]);
 }
 
@@ -175,7 +175,7 @@ if ($pending_admin_del > 0) {
         'event_type'  => 'delivery',
         'severity'    => 'high',
         'source_key'  => "admin_del_oversight_{$station_id}",
-        'redirect_url'=> '/public/admin_deliveries_oversight.php',
+        'redirect_url'=> 'admin_deliveries_oversight.php',
     ]);
 }
 
@@ -191,7 +191,7 @@ if ($flagged_del > 0) {
         'event_type'  => 'delivery',
         'severity'    => 'critical',
         'source_key'  => "flagged_del_{$station_id}",
-        'redirect_url'=> '/public/admin_deliveries_oversight.php',
+        'redirect_url'=> 'admin_deliveries_oversight.php',
     ]);
 }
 
@@ -209,7 +209,7 @@ if ($admin_tx > 0) {
         'event_type'  => 'transaction',
         'severity'    => 'low',
         'source_key'  => "admin_tx_today_{$station_id}_".date('Y-m-d'),
-        'redirect_url'=> '/public/admin_all_transactions.php',
+        'redirect_url'=> 'admin_all_transactions.php',
     ]);
 }
 
@@ -227,7 +227,7 @@ if ($pending_po > 0) {
         'event_type'  => 'delivery',
         'severity'    => 'medium',
         'source_key'  => "pending_po_{$station_id}",
-        'redirect_url'=> '/public/admin_procurement_reports.php?section=po',
+        'redirect_url'=> 'admin_procurement_reports.php?section=po',
     ]);
 }
 
@@ -245,7 +245,7 @@ if ($admin_jo > 0) {
         'event_type'  => 'job_order',
         'severity'    => 'low',
         'source_key'  => "admin_jo_today_{$station_id}_".date('Y-m-d'),
-        'redirect_url'=> '/public/admin_all_transactions.php',
+        'redirect_url'=> 'admin_all_transactions.php',
     ]);
 }
 
@@ -269,7 +269,7 @@ if ($variance_open > 0) {
         'event_type'  => 'report',
         'severity'    => 'critical',
         'source_key'  => "variance_open_{$station_id}",
-        'redirect_url'=> '/public/admin_reports.php?tab=variance',
+        'redirect_url'=> 'admin_reports.php?tab=variance',
     ]);
 }
 
@@ -293,7 +293,7 @@ if ($ar_overdue > 0) {
         'event_type'  => 'customer',
         'severity'    => 'high',
         'source_key'  => "ar_overdue_{$station_id}",
-        'redirect_url'=> '/public/admin_reports.php?tab=receivable',
+        'redirect_url'=> 'admin_reports.php?tab=receivable',
     ]);
 }
 
@@ -354,7 +354,7 @@ if (!$has_staff_activity) {
         'event_type'  => 'general',
         'severity'    => 'low',
         'source_key'  => "no_shifts_".date('Y-m-d')."_{$station_id}",
-        'redirect_url'=> '/public/users.php',
+        'redirect_url'=> 'users.php',
     ]);
 } else {
     // If staff are active today, remove any stale "No Active Shifts Today" notifications for today
@@ -385,7 +385,7 @@ try {
             'event_type'  => 'report',
             'severity'    => 'low',
             'source_key'  => "mgr_actions_".date('Y-m-d')."_{$station_id}",
-            'redirect_url'=> '/public/admin_audit_trail.php',
+            'redirect_url'=> 'admin_audit_trail.php',
         ]);
     }
 } catch (Exception $e) {}
@@ -410,7 +410,7 @@ try {
             'event_type'  => 'report',
             'severity'    => 'critical',
             'source_key'  => "suspicious_audit_".date('Y-m-d')."_{$station_id}",
-            'redirect_url'=> '/public/admin_audit_trail.php',
+            'redirect_url'=> 'admin_audit_trail.php',
         ]);
     }
 } catch (Exception $e) {}
@@ -437,7 +437,7 @@ try {
             'event_type'  => 'inventory',
             'severity'    => 'high',
             'source_key'  => "low_inv_{$station_id}",
-            'redirect_url'=> '/public/admin_inventory_merchandise.php',
+            'redirect_url'=> 'admin_inventory_merchandise.php',
         ]);
     }
 } catch (Exception $e) {}

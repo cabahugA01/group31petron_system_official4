@@ -1092,7 +1092,7 @@ function manager_approve_customer_request(): void {
     }
 
     $request = manager_fetch_request_for_review($requestId);
-    $customerStation = (int)($request['station_id'] ?? $station_id ?: 1253);
+    $customerStation = (int)($request['station_id'] ?? $station_id);
 
     $pdo->beginTransaction();
     try {

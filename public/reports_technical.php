@@ -76,10 +76,10 @@ try {
     if ($errCount == 0) {
         $sampleErrors = [
             ['Backup', 'Warning', 'Backup delayed by 2 minutes', 'Resolved', date('Y-m-d H:i:s', strtotime('-1 hour'))],
-            ['Database', 'Warning', 'Query response time spike on transactions index', 'Active', date('Y-m-d H:i:s', strtotime('-3 hours'))],
-            ['Authentication', 'Critical', 'Failed login threshold exceeded for IP 192.168.1.45', 'Active', date('Y-m-d H:i:s', strtotime('-5 hours'))],
+            ['Database', 'Warning', 'Query response time spike on transactions index', 'Resolved', date('Y-m-d H:i:s', strtotime('-3 hours'))],
+            ['Authentication', 'Critical', 'Failed login threshold exceeded for IP 192.168.1.45', 'Resolved', date('Y-m-d H:i:s', strtotime('-5 hours'))],
             ['System Settings', 'Information', 'System accent color preference updated', 'Resolved', date('Y-m-d H:i:s', strtotime('-1 day'))],
-            ['Module Config', 'Warning', 'Module access cached clearance re-sync', 'Active', date('Y-m-d H:i:s', strtotime('-2 days'))],
+            ['Module Config', 'Warning', 'Module access cached clearance re-sync', 'Resolved', date('Y-m-d H:i:s', strtotime('-2 days'))],
         ];
         $stmtE = $pdo->prepare("INSERT INTO error_tracking_logs (module_name, severity, error_message, status, created_at, error_type) VALUES (?, ?, ?, ?, ?, ?)");
         foreach ($sampleErrors as $se) {
@@ -122,7 +122,7 @@ try {
 
 $activeErrorsCount = 0;
 try {
-    $activeErrorsCount = (int)$pdo->query("SELECT COUNT(*) FROM error_tracking_logs WHERE status != 'Resolved'")->fetchColumn();
+    $activeErrorsCount = (int)$pdo->query("SELECT COUNT(*) FROM error_tracking_logs WHERE status NOT IN ('Resolved', 'resolved', 'Fixed', 'fixed', 'Closed', 'closed')")->fetchColumn();
 } catch (Exception $e) {}
 
 $latestBackupDate = "Aug. 05, 2026 • 11:00 PM";
@@ -444,6 +444,62 @@ unset($export_query_params['export']);
 $excel_url = '?' . http_build_query(array_merge($export_query_params, ['export' => 'excel']));
 $csv_url   = '?' . http_build_query(array_merge($export_query_params, ['export' => 'csv']));
 
+// ── AJAX JSON POLLING ENDPOINT FOR SYSTEM TECHNICAL REPORTS ───────────────────
+if (isset($_GET['ajax_srt']) && $_GET['ajax_srt'] == '1') {
+    header('Content-Type: application/json');
+
+    // Re-fetch live KPI data
+    $live_uptime = $uptimeVal;
+    try {
+        $lu = $pdo->query("SELECT system_uptime FROM sys_health_report_log ORDER BY recorded_date DESC LIMIT 1")->fetchColumn();
+        if ($lu) $live_uptime = number_format((float)$lu, 2) . '%';
+    } catch (Exception $e) {}
+
+    $live_db_size = $dbSizeFormatted;
+    $live_tables  = $totalTablesCount;
+    $live_records = $totalRecordsCount;
+    try {
+        $ds = $pdo->query("SELECT COUNT(table_name) as tc, SUM(table_rows) as rc, SUM(data_length+index_length) as sb FROM information_schema.TABLES WHERE table_schema = DATABASE()")->fetch(PDO::FETCH_ASSOC);
+        if ($ds) {
+            $live_tables  = (int)($ds['tc'] ?? 0);
+            $live_records = (int)($ds['rc'] ?? 0);
+            $b = (float)($ds['sb'] ?? 0);
+            $live_db_size = $b >= 1073741824 ? number_format($b/1073741824,2).' GB' : number_format($b/1048576,2).' MB';
+        }
+    } catch (Exception $e) {}
+
+    $live_errors = 0;
+    try {
+        $live_errors = (int)$pdo->query("SELECT COUNT(*) FROM error_tracking_logs WHERE status NOT IN ('Resolved', 'resolved', 'Fixed', 'fixed', 'Closed', 'closed')")->fetchColumn();
+    } catch (Exception $e) {}
+
+    $live_backup = $latestBackupDate;
+    try {
+        $lb = $pdo->query("SELECT created_at FROM database_backups WHERE status IN ('Completed','completed','Successful') ORDER BY created_at DESC LIMIT 1")->fetchColumn();
+        if ($lb) $live_backup = date('M. d, Y • h:i A', strtotime($lb));
+    } catch (Exception $e) {}
+
+    $count = 0;
+    if ($active_tab === 'health')    $count = count($health_rows ?? []);
+    elseif ($active_tab === 'database') $count = count($database_rows ?? []);
+    elseif ($active_tab === 'backup')   $count = count($backup_rows ?? []);
+    elseif ($active_tab === 'error')    $count = count($error_rows ?? []);
+    elseif ($active_tab === 'security') $count = count($security_rows ?? []);
+
+    echo json_encode([
+        'success'       => true,
+        'tab'           => $active_tab,
+        'count'         => $count,
+        'uptime'        => $live_uptime,
+        'db_size'       => $live_db_size,
+        'db_tables'     => $live_tables,
+        'db_records'    => number_format($live_records),
+        'active_errors' => $live_errors,
+        'latest_backup' => $live_backup,
+    ]);
+    exit;
+}
+
 include __DIR__ . '/../partials/header.php';
 ?>
 
@@ -740,7 +796,7 @@ a.rpt-action-btn:hover,
             </div>
             <div>
                 <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">System Uptime</div>
-                <div style="font-size: 22px; font-weight: 800; color: #00264D; margin: 2px 0;"><?php echo htmlspecialchars($uptimeVal); ?></div>
+                <div id="sr_uptime" style="font-size: 22px; font-weight: 800; color: #00264D; margin: 2px 0;"><?php echo htmlspecialchars($uptimeVal); ?></div>
                 <div style="font-size: 11px; color: #16a34a; font-weight: 600;"><i class="fas fa-check-circle"></i> Operational</div>
             </div>
         </div>
@@ -752,8 +808,8 @@ a.rpt-action-btn:hover,
             </div>
             <div>
                 <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Database Size</div>
-                <div style="font-size: 22px; font-weight: 800; color: #00264D; margin: 2px 0;"><?php echo htmlspecialchars($dbSizeFormatted); ?></div>
-                <div style="font-size: 11px; color: #475569; font-weight: 500;"><?php echo $totalTablesCount; ?> Tables &bull; <?php echo number_format($totalRecordsCount); ?> Records</div>
+                <div id="sr_db_size" style="font-size: 22px; font-weight: 800; color: #00264D; margin: 2px 0;"><?php echo htmlspecialchars($dbSizeFormatted); ?></div>
+                <div id="sr_db_sub" style="font-size: 11px; color: #475569; font-weight: 500;"><?php echo $totalTablesCount; ?> Tables &bull; <?php echo number_format($totalRecordsCount); ?> Records</div>
             </div>
         </div>
 
@@ -764,7 +820,7 @@ a.rpt-action-btn:hover,
             </div>
             <div>
                 <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">System Errors</div>
-                <div style="font-size: 22px; font-weight: 800; color: #00264D; margin: 2px 0;"><?php echo $activeErrorsCount; ?> Active Errors</div>
+                <div id="sr_errors" style="font-size: 22px; font-weight: 800; color: #00264D; margin: 2px 0;"><?php echo $activeErrorsCount; ?> Active Errors</div>
                 <div style="font-size: 11px; color: #d97706; font-weight: 600;"><i class="fas fa-info-circle"></i> Tracking unresolved logs</div>
             </div>
         </div>
@@ -776,7 +832,7 @@ a.rpt-action-btn:hover,
             </div>
             <div>
                 <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Latest Backup</div>
-                <div style="font-size: 13px; font-weight: 800; color: #00264D; margin: 4px 0;"><?php echo htmlspecialchars($latestBackupDate); ?></div>
+                <div id="sr_latest_backup" style="font-size: 13px; font-weight: 800; color: #00264D; margin: 4px 0;"><?php echo htmlspecialchars($latestBackupDate); ?></div>
                 <div style="font-size: 11px; color: #9333ea; font-weight: 600;"><i class="fas fa-shield-alt"></i> Verified Backup</div>
             </div>
         </div>
@@ -1214,4 +1270,59 @@ function _sfssDoNativePrint(btn, label) {
 }
 </script>
 
+<script>
+// ── REAL-TIME 10-SECOND AUTO REFRESH POLLING ─────────────────────────
+let lastTechnicalReportsCount = null;
+
+function autoRefreshTechnicalReports() {
+    const openModal = Array.from(document.querySelectorAll('.modal, .modal-overlay, [id*="Modal"]')).some(m => {
+        const style = window.getComputedStyle(m);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    });
+    if (openModal) return;
+
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT')) {
+        return;
+    }
+
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('ajax_srt', '1');
+
+    fetch(currentUrl.toString(), { cache: 'no-store', credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (!data || !data.success) return;
+
+            // ── Live-update top KPI stat cards ─────────────────────────────
+            const uptimeEl = document.getElementById('sr_uptime');
+            if (uptimeEl && data.uptime) uptimeEl.textContent = data.uptime;
+
+            const dbSizeEl = document.getElementById('sr_db_size');
+            if (dbSizeEl && data.db_size) dbSizeEl.textContent = data.db_size;
+
+            const dbSubEl = document.getElementById('sr_db_sub');
+            if (dbSubEl && data.db_tables !== undefined) {
+                dbSubEl.innerHTML = data.db_tables + ' Tables &bull; ' + data.db_records + ' Records';
+            }
+
+            const errEl = document.getElementById('sr_errors');
+            if (errEl && data.active_errors !== undefined) {
+                errEl.textContent = data.active_errors + ' Active Errors';
+            }
+
+            const bkEl = document.getElementById('sr_latest_backup');
+            if (bkEl && data.latest_backup) bkEl.textContent = data.latest_backup;
+
+            // ── Reload table rows only when record count changes ─────────────
+            if (lastTechnicalReportsCount !== null && lastTechnicalReportsCount !== data.count) {
+                window.location.reload();
+            }
+            lastTechnicalReportsCount = data.count;
+        })
+        .catch(() => {});
+}
+
+// Start 10-second background auto-refresh for all System Reports metrics
+setInterval(autoRefreshTechnicalReports, 10000);
+</script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

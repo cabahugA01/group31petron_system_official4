@@ -269,6 +269,22 @@ if (in_array($export, ['excel', 'pdf'])) {
     }
 }
 
+// ── AJAX JSON POLLING ENDPOINT FOR FUEL TRANSACTION ADJUSTMENTS ─────────────────
+if (isset($_GET['ajax_fa']) && $_GET['ajax_fa'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'kpis' => [
+            'total' => number_format($total_count),
+            'today' => number_format($today_count),
+            'month' => number_format($month_count),
+            'last'  => $last_adj_str
+        ],
+        'adjustments_count' => count($adjustments)
+    ]);
+    exit;
+}
+
 require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
@@ -382,28 +398,28 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
         <div class="afto-card blue">
             <div class="afto-card-info">
                 <span class="afto-card-lbl">Total Adjustments</span>
-                <span class="afto-card-val"><?= number_format($total_count) ?></span>
+                <span class="afto-card-val" id="fa_kpi_total"><?= number_format($total_count) ?></span>
             </div>
             <div class="afto-card-icon"><i class="fas fa-database"></i></div>
         </div>
         <div class="afto-card green">
             <div class="afto-card-info">
                 <span class="afto-card-lbl">Today's Adjustments</span>
-                <span class="afto-card-val"><?= number_format($today_count) ?></span>
+                <span class="afto-card-val" id="fa_kpi_today"><?= number_format($today_count) ?></span>
             </div>
             <div class="afto-card-icon"><i class="fas fa-calendar-day"></i></div>
         </div>
         <div class="afto-card yellow">
             <div class="afto-card-info">
                 <span class="afto-card-lbl">This Month's Adjustments</span>
-                <span class="afto-card-val"><?= number_format($month_count) ?></span>
+                <span class="afto-card-val" id="fa_kpi_month"><?= number_format($month_count) ?></span>
             </div>
             <div class="afto-card-icon"><i class="fas fa-calendar-alt"></i></div>
         </div>
         <div class="afto-card purple">
             <div class="afto-card-info">
                 <span class="afto-card-lbl">Last Adjustment</span>
-                <span class="afto-card-val" style="font-size:12.5px;"><?= $last_adj_str ?></span>
+                <span class="afto-card-val" id="fa_kpi_last" style="font-size:12.5px;"><?= $last_adj_str ?></span>
             </div>
             <div class="afto-card-icon"><i class="fas fa-clock"></i></div>
         </div>
@@ -820,6 +836,38 @@ window.onclick = function(event) {
         event.target.style.display = 'none';
     }
 }
+// ── REAL-TIME 10-SECOND AUTO REFRESH POLLING ─────────────────────────
+let lastFaCount = null;
+function autoRefreshFuelAdjustments() {
+    // Pause polling if view modal is open
+    const openModal = Array.from(document.querySelectorAll('.modal')).some(m => {
+        const style = window.getComputedStyle(m);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+    });
+    if (openModal) return;
+
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('ajax_fa', '1');
+
+    fetch(currentUrl.toString(), { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.success) {
+                if (data.kpis) {
+                    if (document.getElementById('fa_kpi_total')) document.getElementById('fa_kpi_total').textContent = data.kpis.total;
+                    if (document.getElementById('fa_kpi_today')) document.getElementById('fa_kpi_today').textContent = data.kpis.today;
+                    if (document.getElementById('fa_kpi_month')) document.getElementById('fa_kpi_month').textContent = data.kpis.month;
+                    if (document.getElementById('fa_kpi_last'))  document.getElementById('fa_kpi_last').textContent  = data.kpis.last;
+                }
+                if (lastFaCount !== null && lastFaCount !== data.adjustments_count) {
+                    window.location.reload();
+                }
+                lastFaCount = data.adjustments_count;
+            }
+        })
+        .catch(() => {});
+}
+setInterval(autoRefreshFuelAdjustments, 10000);
 </script>
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

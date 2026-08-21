@@ -14,8 +14,9 @@ if (!in_array($my_role, ['superadmin', 'developer', 'admin', 'manager'], true)) 
     exit;
 }
 
-$msg = '';
-$success = '';
+$msg = $_SESSION['flash_error'] ?? '';
+$success = $_SESSION['flash_success'] ?? '';
+unset($_SESSION['flash_error'], $_SESSION['flash_success']);
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -53,9 +54,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $configArray = json_decode($configData, true);
                 
                 if ($moduleKey && is_array($configArray)) {
-                    // Update main status if sent
+                    // Update main status if sent in POST or inside config_data JSON
                     if (isset($_POST['is_enabled'])) {
                         $enabled = $_POST['is_enabled'] === '1';
+                        ModuleConfig::setModuleStatus($moduleKey, $enabled, $me['id'], $my_role);
+                    } elseif (isset($configArray['module_status'])) {
+                        $enabled = ($configArray['module_status'] === 'enabled' || $configArray['module_status'] === '1' || $configArray['module_status'] === true);
                         ModuleConfig::setModuleStatus($moduleKey, $enabled, $me['id'], $my_role);
                     }
 
@@ -253,6 +257,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
         }
     }
+
+    if (!empty($success)) {
+        $_SESSION['flash_success'] = $success;
+    }
+    if (!empty($msg)) {
+        $_SESSION['flash_error'] = $msg;
+    }
+
+    header("Location: module_configuration.php");
+    exit;
 }
 
 // Get all modules and their settings
@@ -308,6 +322,18 @@ try {
 } catch (Exception $e) {
     error_log("Failed to fetch stations: " . $e->getMessage());
     $stations = [];
+}
+
+// ── AJAX JSON POLLING ENDPOINT FOR MODULE CONFIGURATION ──────────────────────
+if (isset($_GET['ajax_mc']) && $_GET['ajax_mc'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success'         => true,
+        'modules_count'   => count($modules ?? []),
+        'enabled_count'   => count($enabledModules ?? []),
+        'stations_count'  => count($stations ?? [])
+    ]);
+    exit;
 }
 
 include __DIR__ . '/../partials/header.php';
@@ -408,7 +434,7 @@ setTimeout(function(){ dismissToast('toastError'); }, 7000);
     </div>
     <div class="card-body" style="padding: 20px; overflow: visible !important;">
         <div style="display: flex; align-items: center; gap: 15px; position: relative; margin-bottom: 15px;">
-            <label for="stationFilter" style="font-weight: 600; color: #374151; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
+            <label for="tb_station_display" style="font-weight: 600; color: #374151; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
                 Search Station
             </label>
             <!-- Searchable station filter (SEARCHABLE SELECT) -->
@@ -455,10 +481,12 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
         <div style="display: flex; gap: 12px; margin-bottom: 20px;">
             <input type="text" 
                    id="moduleSearch" 
+                   aria-label="Search modules by name or description"
                    placeholder="Search modules by name or description..." 
                    style="flex: 1; padding: 10px 15px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;"
                    oninput="filterModules()">
             <select id="statusFilter" 
+                    aria-label="Filter modules by status"
                     style="padding: 10px 15px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;"
                     onchange="filterModules()">
                 <option value="">All Status</option>
@@ -680,6 +708,28 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
                     </div>
                 </div>
 
+                <!-- Section: Role Access -->
+                <div style="margin-bottom: 24px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e5e7eb;">
+                        <i class="fas fa-users-cog" style="color: #3b82f6;"></i>
+                        <span style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px;">Role Access (Sidebar Navigation)</span>
+                    </div>
+                    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                        <label for="acc_role_admin" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #374151; font-weight: 600;">
+                            <input type="checkbox" id="acc_role_admin" name="user_access[]" value="Admin" checked style="width: 16px; height: 16px;">
+                            <span>Admin</span>
+                        </label>
+                        <label for="acc_role_manager" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #374151; font-weight: 600;">
+                            <input type="checkbox" id="acc_role_manager" name="user_access[]" value="Manager" checked style="width: 16px; height: 16px;">
+                            <span>Manager</span>
+                        </label>
+                        <label for="acc_role_staff" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #374151; font-weight: 600;">
+                            <input type="checkbox" id="acc_role_staff" name="user_access[]" value="Staff" checked style="width: 16px; height: 16px;">
+                            <span>Staff</span>
+                        </label>
+                    </div>
+                </div>
+
             </div>
 
             <!-- Footer -->
@@ -733,11 +783,11 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
                        oninput="checkConfirmDisableInput(this.value)">
             </div>
         </div>
-        <div class="modal-footer" style="background: #ffffff; border-top: 2px solid #e5e7eb; padding: 16px 22px; display: flex; justify-content: flex-end; gap: 10px;">
-            <button type="button" onclick="closeDisableConfirmModal()" style="padding: 9px 20px; border: 1px solid #d1d5db; border-radius: 7px; background: white; cursor: pointer; font-size: 13px; font-weight: 600; color: #374151;">
+        <div class="modal-footer" style="background: #ffffff; border-top: 2px solid #e5e7eb; padding: 16px 22px; display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
+            <button type="button" onclick="closeDisableConfirmModal()" style="padding: 10px 22px; border: 1px solid #94a3b8 !important; border-radius: 7px; background: #f8fafc !important; cursor: pointer; font-size: 13px; font-weight: 700; color: #0f172a !important; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: inline-flex; align-items: center; justify-content: center;">
                 Cancel
             </button>
-            <button type="button" id="btnSubmitDisable" disabled onclick="executeDisableModule()" style="padding: 9px 22px; border: none; border-radius: 7px; background: #dc2626; color: white; font-size: 13px; font-weight: 700; cursor: not-allowed; opacity: 0.5;">
+            <button type="button" id="btnSubmitDisable" disabled onclick="executeDisableModule()" style="padding: 10px 24px; border: none !important; border-radius: 7px; background: #dc2626 !important; color: #ffffff !important; font-size: 13px; font-weight: 700; cursor: not-allowed; opacity: 0.55; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(220,38,38,0.3);">
                 Disable Module
             </button>
         </div>
@@ -1854,43 +1904,32 @@ function showModuleSettings(moduleKey) {
     
     const moduleName = moduleNameMap[moduleKey] || moduleKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     
-    const coreModules = ['dashboard','transactions','fuel_management','inventory','reports','audit_trail','backup_restore'];
-    const isCore = coreModules.includes(moduleKey);
+    const tr = document.querySelector(`tr[data-module="${moduleKey}"]`);
+    const currentStatus = tr ? tr.dataset.status : 'enabled';
+    const isCurrentlyEnabled = (currentStatus === 'enabled');
     
-    let statusBadgeHtml = '<span style="background: #dcfce7; color: #15803d; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 6px;">Enabled</span>';
-    let moduleStatusSection = '';
+    const statusBadgeHtml = isCurrentlyEnabled 
+        ? '<span style="background: #dcfce7; color: #15803d; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 6px;">Enabled</span>'
+        : '<span style="background: #fee2e2; color: #dc2626; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 6px;">Disabled</span>';
     
-    if (isCore) {
-        statusBadgeHtml = '<span style="background: #dcfce7; color: #15803d; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 6px;">Enabled (Core)</span>';
-        moduleStatusSection = `
-            <div style="margin-bottom: 20px;">
-                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
-                    Module Status
-                </div>
-                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; color: #15803d; display: flex; align-items: center; gap: 8px;">
-                    <i class="fas fa-shield-alt"></i> Enabled - Core System Module (Cannot be disabled)
-                </div>
+    const moduleStatusSection = `
+        <div style="margin-bottom: 20px;">
+            <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                <span>Module Status Toggle</span>
+                <span style="font-size: 11px; text-transform: none; color: #64748b; font-weight: 500;">Flexible Status Control</span>
             </div>
-        `;
-    } else {
-        moduleStatusSection = `
-            <div style="margin-bottom: 20px;">
-                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
-                    Module Status
-                </div>
-                <div style="display: flex; gap: 24px;">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #16a34a;">
-                        <input type="radio" name="module_status" value="enabled" checked style="width: 16px; height: 16px;">
-                        <span>Enabled</span>
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #dc2626;">
-                        <input type="radio" name="module_status" value="disabled" style="width: 16px; height: 16px;">
-                        <span>Disabled</span>
-                    </label>
-                </div>
+            <div style="display: flex; gap: 24px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px 18px; border-radius: 8px; align-items: center;">
+                <label for="opt_module_status_enabled" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #16a34a;">
+                    <input type="radio" id="opt_module_status_enabled" name="module_status" value="enabled" ${isCurrentlyEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer;">
+                    <i class="fas fa-check-circle" style="color: #16a34a;"></i> Enabled
+                </label>
+                <label for="opt_module_status_disabled" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #dc2626;">
+                    <input type="radio" id="opt_module_status_disabled" name="module_status" value="disabled" ${!isCurrentlyEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer;">
+                    <i class="fas fa-times-circle" style="color: #dc2626;"></i> Disabled
+                </label>
             </div>
-        `;
-    }
+        </div>
+    `;
     
     // Top Module Information Card (Module Name, Version, Status)
     const topInfoCard = `
@@ -1919,12 +1958,12 @@ function showModuleSettings(moduleKey) {
                     Dashboard Settings
                 </div>
                 <div style="margin-bottom: 14px;">
-                    <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Default Landing Page</label>
-                    <input type="text" name="default_landing_page" class="config-input" value="dashboard" data-default="dashboard" style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                    <label for="inp_default_landing_page" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Default Landing Page</label>
+                    <input type="text" id="inp_default_landing_page" name="default_landing_page" class="config-input" value="dashboard" data-default="dashboard" style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
                 </div>
                 <div style="margin-bottom: 14px;">
-                    <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Refresh Interval (seconds)</label>
-                    <input type="number" name="dashboard_refresh_interval" class="config-input" value="45" data-default="45" style="width: 140px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                    <label for="inp_dashboard_refresh_interval" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Refresh Interval (seconds)</label>
+                    <input type="number" id="inp_dashboard_refresh_interval" name="dashboard_refresh_interval" class="config-input" value="45" data-default="45" style="width: 140px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
                 </div>
             </div>
 
@@ -1933,24 +1972,24 @@ function showModuleSettings(moduleKey) {
                     Dashboard Components
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 10px;">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_kpi_cards" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_kpi_cards" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_kpi_cards" name="enable_kpi_cards" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>KPI Cards</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_quick_actions" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_quick_actions" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_quick_actions" name="enable_quick_actions" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Quick Actions</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_calendar_widget" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_calendar_widget" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_calendar_widget" name="enable_calendar_widget" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Calendar Widget</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_notifications_widget" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_notifications_widget" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_notifications_widget" name="enable_notifications_widget" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Notifications</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_search_bar" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_search_bar" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_search_bar" name="enable_search_bar" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Search Bar</span>
                     </label>
                 </div>
@@ -1962,20 +2001,20 @@ function showModuleSettings(moduleKey) {
                     Inventory Settings
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 12px;">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_batch_tracking" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_batch_tracking" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_batch_tracking" name="enable_batch_tracking" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable Batch Tracking</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_expiration" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_expiration" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_expiration" name="enable_expiration" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable Expiration</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_fifo" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_fifo" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_fifo" name="enable_fifo" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable FIFO</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_low_stock_alerts" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_low_stock_alerts" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_low_stock_alerts" name="enable_low_stock_alerts" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable Low Stock Alerts</span>
                     </label>
                 </div>
@@ -1987,22 +2026,22 @@ function showModuleSettings(moduleKey) {
                     Export Formats
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_pdf" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_pdf" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_pdf" name="enable_pdf" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable PDF</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_excel" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_excel" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_excel" name="enable_excel" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable Excel</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_csv" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_csv" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_csv" name="enable_csv" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable CSV</span>
                     </label>
                 </div>
                 <div>
-                    <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Paper Size</label>
-                    <select name="paper_size" class="config-input" data-default="A4" style="width: 180px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                    <label for="sel_paper_size" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Paper Size</label>
+                    <select id="sel_paper_size" name="paper_size" class="config-input" data-default="A4" style="width: 180px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
                         <option value="A4" selected>A4</option>
                         <option value="Letter">Letter</option>
                         <option value="Legal">Legal</option>
@@ -2016,24 +2055,24 @@ function showModuleSettings(moduleKey) {
                     Backup Settings
                 </div>
                 <div style="margin-bottom: 14px;">
-                    <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Backup Frequency</label>
-                    <select name="backup_frequency" class="config-input" data-default="Daily" style="width: 180px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                    <label for="sel_backup_frequency" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Backup Frequency</label>
+                    <select id="sel_backup_frequency" name="backup_frequency" class="config-input" data-default="Daily" style="width: 180px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
                         <option value="Daily" selected>Daily</option>
                         <option value="Weekly">Weekly</option>
                         <option value="Monthly">Monthly</option>
                     </select>
                 </div>
                 <div style="margin-bottom: 14px;">
-                    <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Retention Period</label>
-                    <select name="retention_period" class="config-input" data-default="30 days" style="width: 180px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                    <label for="sel_retention_period" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Retention Period</label>
+                    <select id="sel_retention_period" name="retention_period" class="config-input" data-default="30 days" style="width: 180px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
                         <option value="30 days" selected>30 days</option>
                         <option value="60 days">60 days</option>
                         <option value="90 days">90 days</option>
                     </select>
                 </div>
                 <div>
-                    <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Storage Location</label>
-                    <select name="storage_location" class="config-input" data-default="Local" style="width: 180px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                    <label for="sel_storage_location" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Storage Location</label>
+                    <select id="sel_storage_location" name="storage_location" class="config-input" data-default="Local" style="width: 180px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
                         <option value="Local" selected>Local Storage</option>
                         <option value="Cloud">Cloud Storage</option>
                     </select>
@@ -2046,18 +2085,18 @@ function showModuleSettings(moduleKey) {
                     Notification Settings
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_notifications" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_notifications" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_notifications" name="enable_notifications" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable Notifications</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="auto_hide_success_banner" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_auto_hide_success_banner" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_auto_hide_success_banner" name="auto_hide_success_banner" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Auto Hide Success Banner</span>
                     </label>
                 </div>
                 <div>
-                    <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Duration (seconds)</label>
-                    <input type="number" name="notification_duration" class="config-input" value="5" data-default="5" style="width: 140px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                    <label for="inp_notification_duration" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Duration (seconds)</label>
+                    <input type="number" id="inp_notification_duration" name="notification_duration" class="config-input" value="5" data-default="5" style="width: 140px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
                 </div>
             </div>
         `,
@@ -2067,12 +2106,12 @@ function showModuleSettings(moduleKey) {
                     Transaction Controls
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 10px;">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="auto_transaction_numbering" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_auto_transaction_numbering" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_auto_transaction_numbering" name="auto_transaction_numbering" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Auto Transaction Numbering</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_void_transaction" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_void_transaction" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_void_transaction" name="enable_void_transaction" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable Void Transaction Control</span>
                     </label>
                 </div>
@@ -2084,16 +2123,16 @@ function showModuleSettings(moduleKey) {
                     Fuel Controls
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 10px;">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_fuel_reconciliation" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_fuel_reconciliation" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_fuel_reconciliation" name="enable_fuel_reconciliation" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable Automated Fuel Reconciliation</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_calibration" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_calibration" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_calibration" name="enable_calibration" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable Calibration Computations</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_meter_reading_validation" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_meter_reading_validation" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_meter_reading_validation" name="enable_meter_reading_validation" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable Meter Reading Validation</span>
                     </label>
                 </div>
@@ -2105,16 +2144,16 @@ function showModuleSettings(moduleKey) {
                     Customer Controls
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 10px;">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_customer_registration" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_customer_registration" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_customer_registration" name="enable_customer_registration" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable Customer Account Registration</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_vehicle_history" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_vehicle_history" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_vehicle_history" name="enable_vehicle_history" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable Vehicle Service History Integration</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" name="enable_credit_account" checked data-default="true" style="width: 16px; height: 16px;">
+                    <label for="chk_enable_credit_account" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_credit_account" name="enable_credit_account" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable Customer Credit Account Limits</span>
                     </label>
                 </div>
@@ -2215,14 +2254,19 @@ let pendingDisableSubmit = null;
 
 function checkConfirmDisableInput(val) {
     const btn = document.getElementById('btnSubmitDisable');
+    if (!btn) return;
     if (val.trim().toUpperCase() === 'CONFIRM') {
         btn.disabled = false;
         btn.style.cursor = 'pointer';
         btn.style.opacity = '1';
+        btn.style.setProperty('background', '#dc2626', 'important');
+        btn.style.setProperty('color', '#ffffff', 'important');
     } else {
         btn.disabled = true;
         btn.style.cursor = 'not-allowed';
-        btn.style.opacity = '0.5';
+        btn.style.opacity = '0.55';
+        btn.style.setProperty('background', '#dc2626', 'important');
+        btn.style.setProperty('color', '#ffffff', 'important');
     }
 }
 
@@ -2251,11 +2295,6 @@ function saveModuleConfig(event) {
     const statusRadio = document.querySelector('input[name="module_status"]:checked');
     const isDisabling = statusRadio && statusRadio.value === 'disabled';
     
-    if (isDisabling && isCore) {
-        alert('Core system modules (Dashboard, Transactions, Fuel Management, Inventory, Reports, Audit Trail) cannot be disabled.');
-        return false;
-    }
-    
     const submitAction = function() {
         const stationInput = document.getElementById('tb_station_val');
         const selectedStationId = stationInput ? stationInput.value : '';
@@ -2280,6 +2319,7 @@ function saveModuleConfig(event) {
         form.innerHTML = `
             <input type="hidden" name="action" value="save_module_config">
             <input type="hidden" name="module_key" value="${currentConfigModule}">
+            <input type="hidden" name="is_enabled" value="${isDisabling ? '0' : '1'}">
             <input type="hidden" name="station_id" value="${selectedStationId || 'all'}">
             <input type="hidden" name="config_data" value='${JSON.stringify(configSettings)}'>
         `;
@@ -2287,37 +2327,48 @@ function saveModuleConfig(event) {
         form.submit();
     };
 
-    if (isDisabling && !isCore) {
-        const moduleNameMap = {
-            'dashboard': 'Dashboard',
-            'transactions': 'Transactions',
-            'fuel_management': 'Fuel Management',
-            'inventory': 'Inventory',
-            'customers': 'Customers',
-            'product_pricing': 'Product & Pricing',
-            'calendar': 'Calendar',
-            'reports': 'Reports',
-            'notifications': 'Notifications',
-            'backup_restore': 'Backup & Restore',
-            'audit_trail': 'Audit Trail',
-            'api_integration': 'API Integration'
-        };
-        const moduleName = moduleNameMap[currentConfigModule] || currentConfigModule.replace(/_/g, ' ');
-        
-        document.getElementById('disableModuleName').textContent = moduleName;
-        document.getElementById('disableModuleNameText').textContent = moduleName;
-        document.getElementById('disableModuleNameMenu').textContent = moduleName;
-        document.getElementById('disableModuleNameAccess').textContent = moduleName;
-        document.getElementById('confirmDisableInput').value = '';
-        
-        const btn = document.getElementById('btnSubmitDisable');
-        btn.disabled = true;
-        btn.style.cursor = 'not-allowed';
-        btn.style.opacity = '0.5';
-        
-        pendingDisableSubmit = submitAction;
-        document.getElementById('disableConfirmModal').style.display = 'flex';
-        return false;
+    if (isDisabling) {
+        const disableModal = document.getElementById('disableConfirmModal');
+        if (disableModal) {
+            const moduleNameMap = {
+                'dashboard': 'Dashboard',
+                'transactions': 'Transactions',
+                'fuel_management': 'Fuel Management',
+                'inventory': 'Inventory',
+                'customers': 'Customers',
+                'product_pricing': 'Product & Pricing',
+                'calendar': 'Calendar',
+                'reports': 'Reports',
+                'notifications': 'Notifications',
+                'backup_restore': 'Backup & Restore',
+                'audit_trail': 'Audit Trail',
+                'api_integration': 'API Integration'
+            };
+            const moduleName = moduleNameMap[currentConfigModule] || currentConfigModule.replace(/_/g, ' ');
+            
+            const el1 = document.getElementById('disableModuleName');
+            const el2 = document.getElementById('disableModuleNameText');
+            const el3 = document.getElementById('disableModuleNameMenu');
+            const el4 = document.getElementById('disableModuleNameAccess');
+            if (el1) el1.textContent = moduleName;
+            if (el2) el2.textContent = moduleName;
+            if (el3) el3.textContent = moduleName;
+            if (el4) el4.textContent = moduleName;
+
+            const confirmInput = document.getElementById('confirmDisableInput');
+            if (confirmInput) confirmInput.value = '';
+            
+            const btn = document.getElementById('btnSubmitDisable');
+            if (btn) {
+                btn.disabled = true;
+                btn.style.cursor = 'not-allowed';
+                btn.style.opacity = '0.5';
+            }
+            
+            pendingDisableSubmit = submitAction;
+            disableModal.style.display = 'flex';
+            return false;
+        }
     }
 
     submitAction();
@@ -2520,4 +2571,32 @@ if (isset($_GET['action'])) {
 ?>
 
 </div>
+<script>
+// ── REAL-TIME 10-SECOND AUTO REFRESH POLLING ─────────────────────────
+let lastModuleConfigCount = null;
+function autoRefreshModuleConfiguration() {
+    const openModal = Array.from(document.querySelectorAll('.modal, .modal-overlay, [id*="Modal"]')).some(m => {
+        const style = window.getComputedStyle(m);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    });
+    if (openModal) return;
+
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('ajax_mc', '1');
+
+    fetch(currentUrl.toString(), { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.success) {
+                const combined = (data.modules_count || 0) + '-' + (data.enabled_count || 0);
+                if (lastModuleConfigCount !== null && lastModuleConfigCount !== combined) {
+                    window.location.reload();
+                }
+                lastModuleConfigCount = combined;
+            }
+        })
+        .catch(() => {});
+}
+setInterval(autoRefreshModuleConfiguration, 10000);
+</script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

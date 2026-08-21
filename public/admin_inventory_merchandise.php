@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
             $stmt_si = $pdo->prepare("
                 UPDATE station_inventory 
                 SET reorder_level = ?, critical_level = ?, capacity = ?, unit = ?, price = ?, cost = ?, last_updated = NOW() 
-                WHERE product_id = ? AND (station_id = ? OR station_id = 0 OR station_id IS NULL)
+                WHERE product_id = ? AND station_id = ?
             ");
             $stmt_si->execute([$reorder, $critical, $capacity, $unit, $price, $cost, $prod_id, $station_id]);
 
@@ -470,55 +470,31 @@ try {
 $all_items = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT ip.id,
-               ip.product_name AS name,
-               COALESCE(ip.category,'Merchandise') AS category_name,
-               COALESCE(ip.unit_price, 0)   AS price,
-               COALESCE(ip.unit_cost, 0)    AS cost,
-               ip.sku,
-               COALESCE(si.unit, ip.size, 'pcs')            AS unit,
-               COALESCE(si.status, ip.status, 'active')      AS status,
-               COALESCE(si.stock_level, ip.stock, 0)         AS stock_level,
-               COALESCE(si.capacity, ip.max_stock, 480)      AS capacity,
-               COALESCE(si.reorder_level, ip.min_stock, 24)  AS reorder_level,
-               COALESCE(si.critical_level, 10)               AS critical_level,
+        SELECT COALESCE(ip.id, p.id, si.product_id) AS id,
+               COALESCE(ip.product_name, p.name, 'Unknown Product') AS name,
+               COALESCE(ip.category, pc.name, 'Merchandise') AS category_name,
+               COALESCE(si.price, ip.unit_price, p.price, 0) AS price,
+               COALESCE(si.cost, ip.unit_cost, p.cost, 0) AS cost,
+               COALESCE(ip.sku, p.sku, CONCAT('P', LPAD(si.product_id, 4, '0'))) AS sku,
+               COALESCE(si.unit, ip.size, p.unit, 'pcs') AS unit,
+               COALESCE(si.status, ip.status, p.status, 'active') AS status,
+               COALESCE(si.stock_level, 0) AS stock_level,
+               COALESCE(si.capacity, ip.max_stock, p.capacity, 480) AS capacity,
+               COALESCE(si.reorder_level, ip.min_stock, p.min_stock_level, 24) AS reorder_level,
+               COALESCE(si.critical_level, 10) AS critical_level,
                si.physical_count,
                si.variance,
-               COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
-               COALESCE(ip.brand,'Petron Corporation')       AS supplier
-        FROM inventory_products ip
-        LEFT JOIN station_inventory si
-               ON si.product_id = ip.id AND (si.station_id = ? OR si.station_id = 0 OR si.station_id IS NULL)
-        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
-
-        UNION
-
-        SELECT p.id,
-               p.name AS name,
-               COALESCE(pc.name,'General')                   AS category_name,
-               COALESCE(si2.price, p.price, 0)               AS price,
-               COALESCE(p.cost, si2.cost, 0)                 AS cost,
-               COALESCE(NULLIF(p.sku,''), CONCAT('P', LPAD(p.id,4,'0'))) AS sku,
-               COALESCE(NULLIF(p.unit,''), NULLIF(si2.unit,''), 'pcs')  AS unit,
-               COALESCE(NULLIF(si2.status,''), NULLIF(p.status,''), 'active') AS status,
-               COALESCE(si2.stock_level, p.current_stock, 0) AS stock_level,
-               COALESCE(NULLIF(si2.capacity,0), NULLIF(p.capacity,0), NULLIF(p.max_stock_level,0), 480) AS capacity,
-               COALESCE(NULLIF(si2.reorder_level,0), NULLIF(p.min_stock_level,0), 24) AS reorder_level,
-               COALESCE(NULLIF(si2.critical_level,0), 10)    AS critical_level,
-               si2.physical_count,
-               si2.variance,
-               COALESCE(si2.last_updated, p.updated_at, p.created_at) AS last_updated,
-               'Petron Corporation'                           AS supplier
-        FROM products p
+               COALESCE(si.last_updated, NOW()) AS last_updated,
+               COALESCE(ip.brand, 'Petron Corporation') AS supplier
+        FROM station_inventory si
+        LEFT JOIN inventory_products ip ON ip.id = si.product_id
+        LEFT JOIN products p ON p.id = si.product_id
         LEFT JOIN product_categories pc ON pc.id = p.category_id
-        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND (si2.station_id = ? OR si2.station_id = 0 OR si2.station_id IS NULL)
-        WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
-          AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
-          AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products'))
-
+        WHERE si.station_id = ?
+          AND (LOWER(COALESCE(ip.category, pc.name, '')) NOT IN ('fuel', 'fuel products', 'services', 'service') OR (ip.category IS NULL AND pc.name IS NULL))
         ORDER BY category_name, name
     ");
-    $stmt->execute([$station_id, $station_id]);
+    $stmt->execute([$station_id]);
     $all_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     error_log("Error loading merchandise inventory: " . $e->getMessage());
@@ -534,7 +510,7 @@ try {
             LOWER(TRIM(product_name)) AS pname, 
             COALESCE(SUM(qty_received), 0) AS total_added
         FROM merchandise_stock_in
-        WHERE (station_id = ? OR station_id = 1253 OR station_id = 0 OR station_id IS NULL OR station_id > 0)
+        WHERE station_id = ?
         GROUP BY product_id, LOWER(TRIM(product_name))
     ");
     $siStmt->execute([$station_id]);
@@ -560,7 +536,7 @@ try {
             COALESCE(SUM(ti.quantity), 0) AS total_deducted
         FROM merchandise_transaction_items ti
         JOIN merchandise_transactions t ON t.id = ti.transaction_id
-        WHERE (t.station_id = ? OR t.station_id = 1253 OR t.station_id = 0 OR t.station_id IS NULL OR t.station_id > 0)
+        WHERE t.station_id = ?
           AND LOWER(t.workflow_status) NOT IN ('voided','void','cancelled')
         GROUP BY ti.product_id, LOWER(TRIM(ti.product_name))
     ");
@@ -620,14 +596,14 @@ $kpi_total_value    = 0;
 
 $stock_movements_today = 0;
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory_logs WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND DATE(created_at) = CURDATE()");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM inventory_logs WHERE station_id = ? AND DATE(created_at) = CURDATE()");
     $stmt->execute([$station_id]);
     $stock_movements_today = (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
 
 $pending_adjustments_count = 0;
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND status = 'Pending'");
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE station_id = ? AND status = 'Pending'");
     $stmt->execute([$station_id]);
     $pending_adjustments_count = (int)$stmt->fetchColumn();
 } catch (Exception $e) {}
@@ -811,7 +787,7 @@ try {
         FROM inventory_logs il
         LEFT JOIN inventory_products ip ON ip.id = il.product_id
         LEFT JOIN products p ON p.id = il.product_id AND (ip.id IS NULL)
-        LEFT JOIN station_inventory si ON si.product_id = il.product_id AND (si.station_id = il.station_id OR si.station_id = 0 OR si.station_id IS NULL)
+        LEFT JOIN station_inventory si ON si.product_id = il.product_id AND si.station_id = il.station_id
         LEFT JOIN users u ON u.id = il.user_id
 
         UNION ALL
@@ -829,7 +805,7 @@ try {
         FROM merchandise_stock_in msi
         LEFT JOIN inventory_products ip ON ip.id = msi.product_id
         LEFT JOIN products p ON p.id = msi.product_id AND (ip.id IS NULL)
-        LEFT JOIN station_inventory si ON si.product_id = msi.product_id AND (si.station_id = msi.station_id OR si.station_id = 0 OR si.station_id IS NULL)
+        LEFT JOIN station_inventory si ON si.product_id = msi.product_id AND si.station_id = msi.station_id
         LEFT JOIN users u ON u.id = msi.encoded_by
         WHERE msi.id NOT IN (SELECT COALESCE(reference_id, 0) FROM inventory_logs WHERE reference_type LIKE '%delivery%' OR reference_type LIKE '%stock_in%')
 
@@ -849,7 +825,7 @@ try {
         JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
         LEFT JOIN inventory_products ip ON ip.id = mti.product_id
         LEFT JOIN products p ON p.id = mti.product_id AND (ip.id IS NULL)
-        LEFT JOIN station_inventory si ON si.product_id = mti.product_id AND (si.station_id = mt.station_id OR si.station_id = 0 OR si.station_id IS NULL)
+        LEFT JOIN station_inventory si ON si.product_id = mti.product_id AND si.station_id = mt.station_id
         LEFT JOIN users u ON u.id = mt.staff_id
         WHERE mt.id NOT IN (SELECT COALESCE(reference_id, 0) FROM inventory_logs WHERE reference_type LIKE '%transaction%' OR reference_type LIKE '%sale%')
 
@@ -901,7 +877,7 @@ try {
         JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
         LEFT JOIN inventory_products ip ON ip.id = mti.product_id
         LEFT JOIN products p ON p.id = mti.product_id AND (ip.id IS NULL)
-        WHERE (mt.station_id = ? OR mt.station_id = 0 OR mt.station_id IS NULL)
+        WHERE mt.station_id = ?
           AND mt.transaction_type IN ('sale','stock_out','return','wastage')
         ORDER BY mt.created_at DESC
         LIMIT 200
@@ -926,7 +902,7 @@ try {
         FROM inventory_logs il
         LEFT JOIN inventory_products ip ON ip.id = il.product_id
         LEFT JOIN users u ON u.id = il.user_id
-        WHERE (il.station_id = ? OR il.station_id = 0 OR il.station_id IS NULL)
+        WHERE il.station_id = ?
           AND LOWER(il.action) IN ('transfer','transfer_out','transfer_in')
         ORDER BY il.created_at DESC
         LIMIT 200
@@ -950,7 +926,7 @@ try {
         FROM inventory_logs il
         LEFT JOIN inventory_products ip ON ip.id = il.product_id
         LEFT JOIN users u ON u.id = il.user_id
-        WHERE (il.station_id = ? OR il.station_id = 0 OR il.station_id IS NULL)
+        WHERE il.station_id = ?
           AND LOWER(il.action) IN ('damage','damaged','defective','disposal')
         ORDER BY il.created_at DESC
         LIMIT 200
@@ -972,7 +948,7 @@ try {
         FROM merchandise_batches mb
         LEFT JOIN inventory_products ip ON ip.id = mb.product_id
         LEFT JOIN merchandise_stock_in msi ON msi.product_id = mb.product_id AND msi.station_id = mb.station_id
-        WHERE (mb.station_id = ? OR mb.station_id = 0 OR mb.station_id IS NULL)
+        WHERE mb.station_id = ?
           AND mb.status = 'active'
         ORDER BY mb.id DESC
         LIMIT 200

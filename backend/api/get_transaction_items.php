@@ -53,7 +53,7 @@ try {
             FROM job_orders jo
             LEFT JOIN users u  ON COALESCE(jo.created_by, jo.user_id) = u.id
             LEFT JOIN users vm ON jo.validated_by = vm.id
-            WHERE jo.id = ? AND (jo.station_id = ? OR ? = 0 OR jo.station_id IS NULL)
+            WHERE jo.id = ? AND jo.station_id = ?
             LIMIT 1
         ");
         $stmt->execute([$id, $station_id, $station_id]);
@@ -111,7 +111,7 @@ try {
             FROM merchandise_transactions mt
             LEFT JOIN users u  ON mt.staff_id    = u.id
             LEFT JOIN users vm ON mt.validated_by = vm.id
-            WHERE mt.id = ? AND (mt.station_id = ? OR ? = 0 OR mt.station_id IS NULL)
+            WHERE mt.id = ? AND mt.station_id = ?
             LIMIT 1
         ");
         $stmt->execute([$id, $station_id, $station_id]);

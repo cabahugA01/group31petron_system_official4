@@ -77,6 +77,7 @@ $master_menu = [
     ];
 
 // Filter menu items based on user role and permissions
+if (!function_exists('filter_menu_by_permissions')) {
 function filter_menu_by_permissions($menu_items, $user_role) {
     $filtered_menu = [];
     $user_permissions = get_user_permissions($user_role);
@@ -236,6 +237,10 @@ function filter_menu_by_permissions($menu_items, $user_role) {
             // Manager gets manager_dashboard instead of generic dashboard
             if ($user_role === 'manager' && ($item['id'] ?? '') === 'dashboard') {
                 continue; // skip generic dashboard for manager
+            }
+            // Superadmin / Developer gets super_admin_dashboard instead of generic dashboard
+            if (in_array($user_role, ['superadmin', 'developer']) && ($item['id'] ?? '') === 'dashboard') {
+                continue; // skip generic dashboard for superadmin
             }
             // Non-managers don't see manager_dashboard
             if ($user_role !== 'manager' && ($item['id'] ?? '') === 'manager_dashboard') {
@@ -639,6 +644,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
     
     return $filtered_menu;
 }
+}
 
 // Get filtered menu items for current user
 $items = filter_menu_by_permissions($master_menu, $role);
@@ -681,6 +687,38 @@ if (!in_array($role, ['superadmin', 'developer'], true)) {
     }
 }
 
-// Visual indicators removed to keep UI clean
-// Future enhancement: Could add subtle CSS classes instead of emoji icons
+// ── DYNAMIC CUSTOM REGISTERED MODULES INJECTION ───────────────────────────
+// Append registered custom modules from DB to the sidebar menu items if enabled and role has access
+try {
+    if (isset($pdo)) {
+        $customStmt = $pdo->query("SELECT module_key, module_name, is_enabled, user_access FROM module_settings WHERE module_key NOT IN ('dashboard', 'transactions', 'job_orders', 'fuel_management', 'inventory', 'product_pricing', 'product_management', 'purchase_orders', 'calendar', 'reports', 'customers', 'users', 'super_admin_dashboard', 'admin_management', 'module_config', 'database_management', 'system_settings', 'superadmin_reports', 'audit_trail', 'notifications', 'backup_restore', 'api_integration') ORDER BY module_order ASC, id ASC");
+        if ($customStmt) {
+            $customModules = $customStmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($customModules as $cMod) {
+                if (!$cMod['is_enabled']) continue;
+
+                // Check role access
+                $allowedRoles = array_map('strtolower', array_map('trim', explode(',', $cMod['user_access'] ?? 'Admin, Manager, Staff')));
+                $currentRoleKey = function_exists('role_key') ? role_key($role) : strtolower($role);
+
+                if (!empty($allowedRoles) && !in_array($currentRoleKey, $allowedRoles, true) && !in_array('all', $allowedRoles, true) && !in_array($role, ['superadmin', 'developer'], true)) {
+                    continue; // Skip if user role doesn't have access
+                }
+
+                $pageFile = $cMod['module_key'] . '.php';
+                $href = file_exists(__DIR__ . '/../public/' . $pageFile) ? $pageFile : 'custom_module.php?key=' . urlencode($cMod['module_key']);
+
+                $items[] = [
+                    'id'               => $cMod['module_key'],
+                    'label'            => $cMod['module_name'],
+                    'ico'              => 'fas fa-puzzle-piece',
+                    'href'             => $href,
+                    'permissions'      => [],
+                    'station_specific' => false,
+                    'is_custom'        => true
+                ];
+            }
+        }
+    }
+} catch (Exception $e) { }
 ?>

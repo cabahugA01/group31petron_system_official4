@@ -32,7 +32,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
                    COALESCE(NULLIF(fd.supplier,''), 'Petron Corporation') AS supplier,
                    COALESCE(fd.status, 'Verified') AS status
             FROM fuel_deliveries fd
-            WHERE (fd.station_id = ? OR fd.station_id = 1 OR fd.station_id = 0 OR fd.station_id IS NULL)
+            WHERE fd.station_id = ?
               AND LOWER(fd.fuel_type) LIKE LOWER(?)
             ORDER BY fd.delivery_date DESC, fd.id DESC LIMIT 20
         ");
@@ -52,7 +52,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
                    COALESCE(u.name, 'Manager') AS adjusted_by
             FROM fuel_adjustments fa
             LEFT JOIN users u ON fa.user_id = u.id
-            WHERE (fa.station_id = ? OR fa.station_id = 1 OR fa.station_id = 0 OR fa.station_id IS NULL)
+            WHERE fa.station_id = ?
               AND LOWER(fa.fuel_type) LIKE LOWER(?)
             ORDER BY fa.adjustment_date DESC, fa.id DESC LIMIT 20
         ");
@@ -102,13 +102,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_
     header('Location: admin_inventory_fuel.php'); exit;
 }
 
-$TANK_CONFIG_17 = get_tank_config();
+$TANK_CONFIG_17 = get_tank_config($station_id);
 
 // ── DB lookups ────────────────────────────────────────────────────────
 $fi_raw = [];
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no, '') AS ugt_no FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)");
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no, '') AS ugt_no FROM fuel_inventory WHERE station_id = ?");
     $s->execute([$station_id]);
     $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fi_raw as $row) {
@@ -376,7 +376,7 @@ try {
             COALESCE(NULLIF(fd.supplier,''), 'Petron Corporation') AS remarks
         FROM fuel_deliveries fd
         LEFT JOIN users u ON fd.received_by = u.id
-        WHERE (fd.station_id = ? OR fd.station_id = 0 OR fd.station_id IS NULL)
+        WHERE fd.station_id = ?
         ORDER BY fd.delivery_date DESC LIMIT 150
     ");
     $stmt->execute([$station_id]);
@@ -397,7 +397,7 @@ try {
             CONCAT('Pump ', COALESCE(ft.pump_number, '1'), ' Shift Sales') AS remarks
         FROM fuel_transactions ft
         LEFT JOIN users u ON ft.staff_id = u.id
-        WHERE (ft.station_id = ? OR ft.station_id = 0 OR ft.station_id IS NULL)
+        WHERE ft.station_id = ?
           AND LOWER(COALESCE(ft.status,'')) NOT IN ('voided','cancelled','rejected')
         ORDER BY ft.transaction_date DESC LIMIT 150
     ");
@@ -419,7 +419,7 @@ try {
             COALESCE(NULLIF(fa.reason,''), NULLIF(fa.notes,''), 'Routine Calibration') AS remarks
         FROM fuel_adjustments fa
         LEFT JOIN users u ON fa.user_id = u.id
-        WHERE (fa.station_id = ? OR fa.station_id = 0 OR fa.station_id IS NULL)
+        WHERE fa.station_id = ?
         ORDER BY fa.adjustment_date DESC LIMIT 100
     ");
     $stmt->execute([$station_id]);
@@ -446,7 +446,7 @@ try {
                COALESCE(fd.status, 'Verified') AS status
         FROM fuel_deliveries fd
         LEFT JOIN users u ON fd.received_by = u.id
-        WHERE (fd.station_id = ? OR fd.station_id = 0 OR fd.station_id IS NULL)
+        WHERE fd.station_id = ?
         ORDER BY fd.delivery_date DESC, fd.id DESC
         LIMIT 200
     ");
@@ -477,7 +477,7 @@ try {
         LEFT JOIN fuel_inventory fi ON (fa.fuel_type_id = fi.fuel_type_id OR LOWER(fa.fuel_type) = LOWER(fi.fuel_type))
         LEFT JOIN fuel_types ft ON fa.fuel_type_id = ft.id
         LEFT JOIN users u ON fa.user_id = u.id
-        WHERE (fa.station_id = ? OR fa.station_id = 0 OR fa.station_id IS NULL OR fa.station_id = 1253 OR fa.station_id = 1)
+        WHERE fa.station_id = ?
         GROUP BY fa.id
         ORDER BY CASE WHEN LOWER(COALESCE(fa.status,'')) LIKE '%pending%' THEN 0 ELSE 1 END, fa.adjustment_date DESC, fa.id DESC
         LIMIT 200

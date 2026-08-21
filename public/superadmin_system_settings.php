@@ -55,6 +55,26 @@ try {
     $stations = [];
 }
 
+// ── AJAX JSON POLLING ENDPOINT FOR SUPERADMIN SYSTEM SETTINGS ────────────────
+if (isset($_GET['ajax_sss']) && $_GET['ajax_sss'] == '1') {
+    header('Content-Type: application/json');
+    $stId = (int)($_GET['station_id'] ?? 0);
+    $settingCount = 0;
+    try {
+        $stStmt = $pdo->prepare("SELECT COUNT(*) FROM system_settings WHERE station_id = ?");
+        $stStmt->execute([$stId]);
+        $settingCount = (int)$stStmt->fetchColumn();
+    } catch (Exception $e) {}
+
+    echo json_encode([
+        'success'        => true,
+        'stations_count' => count($stations ?? []),
+        'settings_count' => $settingCount,
+        'current_station'=> $stId
+    ]);
+    exit;
+}
+
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
@@ -483,8 +503,9 @@ input:checked + .ss-slider:before {
                             <button type="button" id="btn_upload_logo" onclick="uploadLogo()"><i class="fas fa-upload"></i> Upload</button>
                         </div>
                         <div id="logo_preview_container" style="margin-top:8px; display:flex; align-items:center; gap:12px;">
-                            <img id="logo_preview_img" src="../assets/img/petron_logo.png" alt="Company Logo" style="height:36px; border-radius:4px; border:1px solid #e2e8f0; padding:2px; background:#fff;">
-                            <button type="button" id="btn_remove_logo" onclick="removeLogo()"><i class="fas fa-trash-alt"></i> Remove Logo</button>
+                            <img id="logo_preview_img" src="" alt="Company Logo" style="height:36px; border-radius:4px; border:1px solid #e2e8f0; padding:2px; background:#fff; display:none;">
+                            <span id="no_logo_placeholder" style="font-size:12px; color:#94a3b8; font-style:italic;">No custom logo uploaded (Default/Removed)</span>
+                            <button type="button" id="btn_remove_logo" onclick="removeLogo()" style="display:none;"><i class="fas fa-trash-alt"></i> Remove Logo</button>
                         </div>
                     </div>
                     <div class="ss-form-group">
@@ -693,13 +714,18 @@ input:checked + .ss-slider:before {
                     <div class="ss-toggle-wrapper" style="align-self:center;">
                         <span class="ss-toggle-label">Maintenance Mode</span>
                         <label class="ss-switch">
-                            <input type="checkbox" id="ss_maintenance_mode">
+                            <input type="checkbox" id="ss_maintenance_mode" onchange="onMaintenanceModeChange(this.checked)">
                             <span class="ss-slider"></span>
                         </label>
                     </div>
                     <div class="ss-form-group">
                         <label for="ss_system_status">System Status</label>
-                        <input type="text" id="ss_system_status" class="ss-form-control" value="Online" readonly style="background:#f8fafc; font-weight:700; color:#16a34a;">
+                        <select id="ss_system_status" class="ss-form-control" onchange="onSystemStatusChange(this.value)">
+                            <option value="Online" style="color:#16a34a; font-weight:700;">Online</option>
+                            <option value="Maintenance" style="color:#d97706; font-weight:700;">Maintenance</option>
+                            <option value="Degraded" style="color:#dc2626; font-weight:700;">Degraded</option>
+                            <option value="Offline" style="color:#64748b; font-weight:700;">Offline</option>
+                        </select>
                     </div>
                     <div class="ss-form-group">
                         <label for="ss_last_system_update">Last System Update</label>
@@ -748,6 +774,19 @@ input:checked + .ss-slider:before {
 <script>
 const STATION_DATA = <?php echo json_encode(array_map(fn($s) => ['id' => (int)$s['id'], 'name' => $s['name']], $stations), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG); ?>;
 const API_URL = '../backend/api/system_settings_api.php';
+// PHP-generated paths — always accurate regardless of JS relative path resolution
+const DEFAULT_LOGO_URL = <?php 
+    // Use the currently loaded logo from DB, or fall back to the real default file
+    $current_logo_db = null;
+    try {
+        $logoStmt = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key IN ('logo','company_logo') AND station_id = 0 AND setting_value IS NOT NULL AND setting_value != '' LIMIT 1");
+        $logoStmt->execute();
+        $current_logo_db = $logoStmt->fetchColumn();
+    } catch(Exception $e) {}
+    // Real default logo — verified to exist on disk
+    echo json_encode('../assets/img/Petron Logo.png');
+?>;
+const CURRENT_LOGO_URL = <?php echo json_encode($current_logo_db ?: '../assets/img/Petron Logo.png'); ?>;
 let loadedSettings = {};
 
 function showToast(title, message, isError = false) {
@@ -891,11 +930,67 @@ function populateFormFields(s) {
     document.getElementById('ss_show_company_logo_reports').checked = s.show_company_logo_reports == '1';
     document.getElementById('ss_show_report_footer').checked = s.show_report_footer == '1';
     document.getElementById('ss_maintenance_mode').checked = s.maintenance_mode == '1';
-    document.getElementById('ss_system_status').value = s.system_status || 'Online';
+    // Sync system_status select
+    const statusSel = document.getElementById('ss_system_status');
+    if (statusSel) statusSel.value = s.system_status || 'Online';
     document.getElementById('ss_last_system_update').value = s.last_system_update || '2026-08-06 22:30:00';
 
-    if (s.company_logo) {
-        document.getElementById('logo_preview_img').src = s.company_logo;
+    // Update logo preview — show preview & remove button only if custom logo is set
+    const hasLogo = (s.company_logo && s.company_logo !== '' && s.company_logo !== 'none');
+
+    const logoImg = document.getElementById('logo_preview_img');
+    const noLogoTxt = document.getElementById('no_logo_placeholder');
+    const btnRemove = document.getElementById('btn_remove_logo');
+
+    if (logoImg) {
+        if (hasLogo) {
+            logoImg.src = s.company_logo;
+            logoImg.style.display = 'inline-block';
+            if (noLogoTxt) noLogoTxt.style.display = 'none';
+            if (btnRemove) btnRemove.style.display = 'inline-flex';
+        } else {
+            logoImg.src = '';
+            logoImg.style.display = 'none';
+            if (noLogoTxt) noLogoTxt.style.display = 'inline-block';
+            if (btnRemove) btnRemove.style.display = 'none';
+        }
+    }
+
+    // Also sync header logo live on every settings load
+    const headerLogo = document.getElementById('petronLogo');
+    if (headerLogo) {
+        if (hasLogo) {
+            headerLogo.src = s.company_logo + '?t=' + Date.now();
+            headerLogo.style.display = 'inline-block';
+        } else {
+            headerLogo.src = '';
+            headerLogo.style.setProperty('display', 'none', 'important');
+        }
+    }
+
+    const headerName = document.getElementById('headerSystemName');
+    if (headerName && s.system_name) headerName.textContent = s.system_name;
+}
+
+// ── Live-update header logo and system name without page reload ────────────
+function updateHeaderBranding(logoUrl, systemName) {
+    const headerLogo = document.getElementById('petronLogo');
+    if (headerLogo) {
+        if (logoUrl && logoUrl !== 'none' && logoUrl !== '') {
+            headerLogo.src = logoUrl;
+            headerLogo.style.display = 'inline-block';
+        } else {
+            headerLogo.src = '';
+            headerLogo.style.setProperty('display', 'none', 'important');
+        }
+    }
+    const headerName = document.getElementById('headerSystemName');
+    if (headerName && systemName) {
+        headerName.textContent = systemName;
+    }
+    // Also update page <title>
+    if (systemName) {
+        document.title = systemName + ' — System Settings';
     }
 }
 
@@ -915,8 +1010,27 @@ async function uploadLogo() {
         const res = await fetch(API_URL, { method: 'POST', body: formData });
         const data = await res.json();
         if (data.success) {
-            document.getElementById('logo_preview_img').src = data.logo_url;
+            // Update settings page preview
+            const logoImg = document.getElementById('logo_preview_img');
+            const noLogoTxt = document.getElementById('no_logo_placeholder');
+            const btnRemove = document.getElementById('btn_remove_logo');
+
+            if (logoImg) {
+                logoImg.src = data.logo_url;
+                logoImg.style.display = 'inline-block';
+            }
+            if (noLogoTxt) noLogoTxt.style.display = 'none';
+            if (btnRemove) btnRemove.style.display = 'inline-flex';
+
+            // Live-update header logo immediately with cache-busting & show it
+            const headerLogo = document.getElementById('petronLogo');
+            if (headerLogo) {
+                headerLogo.src = data.logo_url + '?t=' + Date.now();
+                headerLogo.style.display = 'inline-block';
+            }
             showToast('Logo Uploaded', data.message || 'Company logo uploaded successfully.');
+            // Reload to sync loadedSettings
+            loadSystemSettings(stationId);
         } else {
             showToast('Upload Error', data.message || 'Failed to upload logo.', true);
         }
@@ -927,6 +1041,9 @@ async function uploadLogo() {
 
 async function removeLogo() {
     const stationId = document.getElementById('ss_station_val').value || '0';
+
+    if (!confirm('Are you sure you want to remove the company logo? This cannot be undone.')) return;
+
     try {
         const res = await fetch(API_URL, {
             method: 'POST',
@@ -935,14 +1052,63 @@ async function removeLogo() {
         });
         const data = await res.json();
         if (data.success) {
-            document.getElementById('logo_preview_img').src = '../assets/img/petron_logo.png';
+            // Immediately hide preview and remove button
+            const logoImg = document.getElementById('logo_preview_img');
+            const noLogoTxt = document.getElementById('no_logo_placeholder');
+            const btnRemove = document.getElementById('btn_remove_logo');
+
+            if (logoImg) {
+                logoImg.src = '';
+                logoImg.style.display = 'none';
+            }
+            if (noLogoTxt) noLogoTxt.style.display = 'inline-block';
+            if (btnRemove) btnRemove.style.display = 'none';
+
+            // Live-update header logo: IMMEDIATELY HIDE/REMOVE IT from header!
+            const headerLogo = document.getElementById('petronLogo');
+            if (headerLogo) {
+                headerLogo.src = '';
+                headerLogo.style.setProperty('display', 'none', 'important');
+            }
+
+            // Clear from in-memory loadedSettings so auto-refresh doesn't restore old logo
+            if (loadedSettings) { loadedSettings.company_logo = ''; loadedSettings.logo = ''; }
+
+            // Reset file input
+            const fileInput = document.getElementById('ss_logo_input');
+            if (fileInput) fileInput.value = '';
+
             showToast('Logo Removed', data.message || 'Company logo removed successfully.');
+
+            // Reload settings from server to confirm removal
+            loadSystemSettings(stationId);
         } else {
             showToast('Error', data.message || 'Failed to remove logo.', true);
         }
     } catch (e) {
         showToast('Error', 'Failed to remove logo.', true);
     }
+}
+
+// ── Maintenance Mode ↔ System Status sync ─────────────────────────────────
+function onMaintenanceModeChange(isChecked) {
+    const statusSel = document.getElementById('ss_system_status');
+    if (!statusSel) return;
+    if (isChecked) {
+        statusSel.value = 'Maintenance';
+    } else {
+        // Only revert to Online if currently on Maintenance
+        if (statusSel.value === 'Maintenance') {
+            statusSel.value = 'Online';
+        }
+    }
+}
+
+function onSystemStatusChange(val) {
+    const maintToggle = document.getElementById('ss_maintenance_mode');
+    if (!maintToggle) return;
+    // Auto-check maintenance mode when status set to Maintenance
+    maintToggle.checked = (val === 'Maintenance');
 }
 
 async function saveAllSystemSettings() {
@@ -965,12 +1131,22 @@ async function saveAllSystemSettings() {
         }
     }
 
+    // Auto-stamp current timestamp for Last System Update
+    const now = new Date();
+    const nowStr = now.getFullYear() + '-'
+        + String(now.getMonth()+1).padStart(2,'0') + '-'
+        + String(now.getDate()).padStart(2,'0') + ' '
+        + String(now.getHours()).padStart(2,'0') + ':'
+        + String(now.getMinutes()).padStart(2,'0') + ':'
+        + String(now.getSeconds()).padStart(2,'0');
+    document.getElementById('ss_last_system_update').value = nowStr;
+
     const payload = {
         action: 'save_all_settings',
         station_id: parseInt(stationId),
         settings: {
-            system_name: document.getElementById('ss_system_name').value,
-            system_version: document.getElementById('ss_system_version').value,
+            system_name: document.getElementById('ss_system_name').value.trim(),
+            system_version: document.getElementById('ss_system_version').value.trim(),
             timezone: document.getElementById('ss_timezone').value,
             date_format: document.getElementById('ss_date_format').value,
             time_format: document.getElementById('ss_time_format').value,
@@ -994,7 +1170,7 @@ async function saveAllSystemSettings() {
             show_report_footer: document.getElementById('ss_show_report_footer').checked ? '1' : '0',
             maintenance_mode: document.getElementById('ss_maintenance_mode').checked ? '1' : '0',
             system_status: document.getElementById('ss_system_status').value,
-            last_system_update: document.getElementById('ss_last_system_update').value,
+            last_system_update: nowStr,
         }
     };
 
@@ -1006,6 +1182,11 @@ async function saveAllSystemSettings() {
         });
         const data = await res.json();
         if (data.success) {
+            // Live-update header branding immediately
+            const savedName = payload.settings.system_name;
+            const savedLogo = loadedSettings.company_logo || document.getElementById('logo_preview_img').src;
+            updateHeaderBranding(savedLogo, savedName);
+
             showToast('Settings Saved', 'System settings saved successfully.');
             loadSystemSettings(stationId);
         } else {
@@ -1018,6 +1199,8 @@ async function saveAllSystemSettings() {
 
 async function restoreDefaultSettings() {
     const stationId = document.getElementById('ss_station_val').value || '0';
+    const scopeLabel = stationId === '0' ? 'Global (All Stations)' : `Station #${stationId}`;
+    if (!confirm(`Restore all settings to factory defaults for: ${scopeLabel}?\n\nThis will overwrite all current settings.`)) return;
     try {
         const res = await fetch(API_URL, {
             method: 'POST',
@@ -1047,4 +1230,32 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
+<script>
+// ── REAL-TIME 10-SECOND AUTO REFRESH POLLING ─────────────────────────
+function autoRefreshSuperadminSystemSettings() {
+    const openModal = Array.from(document.querySelectorAll('.modal, .modal-overlay, [id*="Modal"]')).some(m => {
+        const style = window.getComputedStyle(m);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    });
+    if (openModal) return;
+
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT')) {
+        return;
+    }
+
+    const stationVal = document.getElementById('ss_station_val');
+    const stationId = stationVal ? stationVal.value : '0';
+
+    fetch(`${API_URL}?action=get_settings&station_id=${stationId}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.success && data.settings && typeof data.settings === 'object') {
+                loadedSettings = data.settings;
+                populateFormFields(data.settings);
+            }
+        })
+        .catch(() => {});
+}
+setInterval(autoRefreshSuperadminSystemSettings, 10000);
+</script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

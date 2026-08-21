@@ -2192,6 +2192,19 @@ if (isset($_GET['export']) && !empty($report_data)) {
     }
 }
 
+// ── AJAX JSON POLLING ENDPOINT FOR MASTER STAFF REPORTS ───────────────────────
+if (isset($_GET['ajax_sr']) && $_GET['ajax_sr'] == '1') {
+    header('Content-Type: application/json');
+    $count = is_array($report_data) ? count($report_data) : 0;
+    echo json_encode([
+        'success' => true,
+        'section' => $section,
+        'sub_tab' => $sub_tab,
+        'count'   => $count
+    ]);
+    exit;
+}
+
 require_once __DIR__ . '/../partials/header.php';
 ?>
 <style>

@@ -30,20 +30,29 @@ if (!$station_id && $role === 'manager') {
 // Mark notification as read and redirect to target page
 if (isset($_GET['open_notif']) && (int)$_GET['open_notif'] > 0) {
     $notif_id = (int)$_GET['open_notif'];
-    $stmt = $pdo->prepare("SELECT redirect_url FROM notifications WHERE id = ?");
-    $stmt->execute([$notif_id]);
-    $redir = $stmt->fetchColumn();
-    
-    $upd = $pdo->prepare("UPDATE notifications SET status = 'read', read_at = NOW() WHERE id = ?");
-    $upd->execute([$notif_id]);
-    
-    if ($redir && $redir !== '') {
-        header("Location: " . $redir);
-        exit;
-    } else {
-        header("Location: notifications.php");
-        exit;
-    }
+    try {
+        $stmt = $pdo->prepare("SELECT redirect_url, reference_type, reference_id FROM notifications WHERE id = ?");
+        $stmt->execute([$notif_id]);
+        $n_row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $upd = $pdo->prepare("UPDATE notifications SET status = 'read', read_at = NOW() WHERE id = ?");
+        $upd->execute([$notif_id]);
+        
+        $redir = trim((string)($n_row['redirect_url'] ?? ''));
+        $redir = preg_replace('/^\/?(public\/)?/', '', $redir);
+        
+        if (empty($redir) && !empty($n_row['reference_type'])) {
+            $redir = notification_redirect_url($n_row['reference_type'], (int)($n_row['reference_id'] ?? 0), $role);
+            $redir = preg_replace('/^\/?(public\/)?/', '', $redir);
+        }
+        
+        if (!empty($redir) && $redir !== '#' && $redir !== 'null') {
+            header("Location: " . $redir);
+            exit;
+        }
+    } catch (Exception $e) {}
+    header("Location: notifications.php");
+    exit;
 }
 
 // Date filters (Default to today)
@@ -108,7 +117,7 @@ if ($station_label === '') {
     $station_label = 'Vamenta Blvd., Carmen, City Of Cagayan De Oro , Misamis Oriental';
 }
 
-$st_sql = $station_id ? "(station_id = ? OR station_id = 0)" : "1=1";
+$st_sql = $station_id ? "station_id = ?" : "1=1";
 $st_params = $station_id ? [$station_id] : [];
 $date_params = array_merge($st_params, [$date_from, $date_to]);
 
@@ -204,7 +213,7 @@ $total_available_fuel = 0.0;
 $fi_raw    = [];
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, status, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, status, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
     $s->execute([$station_id]);
     $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fi_raw as $row) {
@@ -324,7 +333,7 @@ try {
             si.physical_count,
             si.variance
         FROM inventory_products ip
-        LEFT JOIN station_inventory si ON si.product_id = ip.id AND (si.station_id = ? OR si.station_id = 0 OR si.station_id IS NULL)
+        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
         WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
 
         UNION
@@ -350,7 +359,7 @@ try {
             si2.variance
         FROM products p
         LEFT JOIN product_categories pc ON pc.id = p.category_id
-        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND (si2.station_id = ? OR si2.station_id = 0 OR si2.station_id IS NULL)
+        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND si2.station_id = ?
         WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
           AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
           AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products'))
@@ -654,7 +663,7 @@ $recent_inventory_movements = mgr_rows($pdo, "
     FROM inventory_logs il
     LEFT JOIN products p ON p.id = il.product_id
     LEFT JOIN inventory_products ip ON ip.id = il.product_id
-    WHERE (il.station_id = ? OR il.station_id = 0 OR il.station_id IS NULL)
+    WHERE il.station_id = ?
     ORDER BY il.id DESC 
     LIMIT 6
 ", $st_params);
@@ -673,7 +682,7 @@ $staff_activity_list = mgr_rows($pdo, "
     SELECT al.id, al.action, al.details, al.reference, al.created_at, u.first_name, u.last_name, u.role
     FROM activity_logs al
     LEFT JOIN users u ON u.id = al.user_id
-    WHERE (u.station_id = ? OR al.user_id = ? OR u.station_id = 0)
+    WHERE u.station_id = ?
       AND LOWER(COALESCE(u.role, 'staff')) IN ('staff', 'cashier', 'pump_attendant')
     ORDER BY al.id DESC
     LIMIT 6
@@ -2671,7 +2680,12 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── AUTOMATIC BACKGROUND DATA FETCHING (Every 10 Seconds) ──
     async function refreshManagerDashboard() {
         try {
-            const resp = await fetch('manager_dashboard.php?ajax=1&date_from=<?= urlencode($date_from) ?>&date_to=<?= urlencode($date_to) ?>');
+                        const df = document.getElementById('date_from') ? document.getElementById('date_from').value : '';
+            const dt = document.getElementById('date_to')   ? document.getElementById('date_to').value   : '';
+            let url = 'manager_dashboard.php?ajax=1';
+            if (df) url += '&date_from=' + encodeURIComponent(df);
+            if (dt) url += '&date_to='   + encodeURIComponent(dt);
+            const resp = await fetch(url);
             if (!resp.ok) return;
             const data = await resp.json();
 

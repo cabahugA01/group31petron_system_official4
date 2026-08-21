@@ -53,11 +53,24 @@ $f_pay      = trim($_GET['payment_method']  ?? '');
 $f_status   = trim($_GET['status']          ?? '');
 $search     = trim($_GET['search']          ?? '');
 
-// Fetch staff list for dropdown
+// Fetch staff list for dropdown (Shift 1 & Shift 2 staff only)
 $staff_list = [];
 try {
-    $s = $pdo->prepare("SELECT DISTINCT u.id, COALESCE(NULLIF(TRIM(CONCAT(u.first_name,' ',u.last_name)),' '),u.username,'Unknown') as name
-        FROM users u JOIN merchandise_transactions mt ON mt.staff_id=u.id WHERE mt.station_id=? ORDER BY name");
+    $s = $pdo->prepare("
+        SELECT DISTINCT u.id, 
+               COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), ' '), u.username, 'Unknown') as name
+        FROM users u
+        WHERE u.station_id = ?
+          AND LOWER(u.role) IN ('staff', 'operations_staff', 'operations staff')
+          AND LOWER(COALESCE(u.status, '')) NOT IN ('disabled', 'archived', 'inactive')
+          AND (
+              LOWER(COALESCE(u.assigned_shift, u.shift_assignment, '')) LIKE '%shift 1%' 
+              OR LOWER(COALESCE(u.assigned_shift, u.shift_assignment, '')) LIKE '%shift 2%' 
+              OR LOWER(COALESCE(u.assigned_shift, u.shift_assignment, '')) IN ('first', 'second', '1', '2', '') 
+              OR u.assigned_shift IS NULL
+          )
+        ORDER BY name ASC
+    ");
     $s->execute([$station_id]);
     $staff_list = $s->fetchAll(PDO::FETCH_ASSOC);
 } catch(Exception $e){}
@@ -310,6 +323,48 @@ if(in_array($export,['excel','csv'])) {
         ]);
     }
     fclose($out); exit;
+}
+
+// ── AJAX JSON POLLING ENDPOINT FOR ALL TRANSACTIONS OVERSIGHT ─────────────────
+if (isset($_GET['ajax']) || isset($_GET['ajax_vt']) || isset($_GET['ajax_aat'])) {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'kpis' => [
+            'total_txns'  => number_format($kpi_txn_count),
+            'total_sales' => '₱' . number_format($kpi_total_sales, 2),
+            'merchandise' => number_format($kpi_merch_count),
+            'job_orders'  => number_format($kpi_jo_count),
+            'paid'        => number_format($kpi_paid_count),
+            'unpaid'      => number_format($kpi_unpaid_count),
+            'ar'          => number_format($kpi_ar_count),
+            'voided'      => number_format($kpi_voided_count),
+            'adjusted'    => number_format($kpi_adjusted_count)
+        ],
+        'rows_count' => count($rows)
+    ]);
+    exit;
+}
+
+// ── AJAX JSON POLLING ENDPOINT FOR ALL TRANSACTIONS OVERSIGHT ─────────────────
+if (isset($_GET['ajax']) || isset($_GET['ajax_vt']) || isset($_GET['ajax_aat'])) {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'kpis' => [
+            'total_txns'  => number_format($kpi_txn_count),
+            'total_sales' => '₱' . number_format($kpi_total_sales, 2),
+            'merchandise' => number_format($kpi_merch_count),
+            'job_orders'  => number_format($kpi_jo_count),
+            'paid'        => number_format($kpi_paid_count),
+            'unpaid'      => number_format($kpi_unpaid_count),
+            'ar'          => number_format($kpi_ar_count),
+            'voided'      => number_format($kpi_voided_count),
+            'adjusted'    => number_format($kpi_adjusted_count)
+        ],
+        'rows_count' => count($rows)
+    ]);
+    exit;
 }
 
 require_once __DIR__ . '/../partials/header.php';
@@ -1111,4 +1166,33 @@ document.addEventListener('click', function(e) {
 });
 </script>
 
+<script>
+// ── 10-SECOND REAL-TIME AUTO REFRESH FOR ADMIN ALL TRANSACTIONS ───────────
+async function autoRefreshAdminAllTransactions() {
+    const modals = ['detailModal', 'recordViewModal', 'statusModal'];
+    for (let mId of modals) {
+        const m = document.getElementById(mId);
+        if (m && (m.style.display === 'flex' || m.style.display === 'block')) return;
+    }
+
+    try {
+        const params = new URLSearchParams(window.location.search);
+        params.set('ajax', '1');
+        const resp = await fetch('admin_all_transactions.php?' + params.toString());
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        if (data.kpis) {
+            for (let k in data.kpis) {
+                const el = document.getElementById('kpi_' + k);
+                if (el) el.textContent = data.kpis[k];
+            }
+        }
+    } catch (e) {
+        console.warn('Admin All Transactions refresh notice:', e);
+    }
+}
+
+setInterval(autoRefreshAdminAllTransactions, 10000);
+</script>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

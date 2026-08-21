@@ -1081,7 +1081,7 @@
       </div>
   </div>
 
-  <!-- Session Inactivity Warning Modal (4 min warning / 5 min timeout) -->
+  <!-- Session Inactivity Warning Modal (14 min warning / 15 min timeout) -->
   <div id="sessionTimeoutModal" style="display:none;position:fixed;inset:0;background:rgba(0,15,35,0.6);backdrop-filter:blur(3px);z-index:999999;align-items:center;justify-content:center;padding:16px;">
       <div style="background:#ffffff;border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,0.22);width:100%;max-width:320px;padding:20px 18px 16px;text-align:center;animation:modalPop 0.2s cubic-bezier(0.16,1,0.3,1);border:1px solid #e2e8f0;position:relative;">
           <div style="width:40px;height:40px;border-radius:50%;background:#fef3c7;border:1px solid #fde68a;display:flex;align-items:center;justify-content:center;margin:0 auto 10px;">
@@ -1136,10 +1136,10 @@
       }
   });
 
-  // ── INACTIVITY TIMEOUT CONTROLLER (5 min timeout, 4 min warning / 1 min remaining) ──
+  // ── INACTIVITY TIMEOUT CONTROLLER (15 min timeout, 14 min warning / 1 min remaining) ──
   (function() {
-      const TOTAL_TIMEOUT_SEC  = 300; // 5 minutes total (300 seconds)
-      const WARNING_TIME_SEC   = 240; // 4 minutes before warning (60 seconds remaining)
+      const TOTAL_TIMEOUT_SEC  = 900; // 15 minutes total (900 seconds)
+      const WARNING_TIME_SEC   = 840; // 14 minutes before warning (60 seconds remaining)
       const KEEPALIVE_URL      = "<?= isset($app_base_path) ? $app_base_path : '' ?>/backend/api/session_keepalive.php";
       const LOGOUT_URL         = "<?= isset($public_base_url) ? htmlspecialchars($public_base_url . '/logout.php?timeout=1') : 'logout.php?timeout=1' ?>";
 

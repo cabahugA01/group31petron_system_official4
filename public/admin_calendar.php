@@ -14,8 +14,12 @@ $station_id = user_station_id();
 $user_id = $me['id'];
 $is_admin = true;
 
-// Admin can filter by station or view all
-$filter_station = isset($_GET['station']) ? (int)$_GET['station'] : 0;
+// Admin is scoped strictly to their assigned station; SuperAdmin/Dev can filter by station or view all
+if (!in_array($rk, ['superadmin', 'developer'])) {
+    $filter_station = (int)$station_id;
+} else {
+    $filter_station = isset($_GET['station']) ? (int)$_GET['station'] : 0;
+}
 
 // Handle AJAX requests
 if (isset($_POST['action']) && $_POST['action'] === 'save_event') {

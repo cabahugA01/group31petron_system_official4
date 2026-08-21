@@ -314,6 +314,20 @@ if (($_GET['export'] ?? '') === 'csv') {
     fclose($out); exit;
 }
 
+// ── AJAX JSON POLLING ENDPOINT FOR MANAGER AUDIT TRAIL ─────────────────────────
+if (isset($_GET['ajax_mat']) && $_GET['ajax_mat'] == '1') {
+    header('Content-Type: application/json');
+    $count = count($unique ?? []);
+    $firstRows = array_slice($unique ?? [], 0, 30);
+    $signature = md5(json_encode($firstRows) . '_' . $count);
+    echo json_encode([
+        'success'   => true,
+        'count'     => $count,
+        'signature' => $signature
+    ]);
+    exit;
+}
+
 // ── HTML ──────────────────────────────────────────────────────────────────────
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -532,4 +546,39 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 </div><!-- /aat-wrap -->
+<script>
+// ── REAL-TIME 10-SECOND AUTO REFRESH POLLING ─────────────────────────
+let lastMatSignature = null;
+let lastMatCount = null;
+
+function autoRefreshManagerAuditTrail() {
+    const openModal = Array.from(document.querySelectorAll('.modal, .modal-overlay, [id*="Modal"]')).some(m => {
+        const style = window.getComputedStyle(m);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    });
+    if (openModal) return;
+
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT')) {
+        return;
+    }
+
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('ajax_mat', '1');
+
+    fetch(currentUrl.toString(), { cache: 'no-store', credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.success) {
+                if (lastMatSignature !== null && (lastMatSignature !== data.signature || lastMatCount !== data.count)) {
+                    window.location.reload();
+                }
+                lastMatSignature = data.signature;
+                lastMatCount = data.count;
+            }
+        })
+        .catch(() => {});
+}
+
+setInterval(autoRefreshManagerAuditTrail, 10000);
+</script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

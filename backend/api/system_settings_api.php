@@ -87,6 +87,8 @@ try {
 
             $relative_path = '../uploads/logos/' . $filename;
             upsertSetting($pdo, 'company_logo', $relative_path, 'general', $station_id, $me['id']);
+            // Also store under 'logo' key — used by partials/header.php for sidebar brand logo
+            upsertSetting($pdo, 'logo', $relative_path, 'general', $station_id, $me['id']);
 
             echo json_encode(['success' => true, 'message' => 'Company logo uploaded successfully', 'logo_url' => $relative_path]);
             break;
@@ -95,19 +97,25 @@ try {
            2. REMOVE LOGO
         ------------------------------------------------------------------- */
         case 'remove_logo':
-            $stmt = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'company_logo' AND station_id = ?");
+            // Fetch stored logo path (may be keyed as 'company_logo' or 'logo')
+            $logoPath = null;
+            $stmt = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key IN ('company_logo','logo') AND station_id = ? AND setting_value IS NOT NULL AND setting_value != '' AND setting_value != 'none' LIMIT 1");
             $stmt->execute([$station_id]);
-            $current = $stmt->fetchColumn();
+            $logoPath = $stmt->fetchColumn();
 
-            if ($current) {
-                $abs_path = __DIR__ . '/../../uploads/logos/' . basename($current);
-                if (file_exists($abs_path)) @unlink($abs_path);
+            if ($logoPath && strpos($logoPath, '../assets/') === false) {
+                // Build absolute path — stored value like '../uploads/logos/logo_global_123.png'
+                $abs_path = realpath(__DIR__ . '/../../' . ltrim(str_replace('../', '', $logoPath), '/'));
+                if ($abs_path && file_exists($abs_path)) {
+                    @unlink($abs_path);
+                }
             }
 
-            $stmt = $pdo->prepare("DELETE FROM system_settings WHERE setting_key = 'company_logo' AND station_id = ?");
-            $stmt->execute([$station_id]);
+            // Set both key variants for this station explicitly to 'none'
+            upsertSetting($pdo, 'company_logo', 'none', 'general', $station_id, $me['id']);
+            upsertSetting($pdo, 'logo', 'none', 'general', $station_id, $me['id']);
 
-            echo json_encode(['success' => true, 'message' => 'Company logo removed successfully']);
+            echo json_encode(['success' => true, 'message' => 'Company logo removed successfully', 'logo_url' => '']);
             break;
 
         /* -------------------------------------------------------------------
@@ -155,6 +163,11 @@ try {
                 upsertSetting($pdo, $key, $valStr, $category, $station_id, $me['id']);
             }
 
+            // Sync company_logo → 'logo' key (read by partials/header.php for sidebar brand logo)
+            if (isset($settings['company_logo']) && $settings['company_logo'] !== '') {
+                upsertSetting($pdo, 'logo', $settings['company_logo'], 'general', $station_id, $me['id']);
+            }
+
             echo json_encode(['success' => true, 'message' => 'System settings saved successfully']);
             break;
 
@@ -185,7 +198,7 @@ try {
             // System defaults
             $defaults = [
                 'system_name'                  => 'Petron Station Management System',
-                'company_logo'                 => '../assets/img/petron_logo.png',
+                'company_logo'                 => '../assets/img/Petron Logo.png',
                 'system_version'               => 'v1.0.0',
                 'timezone'                     => 'Asia/Manila (UTC+8)',
                 'date_format'                  => 'YYYY-MM-DD',
@@ -214,6 +227,10 @@ try {
             ];
 
             $result = array_merge($defaults, $all_settings);
+            if (isset($result['company_logo']) && ($result['company_logo'] === 'none' || $result['company_logo'] === '')) {
+                $result['company_logo'] = '';
+                $result['logo'] = '';
+            }
 
             echo json_encode(['success' => true, 'settings' => $result]);
             break;
@@ -230,7 +247,7 @@ try {
 
                 $defaults = [
                     ['system_name',                  'Petron Station Management System', 'general'],
-                    ['company_logo',                 '../assets/img/petron_logo.png', 'general'],
+                    ['company_logo',                 '../assets/img/Petron Logo.png', 'general'],
                     ['system_version',               'v1.0.0', 'general'],
                     ['timezone',                     'Asia/Manila (UTC+8)', 'regional'],
                     ['date_format',                  'YYYY-MM-DD', 'regional'],

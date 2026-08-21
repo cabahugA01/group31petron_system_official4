@@ -63,7 +63,7 @@ if ($action === 'create') {
                 COALESCE(NULLIF(ip.sku, ''), CONCAT('P', LPAD(ip.id, 4, '0'))) AS sku,
                 COALESCE(si.stock_level, ip.stock, 0) AS current_stock
             FROM inventory_products ip
-            LEFT JOIN station_inventory si ON si.product_id = ip.id AND (si.station_id = ? OR si.station_id = 0)
+            LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
             WHERE ip.id = ?
             
             UNION
@@ -76,7 +76,7 @@ if ($action === 'create') {
                 COALESCE(si2.stock_level, p.current_stock, 0) AS current_stock
             FROM products p
             LEFT JOIN product_categories pc ON pc.id = p.category_id
-            LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND (si2.station_id = ? OR si2.station_id = 0)
+            LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND si2.station_id = ?
             WHERE p.id = ?
             LIMIT 1
         ");

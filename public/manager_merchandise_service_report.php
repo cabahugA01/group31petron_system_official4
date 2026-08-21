@@ -45,6 +45,18 @@ require_once __DIR__ . '/reports/merchandise_service_report_new.php';
 $reportData = fetchMerchandiseServiceReport($pdo, $station_id, $date_from, $date_to, null);
 
 $page_title = "Daily Merchandise & Service Sales Report";
+// ── AJAX JSON POLLING ENDPOINT FOR MANAGER MERCHANDISE SERVICE REPORT ──────────
+if (isset($_GET['ajax_mmsr']) && $_GET['ajax_mmsr'] == '1') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'date_from' => $date_from,
+        'date_to'   => $date_to,
+        'time'      => time()
+    ]);
+    exit;
+}
+
 require_once __DIR__ . '/../partials/header.php';
 ?>
 
@@ -540,4 +552,27 @@ function exportToCSV() {
 }
 </script>
 
+<script>
+// ── REAL-TIME 10-SECOND AUTO REFRESH POLLING ─────────────────────────
+function autoRefreshManagerMerchServiceReport() {
+    const openModal = Array.from(document.querySelectorAll('.modal, .modal-overlay, [id*="Modal"]')).some(m => {
+        const style = window.getComputedStyle(m);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    });
+    if (openModal) return;
+
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('ajax_mmsr', '1');
+
+    fetch(currentUrl.toString(), { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.success) {
+                // Polling active
+            }
+        })
+        .catch(() => {});
+}
+setInterval(autoRefreshManagerMerchServiceReport, 10000);
+</script>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

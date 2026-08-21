@@ -9,6 +9,7 @@ $role       = role_key($me['role'] ?? '');
 $station_id = user_station_id();
 
 // â”€â”€ Module gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Module gate ────────────────────────────────────────────────────────
 if (!in_array($role, ['superadmin', 'developer']) && !is_module_enabled('inventory')) {
     render_module_disabled_page('Inventory');
 }
@@ -18,7 +19,7 @@ if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
     exit;
 }
 
-$TANK_CONFIG_17 = get_tank_config();
+$TANK_CONFIG_17 = get_tank_config((int)$station_id);
 
 // ── AJAX Handler ────────────────────────────────────────────────────────
 if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
@@ -50,7 +51,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
                    fd.status
             FROM fuel_deliveries fd
             LEFT JOIN users u ON (fd.received_by = CAST(u.id AS CHAR) OR fd.received_by = u.username OR fd.received_by = u.name)
-            WHERE (fd.station_id = ? OR fd.station_id = 1 OR fd.station_id = 0 OR fd.station_id IS NULL)
+            WHERE fd.station_id = ?
               AND (LOWER(fd.fuel_type) IN ($placeholders) OR LOWER(fd.fuel_type) LIKE ?)
             ORDER BY fd.delivery_date DESC, fd.id DESC LIMIT 20
         ");
@@ -73,7 +74,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
             FROM fuel_transactions ft
             LEFT JOIN users u1 ON ft.staff_id = u1.id
             LEFT JOIN users u2 ON ft.validated_by = u2.id
-            WHERE (ft.station_id = ? OR ft.station_id = 1 OR ft.station_id = 0 OR ft.station_id IS NULL)
+            WHERE ft.station_id = ?
               AND (LOWER(ft.fuel_type) IN ($placeholders) OR LOWER(ft.fuel_type) LIKE ?)
             ORDER BY ft.transaction_date DESC, ft.id DESC LIMIT 20
         ");
@@ -86,7 +87,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
         $stmt = $pdo->prepare("
             SELECT DATE(delivery_date) AS d_date, SUM(delivery_liters) AS tot_del
             FROM fuel_deliveries
-            WHERE (station_id = ? OR station_id = 1 OR station_id = 0 OR station_id IS NULL)
+            WHERE station_id = ?
               AND (LOWER(fuel_type) IN ($placeholders) OR LOWER(fuel_type) LIKE ?)
             GROUP BY DATE(delivery_date)
         ");
@@ -96,7 +97,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
         }
 
         // Get current level of this tank for audit calculation
-        $stmt = $pdo->prepare("SELECT current_level, capacity FROM fuel_inventory WHERE (station_id = ? OR station_id = 1 OR station_id = 0 OR station_id IS NULL) AND (LOWER(fuel_type) IN ($placeholders) OR LOWER(fuel_type) LIKE ?) LIMIT 1");
+        $stmt = $pdo->prepare("SELECT current_level, capacity FROM fuel_inventory WHERE station_id = ? AND (LOWER(fuel_type) IN ($placeholders) OR LOWER(fuel_type) LIKE ?) LIMIT 1");
         $stmt->execute(array_merge([$station_id], $aliases, ['%' . strtolower(explode(' ', $fuel_type)[0]) . '%']));
         $fi_rec = $stmt->fetch(PDO::FETCH_ASSOC);
         $cur_vol = $fi_rec ? (float)$fi_rec['current_level'] : 500.0;
@@ -128,7 +129,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
 $fi_raw = [];
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
     $s->execute([$station_id]);
     $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fi_raw as $row) {
@@ -170,7 +171,7 @@ try {
 // ———————————————————————————————————————————————— Price source: fuel_inventory.price_per_liter (authoritative — same as Meter Reading form) ──
 $price_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT LOWER(TRIM(fuel_type)) AS ft_key, price_per_liter FROM fuel_inventory WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL)");
+    $s = $pdo->prepare("SELECT LOWER(TRIM(fuel_type)) AS ft_key, price_per_liter FROM fuel_inventory WHERE station_id = ?");
     $s->execute([$station_id]);
     foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $key = $row['ft_key'];
@@ -509,7 +510,7 @@ try {
             fd.fuel_type
         FROM fuel_deliveries fd
         LEFT JOIN fuel_pricing fp ON LOWER(fp.fuel_type_id) = LOWER(fd.fuel_type) AND fp.station_id = fd.station_id
-        WHERE (fd.station_id = ? OR fd.station_id = 0 OR fd.station_id IS NULL)
+        WHERE fd.station_id = ?
         ORDER BY fd.delivery_date DESC, fd.id DESC
         LIMIT 200
     ");
@@ -533,7 +534,7 @@ try {
             COALESCE(NULLIF(fa.reason,''), NULLIF(fa.notes,''), 'Routine Meter Calibration') AS remarks
         FROM fuel_adjustments fa
         LEFT JOIN users u ON fa.user_id = u.id
-        WHERE (fa.station_id = ? OR fa.station_id = 0 OR fa.station_id IS NULL)
+        WHERE fa.station_id = ?
         ORDER BY fa.adjustment_date DESC, fa.id DESC
         LIMIT 200
     ");
@@ -586,7 +587,7 @@ try {
             COALESCE(NULLIF(fd.supplier,''), 'Petron Corporation') AS remarks
         FROM fuel_deliveries fd
         LEFT JOIN users u ON fd.received_by = u.id
-        WHERE (fd.station_id = ? OR fd.station_id = 0 OR fd.station_id IS NULL)
+        WHERE fd.station_id = ?
         ORDER BY fd.delivery_date DESC LIMIT 150
     ");
     $stmt->execute([$station_id]);
@@ -607,7 +608,7 @@ try {
             CONCAT('Pump ', COALESCE(ft.pump_number, '1'), ' Shift Sales') AS remarks
         FROM fuel_transactions ft
         LEFT JOIN users u ON ft.staff_id = u.id
-        WHERE (ft.station_id = ? OR ft.station_id = 0 OR ft.station_id IS NULL)
+        WHERE ft.station_id = ?
           AND LOWER(COALESCE(ft.status,'')) NOT IN ('voided','cancelled','rejected')
         ORDER BY ft.transaction_date DESC LIMIT 150
     ");
@@ -629,7 +630,7 @@ try {
             COALESCE(NULLIF(fa.reason,''), NULLIF(fa.notes,''), 'Routine Calibration') AS remarks
         FROM fuel_adjustments fa
         LEFT JOIN users u ON fa.user_id = u.id
-        WHERE (fa.station_id = ? OR fa.station_id = 0 OR fa.station_id IS NULL)
+        WHERE fa.station_id = ?
         ORDER BY fa.adjustment_date DESC LIMIT 100
     ");
     $stmt->execute([$station_id]);

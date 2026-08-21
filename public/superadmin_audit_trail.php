@@ -651,6 +651,28 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
 }
 
 
+// ── AJAX JSON POLLING ENDPOINT FOR SUPERADMIN AUDIT TRAIL ───────────────────────
+if (isset($_GET['ajax_sat']) && $_GET['ajax_sat'] == '1') {
+    header('Content-Type: application/json');
+    $count = count($rows ?? []);
+    $firstRows = array_slice($rows ?? [], 0, 30);
+    $signature = md5(json_encode($firstRows) . '_' . $count);
+    $latest_time = '';
+    if (!empty($rows)) {
+        $r0 = $rows[0];
+        $latest_time = $r0['created_at'] ?? $r0['date_time'] ?? $r0['logged_at'] ?? $r0['timestamp'] ?? '';
+    }
+
+    echo json_encode([
+        'success'     => true,
+        'tab'         => $active_tab ?? 'system_activity',
+        'count'       => $count,
+        'signature'   => $signature,
+        'latest_time' => $latest_time
+    ]);
+    exit;
+}
+
 include __DIR__ . '/../partials/header.php';
 ?>
 
@@ -1164,4 +1186,41 @@ function exportReport(type, btn) {
 }
 </script>
 
+<script>
+// ── REAL-TIME 10-SECOND AUTO REFRESH POLLING ─────────────────────────
+let lastAuditSignature = null;
+let lastSuperadminAuditCount = null;
+
+function autoRefreshSuperadminAuditTrail() {
+    const openModal = Array.from(document.querySelectorAll('.modal, .modal-overlay, [id*="Modal"]')).some(m => {
+        const style = window.getComputedStyle(m);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    });
+    if (openModal) return;
+
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT')) {
+        return;
+    }
+
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('ajax_sat', '1');
+
+    fetch(currentUrl.toString(), { cache: 'no-store', credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.success) {
+                // If signature or count changed, reload the page to display latest live audit entries
+                if (lastAuditSignature !== null && (lastAuditSignature !== data.signature || lastSuperadminAuditCount !== data.count)) {
+                    window.location.reload();
+                }
+                lastAuditSignature = data.signature;
+                lastSuperadminAuditCount = data.count;
+            }
+        })
+        .catch(() => {});
+}
+
+// Start 10-second background auto-refresh for all Audit Trail operations
+setInterval(autoRefreshSuperadminAuditTrail, 10000);
+</script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

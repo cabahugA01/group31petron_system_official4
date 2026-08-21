@@ -194,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Fetch real live current stock from station_inventory / inventory_products / products
                 $live_stmt = $pdo->prepare("
                     SELECT stock_level FROM station_inventory 
-                    WHERE product_id = ? AND (station_id = ? OR station_id = 1253 OR station_id = 0 OR station_id IS NULL)
+                    WHERE product_id = ? AND station_id = ?
                     ORDER BY station_id DESC LIMIT 1
                 ");
                 $live_stmt->execute([$pid, $station_id]);
@@ -218,7 +218,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ->execute([$me['id'], $new_stock, $adj_id]);
 
                 // 2. Update station_inventory across station records
-                $upd_si = $pdo->prepare("UPDATE station_inventory SET stock_level = ?, last_updated = NOW() WHERE product_id = ? AND (station_id = ? OR station_id = 1253 OR station_id = 0 OR station_id IS NULL)");
+                $upd_si = $pdo->prepare("UPDATE station_inventory SET stock_level = ?, last_updated = NOW() WHERE product_id = ? AND station_id = ?");
                 $upd_si->execute([$new_stock, $pid, $station_id]);
                 if ($upd_si->rowCount() === 0) {
                     $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, status, last_updated) VALUES (?, ?, ?, 'active', NOW())")
@@ -614,7 +614,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt_si = $pdo->prepare("
                     UPDATE station_inventory 
                     SET reorder_level = ?, critical_level = ?, capacity = ?, unit = ?, price = ?, cost = ?, last_updated = NOW() 
-                    WHERE product_id = ? AND (station_id = ? OR station_id = 1253 OR station_id = 0 OR station_id IS NULL)
+                    WHERE product_id = ? AND station_id = ?
                 ");
                 $stmt_si->execute([$reorder, $critical, $capacity, $unit, $price, $cost, $prod_id, $station_id]);
 
@@ -659,88 +659,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $merch_inventory = [];
 $msg = '';
 
-// Backfill station_inventory for inventory_products
-try {
-    $pdo->prepare("
-        INSERT INTO station_inventory (product_id, station_id, stock_level, status, last_updated)
-        SELECT ip.id, ?, COALESCE(ip.stock, 0), 'active', NOW()
-        FROM inventory_products ip
-        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-        WHERE si.id IS NULL
-          AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
-    ")->execute([$station_id, $station_id]);
-} catch (Exception $e) {}
-// Backfill station_inventory for products table
-try {
-    $pdo->prepare("
-        INSERT INTO station_inventory (product_id, station_id, stock_level, status, last_updated)
-        SELECT p.id, ?, COALESCE(p.current_stock, 0), 'active', NOW()
-        FROM products p
-        LEFT JOIN product_categories pc ON pc.id = p.category_id
-        LEFT JOIN station_inventory si ON si.product_id = p.id AND si.station_id = ?
-        WHERE si.id IS NULL
-          AND LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
-          AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
-    ")->execute([$station_id, $station_id]);
-} catch (Exception $e) {}
-
-// Main catalog query — UNION of inventory_products + products (excluding fuel/service)
+// Main catalog query for this specific station
 try {
     $stmt = $pdo->prepare("
         SELECT
-            ip.id,
-            ip.product_name                              AS name,
-            COALESCE(ip.category,'Merchandise')          AS category_name,
-            COALESCE(ip.unit_price, 0)                   AS price,
-            COALESCE(ip.unit_cost, 0)                    AS cost,
-            ip.sku,
-            COALESCE(ip.brand,'Petron Corporation')      AS supplier,
-            COALESCE(ip.status,'active')                 AS product_status,
-            COALESCE(ip.min_stock, 0)                    AS min_stock,
-            COALESCE(ip.max_stock, 0)                    AS max_stock,
-            COALESCE(si.stock_level, ip.stock, 0)        AS stock_level,
-            COALESCE(si.capacity, ip.max_stock, 480)     AS capacity,
-            COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
+            COALESCE(ip.id, p.id, si.product_id)         AS id,
+            COALESCE(ip.product_name, p.name, 'Unknown Product') AS name,
+            COALESCE(ip.category, pc.name, 'Merchandise') AS category_name,
+            COALESCE(si.price, ip.unit_price, p.price, 0) AS price,
+            COALESCE(si.cost, ip.unit_cost, p.cost, 0)   AS cost,
+            COALESCE(ip.sku, p.sku, CONCAT('P', LPAD(si.product_id,4,'0'))) AS sku,
+            COALESCE(ip.brand, 'Petron Corporation')     AS supplier,
+            COALESCE(si.status, ip.status, p.status, 'active') AS product_status,
+            COALESCE(ip.min_stock, p.min_stock_level, 0) AS min_stock,
+            COALESCE(ip.max_stock, p.max_stock_level, 0) AS max_stock,
+            COALESCE(si.stock_level, 0)                  AS stock_level,
+            COALESCE(si.capacity, ip.max_stock, p.capacity, 480) AS capacity,
+            COALESCE(si.reorder_level, ip.min_stock, p.min_stock_level, 24) AS reorder_level,
             COALESCE(si.critical_level, 10)              AS critical_level,
-            COALESCE(si.unit, ip.size, 'pcs')            AS unit,
-            COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
+            COALESCE(si.unit, ip.size, p.unit, 'pcs')    AS unit,
+            COALESCE(si.last_updated, NOW())             AS last_updated,
             si.physical_count,
             si.variance
-        FROM inventory_products ip
-        LEFT JOIN station_inventory si ON si.product_id = ip.id AND (si.station_id = ? OR si.station_id = 0 OR si.station_id IS NULL)
-        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
-
-        UNION
-
-        SELECT
-            p.id,
-            p.name                                       AS name,
-            COALESCE(pc.name,'General')                  AS category_name,
-            COALESCE(si2.price, p.price, 0)              AS price,
-            COALESCE(p.cost, si2.cost, 0)                AS cost,
-            COALESCE(NULLIF(p.sku,''), CONCAT('P', LPAD(p.id,4,'0'))) AS sku,
-            'Petron Corporation'                         AS supplier,
-            COALESCE(NULLIF(si2.status,''), NULLIF(p.status,''), 'active') AS product_status,
-            COALESCE(p.min_stock_level, 0)               AS min_stock,
-            COALESCE(p.max_stock_level, 0)               AS max_stock,
-            COALESCE(si2.stock_level, p.current_stock, 0) AS stock_level,
-            COALESCE(NULLIF(si2.capacity,0), NULLIF(p.capacity,0), NULLIF(p.max_stock_level,0), 480) AS capacity,
-            COALESCE(NULLIF(si2.reorder_level,0), NULLIF(p.min_stock_level,0), 24) AS reorder_level,
-            COALESCE(NULLIF(si2.critical_level,0), 10)   AS critical_level,
-            COALESCE(NULLIF(p.unit,''), NULLIF(si2.unit,''), 'pcs') AS unit,
-            COALESCE(si2.last_updated, p.updated_at, p.created_at) AS last_updated,
-            si2.physical_count,
-            si2.variance
-        FROM products p
+        FROM station_inventory si
+        LEFT JOIN inventory_products ip ON ip.id = si.product_id
+        LEFT JOIN products p ON p.id = si.product_id
         LEFT JOIN product_categories pc ON pc.id = p.category_id
-        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND (si2.station_id = ? OR si2.station_id = 0 OR si2.station_id IS NULL)
-        WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
-          AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
-          AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products'))
-
+        WHERE si.station_id = ?
+          AND (LOWER(COALESCE(ip.category, pc.name, '')) NOT IN ('fuel', 'fuel products', 'services', 'service') OR (ip.category IS NULL AND pc.name IS NULL))
         ORDER BY category_name, name
     ");
-    $stmt->execute([$station_id, $station_id]);
+    $stmt->execute([$station_id]);
     $merch_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $msg = 'Error loading merchandise: ' . $e->getMessage();
@@ -756,7 +705,6 @@ foreach ($merch_inventory as &$item) {
 }
 unset($item);
 
-// Last movement per product
 $last_movements = [];
 try {
     $mvStmt = $pdo->prepare("
@@ -794,7 +742,7 @@ try {
             LOWER(TRIM(product_name)) AS pname, 
             COALESCE(SUM(qty_received), 0) AS total_added
         FROM merchandise_stock_in
-        WHERE (station_id = ? OR station_id = 1253 OR station_id = 0 OR station_id IS NULL OR station_id > 0)
+        WHERE station_id = ?
         GROUP BY product_id, LOWER(TRIM(product_name))
     ");
     $add_stmt->execute([$station_id]);
@@ -820,7 +768,7 @@ try {
             COALESCE(SUM(ti.quantity), 0) AS total_deducted
         FROM merchandise_transaction_items ti
         JOIN merchandise_transactions t ON t.id = ti.transaction_id
-        WHERE (t.station_id = ? OR t.station_id = 1253 OR t.station_id = 0 OR t.station_id IS NULL OR t.station_id > 0)
+        WHERE t.station_id = ?
           AND LOWER(t.workflow_status) NOT IN ('voided','void','cancelled')
         GROUP BY ti.product_id, LOWER(TRIM(ti.product_name))
     ");
@@ -1081,7 +1029,7 @@ try {
             msi.id,
             CONCAT('SI-', LPAD(msi.id, 5, '0')) AS stock_in_no,
             COALESCE(NULLIF(msi.po_number,''), '—') AS po_no,
-            msi.product_name,
+            m
             COALESCE(NULLIF(msi.batch_ref,''), CONCAT('BATCH-', LPAD(msi.id, 4, '0'))) AS batch_no,
             msi.qty_received,
             msi.unit_cost,
@@ -1091,7 +1039,7 @@ try {
             COALESCE(u.name, u.username, 'Staff') AS received_by
         FROM merchandise_stock_in msi
         LEFT JOIN users u ON msi.encoded_by = u.id
-        WHERE (msi.station_id = ? OR msi.station_id = 0 OR msi.station_id IS NULL)
+        WHERE msi.station_id = ?
         ORDER BY msi.encoded_at DESC, msi.id DESC
         LIMIT 300
     ");
@@ -1115,7 +1063,7 @@ try {
         JOIN merchandise_transactions t ON t.id = ti.transaction_id
         LEFT JOIN merchandise_batches mb ON mb.id = ti.batch_id
         LEFT JOIN users u ON t.staff_id = u.id
-        WHERE (t.station_id = ? OR t.station_id = 0 OR t.station_id IS NULL)
+        WHERE t.station_id = ?
           AND (t.workflow_status IS NULL OR LOWER(t.workflow_status) NOT IN ('voided','void','cancelled'))
         ORDER BY t.created_at DESC, t.id DESC
         LIMIT 300
@@ -1139,7 +1087,7 @@ try {
         LEFT JOIN inventory_products ip ON ip.id = il.product_id
         LEFT JOIN products p ON p.id = il.product_id
         LEFT JOIN users u ON il.user_id = u.id
-        WHERE (il.station_id = ? OR il.station_id = 0 OR il.station_id IS NULL) 
+        WHERE il.station_id = ? 
           AND (LOWER(il.action) LIKE '%transfer%' OR LOWER(il.notes) LIKE '%transfer%')
         ORDER BY il.created_at DESC
         LIMIT 200
@@ -1164,7 +1112,7 @@ try {
         LEFT JOIN inventory_products ip ON ip.id = il.product_id
         LEFT JOIN products p ON p.id = il.product_id
         LEFT JOIN users u ON il.user_id = u.id
-        WHERE (il.station_id = ? OR il.station_id = 0 OR il.station_id IS NULL) 
+        WHERE il.station_id = ? 
           AND (LOWER(il.action) LIKE '%damage%' OR LOWER(il.action) LIKE '%write_off%')
         ORDER BY il.created_at DESC
         LIMIT 200
@@ -1178,7 +1126,7 @@ try {
     $s = $pdo->prepare("
         SELECT
             CONCAT('DMG-SI-', LPAD(msi.id, 4, '0')) AS damage_no,
-            msi.product_name,
+            m
             COALESCE(NULLIF(msi.batch_ref,''), CONCAT('BATCH-', LPAD(msi.id, 4, '0'))) AS batch_no,
             msi.qty_received AS qty,
             CONCAT('Damaged on delivery - ', COALESCE(msi.remarks, 'No remarks')) AS reason,
@@ -1186,7 +1134,7 @@ try {
             COALESCE(u.name, u.username, 'Staff') AS recorded_by
         FROM merchandise_stock_in msi
         LEFT JOIN users u ON msi.encoded_by = u.id
-        WHERE (msi.station_id = ? OR msi.station_id = 0 OR msi.station_id IS NULL) 
+        WHERE msi.station_id = ? 
           AND msi.condition_flag = 'Damaged'
         ORDER BY msi.encoded_at DESC
         LIMIT 100
@@ -1209,7 +1157,7 @@ try {
         FROM merchandise_batches mb
         LEFT JOIN inventory_products ip ON ip.id = mb.product_id
         LEFT JOIN products p ON p.id = mb.product_id
-        WHERE (mb.station_id = ? OR mb.station_id = 0 OR mb.station_id IS NULL) 
+        WHERE mb.station_id = ? 
           AND LOWER(mb.status) IN ('expired', 'damage')
         ORDER BY mb.date_received ASC
         LIMIT 200
