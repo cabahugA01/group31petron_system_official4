@@ -37,17 +37,27 @@ try {
 // Helper functions to normalize fuel names and find all tanks for the same fuel type
 if (!function_exists('get_canonical_fuel_name')) {
     function get_canonical_fuel_name($name) {
-        $name_lower = strtolower(trim($name));
-        if (strpos($name_lower, 'turbo') !== false) {
-            return 'Turbo Diesel';
-        } elseif (strpos($name_lower, 'diesel') !== false) {
+    $name_lower = strtolower(trim($name));
+    if (strpos($name_lower, 'turbo') !== false) {
+        return 'Turbo Diesel';
+    } elseif (strpos($name_lower, 'diesel') !== false) {
+        return 'Diesel';
+    } elseif (strpos($name_lower, 'kerosene') !== false) {
+        return 'Kerosene';
+    } elseif (strpos($name_lower, 'xcs') !== false) {
+        return 'XCS Plus';
+    } elseif (strpos($name_lower, 'xtra') !== false || strpos($name_lower, 'unl') !== false || strpos($name_lower, 'advance') !== false) {
+        return 'Xtra UNL';
+    }
+    return $name;
+} elseif (strpos($name_lower, 'diesel') !== false) {
             return 'Diesel';
         } elseif (strpos($name_lower, 'kerosene') !== false) {
             return 'Kerosene';
         } elseif (strpos($name_lower, 'xcs') !== false) {
             return 'XCS Plus';
         } elseif (strpos($name_lower, 'xtra') !== false || strpos($name_lower, 'unl') !== false || strpos($name_lower, 'advance') !== false) {
-            return 'XTR ADVANCE';
+            return 'Xtra UNL';
         }
         return $name;
     }

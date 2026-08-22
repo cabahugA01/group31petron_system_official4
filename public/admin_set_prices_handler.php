@@ -19,17 +19,27 @@ if (!in_array($role, ['admin', 'superadmin'])) {
 // Helper functions to normalize fuel names and find all tanks for the same fuel type
 if (!function_exists('get_canonical_fuel_name')) {
     function get_canonical_fuel_name($name) {
-        $name_lower = strtolower(trim($name));
-        if (strpos($name_lower, 'turbo') !== false) {
-            return 'Turbo Diesel';
-        } elseif (strpos($name_lower, 'diesel') !== false) {
+    $name_lower = strtolower(trim($name));
+    if (strpos($name_lower, 'turbo') !== false) {
+        return 'Turbo Diesel';
+    } elseif (strpos($name_lower, 'diesel') !== false) {
+        return 'Diesel';
+    } elseif (strpos($name_lower, 'kerosene') !== false) {
+        return 'Kerosene';
+    } elseif (strpos($name_lower, 'xcs') !== false) {
+        return 'XCS Plus';
+    } elseif (strpos($name_lower, 'xtra') !== false || strpos($name_lower, 'unl') !== false || strpos($name_lower, 'advance') !== false) {
+        return 'Xtra UNL';
+    }
+    return $name;
+} elseif (strpos($name_lower, 'diesel') !== false) {
             return 'Diesel';
         } elseif (strpos($name_lower, 'kerosene') !== false) {
             return 'Kerosene';
         } elseif (strpos($name_lower, 'xcs') !== false) {
             return 'XCS Plus';
         } elseif (strpos($name_lower, 'xtra') !== false || strpos($name_lower, 'unl') !== false || strpos($name_lower, 'advance') !== false) {
-            return 'XTR ADVANCE';
+            return 'Xtra UNL';
         }
         return $name;
     }
@@ -98,7 +108,7 @@ try {
                 elseif (strpos($n, 'diesel') !== false) $canonical_name = 'Diesel';
                 elseif (strpos($n, 'kerosene') !== false) $canonical_name = 'Kerosene';
                 elseif (strpos($n, 'xcs') !== false)    $canonical_name = 'XCS Plus';
-                elseif (strpos($n, 'xtra') !== false || strpos($n, 'unl') !== false || strpos($n, 'advance') !== false) $canonical_name = 'XTR ADVANCE';
+                elseif (strpos($n, 'xtra') !== false || strpos($n, 'unl') !== false || strpos($n, 'advance') !== false) $canonical_name = 'Xtra UNL';
                 else $canonical_name = $fuel_type_name;
 
                 $all_rows = $pdo->prepare("SELECT id, fuel_type FROM fuel_inventory WHERE station_id=?");
@@ -110,7 +120,7 @@ try {
                     elseif (strpos($n2, 'diesel') !== false) $c2 = 'Diesel';
                     elseif (strpos($n2, 'kerosene') !== false) $c2 = 'Kerosene';
                     elseif (strpos($n2, 'xcs') !== false)    $c2 = 'XCS Plus';
-                    elseif (strpos($n2, 'xtra') !== false || strpos($n2, 'unl') !== false || strpos($n2, 'advance') !== false) $c2 = 'XTR ADVANCE';
+                    elseif (strpos($n2, 'xtra') !== false || strpos($n2, 'unl') !== false || strpos($n2, 'advance') !== false) $c2 = 'Xtra UNL';
                     else $c2 = $row['fuel_type'];
                     if ($c2 === $canonical_name) $matching_ids[] = (int)$row['id'];
                 }

@@ -23,33 +23,24 @@ if ($role !== 'manager') {
     header('Location: dashboard.php');
     exit;
 }
-if ((int)$station_id <= 0) {
-    render_no_station_page('manager_dashboard.php');
-}
-
-// ── Fetch station name ───────────────────────────────────────────────────────
-$station_name = 'Unknown Station';
-try {
-    $stmt2 = $pdo->prepare('SELECT name FROM stations WHERE id = ? LIMIT 1');
-    $stmt2->execute([$station_id]);
-    $station_name = $stmt2->fetchColumn() ?: 'Unknown Station';
-} catch (Exception $e) { /* silent */ }
 
 // Helper function to get the canonical 5 fuel types
-function get_canonical_fuel_name($name) {
-    $name_lower = strtolower(trim($name));
-    if (strpos($name_lower, 'turbo') !== false) {
-        return 'Turbo Diesel';
-    } elseif (strpos($name_lower, 'diesel') !== false) {
-        return 'Diesel';
-    } elseif (strpos($name_lower, 'kerosene') !== false) {
-        return 'Kerosene';
-    } elseif (strpos($name_lower, 'xcs') !== false) {
-        return 'XCS Plus';
-    } elseif (strpos($name_lower, 'xtra') !== false || strpos($name_lower, 'unl') !== false || strpos($name_lower, 'advance') !== false) {
-        return 'XTR ADVANCE';
+if (!function_exists('get_canonical_fuel_name')) {
+    function get_canonical_fuel_name($name) {
+        $name_lower = strtolower(trim($name));
+        if (strpos($name_lower, 'turbo') !== false) {
+            return 'Turbo Diesel';
+        } elseif (strpos($name_lower, 'diesel') !== false) {
+            return 'Diesel';
+        } elseif (strpos($name_lower, 'kerosene') !== false) {
+            return 'Kerosene';
+        } elseif (strpos($name_lower, 'xcs') !== false) {
+            return 'XCS Plus';
+        } elseif (strpos($name_lower, 'xtra') !== false || strpos($name_lower, 'unl') !== false || strpos($name_lower, 'advance') !== false) {
+            return 'Xtra UNL';
+        }
+        return $name;
     }
-    return $name;
 }
 
 // ── Fetch fuel inventory ─────────────────────────────────────────────────────
@@ -847,7 +838,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
 
     <!-- Toolbar: search + filters -->
     <div class="toolbar">
-        <input type="text" id="searchInput" placeholder="&#128269; Search by product name or SKU&hellip;" oninput="filterTable()">
+        <input type="text" id="merchSearchInput" placeholder="&#128269; Search by product name or SKU&hellip;" oninput="filterTable()">
         <select id="catFilter" onchange="filterTable()">
             <option value="">All Categories</option>
             <?php foreach ($all_categories as $cat): ?>
@@ -1268,18 +1259,17 @@ function switchTab(name) {
 })();
 
 // ── Merchandise filter ───────────────────────────────────────────────────────
-function filterTable() {
+window.filterTable = function filterTable() {
     var merchTab = document.getElementById('tab-merch');
-    if (!merchTab || !merchTab.classList.contains('active')) {
-        return;
-    }
+    if (!merchTab) return;
     
-    var q          = document.getElementById('searchInput').value.toLowerCase().trim();
-    var catFilter  = document.getElementById('catFilter').value;
-    var brandFilter = document.getElementById('brandFilter').value;
-    var unitFilter = document.getElementById('unitFilter').value;
-    var supplierFilter = document.getElementById('supplierFilter').value;
-    var stFilter   = document.getElementById('statusFilter').value;
+    var searchEl   = document.getElementById('merchSearchInput') || document.getElementById('searchInput');
+    var q          = searchEl ? (searchEl.value || '').toLowerCase().trim() : '';
+    var catFilter  = document.getElementById('catFilter') ? document.getElementById('catFilter').value : '';
+    var brandFilter = document.getElementById('brandFilter') ? document.getElementById('brandFilter').value : '';
+    var unitFilter = document.getElementById('unitFilter') ? document.getElementById('unitFilter').value : '';
+    var supplierFilter = document.getElementById('supplierFilter') ? document.getElementById('supplierFilter').value : '';
+    var stFilter   = document.getElementById('statusFilter') ? document.getElementById('statusFilter').value : '';
     var rows       = document.querySelectorAll('#merchBody .merch-row');
     var catHeaders = document.querySelectorAll('#merchBody .cat-row');
     var visible    = 0;
@@ -1296,8 +1286,9 @@ function filterTable() {
         var status    = row.getAttribute('data-status') || '';
         var noprice   = row.getAttribute('data-noprice') === '1';
         var belowcost = row.getAttribute('data-belowcost') === '1';
+        var rowText   = (row.textContent || '').toLowerCase();
 
-        var matchQ   = !q || name.indexOf(q) !== -1 || sku.indexOf(q) !== -1 || brand.indexOf(q) !== -1 || unit.indexOf(q) !== -1 || supplier.indexOf(q) !== -1 || cat.toLowerCase().indexOf(q) !== -1;
+        var matchQ   = !q || name.indexOf(q) !== -1 || sku.indexOf(q) !== -1 || brand.indexOf(q) !== -1 || unit.indexOf(q) !== -1 || supplier.indexOf(q) !== -1 || cat.toLowerCase().indexOf(q) !== -1 || rowText.indexOf(q) !== -1;
         var matchCat = !catFilter || cat === catFilter;
         var matchBrand = !brandFilter || brand === brandFilter.toLowerCase();
         var matchUnit = !unitFilter || unit === unitFilter.toLowerCase();
@@ -1329,7 +1320,24 @@ function filterTable() {
             hdr.style.display = 'none';
         }
     });
-}
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    ['merchSearchInput', 'searchInput'].forEach(function(id) {
+        var input = document.getElementById(id);
+        if (input) {
+            input.addEventListener('input', window.filterTable);
+            input.addEventListener('keyup', window.filterTable);
+            input.addEventListener('change', window.filterTable);
+        }
+    });
+    ['catFilter', 'brandFilter', 'unitFilter', 'supplierFilter', 'statusFilter'].forEach(function(id) {
+        var sel = document.getElementById(id);
+        if (sel) {
+            sel.addEventListener('change', window.filterTable);
+        }
+    });
+});
 </script>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
@@ -2657,7 +2665,7 @@ function getCleanCanonicalFuelName(name) {
     if (lower.indexOf('diesel') !== -1) return 'Diesel';
     if (lower.indexOf('kerosene') !== -1) return 'Kerosene';
     if (lower.indexOf('xcs') !== -1) return 'XCS Plus';
-    if (lower.indexOf('xtra') !== -1 || lower.indexOf('unl') !== -1 || lower.indexOf('advance') !== -1) return 'XTR ADVANCE';
+    if (lower.indexOf('xtra') !== -1 || lower.indexOf('unl') !== -1 || lower.indexOf('advance') !== -1) return 'Xtra UNL';
     return String(name).replace(/[\s\-_#]*\d+$/gi, '').replace(/\s*\(UGT\s*#?\d+\)/gi, '').trim();
 }
 

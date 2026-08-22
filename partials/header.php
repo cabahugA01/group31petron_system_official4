@@ -3706,12 +3706,16 @@ require_once __DIR__ . '/rbac_menu.php';
         echo '</div>';
 
     } else {
-        echo '<a class="nav-item '.$active.'" href="'.htmlspecialchars($it['href']).'" data-tooltip="'.htmlspecialchars($it['label']).'">';
-        echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;flex-shrink:0;"><i class="'.htmlspecialchars($it['ico']).'"></i></span>';
-        echo '<span style="flex-grow:1;font-size:13px;font-weight:500;">'.htmlspecialchars($it['label']).'</span>';
-        $r_b = $badges[$it['id']] ?? 0;
+        $href  = htmlspecialchars($it['href'] ?? '#');
+        $label = htmlspecialchars($it['label'] ?? '');
+        $ico   = htmlspecialchars($it['ico'] ?? 'fas fa-link');
+        $it_id = htmlspecialchars($it['id'] ?? '');
+        echo '<a class="nav-item '.$active.'" href="'.$href.'" data-tooltip="'.$label.'">';
+        echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;flex-shrink:0;"><i class="'.$ico.'"></i></span>';
+        echo '<span style="flex-grow:1;font-size:13px;font-weight:500;">'.$label.'</span>';
+        $r_b = $badges[$it['id'] ?? ''] ?? 0;
         $r_disp = $r_b > 0 ? 'display:flex;' : 'display:none;';
-        echo '<span data-sidebar-badge="'.htmlspecialchars($it['id']).'" data-badge style="background:#E30613;color:white;padding:0 6px;border-radius:10px;font-size:11px;font-weight:bold;min-width:20px;height:20px;'.$r_disp.'align-items:center;justify-content:center;margin-left:10px;">'.($r_b > 0 ? $r_b : '').'</span>';
+        echo '<span data-sidebar-badge="'.$it_id.'" data-badge style="background:#E30613;color:white;padding:0 6px;border-radius:10px;font-size:11px;font-weight:bold;min-width:20px;height:20px;'.$r_disp.'align-items:center;justify-content:center;margin-left:10px;">'.($r_b > 0 ? $r_b : '').'</span>';
         echo '</a>';
     }
 

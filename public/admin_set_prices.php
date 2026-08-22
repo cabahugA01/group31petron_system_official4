@@ -404,7 +404,7 @@ if (!function_exists('get_canonical_fuel_name')) {
         } elseif (strpos($name_lower, 'xcs') !== false) {
             return 'XCS Plus';
         } elseif (strpos($name_lower, 'xtra') !== false || strpos($name_lower, 'unl') !== false || strpos($name_lower, 'advance') !== false) {
-            return 'XTR ADVANCE';
+            return 'Xtra UNL';
         }
         return $name;
     }

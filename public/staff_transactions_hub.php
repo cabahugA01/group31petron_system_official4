@@ -5500,7 +5500,7 @@ setTimeout(function() {
                         </div>
                         
                         <!-- Customer Type Selection - REMOVED: Now only Registered Customers -->
-                        <input type="hidden" name="joCustomerType" value="registered" id="joCustomerTypeRegistered">
+                        <input type="hidden" id="joCustomerModeType" value="walkin">
 
                         <!-- Customer Input Fields -->
                         <div id="joCustomerLockedBanner" style="display:none;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:12px;color:#065f46;align-items:center;justify-content:space-between;">
@@ -5518,7 +5518,7 @@ setTimeout(function() {
                                 <input type="text" 
                                        id="joFirstName" 
                                        class="txn-input"
-                                       placeholder="Type to search customer..."
+                                       placeholder="Type customer name or search..."
                                        autocomplete="off"
                                        oninput="unlockCustomerIfNeeded('jo'); searchCustomerByName('jo')"
                                        onfocus="searchCustomerByName('jo')">
@@ -5979,7 +5979,7 @@ setTimeout(function() {
                         </div>
                         
                         <!-- Customer Type Selection - REMOVED: Now only Registered Customers -->
-                        <input type="hidden" name="merchCustomerType" value="registered" id="merchCustomerTypeRegistered">
+                        <input type="hidden" id="merchCustomerModeType" value="walkin">
 
                         <!-- Customer Input Fields (Merchandise) -->
                         <div id="merchCustomerLockedBanner" style="display:none;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:12px;color:#065f46;align-items:center;justify-content:space-between;">
@@ -5997,7 +5997,7 @@ setTimeout(function() {
                                 <input type="text"
                                        id="merchFirstName"
                                        class="txn-input"
-                                       placeholder="Type to search customer..."
+                                       placeholder="Type customer name or search..."
                                        autocomplete="off"
                                        oninput="unlockCustomerIfNeeded('merch'); searchCustomerByName('merch')"
                                        onfocus="searchCustomerByName('merch')">
@@ -8732,6 +8732,28 @@ setTimeout(function() {
         // Customer Type Toggle & Search Functions
         // ═══════════════════════════════════════════════════════════════════════
         
+                function setCustomerMode(prefix, mode) {
+            const hiddenEl = document.getElementById(prefix + 'CustomerModeType');
+            if (hiddenEl) hiddenEl.value = mode;
+
+            const fnInput = document.getElementById(prefix + 'FirstName');
+            const lnInput = document.getElementById(prefix + 'LastName');
+
+            if (mode === 'walkin') {
+                if (fnInput && (!fnInput.value || fnInput.value === 'Walk-In')) {
+                    fnInput.value = 'Walk-In';
+                }
+                if (lnInput && (!lnInput.value || lnInput.value === 'Customer')) {
+                    lnInput.value = 'Customer';
+                }
+                clearSelectedCustomer(prefix);
+            } else if (mode === 'registered') {
+                if (fnInput && fnInput.value === 'Walk-In') fnInput.value = '';
+                if (lnInput && lnInput.value === 'Customer') lnInput.value = '';
+                if (fnInput) fnInput.focus();
+            }
+        }
+
         function toggleCustomerType(prefix) {
             if (Object.prototype.hasOwnProperty.call(selectedCustomerIds, prefix)) {
                 selectedCustomerIds[prefix] = null;
@@ -9852,25 +9874,31 @@ setTimeout(function() {
 
         // ── Submit Job Order ─────────────────────────────────────────────────
         async function submitJobOrder() {
-            const firstName = document.getElementById('joFirstName')?.value?.trim();
-            const plate     = document.getElementById('joVehiclePlate')?.value?.trim();
+            let firstName = (document.getElementById('joFirstName')?.value || '').trim();
+            let plate     = (document.getElementById('joVehiclePlate')?.value || '').trim();
+            let engineNo  = (document.getElementById('joEngineNumber')?.value || '').trim();
+            let chassisNo = (document.getElementById('joChassisNumber')?.value || '').trim();
+
+            // 100% Flexible Walk-In Defaults: Never block staff if walk-in fields are left blank
             if (!firstName) {
-                showTxnAlert('Please enter the customer\'s first name in the Job Order section.', 'warning');
-                return;
+                firstName = 'Walk-In';
+                const fnEl = document.getElementById('joFirstName');
+                if (fnEl) fnEl.value = 'Walk-In';
             }
             if (!plate) {
-                showTxnAlert('Please enter the vehicle plate number.', 'warning');
-                return;
+                plate = 'N/A';
+                const plEl = document.getElementById('joVehiclePlate');
+                if (plEl) plEl.value = 'N/A';
             }
-            const engineNo = document.getElementById('joEngineNumber')?.value?.trim();
             if (!engineNo) {
-                showTxnAlert('Engine Number is required for vehicle identification.', 'warning');
-                return;
+                engineNo = 'N/A';
+                const engEl = document.getElementById('joEngineNumber');
+                if (engEl) engEl.value = 'N/A';
             }
-            const chassisNo = document.getElementById('joChassisNumber')?.value?.trim();
             if (!chassisNo) {
-                showTxnAlert('Chassis Number (VIN) is required for vehicle security.', 'warning');
-                return;
+                chassisNo = 'N/A';
+                const chEl = document.getElementById('joChassisNumber');
+                if (chEl) chEl.value = 'N/A';
             }
             const serviceType = (document.getElementById('joServiceTypeValue')?.value || '').trim();
             if (!serviceType) {
@@ -10634,11 +10662,12 @@ setTimeout(function() {
                 lastName  = (document.getElementById('merchLastName')?.value  || '').trim();
                 if (!firstName) { showTxnAlert('Please enter the customer\'s first name.', 'warning'); return; }
             }
-            const selectedCustomerId = selectedCustomerIds[activeCustomerPrefix] || null;
-            if (!selectedCustomerId) {
-                showTxnAlert('Please select an existing customer from the dropdown. If this is a new customer, use Request New Customer.', 'warning');
-                return;
-            }
+            let selectedCustomerId = selectedCustomerIds[activeCustomerPrefix] || null;
+            const mode = document.getElementById(activeCustomerPrefix + 'CustomerModeType')?.value || 'walkin';
+
+            // 100% Flexible: Allow Walk-in transactions without requiring registered customer selection!
+            if (!firstName) firstName = 'Walk-In';
+            if (!lastName)  lastName  = 'Customer';
 
             // ── Payment validation ────────────────────────────────────────────
             if (method === 'Credit Account') {

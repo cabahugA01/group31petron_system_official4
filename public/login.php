@@ -2049,7 +2049,7 @@ $_asset_base = $_login_base . '/assets';
     function getExpectedAnswer() {
         if (!captchaQuestion) return null;
         var text = (captchaQuestion.textContent || '').trim();
-        var matchAdd = text.match(/^(\d+)\s*\+\s*(\d+)$/);
+        var matchAdd = text.match(/(\d+)\s*\+\s*(\d+)/);
 
         if (matchAdd) {
             return parseInt(matchAdd[1], 10) + parseInt(matchAdd[2], 10);
@@ -2086,44 +2086,46 @@ $_asset_base = $_login_base . '/assets';
     }
     
     // Validate on input
-    captchaInput.addEventListener('input', validateCaptcha);
-    captchaInput.addEventListener('blur', validateCaptcha);
+    if (captchaInput) {
+        captchaInput.addEventListener('input', validateCaptcha);
+        captchaInput.addEventListener('blur', validateCaptcha);
 
-    // Block non-numeric keystrokes strictly (disallows letters, symbols, spaces, negatives, punctuation)
-    captchaInput.addEventListener('keydown', function (e) {
-        var allowedControlKeys = [
-            'Backspace', 'Delete', 'Tab', 'Escape', 'Enter',
-            'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
-            'Home', 'End'
-        ];
-        if (allowedControlKeys.indexOf(e.key) !== -1 || e.ctrlKey || e.metaKey || e.altKey) {
-            return;
-        }
-        // If not a digit 0-9, prevent typing
-        if (!/^[0-9]$/.test(e.key)) {
+        // Block non-numeric keystrokes strictly (disallows letters, symbols, spaces, negatives, punctuation)
+        captchaInput.addEventListener('keydown', function (e) {
+            var allowedControlKeys = [
+                'Backspace', 'Delete', 'Tab', 'Escape', 'Enter',
+                'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+                'Home', 'End'
+            ];
+            if (allowedControlKeys.indexOf(e.key) !== -1 || e.ctrlKey || e.metaKey || e.altKey) {
+                return;
+            }
+            // If not a digit 0-9, prevent typing
+            if (!/^[0-9]$/.test(e.key)) {
+                e.preventDefault();
+            }
+        });
+
+        // Paste event: only accept numbers
+        captchaInput.addEventListener('paste', function (e) {
             e.preventDefault();
-        }
-    });
+            var pasteData = (e.clipboardData || window.clipboardData).getData('text');
+            var numericOnly = (pasteData || '').replace(/[^0-9]/g, '');
+            if (numericOnly) {
+                var start = this.selectionStart || 0;
+                var end = this.selectionEnd || 0;
+                var currentVal = this.value;
+                var finalVal = (currentVal.substring(0, start) + numericOnly + currentVal.substring(end)).slice(0, 4);
+                this.value = finalVal;
+                validateCaptcha();
+            }
+        });
 
-    // Paste event: only accept numbers
-    captchaInput.addEventListener('paste', function (e) {
-        e.preventDefault();
-        var pasteData = (e.clipboardData || window.clipboardData).getData('text');
-        var numericOnly = (pasteData || '').replace(/[^0-9]/g, '');
-        if (numericOnly) {
-            var start = this.selectionStart || 0;
-            var end = this.selectionEnd || 0;
-            var currentVal = this.value;
-            var finalVal = (currentVal.substring(0, start) + numericOnly + currentVal.substring(end)).slice(0, 4);
-            this.value = finalVal;
-            validateCaptcha();
-        }
-    });
-
-    // Drop event: prevent non-numeric drop
-    captchaInput.addEventListener('drop', function (e) {
-        e.preventDefault();
-    });
+        // Drop event: prevent non-numeric drop
+        captchaInput.addEventListener('drop', function (e) {
+            e.preventDefault();
+        });
+    }
 
     /* Live type detection */
     function detectType(val) {
@@ -2135,94 +2137,126 @@ $_asset_base = $_login_base . '/assets';
     }
     var typeLabels = { email: 'Email', phone: 'Phone', username: 'Username' };
 
-    accountId.addEventListener('input', function () {
-        var t = detectType(this.value);
-        typeBadge.className = 'type-badge';
-        if (t) {
-            typeBadge.classList.add(t);
-            typeBadge.textContent = typeLabels[t];
-        } else {
-            typeBadge.textContent = '';
-        }
-    });
+    if (accountId) {
+        accountId.addEventListener('input', function () {
+            var t = detectType(this.value);
+            typeBadge.className = 'type-badge';
+            if (t) {
+                typeBadge.classList.add(t);
+                typeBadge.textContent = typeLabels[t];
+            } else {
+                typeBadge.textContent = '';
+            }
+        });
+    }
 
     /* Password toggle */
-    pwToggle.addEventListener('click', function () {
-        var isText = pwField.type === 'text';
-        pwField.type = isText ? 'password' : 'text';
-        pwIcon.className = isText ? 'fas fa-eye' : 'fas fa-eye-slash';
-    });
+    if (pwToggle && pwField) {
+        pwToggle.addEventListener('click', function () {
+            var isText = pwField.type === 'text';
+            pwField.type = isText ? 'password' : 'text';
+            if (pwIcon) pwIcon.className = isText ? 'fas fa-eye' : 'fas fa-eye-slash';
+        });
+    }
 
-    /* Refresh CAPTCHA */
-    refreshBtn.addEventListener('click', function () {
-        // Prevent multiple clicks
-        if (refreshBtn.disabled) return;
+    /* Refresh CAPTCHA - Flexible & Auto-healing across idle sessions */
+    function doRefreshCaptcha() {
+        if (!refreshBtn || refreshBtn.disabled) return;
         
-        // Disable button and add spinning animation
         refreshBtn.disabled = true;
         refreshBtn.classList.add('spinning');
         
-        // Send AJAX request to refresh CAPTCHA
+        function applyNewCaptcha(data) {
+            if (data && data.question) {
+                captchaQuestion.textContent = data.question;
+                captchaInput.value = '';
+                captchaInput.classList.remove('captcha-error', 'captcha-success');
+                if (data.csrf_token) {
+                    var csrfInput = document.getElementById('csrfToken');
+                    if (csrfInput) csrfInput.value = data.csrf_token;
+                }
+                captchaInput.focus();
+                validateCaptcha();
+            }
+        }
+
+        var baseUrl = '<?= htmlspecialchars($_login_base) ?>/public/refresh_captcha.php';
+        var csrfVal = document.getElementById('csrfToken') ? document.getElementById('csrfToken').value : '';
+
         var xhr = new XMLHttpRequest();
-        xhr.open('POST', '<?= htmlspecialchars($_login_base) ?>/public/refresh_captcha.php', true);
+        xhr.open('POST', baseUrl, true);
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
         
         xhr.onload = function () {
+            var ok = false;
             if (xhr.status === 200) {
                 try {
                     var response = JSON.parse(xhr.responseText);
-                    if (response.success) {
-                        captchaQuestion.textContent = response.question;
-                        captchaInput.value = '';
-                        captchaInput.classList.remove('captcha-error', 'captcha-success');
-                        captchaInput.focus();
-                    } else {
-                        console.error('CAPTCHA refresh failed:', response.error || 'Unknown error');
+                    if (response && response.success && response.question) {
+                        applyNewCaptcha(response);
+                        ok = true;
                     }
-                } catch (e) {
-                    console.error('Error parsing CAPTCHA response:', e);
-                }
-            } else {
-                console.error('Server error:', xhr.status);
+                } catch (e) {}
             }
-            
-            // Remove spinning animation and re-enable button after 600ms
+            if (!ok) {
+                // Fallback GET request if POST was blocked or session expired
+                fetch(baseUrl + '?t=' + Date.now())
+                    .then(function(r) { return r.json(); })
+                    .then(function(res) {
+                        if (res && res.question) applyNewCaptcha(res);
+                    })
+                    .catch(function() {});
+            }
             setTimeout(function () {
                 refreshBtn.classList.remove('spinning');
                 refreshBtn.disabled = false;
-            }, 600);
+            }, 300);
         };
         
         xhr.onerror = function () {
-            console.error('Error refreshing CAPTCHA');
+            fetch(baseUrl + '?t=' + Date.now())
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    if (res && res.question) applyNewCaptcha(res);
+                })
+                .catch(function() {});
             setTimeout(function () {
                 refreshBtn.classList.remove('spinning');
                 refreshBtn.disabled = false;
-            }, 600);
+            }, 300);
         };
         
-        var csrfVal = document.getElementById('csrfToken') ? document.getElementById('csrfToken').value : '';
         xhr.send('refresh=1&csrf_token=' + encodeURIComponent(csrfVal));
-    });
+    }
+
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', doRefreshCaptcha);
+    }
 
     /* Form submit */
-    form.addEventListener('submit', function (e) {
-        var cVal = (captchaInput.value || '').trim();
-        if (!cVal || !/^\d+$/.test(cVal)) {
-            e.preventDefault();
-            captchaInput.classList.add('captcha-error');
-            captchaInput.focus();
-            return false;
-        }
-        submitBtn.disabled = true;
-        if (spinner) spinner.style.display = 'none';
-        btnText.innerHTML = '<i class="fas fa-circle-notch fa-spin" style="margin-right:6px;font-size:14px;"></i>Signing in\u2026';
-    });
+    if (form) {
+        form.addEventListener('submit', function (e) {
+            var cVal = (captchaInput ? captchaInput.value : '').trim();
+            var expected = getExpectedAnswer();
+            if (!cVal || !/^\d+$/.test(cVal) || (expected !== null && parseInt(cVal, 10) !== expected)) {
+                e.preventDefault();
+                if (captchaInput) {
+                    captchaInput.classList.remove('captcha-success');
+                    captchaInput.classList.add('captcha-error');
+                    captchaInput.focus();
+                }
+                return false;
+            }
+            submitBtn.disabled = true;
+            if (spinner) spinner.style.display = 'none';
+            btnText.innerHTML = '<i class="fas fa-circle-notch fa-spin" style="margin-right:6px;font-size:14px;"></i>Signing in\u2026';
+        });
+    }
 
     // If PHP returned an error (page reload), always reset the button
     // so the user is never stuck on "Authenticating..."
     window.addEventListener('pageshow', function () {
-        if (submitBtn.disabled) {
+        if (submitBtn && submitBtn.disabled) {
             submitBtn.disabled = false;
             if (spinner) spinner.style.display = 'none';
             btnText.innerHTML = '<i class="fas fa-sign-in-alt" style="margin-right:6px;font-size:13px;"></i>Login';
