@@ -76,9 +76,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             log_activity($pdo, $u['id'], 'Variance Investigation', 
                 "Manager investigated variance report #$recon_id. Notes: " . substr($investigation_notes, 0, 100));
             
-            $msg = "✅ Variance investigation recorded. Report marked as 'Under Investigation'.";
+            $msg = "Success: Variance investigation recorded. Report marked as 'Under Investigation'.";
         } catch (Exception $e) {
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
     
@@ -100,12 +100,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 log_activity($pdo, $u['id'], 'Reconciliation Approved', 
                     "Approved reconciliation report #$recon_id. Notes: " . substr($manager_notes, 0, 100));
                 
-                $msg = "✅ Reconciliation approved and ready for finalization.";
+                $msg = "Success: Reconciliation approved and ready for finalization.";
             } else {
-                $msg = "❌ Error: Reconciliation must be investigated first.";
+                $msg = "Error: Error: Reconciliation must be investigated first.";
             }
         } catch (Exception $e) {
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
     
@@ -127,12 +127,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 log_activity($pdo, $u['id'], 'Reconciliation Completed', 
                     "Finalized reconciliation report #$recon_id. Status: RECONCILED & LOCKED");
                 
-                $msg = "✅ Reconciliation completed and locked. Report is now final.";
+                $msg = "Success: Reconciliation completed and locked. Report is now final.";
             } else {
-                $msg = "❌ Error: Reconciliation must be approved first.";
+                $msg = "Error: Error: Reconciliation must be approved first.";
             }
         } catch (Exception $e) {
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
     
@@ -141,15 +141,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $manager_password = $_POST['manager_password'] ?? '';
         
         if (empty($manager_password)) {
-            $msg = "❌ Error: Password required to finalize reconciliation.";
+            $msg = "Error: Error: Password required to finalize reconciliation.";
         } else {
             // Verify against current user's password (manager/admin must provide their own password)
             if (password_verify($manager_password, $u['password_hash'])) {
                 $_SESSION['recon_verified'] = true;
                 $_SESSION['recon_verified_time'] = time();
-                $msg = "✅ Identity verified. Proceeding with reconciliation finalization.";
+                $msg = "Success: Identity verified. Proceeding with reconciliation finalization.";
             } else {
-                $msg = "❌ Error: Invalid password. Reconciliation cancelled.";
+                $msg = "Error: Error: Invalid password. Reconciliation cancelled.";
             }
         }
     }
@@ -161,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $time_elapsed = time() - $verified_time;
         
         if (!$verified || $time_elapsed > 300) { // 5 minute window
-            $msg = "❌ Error: Manager password verification required. Please verify your identity first.";
+            $msg = "Error: Error: Manager password verification required. Please verify your identity first.";
         } else {
             $fuel_type = $_POST['fuel_type'];
             $physical = (float)$_POST['physical_stock'];
@@ -185,13 +185,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // Log the action with verification
                 log_activity($pdo, $u['id'], 'Reconciliation Finalized', "Manager verified and finalized reconciliation for $fuel_type. Variance: " . number_format($variance, 2) . " L");
                 
-                $msg = "✅ Reconciliation finalized and verified. Variance: " . number_format($variance, 2) . " L";
+                $msg = "Success: Reconciliation finalized and verified. Variance: " . number_format($variance, 2) . " L";
                 
                 // Clear verification flag
                 unset($_SESSION['recon_verified']);
                 unset($_SESSION['recon_verified_time']);
             } catch (Exception $e) { 
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         }
     }
@@ -917,12 +917,12 @@ include __DIR__ . '/../partials/header.php';
                                 <td>
                                     <?php if (!empty($data['investigated_by'])): ?>
                                         <div style="font-size: 11px;">
-                                            <div style="color: #059669;">✓ Investigated</div>
+                                            <div style="color: #059669;"><i class="fas fa-check"></i> Investigated</div>
                                             <div style="color: #6b7280;">by <?php echo htmlspecialchars($data['investigated_by_name'] ?? 'Unknown'); ?></div>
                                             <div style="color: #6b7280;"><?php echo date('M d, H:i', strtotime($data['investigated_at'])); ?></div>
                                         </div>
                                     <?php else: ?>
-                                        <div style="color: #dc2626; font-size: 11px;">⚠ Not Investigated</div>
+                                        <div style="color: #dc2626; font-size: 11px;"><i class="fas fa-exclamation-triangle"></i> Not Investigated</div>
                                     <?php endif; ?>
                                 </td>
                                 <td onclick="event.stopPropagation()">
@@ -942,7 +942,7 @@ include __DIR__ . '/../partials/header.php';
                                             Reconcile
                                         </button>
                                     <?php else: ?>
-                                        <span style="color: #059669; font-size: 11px;">✓ Completed</span>
+                                        <span style="color: #059669; font-size: 11px;"><i class="fas fa-check"></i> Completed</span>
                                     <?php endif; ?>
                                 </td>
                             </tr>

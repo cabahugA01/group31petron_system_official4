@@ -258,7 +258,7 @@ include __DIR__ . '/../partials/header.php';
   <?php endif; ?>
   
   <div style="margin-top: 40px; padding: 20px; background: #e8f1f8; border-left: 4px solid #003d7a; border-radius: 8px;">
-    <strong style="color: #003d7a;">✓ Receiving Flow:</strong>
+    <strong style="color: #003d7a;"><i class="fas fa-check"></i> Receiving Flow:</strong>
     <ul style="margin-top: 8px; margin-left: 20px; color: #003d7a; font-size: 13px; line-height: 1.8;">
       <li>Wait for Admin to mark PO as "Delivered"</li>
       <li>Enter actual quantity received (may differ from ordered)</li>

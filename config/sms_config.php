@@ -3,7 +3,7 @@
  * SMS Configuration — Petron Station Management System
  * ─────────────────────────────────────────────────────
  * 
- * ⚠️ IMPORTANT: Free SMS services have limitations!
+ * <i class="fas fa-exclamation-triangle"></i> IMPORTANT: Free SMS services have limitations!
  * 
  * CURRENT STATUS: Using SIMULATED mode (logs to file)
  * 

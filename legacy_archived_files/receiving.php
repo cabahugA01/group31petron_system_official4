@@ -48,10 +48,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['po_id'])) {
         
         log_activity($pdo, $me['id'], 'Receive Items', "Received items for PO #$po_id");
         $pdo->commit();
-        $msg = "✅ Items received and inventory updated.";
+        $msg = "Success: Items received and inventory updated.";
     } catch (Exception $e) {
         $pdo->rollBack();
-        $msg = "❌ Error: " . $e->getMessage();
+        $msg = "Error: Error: " . $e->getMessage();
     }
 }
 

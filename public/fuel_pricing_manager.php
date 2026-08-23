@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Update existing
                 $stmt = $pdo->prepare("UPDATE fuel_pricing SET price_per_liter = ?, effective_date = NOW(), updated_at = NOW() WHERE id = ?");
                 $stmt->execute([$price_per_liter, $existing['id']]);
-                $msg = "✅ Fuel price updated successfully!";
+                $msg = "Success: Fuel price updated successfully!";
                 
                 log_activity($pdo, $me['id'], 'Update Fuel Pricing', "Updated $fuel_name price: P{$old_price}/L -> P{$price_per_liter}/L (Station: $target_station_id)");
             } else {
@@ -54,15 +54,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      VALUES (?, ?, ?, NOW(), ?, 1, NOW())"
                 );
                 $stmt->execute([$target_station_id, $fuel_type_id, $price_per_liter, $me['id']]);
-                $msg = "✅ Fuel price set successfully!";
+                $msg = "Success: Fuel price set successfully!";
                 
                 log_activity($pdo, $me['id'], 'Set Fuel Pricing', "Set $fuel_name initial price: P{$price_per_liter}/L (Station: $target_station_id)");
             }
         } catch (Exception $e) {
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     } else {
-        $msg = "❌ Invalid data. Price must be 0 or greater.";
+        $msg = "Error: Invalid data. Price must be 0 or greater.";
     }
 }
 
@@ -162,7 +162,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <?php if($msg): ?>
-  <div class="alert <?php echo strpos($msg, '✅') !== false ? 'alert-success' : 'alert-error'; ?>">
+  <div class="alert <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'alert-success' : 'alert-error'; ?>">
     <?php echo htmlspecialchars($msg); ?>
   </div>
 <?php endif; ?>
@@ -186,7 +186,7 @@ include __DIR__ . '/../partials/header.php';
 
     <?php if(empty($fuel_types)): ?>
       <div class="info-box" style="background: #fff7ed; border-color: #fed7aa; color: #9a3412;">
-        <strong>⚙ Configure Fuel:</strong> No fuel types configured yet. <a href="add_fuel_type.php" style="color: #c2410c; font-weight: 600;">Click here to add gasoline & fuel types</a>
+        <strong><i class="fas fa-cog"></i> Configure Fuel:</strong> No fuel types configured yet. <a href="add_fuel_type.php" style="color: #c2410c; font-weight: 600;">Click here to add gasoline & fuel types</a>
       </div>
     <?php endif; ?>
     

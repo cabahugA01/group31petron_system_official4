@@ -16,9 +16,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['po_id'])) {
         $stmt = $pdo->prepare("UPDATE purchase_orders SET status = 'Confirmed', expected_delivery_date = ? WHERE id = ? AND station_id = ?");
         $stmt->execute([$delivery_date, $po_id, $station_id]);
         log_activity($pdo, $me['id'], 'Confirm PO', "Confirmed PO #$po_id");
-        $msg = "✅ Purchase Order confirmed.";
+        $msg = "Success: Purchase Order confirmed.";
     } catch (Exception $e) {
-        $msg = "❌ Error: " . $e->getMessage();
+        $msg = "Error: Error: " . $e->getMessage();
     }
 }
 

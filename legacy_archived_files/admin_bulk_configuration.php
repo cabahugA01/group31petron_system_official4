@@ -37,14 +37,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
 
                 $pdo->commit();
-                $msg = "✅ Updated $updated pumps to $fuelName across " . count($station_ids) . " stations!";
+                $msg = "Success: Updated $updated pumps to $fuelName across " . count($station_ids) . " stations!";
                 log_activity($pdo, $user['id'], 'Bulk Fuel Assignment', "Assigned $fuelName to pumps at " . count($station_ids) . " stations", 'bulk_configuration');
             } catch (PDOException $e) {
                 $pdo->rollBack();
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         } else {
-            $msg = "❌ Error: Please select stations and a fuel type.";
+            $msg = "Error: Error: Please select stations and a fuel type.";
         }
     } elseif ($action === 'bulk_activate_pumps') {
         $station_ids = $_POST['station_ids'] ?? [];
@@ -62,14 +62,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
 
                 $pdo->commit();
-                $msg = "✅ Updated status of $updated pumps across " . count($station_ids) . " stations!";
+                $msg = "Success: Updated status of $updated pumps across " . count($station_ids) . " stations!";
                 log_activity($pdo, $user['id'], 'Bulk Pump Activation', "Set pump status to $status at " . count($station_ids) . " stations", 'bulk_configuration');
             } catch (PDOException $e) {
                 $pdo->rollBack();
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         } else {
-            $msg = "❌ Error: Please select stations.";
+            $msg = "Error: Error: Please select stations.";
         }
     }
 }
@@ -218,7 +218,7 @@ require_once __DIR__ . '/../partials/header.php';
   <div class="modal-card">
     <div class="modal-head">
       <div class="modal-title">Confirm Bulk Fuel Assignment</div>
-      <button class="icon-btn" onclick="closeModal('bulkFuelModal')">✕</button>
+      <button class="icon-btn" onclick="closeModal('bulkFuelModal')"><i class="fas fa-times"></i></button>
     </div>
     <div style="padding: 20px;">
       <p>Assign selected fuel type to all pumps at selected stations?</p>
@@ -244,7 +244,7 @@ require_once __DIR__ . '/../partials/header.php';
   <div class="modal-card">
     <div class="modal-head">
       <div class="modal-title">Bulk Pump Activation</div>
-      <button class="icon-btn" onclick="closeModal('bulkPumpModal')">✕</button>
+      <button class="icon-btn" onclick="closeModal('bulkPumpModal')"><i class="fas fa-times"></i></button>
     </div>
     <div style="padding: 20px;">
       <p>Set pump status for selected stations?</p>

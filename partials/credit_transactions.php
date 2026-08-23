@@ -54,10 +54,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // NOTE: Balance is updated only upon Admin Approval
         
             $pdo->commit();
-            $msg = "✅ Credit transaction submitted for approval.";
+            $msg = "Success: Credit transaction submitted for approval.";
         } catch (Exception $e) {
             $pdo->rollBack();
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
     elseif ($action === 'approve' && $isAdmin) {
@@ -80,12 +80,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $updSale->execute([$sale_id]);
 
                 log_activity($pdo, $me['id'], 'Approve Credit', "Approved credit sale #$sale_id for ₱{$sale['total']}");
-                $msg = "✅ Transaction approved. Customer balance updated.";
+                $msg = "Success: Transaction approved. Customer balance updated.";
             }
             $pdo->commit();
         } catch (Exception $e) {
             $pdo->rollBack();
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
     elseif ($action === 'reject' && $isAdmin) {
@@ -93,9 +93,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $pdo->prepare("UPDATE sales SET status = 'Rejected' WHERE id = ?")->execute([$sale_id]);
             log_activity($pdo, $me['id'], 'Reject Credit', "Rejected credit sale #$sale_id");
-            $msg = "⚠️ Transaction rejected.";
+            $msg = "Warning: Transaction rejected.";
         } catch (Exception $e) {
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
 }

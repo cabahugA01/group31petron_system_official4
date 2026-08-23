@@ -359,7 +359,7 @@ include __DIR__ . '/../../../partials/header.php';
             <?php endforeach; ?>
         </select>
         
-        <input type="text" class="filter-input" placeholder="🔍 Search Station Code / Location" id="searchInput">
+        <input type="text" class="filter-input" placeholder="<i class="fas fa-search"></i> Search Station Code / Location" id="searchInput">
     </div>
 
     <div class="table-container">
@@ -386,7 +386,7 @@ include __DIR__ . '/../../../partials/header.php';
                     <td>
                         <span class="status-badge status-<?php echo htmlspecialchars($station['status']); ?>">
                             <?php 
-                            $statusIcon = $station['status'] === 'active' ? '✅' : '❌';
+                            $statusIcon = $station['status'] === 'active' ? '<i class="fas fa-check-circle"></i>' : '<i class="fas fa-times-circle"></i>';
                             echo $statusIcon . ' ' . ucfirst(htmlspecialchars($station['status'])); 
                             ?>
                         </span>

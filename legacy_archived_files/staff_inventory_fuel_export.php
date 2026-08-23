@@ -340,7 +340,7 @@ header('Content-Type: text/html; charset=utf-8');
     <!-- No Print Buttons -->
     <div class="no-print">
         <button class="btn-print" onclick="window.print()">Print</button>
-        <button class="btn-close" onclick="window.close()">✖ Close Window</button>
+        <button class="btn-close" onclick="window.close()"><i class="fas fa-times"></i> Close Window</button>
     </div>
     
     <!-- Report Header -->

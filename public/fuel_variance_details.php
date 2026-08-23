@@ -57,7 +57,7 @@ $severity_label = $variance_severity > 5 ? 'Critical' : ($variance_severity > 2 
 <div class="modal-dialog modal-xl">
     <div class="modal-content">
         <div class="modal-header">
-            <h5 class="modal-title">📊 Fuel Variance Report Details</h5>
+            <h5 class="modal-title"><i class="fas fa-chart-bar"></i> Fuel Variance Report Details</h5>
             <button type="button" class="btn-close" onclick="this.closest('.modal').classList.remove('show')"></button>
         </div>
         
@@ -65,7 +65,7 @@ $severity_label = $variance_severity > 5 ? 'Critical' : ($variance_severity > 2 
             <!-- Variance Overview -->
             <div class="card mb-3">
                 <div class="card-header">
-                    <strong>📊 Variance Overview</strong>
+                    <strong><i class="fas fa-chart-bar"></i> Variance Overview</strong>
                 </div>
                 <div class="card-body">
                     <div class="row">
@@ -102,7 +102,7 @@ $severity_label = $variance_severity > 5 ? 'Critical' : ($variance_severity > 2 
             <!-- Variance Numbers -->
             <div class="card mb-3">
                 <div class="card-header">
-                    <strong>⛽ Variance Analysis</strong>
+                    <strong><i class="fas fa-gas-pump"></i> Variance Analysis</strong>
                 </div>
                 <div class="card-body">
                     <div class="row">
@@ -150,7 +150,7 @@ $severity_label = $variance_severity > 5 ? 'Critical' : ($variance_severity > 2 
             <!-- Investigation Status -->
             <div class="card mb-3">
                 <div class="card-header">
-                    <strong>🕵️ Investigation Status</strong>
+                    <strong><i class="fas fa-user-secret"></i>️ Investigation Status</strong>
                 </div>
                 <div class="card-body">
                     <div class="row">
@@ -182,14 +182,14 @@ $severity_label = $variance_severity > 5 ? 'Critical' : ($variance_severity > 2 
             <!-- Related Data -->
             <div class="card mb-3">
                 <div class="card-header">
-                    <strong>📋 Related Transaction Data</strong>
+                    <strong><i class="fas fa-clipboard-list"></i> Related Transaction Data</strong>
                     <small class="text-muted ms-2">(For <?php echo date('M d, Y', strtotime($variance['report_date'])); ?>)</small>
                 </div>
                 <div class="card-body">
                     <div class="row">
                         <!-- Daily Readings -->
                         <div class="col-md-6">
-                            <h6>📊 Daily Readings</h6>
+                            <h6><i class="fas fa-chart-bar"></i> Daily Readings</h6>
                             <?php
                             try {
                                 $stmt = $pdo->prepare("
@@ -236,7 +236,7 @@ $severity_label = $variance_severity > 5 ? 'Critical' : ($variance_severity > 2 
                         
                         <!-- Deliveries -->
                         <div class="col-md-6">
-                            <h6>🚛 Deliveries</h6>
+                            <h6><i class="fas fa-truck"></i> Deliveries</h6>
                             <?php
                                 $stmt = $pdo->prepare("
                                     SELECT * FROM fuel_deliveries 
@@ -291,7 +291,7 @@ $severity_label = $variance_severity > 5 ? 'Critical' : ($variance_severity > 2 
                         if ($adjustments):
                     ?>
                     <div class="mt-3">
-                        <h6>⚖️ Adjustments</h6>
+                        <h6><i class="fas fa-balance-scale"></i>️ Adjustments</h6>
                         <div class="table-responsive">
                             <table class="table table-sm">
                                 <thead>

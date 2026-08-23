@@ -912,10 +912,10 @@ require_login();
                 
                 if (data.success) {
                     alert(`Adjustment completed successfully!\n\n` +
-                          `✅ Reading adjusted with new values\n` +
-                          `✅ Audit trail logged with adjustment reason\n` +
-                          `✅ Transaction updated and locked\n` +
-                          `✅ Accountability documented`);
+                          `<i class="fas fa-check-circle"></i> Reading adjusted with new values\n` +
+                          `<i class="fas fa-check-circle"></i> Audit trail logged with adjustment reason\n` +
+                          `<i class="fas fa-check-circle"></i> Transaction updated and locked\n` +
+                          `<i class="fas fa-check-circle"></i> Accountability documented`);
                     
                     adjustmentModal.hide();
                     await loadDashboardData();
@@ -1087,10 +1087,10 @@ require_login();
                     
                     // Show comprehensive success message
                     alert(`Reading ${actionText} successfully!\n\n` +
-                          `✅ Manager review completed\n` +
-                          `✅ Audit trail logged with user ID + timestamp\n` +
-                          `✅ Report locked and no longer editable by staff\n` +
-                          `✅ Accountability documented for operational and academic defense`);
+                          `<i class="fas fa-check-circle"></i> Manager review completed\n` +
+                          `<i class="fas fa-check-circle"></i> Audit trail logged with user ID + timestamp\n` +
+                          `<i class="fas fa-check-circle"></i> Report locked and no longer editable by staff\n` +
+                          `<i class="fas fa-check-circle"></i> Accountability documented for operational and academic defense`);
                     
                     verificationModal.hide();
                     await loadDashboardData();

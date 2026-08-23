@@ -258,7 +258,7 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .status-active::before {
-    content: '✅';
+    content: '<i class="fas fa-check-circle"></i>';
 }
 
 .status-inactive { 
@@ -267,7 +267,7 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .status-inactive::before {
-    content: '❌';
+    content: '<i class="fas fa-times-circle"></i>';
 }
 
 .action-buttons {
@@ -537,7 +537,7 @@ include __DIR__ . '/../partials/header.php';
                 <option value="inactive">Inactive</option>
             </select>
             
-            <input type="text" class="filter-input" placeholder="🔍 Search" id="searchInput">
+            <input type="text" class="filter-input" placeholder="<i class="fas fa-search"></i> Search" id="searchInput">
         </div>
 
         <div class="table-container">

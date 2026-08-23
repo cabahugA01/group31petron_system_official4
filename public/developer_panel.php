@@ -534,7 +534,7 @@ function viewDatabaseStatus() {
             statusHtml += '<strong>Table Records:</strong><br>';
             statusHtml += '<ul style="margin: 5px 0; padding-left: 20px;">';
             for (const [table, info] of Object.entries(data.tables)) {
-                const status = info.status === 'ok' ? '✅' : '⚠️';
+                const status = info.status === 'ok' ? '<i class="fas fa-check-circle"></i>' : '<i class="fas fa-exclamation-triangle"></i>';
                 statusHtml += `<li>${table}: ${info.count} records ${status}</li>`;
             }
             statusHtml += '</ul></div>';

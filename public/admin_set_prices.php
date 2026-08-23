@@ -1292,7 +1292,7 @@ include __DIR__ . '/../partials/header.php';
                         <td style="text-align: center; vertical-align: middle;">
                             <div class="act-btn-wrap">
                                 <?php if (!empty($f['id'])): ?>
-                                    <!-- 👁 View Button -->
+                                    <!-- <i class="fas fa-eye"></i> View Button -->
                                     <button type="button" onclick="openViewFuelModalAdmin(<?php echo $f['id']; ?>)" class="act-btn act-btn-view">
                                         <i class="fas fa-eye"></i> View
                                     </button>
@@ -1990,7 +1990,7 @@ include __DIR__ . '/../partials/header.php';
             <div style="display:flex; justify-content:flex-end; gap:10px;">
                 <input type="hidden" id="confirmApproveId">
                 <button type="button" onclick="closeApproveConfirmModal()" style="padding:8px 16px !important; border:1px solid #cbd5e1 !important; background:#f1f5f9 !important; color:#0f172a !important; border-radius:6px !important; cursor:pointer !important; font-weight:600 !important; font-size:13px !important;">Cancel</button>
-                <button type="button" onclick="confirmApprovePriceRequest()" style="padding:8px 18px; border:none; background:#16a34a; color:#fff; border-radius:6px; cursor:pointer; font-weight:600;">✔ Approve Request</button>
+                <button type="button" onclick="confirmApprovePriceRequest()" style="padding:8px 18px; border:none; background:#16a34a; color:#fff; border-radius:6px; cursor:pointer; font-weight:600;"><i class="fas fa-check"></i> Approve Request</button>
             </div>
         </div>
     </div>

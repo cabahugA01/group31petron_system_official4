@@ -421,7 +421,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="technician-dashboard">
     <div class="dashboard-header">
         <div class="technician-info">
-            <h2>🔧 Technician Dashboard</h2>
+            <h2><i class="fas fa-wrench"></i> Technician Dashboard</h2>
             <div class="specialization">
                 <?php echo htmlspecialchars($technician['specialization'] ?? 'General Technician'); ?>
             </div>
@@ -455,12 +455,12 @@ include __DIR__ . '/../partials/header.php';
 
     <div class="jobs-section">
         <h3 class="section-title">
-            🚗 Assigned Jobs
+            <i class="fas fa-car"></i> Assigned Jobs
         </h3>
         
         <?php if (empty($assigned_jobs)): ?>
             <div class="empty-state">
-                <div class="empty-state-icon">📋</div>
+                <div class="empty-state-icon"><i class="fas fa-clipboard-list"></i></div>
                 <div class="empty-state-title">No assigned jobs</div>
                 <div class="empty-state-text">You don't have any active jobs assigned to you.</div>
             </div>
@@ -511,18 +511,18 @@ include __DIR__ . '/../partials/header.php';
                         
                         <?php if ($job['status'] === 'In Progress'): ?>
                             <button class="btn btn-warning" onclick="logParts(<?php echo $job['id']; ?>)">
-                                📦 Log Parts
+                                <i class="fas fa-box"></i> Log Parts
                             </button>
                             <button class="btn btn-secondary" onclick="addWorkNote(<?php echo $job['id']; ?>)">
                                 📝 Add Note
                             </button>
                             <button class="btn btn-success" onclick="completeJob(<?php echo $job['id']; ?>)">
-                                ✅ Complete Job
+                                <i class="fas fa-check-circle"></i> Complete Job
                             </button>
                         <?php endif; ?>
                         
                         <button class="btn btn-secondary" onclick="viewJobDetails(<?php echo $job['id']; ?>)">
-                            👁️ View Details
+                            <i class="fas fa-eye"></i>️ View Details
                         </button>
                     </div>
                 </div>
@@ -532,7 +532,7 @@ include __DIR__ . '/../partials/header.php';
 
     <div class="jobs-section" style="margin-top: 30px;">
         <h3 class="section-title">
-            ✅ Completed Today
+            <i class="fas fa-check-circle"></i> Completed Today
         </h3>
         
         <?php if (empty($completed_today)): ?>
@@ -574,7 +574,7 @@ include __DIR__ . '/../partials/header.php';
 <div id="logPartsModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h3 class="modal-title">📦 Log Parts Used</h3>
+            <h3 class="modal-title"><i class="fas fa-box"></i> Log Parts Used</h3>
             <button class="modal-close" onclick="closeModal('logPartsModal')">&times;</button>
         </div>
         <div class="modal-body">

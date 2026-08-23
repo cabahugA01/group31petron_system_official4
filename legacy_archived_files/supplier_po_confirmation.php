@@ -33,9 +33,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $po = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$po) {
-                $msg = "❌ Purchase Order not found.";
+                $msg = "Error: Purchase Order not found.";
             } elseif ($po['status'] !== 'pending_supplier') {
-                $msg = "❌ This PO has already been processed.";
+                $msg = "Error: This PO has already been processed.";
             } else {
                 $update_stmt = $pdo->prepare("
                     UPDATE purchase_orders 
@@ -46,10 +46,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $update_stmt->execute([$supplier_name, $estimated_delivery, $supplier_contact, $supplier_notes, $po_id]);
                 
                 log_activity($pdo, $me['id'], 'Confirm PO', "PO #{$po['po_number']} | Supplier: $supplier_name | Est. Delivery: $estimated_delivery | Status: Confirmed");
-                $msg = "✅ Purchase Order confirmed! Supplier will deliver by " . date('M d, Y', strtotime($estimated_delivery));
+                $msg = "Success: Purchase Order confirmed! Supplier will deliver by " . date('M d, Y', strtotime($estimated_delivery));
             }
         } catch (Exception $e) {
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
 }
@@ -132,7 +132,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="sc-wrapper">
   <div class="sc-header">
     <div class="sc-header-content">
-      <div class="sc-header-icon">📋</div>
+      <div class="sc-header-icon"><i class="fas fa-clipboard-list"></i></div>
       <div>
         <h1>Supplier PO Confirmation</h1>
         <p>Admin - Confirm Purchase Orders with supplier details</p>
@@ -141,15 +141,15 @@ include __DIR__ . '/../partials/header.php';
   </div>
   
   <?php if($msg): ?>
-    <div class="sc-alert <?php echo strpos($msg, '✅') !== false ? 'sc-alert-success' : 'sc-alert-error'; ?>">
-      <i class="fas <?php echo strpos($msg, '✅') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
+    <div class="sc-alert <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'sc-alert-success' : 'sc-alert-error'; ?>">
+      <i class="fas <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
       <?php echo htmlspecialchars($msg); ?>
     </div>
   <?php endif; ?>
   
   <?php if(empty($pos)): ?>
     <div class="sc-empty">
-      <div style="font-size: 48px; margin-bottom: 12px;">✓</div>
+      <div style="font-size: 48px; margin-bottom: 12px;"><i class="fas fa-check"></i></div>
       <div style="font-size: 16px; font-weight: 500;">All POs confirmed</div>
       <div style="font-size: 13px; margin-top: 6px; opacity: 0.7;">No pending supplier confirmations at this time.</div>
     </div>
@@ -218,7 +218,7 @@ include __DIR__ . '/../partials/header.php';
   <?php endif; ?>
   
   <div style="margin-top: 40px; padding: 20px; background: #e8f1f8; border-left: 4px solid #003d7a; border-radius: 8px;">
-    <strong style="color: #003d7a;">📋 Supplier Confirmation Flow:</strong>
+    <strong style="color: #003d7a;"><i class="fas fa-clipboard-list"></i> Supplier Confirmation Flow:</strong>
     <ul style="margin-top: 8px; margin-left: 20px; color: #003d7a; font-size: 13px; line-height: 1.8;">
       <li>Admin reviews generated POs</li>
       <li>Enters supplier details and contact information</li>

@@ -241,7 +241,7 @@ function getScriptIcon(type) {
 function executeScript(scriptKey, scriptName, requiresConfirmation) {
     if (requiresConfirmation) {
         const message = scriptName.toLowerCase().includes('restore') || scriptName.toLowerCase().includes('purge') 
-            ? `⚠️ WARNING: This operation can cause data loss!\n\nAre you absolutely sure you want to execute "${scriptName}"?\n\nThis action cannot be undone.`
+            ? `<i class="fas fa-exclamation-triangle"></i> WARNING: This operation can cause data loss!\n\nAre you absolutely sure you want to execute "${scriptName}"?\n\nThis action cannot be undone.`
             : `Are you sure you want to execute "${scriptName}"?`;
         
         if (!confirm(message)) {

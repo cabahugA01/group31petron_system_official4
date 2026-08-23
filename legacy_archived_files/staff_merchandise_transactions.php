@@ -757,7 +757,7 @@ function handleProductSearch(e) {
 
         div.innerHTML = `
             <strong>${product.product_name}</strong>
-            ${isOutOfStock ? '<span style="color:#dc3545;font-size:11px;font-weight:700;margin-left:6px">✗ OUT OF STOCK</span>' : ''}
+            ${isOutOfStock ? '<span style="color:#dc3545;font-size:11px;font-weight:700;margin-left:6px"><i class="fas fa-times"></i> OUT OF STOCK</span>' : ''}
             <br>
             <small>${product.category} | ${product.size || 'N/A'} | <span style="color: ${availabilityColor}">${availabilityText}</span> | Price: ₱${parseFloat(product.unit_price).toFixed(2)}</small>
         `;
@@ -980,7 +980,7 @@ function calculateChange() {
         amountField.style.borderColor = '#dc3545';
         if (insufficientMsg) {
             insufficientMsg.style.display = 'block';
-            insufficientMsg.textContent = `⚠ Insufficient! Short by ₱${(cartTotal - amountTendered).toFixed(2)}`;
+            insufficientMsg.textContent = `<i class="fas fa-exclamation-triangle"></i> Insufficient! Short by ₱${(cartTotal - amountTendered).toFixed(2)}`;
         }
     } else {
         changeField.value = change >= 0 ? change.toFixed(2) : '0.00';

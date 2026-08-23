@@ -214,11 +214,11 @@ function productCard(p, type){
 
   let tag = p.category || 'merch';
   let sub = '';
-  let icon = '📦';
+  let icon = '<i class="fas fa-box"></i>';
 
   if(type === 'fuel'){
     tag = 'fuel';
-    icon = '⛽';
+    icon = '<i class="fas fa-gas-pump"></i>';
     sub = `Level: ${fmtL(p.level_l)}`;
   } else if(type === 'services'){
     tag = 'service';

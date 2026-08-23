@@ -25,13 +25,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $stmt = $pdo->prepare("INSERT INTO fuel_types (name, description) VALUES (?, ?)");
             $stmt->execute([$fuel_name, $description]);
-            $msg = "✅ Fuel type '{$fuel_name}' added successfully!";
+            $msg = "Success: Fuel type '{$fuel_name}' added successfully!";
             log_activity($pdo, $me['id'], 'Add Fuel Type', "Added fuel type: $fuel_name");
         } catch (Exception $e) {
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     } else {
-        $msg = "❌ Please enter a fuel type name.";
+        $msg = "Error: Please enter a fuel type name.";
     }
 }
 
@@ -90,7 +90,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <?php if($msg): ?>
-  <div class="alert <?php echo strpos($msg, '✅') !== false ? 'alert-success' : 'alert-error'; ?>">
+  <div class="alert <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'alert-success' : 'alert-error'; ?>">
     <?php echo htmlspecialchars($msg); ?>
   </div>
 <?php endif; ?>

@@ -23,16 +23,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $req = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$req) {
-                $msg = "❌ Request not found.";
+                $msg = "Error: Request not found.";
             } elseif ($req['status'] !== 'pending') {
-                $msg = "❌ Request already processed.";
+                $msg = "Error: Request already processed.";
             } else {
                 if ($action === 'reject_request') {
                     $reason = trim($_POST['reject_reason'] ?? '');
                     $stmt = $pdo->prepare("UPDATE stock_requests SET status='rejected', notes=?, processed_by=?, processed_at=NOW() WHERE id=?");
                     $stmt->execute([$reason, (int)$me['id'], $rid]);
                     log_activity($pdo, $me['id'], 'Reject Stock Request', "Stock Request #$rid | Product: {$req['product_name']} | Qty: {$req['qty']} | Reason: $reason");
-                    $msg = "✅ Request rejected. Operations Staff will be notified.";
+                    $msg = "Success: Request rejected. Operations Staff will be notified.";
                 } else {
                     // Approve and generate PO
                     $stmt = $pdo->prepare("UPDATE stock_requests SET status='approved', processed_by=?, processed_at=NOW() WHERE id=?");
@@ -44,11 +44,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt_po->execute([$rid, $po_number, $req['product_name'], $req['qty'], $req['type'], $req['station_id'], (int)$me['id']]);
                     
                     log_activity($pdo, $me['id'], 'Approve Stock Request', "Stock Request #$rid | APPROVED & PO Generated #$po_number | Product: {$req['product_name']} | Qty: {$req['qty']}");
-                    $msg = "✅ Request approved! PO #$po_number generated and will be sent to supplier.";
+                    $msg = "Success: Request approved! PO #$po_number generated and will be sent to supplier.";
                 }
             }
         } catch (Exception $e) {
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
 }
@@ -165,7 +165,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="aa-wrapper">
   <div class="aa-header">
     <div class="aa-header-content">
-      <div class="aa-header-icon">👑</div>
+      <div class="aa-header-icon"><i class="fas fa-crown"></i></div>
       <div>
         <h1>Approve Stock Requests & Generate PO</h1>
         <p>Admin/Owner - Final approval for purchase orders</p>
@@ -174,15 +174,15 @@ include __DIR__ . '/../partials/header.php';
   </div>
   
   <?php if($msg): ?>
-    <div class="aa-alert <?php echo strpos($msg, '✅') !== false ? 'aa-alert-success' : 'aa-alert-error'; ?>">
-      <i class="fas <?php echo strpos($msg, '✅') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
+    <div class="aa-alert <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'aa-alert-success' : 'aa-alert-error'; ?>">
+      <i class="fas <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
       <?php echo htmlspecialchars($msg); ?>
     </div>
   <?php endif; ?>
   
   <?php if(empty($requests)): ?>
     <div class="aa-empty">
-      <div class="aa-empty-icon">✓</div>
+      <div class="aa-empty-icon"><i class="fas fa-check"></i></div>
       <div style="font-size: 16px; font-weight: 500;">No pending stock requests</div>
       <div style="font-size: 13px; margin-top: 6px;">All requests have been processed. Great work!</div>
     </div>
@@ -255,7 +255,7 @@ include __DIR__ . '/../partials/header.php';
   <?php endif; ?>
   
   <div style="margin-top: 40px; padding: 20px; background: #e8f1f8; border-left: 4px solid #003d7a; border-radius: 8px;">
-    <strong style="color: #003d7a;">👑 Admin Role:</strong>
+    <strong style="color: #003d7a;"><i class="fas fa-crown"></i> Admin Role:</strong>
     <ul style="margin-top: 8px; margin-left: 20px; color: #003d7a; font-size: 13px; line-height: 1.8;">
       <li>Review stock requests and manager feedback</li>
       <li>Make final approval decision</li>

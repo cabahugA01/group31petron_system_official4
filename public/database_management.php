@@ -1415,7 +1415,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
         <div id="exportPreviewWrap" style="display:none; margin-bottom:16px;">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
             <span style="font-size:12px; font-weight:700; color:var(--db-blue);">PREVIEW <span id="exportPreviewLabel"></span></span>
-            <button type="button" onclick="document.getElementById('exportPreviewWrap').style.display='none'" class="db-btn db-btn-ghost db-btn-sm">✕ Close Preview</button>
+            <button type="button" onclick="document.getElementById('exportPreviewWrap').style.display='none'" class="db-btn db-btn-ghost db-btn-sm"><i class="fas fa-times"></i> Close Preview</button>
           </div>
           <pre id="exportPreviewCode"
             style="background:#0f172a; color:#e2e8f0; border-radius:10px; padding:16px; font-size:11px; font-family:monospace; max-height:280px; overflow:auto; white-space:pre-wrap; margin:0;"></pre>
@@ -1454,7 +1454,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
       <div>
         <div class="lbl">Latest Version</div>
         <div class="ver"><?= $current_version ? htmlspecialchars($current_version['version']) : 'v1.0.0' ?></div>
-        <div style="font-size:11px; opacity:.7; margin-top:2px; color:#86efac;">✓ Up to date</div>
+        <div style="font-size:11px; opacity:.7; margin-top:2px; color:#86efac;"><i class="fas fa-check"></i> Up to date</div>
       </div>
     </div>
 
@@ -1916,7 +1916,7 @@ function previewExport() {
     .then(r => r.json())
     .then(data => {
       if (data.error) {
-        code.textContent = '⚠ Error: ' + data.error;
+        code.textContent = '<i class="fas fa-exclamation-triangle"></i> Error: ' + data.error;
       } else {
         code.textContent = data.preview || '(no data)';
         if (data.note) {
@@ -1925,7 +1925,7 @@ function previewExport() {
       }
     })
     .catch(err => {
-      code.textContent = '⚠ Failed to load preview: ' + err.message;
+      code.textContent = '<i class="fas fa-exclamation-triangle"></i> Failed to load preview: ' + err.message;
     });
 }
 

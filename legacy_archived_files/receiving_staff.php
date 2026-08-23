@@ -81,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $items = $_POST['items'] ?? [];
         
         if (empty($items) || empty(array_filter($items, function($item) { return !empty($item['name']) && !empty($item['quantity']); }))) {
-            $msg = '❌ At least one item is required.';
+            $msg = '<i class="fas fa-times-circle"></i> At least one item is required.';
         } else {
             try {
                 $pdo->beginTransaction();
@@ -159,16 +159,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->commit();
                 
                 if ($edit_batch_id) {
-                    $msg = "✅ Batch $batch_number updated successfully!";
+                    $msg = "Success: Batch $batch_number updated successfully!";
                     $edit_batch_id = null;
                     $edit_items = [];
                 } else {
-                    $msg = "✅ Batch $batch_number created and submitted for review!";
+                    $msg = "Success: Batch $batch_number created and submitted for review!";
                 }
                 
             } catch (Exception $e) {
                 $pdo->rollBack();
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         }
     }
@@ -195,7 +195,7 @@ include __DIR__ . '/../partials/header.php';
     
     <?php if ($msg): ?>
         <div style="padding: 16px 20px; border-radius: 12px; margin-bottom: 24px; background: #e6f4ea; color: #065f46; border: 1px solid #a7f3d0; display: flex; align-items: center; gap: 10px;">
-            <i class="fas <?php echo strpos($msg, '✅') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
+            <i class="fas <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
             <?php echo htmlspecialchars($msg); ?>
         </div>
     <?php endif; ?>

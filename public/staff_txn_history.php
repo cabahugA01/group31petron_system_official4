@@ -341,7 +341,7 @@ require_login();
 <?php if (empty($recent_merch)): ?>
     <div style="text-align:center;padding:56px 20px;color:#64748b;">
       <i class="fas fa-receipt" style="font-size:42px;display:block;margin-bottom:12px;color:#cbd5e1;"></i>
-      <div style="font-size:16px;font-weight:700;color:#1e293b;margin-bottom:4px;">📄 No transactions found.</div>
+      <div style="font-size:16px;font-weight:700;color:#1e293b;margin-bottom:4px;"><i class="fas fa-file-alt"></i> No transactions found.</div>
       <div style="font-size:13px;color:#64748b;">Try changing the date range or filter settings.</div>
     </div>
 <?php else: ?>

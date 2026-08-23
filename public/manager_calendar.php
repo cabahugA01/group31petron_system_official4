@@ -577,7 +577,7 @@ $staff_colors = ['#039be5', '#7986cb', '#33b679', '#8e24aa', '#e67c73', '#f6bf26
 
 try {
     // Load staff list with assigned colors
-    $staff_stmt = $pdo->prepare("SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant') AND status = 'Active' ORDER BY first_name, last_name");
+    $staff_stmt = $pdo->prepare("SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND status = 'Active' ORDER BY first_name, last_name");
     $staff_stmt->execute([$station_id]);
     $all_staff = $staff_stmt->fetchAll(PDO::FETCH_ASSOC);
     
@@ -588,148 +588,303 @@ try {
             'color' => $color
         ];
     }
+} catch (Exception $e) {}
 
-    // Load calendar events
-    $stmt = $pdo->prepare("SELECT sce.*, et.type_name, et.type_key, et.icon_class, su.name AS staff_name, sce.staff_encoder_id
-        FROM staff_calendar_events sce
-        JOIN staff_event_types et ON sce.event_type_id = et.id
-        JOIN users su ON sce.staff_encoder_id = su.id
-        WHERE sce.station_id = ? AND sce.event_date BETWEEN ? AND ?
-        ORDER BY sce.event_date, sce.start_time");
-    $stmt->execute([$station_id, $view_start, $view_end]);
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $row['color'] = $staff_list[$row['staff_encoder_id']]['color'] ?? '#757575';
-        $month_events[$row['event_date']][] = $row;
-    }
+    // ── COMPLETE DEDUPLICATED MANAGER OPERATIONAL & APPROVAL CALENDAR ENGINE ──
+    
+    // Master Target URL Resolver for Direct Module Navigation on Event Click
+    $resolve_target_url = function($type_key, $id, $role = 'manager') {
+        $id_num = preg_replace('/[^0-9]/', '', (string)$id);
+        switch($type_key) {
+            case 'job_order':
+                if ($role === 'admin') return 'admin_all_transactions.php?search=JO-' . $id_num;
+                if ($role === 'manager') return 'manager_transactions_hub.php?tab=job_orders';
+                return 'staff_transactions_hub.php?tab=job_orders';
+            case 'merchandise_delivery':
+            case 'fuel_delivery':
+                if ($role === 'admin') return 'admin_fuel_transactions_oversight.php';
+                if ($role === 'manager') return 'deliveries_oversight.php';
+                return 'staff_transactions_hub.php?tab=deliveries';
+            case 'validation_task':
+            case 'validation_delivery':
+            case 'manager_approval':
+            case 'master_data_approval':
+            case 'admin_approval':
+                if ($role === 'admin') return 'admin_user_management.php';
+                return 'manager_fuel_transaction_validation.php';
+            case 'fuel_calibration':
+                if ($role === 'admin') return 'admin_calibration_review.php';
+                if ($role === 'manager') return 'manager_calibration_review.php';
+                return 'staff_fuel_adjustments.php';
+            case 'stock_request':
+            case 'restock_reminder':
+            case 'stock_alert':
+                if ($role === 'admin') return 'admin_inventory_management.php';
+                return 'inventory_management.php';
+            case 'report_schedule':
+                if ($role === 'admin') return 'admin_reports.php';
+                if ($role === 'manager') return 'manager_reports.php';
+                return 'staff_reports.php';
+            default:
+                return '#';
+        }
+    };
 
-    // Auto-sync staff schedules/shifts
+$seen_events = []; // Prevents duplicate events per date
+
+    $add_mgr_unique_event = function($date, $event) use (&$month_events, &$seen_events, $resolve_target_url) {
+        if (!$date || !isset($event['id'])) return;
+        $key = (string)$event['id'];
+        if (isset($seen_events[$date][$key])) return;
+        $seen_events[$date][$key] = true;
+        if (!isset($event['target_url'])) {
+            $event['target_url'] = $resolve_target_url($event['type_key'] ?? '', $event['id'] ?? '', 'manager');
+        }
+        $month_events[$date][] = $event;
+    };
+
+    // 1. Staff Calendar Events (All station events & manager activities)
     try {
-        $sh = $pdo->prepare("SELECT ss.id, ss.user_id, ss.shift, ss.scheduled_date, ss.status, u.name AS staff_name, s.start_time, s.end_time
+        $stmt = $pdo->prepare("
+            SELECT sce.*, et.type_name, et.type_key, et.icon_class, su.name AS staff_name,
+                   sce.staff_encoder_id, m.name AS manager_name
+            FROM staff_calendar_events sce
+            JOIN staff_event_types et ON sce.event_type_id = et.id
+            JOIN users su ON sce.staff_encoder_id = su.id
+            LEFT JOIN users m ON sce.manager_assigned_id = m.id
+            WHERE sce.station_id = ? AND sce.event_date BETWEEN ? AND ?
+            ORDER BY sce.event_date, sce.start_time
+        ");
+        $stmt->execute([$station_id, $view_start, $view_end]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $row['color'] = $staff_list[$row['staff_encoder_id']]['color'] ?? '#039be5';
+            $add_mgr_unique_event($row['event_date'], $row);
+        }
+    } catch (Exception $e) {}
+
+    // 2. Staff Schedules / Shifts & Turnover (Shift 1 & Shift 2)
+    try {
+        $sh = $pdo->prepare("
+            SELECT ss.id, ss.user_id, ss.shift, ss.scheduled_date, ss.status, u.name AS staff_name,
+                   s.start_time, s.end_time
             FROM staff_schedules ss
             JOIN users u ON ss.user_id = u.id
             LEFT JOIN shifts s ON ss.shift = s.name
-            WHERE ss.scheduled_date BETWEEN ? AND ?");
-        $sh->execute([$view_start, $view_end]);
+            WHERE (u.station_id = ? OR u.station_id IS NULL OR u.station_id = 0)
+              AND ss.scheduled_date BETWEEN ? AND ?
+        ");
+        $sh->execute([$station_id, $view_start, $view_end]);
         foreach ($sh->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $month_events[$r['scheduled_date']][] = [
+            $shift_txt = strtolower($r['shift'] ?? '');
+            // Distinct Color Coding: Shift 1 = Royal Blue (#2563eb), Shift 2 = Deep Purple (#9333ea)
+            $shift_color = (strpos($shift_txt, '1') !== false || strpos($shift_txt, 'morn') !== false) ? '#2563eb' : ((strpos($shift_txt, '2') !== false || strpos($shift_txt, 'after') !== false || strpos($shift_txt, 'night') !== false) ? '#9333ea' : '#0284c7');
+
+            $add_mgr_unique_event($r['scheduled_date'], [
                 'id' => 'shift_'.$r['id'],
-                'type_name' => 'Shift',
+                'type_name' => 'Shift Schedule (' . $r['shift'] . ')',
                 'type_key' => 'staff_shift',
                 'icon_class' => 'fas fa-clock',
                 'staff_name' => $r['staff_name'],
                 'staff_encoder_id' => $r['user_id'],
-                'work_description' => $r['staff_name'] . ' - ' . $r['shift'] . ' Shift',
-                'status' => strtolower($r['status'] ?? 'pending'),
-                'color' => $staff_list[$r['user_id']]['color'] ?? '#757575',
-                'start_time' => $r['start_time'] ?? '00:00',
-                'end_time' => $r['end_time'] ?? '00:00',
+                'work_description' => $r['staff_name'] . ' — ' . $r['shift'] . ' Shift (' . ($r['start_time'] ?? '06:00') . ' - ' . ($r['end_time'] ?? '14:00') . ')',
+                'status' => strtolower($r['status'] ?? 'active'),
+                'color' => $shift_color,
                 'auto_synced' => true
-            ];
+            ]);
         }
     } catch (Exception $e) {}
 
-    // Auto-sync deliveries
-    $dl = $pdo->prepare("SELECT d.id, d.encoded_by, DATE(d.delivery_date) AS event_date, u.name AS staff_name, d.status, d.supplier, d.product
-        FROM deliveries_oversight d
-        JOIN users u ON d.encoded_by = u.id
-        WHERE d.station_id = ? AND DATE(d.delivery_date) BETWEEN ? AND ?");
-    $dl->execute([$station_id, $view_start, $view_end]);
-    foreach ($dl->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $month_events[$r['event_date']][] = [
-            'id' => 'del_'.$r['id'],
-            'type_name' => 'Delivery',
-            'type_key' => 'merchandise_delivery',
-            'icon_class' => 'fas fa-box',
-            'staff_name' => $r['staff_name'],
-            'staff_encoder_id' => $r['encoded_by'],
-            'work_description' => $r['supplier'] . ' - ' . $r['product'],
-            'status' => strtolower($r['status'] ?? 'pending'),
-            'color' => $staff_list[$r['encoded_by']]['color'] ?? '#757575',
-            'auto_synced' => true
-        ];
-    }
-
-    // Auto-sync job orders
-    $jo = $pdo->prepare("SELECT jo.id, jo.created_by, DATE(jo.created_at) AS event_date, jo.service_type, jo.status, u.name AS staff_name, jo.customer_name
-        FROM job_orders jo
-        JOIN users u ON jo.created_by = u.id
-        WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?");
-    $jo->execute([$station_id, $view_start, $view_end]);
-    foreach ($jo->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $month_events[$r['event_date']][] = [
-            'id' => 'jo_'.$r['id'],
-            'type_name' => 'Job Order',
-            'type_key' => 'job_order',
-            'icon_class' => 'fas fa-wrench',
-            'staff_name' => $r['staff_name'],
-            'staff_encoder_id' => $r['created_by'],
-            'work_description' => $r['service_type'] . ' - ' . $r['customer_name'],
-            'status' => strtolower($r['status'] ?? 'pending'),
-            'color' => $staff_list[$r['created_by']]['color'] ?? '#757575',
-            'auto_synced' => true
-        ];
-    }
-    
-    // MANAGER CALENDAR ENHANCEMENTS: Validation Scheduling
-    // Auto-sync pending transactions awaiting validation
+    // 3. Job Orders (Scheduled, Active, Completion & Due Dates)
     try {
-        $pending_tx = $pdo->prepare("SELECT t.id, DATE(t.transaction_date) AS event_date, t.customer_name, t.total_amount, t.payment_status, 
-            t.staff_id, u.name AS staff_name
-            FROM merchandise_transactions t
-            JOIN users u ON t.staff_id = u.id
-            WHERE t.station_id = ? AND t.validation_status = 'Pending' 
-            AND DATE(t.transaction_date) BETWEEN ? AND ?
-            ORDER BY t.transaction_date");
-        $pending_tx->execute([$station_id, $view_start, $view_end]);
-        
-        foreach ($pending_tx->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $month_events[$r['event_date']][] = [
-                'id' => 'validation_tx_'.$r['id'],
-                'type_name' => 'Validation Required',
-                'type_key' => 'validation_task',
-                'icon_class' => 'fas fa-clipboard-check',
+        $jo = $pdo->prepare("
+            SELECT jo.id, jo.created_by, DATE(jo.created_at) AS event_date, jo.due_date,
+                   jo.service_type, jo.status, u.name AS staff_name, jo.customer_name,
+                   m.name AS manager_name
+            FROM job_orders jo
+            JOIN users u ON jo.created_by = u.id
+            LEFT JOIN users m ON jo.validated_by = m.id
+            WHERE jo.station_id = ? AND (DATE(jo.created_at) BETWEEN ? AND ? OR jo.due_date BETWEEN ? AND ?)
+        ");
+        $jo->execute([$station_id, $view_start, $view_end, $view_start, $view_end]);
+        foreach ($jo->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $edate = $r['due_date'] ?: $r['event_date'];
+            $st_label = strtolower($r['status'] ?? 'pending');
+            $color = ($st_label === 'completed' || $st_label === 'verified') ? '#10b981' : (($st_label === 'in progress' || $st_label === 'in_progress') ? '#3b82f6' : '#f59e0b');
+            $add_mgr_unique_event($edate, [
+                'id' => 'jo_'.$r['id'],
+                'type_name' => 'Job Order',
+                'type_key' => 'job_order',
+                'icon_class' => 'fas fa-wrench',
                 'staff_name' => $r['staff_name'],
-                'staff_encoder_id' => $r['staff_id'],
-                'work_description' => 'Validate: ' . $r['customer_name'] . ' - ₱' . number_format($r['total_amount'], 2),
-                'status' => 'pending',
-                'color' => '#ea8600', // Orange for validation tasks
-                'auto_synced' => true,
-                'priority' => 'high'
-            ];
+                'staff_encoder_id' => $r['created_by'],
+                'work_description' => 'JO #' . $r['id'] . ' (' . ucfirst($st_label) . '): ' . $r['service_type'] . ' - ' . ($r['customer_name'] ?: 'Customer'),
+                'status' => $st_label,
+                'color' => $color,
+                'manager_name' => $r['manager_name'] ?? 'Manager Oversight',
+                'auto_synced' => true
+            ]);
         }
     } catch (Exception $e) {}
-    
-    // Auto-sync pending deliveries awaiting validation
+
+    // 4. Deliveries Oversight & Expected Deliveries
     try {
-        $pending_del = $pdo->prepare("SELECT d.id, DATE(d.delivery_date) AS event_date, d.supplier, d.product, 
-            d.expected_quantity, d.actual_quantity, d.encoded_by, u.name AS staff_name
+        $dl = $pdo->prepare("
+            SELECT d.id, d.encoded_by, DATE(d.delivery_date) AS event_date, u.name AS staff_name,
+                   d.status, d.supplier, d.product, m.name AS manager_name
             FROM deliveries_oversight d
             JOIN users u ON d.encoded_by = u.id
-            WHERE d.station_id = ? AND (LOWER(d.status) LIKE '%pending%' OR d.manager_id IS NULL)
-            AND DATE(d.delivery_date) BETWEEN ? AND ?");
-        $pending_del->execute([$station_id, $view_start, $view_end]);
-        
-        foreach ($pending_del->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $variance = floatval($r['actual_quantity'] ?? 0) - floatval($r['expected_quantity'] ?? 0);
-            $has_variance = abs($variance) > 0.01;
-            
-            $month_events[$r['event_date']][] = [
-                'id' => 'validation_del_'.$r['id'],
-                'type_name' => 'Delivery Validation',
-                'type_key' => 'validation_delivery',
-                'icon_class' => 'fas fa-truck',
+            LEFT JOIN users m ON d.manager_id = m.id
+            WHERE d.station_id = ? AND DATE(d.delivery_date) BETWEEN ? AND ?
+        ");
+        $dl->execute([$station_id, $view_start, $view_end]);
+        foreach ($dl->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $add_mgr_unique_event($r['event_date'], [
+                'id' => 'del_'.$r['id'],
+                'type_name' => 'Merchandise Delivery',
+                'type_key' => 'merchandise_delivery',
+                'icon_class' => 'fas fa-box',
                 'staff_name' => $r['staff_name'],
                 'staff_encoder_id' => $r['encoded_by'],
-                'work_description' => ($has_variance ? '[!] ' : '') . 'Validate: ' . $r['supplier'] . ' - ' . $r['product'],
-                'status' => 'pending',
-                'color' => $has_variance ? '#d93025' : '#ea8600', // Red if variance, orange otherwise
-                'auto_synced' => true,
-                'priority' => $has_variance ? 'urgent' : 'high'
-            ];
+                'work_description' => 'Delivery: ' . $r['supplier'] . ' - ' . $r['product'],
+                'status' => strtolower($r['status'] ?? 'pending'),
+                'color' => '#06b6d4',
+                'manager_name' => $r['manager_name'] ?? 'Pending Validation',
+                'auto_synced' => true
+            ]);
         }
     } catch (Exception $e) {}
-    
-    // Auto-sync low inventory items (restocking reminders)
+
+    // 5. Fuel Deliveries
+    try {
+        $fd = $pdo->prepare("
+            SELECT id, DATE(created_at) AS event_date, fuel_type, liters, status, supplier
+            FROM fuel_deliveries
+            WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
+        ");
+        $fd->execute([$station_id, $view_start, $view_end]);
+        foreach ($fd->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $add_mgr_unique_event($r['event_date'], [
+                'id' => 'fuel_del_'.$r['id'],
+                'type_name' => 'Fuel Delivery',
+                'type_key' => 'fuel_delivery',
+                'icon_class' => 'fas fa-gas-pump',
+                'staff_name' => $r['supplier'] ?: 'Fuel Supplier',
+                'staff_encoder_id' => $user_id,
+                'work_description' => 'Fuel Delivery: ' . ($r['fuel_type'] ?: 'Fuel') . ' (' . number_format((float)($r['liters'] ?? 0), 2) . ' L)',
+                'status' => strtolower($r['status'] ?? 'pending'),
+                'color' => '#ef4444',
+                'auto_synced' => true
+            ]);
+        }
+    } catch (Exception $e) {}
+
+    // 6. Fuel Calibration & Meter Reading Schedule
+    try {
+        $fc = $pdo->prepare("
+            SELECT id, DATE(calibration_date) AS event_date, fuel_type, status, technician_name
+            FROM fuel_calibration_records
+            WHERE station_id = ? AND DATE(calibration_date) BETWEEN ? AND ?
+        ");
+        $fc->execute([$station_id, $view_start, $view_end]);
+        foreach ($fc->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $add_mgr_unique_event($r['event_date'], [
+                'id' => 'calib_'.$r['id'],
+                'type_name' => 'Fuel Reading & Calibration',
+                'type_key' => 'fuel_calibration',
+                'icon_class' => 'fas fa-tachometer-alt',
+                'staff_name' => $r['technician_name'] ?: 'Technician',
+                'staff_encoder_id' => $user_id,
+                'work_description' => 'Meter Reading / Calibration: ' . ($r['fuel_type'] ?: 'Pump'),
+                'status' => strtolower($r['status'] ?? 'pending'),
+                'color' => '#64748b',
+                'auto_synced' => true
+            ]);
+        }
+    } catch (Exception $e) {}
+
+    // 7. MANAGER APPROVAL TASKS: Pending Void & Adjustment Requests
+    try {
+        $reqs = $pdo->prepare("
+            SELECT tr.id, DATE(tr.created_at) AS event_date, tr.request_type, tr.transaction_id,
+                   tr.status, u.name AS staff_name, tr.record_source
+            FROM transaction_requests tr
+            JOIN users u ON tr.staff_id = u.id
+            WHERE tr.station_id = ? AND tr.status = 'Pending'
+              AND DATE(tr.created_at) BETWEEN ? AND ?
+        ");
+        $reqs->execute([$station_id, $view_start, $view_end]);
+        foreach ($reqs->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $req_type = ucfirst($r['request_type']);
+            $add_mgr_unique_event($r['event_date'], [
+                'id' => 'approval_req_'.$r['id'],
+                'type_name' => 'Pending ' . $req_type . ' Request',
+                'type_key' => 'manager_approval',
+                'icon_class' => 'fas fa-exclamation-circle',
+                'staff_name' => $r['staff_name'],
+                'staff_encoder_id' => $user_id,
+                'work_description' => '[APPROVAL REQUIRED] Pending ' . $req_type . ': Txn #' . $r['transaction_id'] . ' (by ' . $r['staff_name'] . ')',
+                'status' => 'pending',
+                'color' => '#dc2626',
+                'priority' => 'urgent',
+                'auto_synced' => true
+            ]);
+        }
+    } catch (Exception $e) {}
+
+    // 8. MANAGER APPROVAL TASKS: Pending Master Data Requests
+    try {
+        $md = $pdo->prepare("
+            SELECT m.id, DATE(m.created_at) AS event_date, m.request_type, m.entity_type,
+                   u.name AS staff_name
+            FROM master_data_requests m
+            JOIN users u ON m.requested_by = u.id
+            WHERE m.station_id = ? AND m.status = 'Pending'
+              AND DATE(m.created_at) BETWEEN ? AND ?
+        ");
+        $md->execute([$station_id, $view_start, $view_end]);
+        foreach ($md->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $add_mgr_unique_event($r['event_date'], [
+                'id' => 'md_req_'.$r['id'],
+                'type_name' => 'Master Data Request',
+                'type_key' => 'master_data_approval',
+                'icon_class' => 'fas fa-database',
+                'staff_name' => $r['staff_name'],
+                'staff_encoder_id' => $user_id,
+                'work_description' => '[APPROVAL REQUIRED] Master Data: ' . ucfirst($r['request_type']) . ' ' . $r['entity_type'] . ' (by ' . $r['staff_name'] . ')',
+                'status' => 'pending',
+                'color' => '#d97706',
+                'priority' => 'high',
+                'auto_synced' => true
+            ]);
+        }
+    } catch (Exception $e) {}
+
+    // 9. Stock Requests (Pending Stock Request Approvals)
+    try {
+        $sr = $pdo->prepare("
+            SELECT id, DATE(created_at) AS event_date, product_name, quantity, status
+            FROM stock_requests
+            WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
+        ");
+        $sr->execute([$station_id, $view_start, $view_end]);
+        foreach ($sr->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $st_label = strtolower($r['status'] ?? 'pending');
+            $add_mgr_unique_event($r['event_date'], [
+                'id' => 'stock_req_'.$r['id'],
+                'type_name' => 'Stock Request',
+                'type_key' => 'stock_request',
+                'icon_class' => 'fas fa-boxes',
+                'staff_name' => 'Stock Request',
+                'staff_encoder_id' => $user_id,
+                'work_description' => ($st_label === 'pending' ? '[APPROVAL REQUIRED] ' : '') . 'Stock Request: ' . ($r['product_name'] ?: 'Item') . ' (Qty: ' . $r['quantity'] . ')',
+                'status' => $st_label,
+                'color' => $st_label === 'pending' ? '#d97706' : '#8b5cf6',
+                'auto_synced' => true
+            ]);
+        }
+    } catch (Exception $e) {}
+
+    // 10. Low Inventory Restock Reminders
     try {
         $low_stock = $pdo->prepare("
             SELECT ip.id, ip.product_name, 
@@ -744,96 +899,36 @@ try {
             LIMIT 10
         ");
         $low_stock->execute([$station_id]);
-        
-        // Add low stock items to today's date as reminders
         foreach ($low_stock->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $month_events[$today_str][] = [
+            $add_mgr_unique_event($today_str, [
                 'id' => 'restock_'.$r['id'],
-                'type_name' => 'Restock Alert',
+                'type_name' => 'Low Stock Reminder',
                 'type_key' => 'restock_reminder',
                 'icon_class' => 'fas fa-exclamation-triangle',
-                'staff_name' => 'Manager Task',
+                'staff_name' => 'System Alert',
                 'staff_encoder_id' => $user_id,
-                'work_description' => '🔴 Low Stock: ' . $r['product_name'] . ' (' . $r['current_stock'] . ' ' . $r['unit'] . ')',
+                'work_description' => 'Low Stock: ' . $r['product_name'] . ' (' . (int)$r['current_stock'] . ' ' . $r['unit'] . ' left)',
                 'status' => 'pending',
-                'color' => '#d93025', // Red for urgent
-                'auto_synced' => true,
-                'priority' => 'urgent'
-            ];
-        }
-    } catch (Exception $e) {}
-    
-    // Auto-sync overdue customer payments (collection reminders)
-    try {
-        $overdue_payments = $pdo->prepare("SELECT t.id, t.customer_name, t.balance_due, t.due_date,
-            DATEDIFF(CURDATE(), t.due_date) AS days_overdue
-            FROM merchandise_transactions t
-            WHERE t.station_id = ? AND COALESCE(t.balance_due, 0) > 0 AND t.due_date < CURDATE()
-            AND LOWER(COALESCE(t.payment_status, '')) <> 'paid'
-            ORDER BY t.due_date ASC
-            LIMIT 15");
-        $overdue_payments->execute([$station_id]);
-        
-        foreach ($overdue_payments->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $month_events[$today_str][] = [
-                'id' => 'payment_collection_'.$r['id'],
-                'type_name' => 'Payment Collection',
-                'type_key' => 'payment_reminder',
-                'icon_class' => 'fas fa-money-bill-wave',
-                'staff_name' => 'Manager Task',
-                'staff_encoder_id' => $user_id,
-                'work_description' => '💰 Collect: ' . $r['customer_name'] . ' - ₱' . number_format($r['balance_due'], 2) . ' (' . $r['days_overdue'] . ' days overdue)',
-                'status' => 'pending',
-                'color' => '#d93025',
-                'auto_synced' => true,
-                'priority' => 'urgent'
-            ];
-        }
-    } catch (Exception $e) {}
-    
-    // Auto-sync internal meetings
-    try {
-        $meetings = $pdo->prepare("SELECT m.id, m.meeting_date, m.meeting_title, m.meeting_type, m.status, m.created_by
-            FROM manager_meetings m
-            WHERE m.station_id = ? AND DATE(m.meeting_date) BETWEEN ? AND ?
-            ORDER BY m.meeting_date");
-        $meetings->execute([$station_id, $view_start, $view_end]);
-        
-        foreach ($meetings->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $month_events[$r['meeting_date']][] = [
-                'id' => 'meeting_'.$r['id'],
-                'type_name' => 'Meeting',
-                'type_key' => 'internal_meeting',
-                'icon_class' => 'fas fa-users',
-                'staff_name' => 'Manager',
-                'staff_encoder_id' => $r['created_by'],
-                'work_description' => '📅 ' . $r['meeting_title'] . ' (' . $r['meeting_type'] . ')',
-                'status' => strtolower($r['status'] ?? 'scheduled'),
-                'color' => '#7986cb',
+                'color' => '#ef4444',
                 'auto_synced' => true
-            ];
+            ]);
         }
-    } catch (Exception $e) {
-        // Table may not exist yet - create it
-        try {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS manager_meetings (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                station_id INT NOT NULL,
-                meeting_title VARCHAR(255) NOT NULL,
-                meeting_type ENUM('team','planning','review','training','other') DEFAULT 'team',
-                meeting_date DATE NOT NULL,
-                start_time TIME,
-                end_time TIME,
-                attendees TEXT,
-                agenda TEXT,
-                status ENUM('scheduled','completed','cancelled') DEFAULT 'scheduled',
-                created_by INT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_station_date (station_id, meeting_date)
-            )");
-        } catch (Exception $e2) {}
-    }
-} catch (Exception $e) {}
+    } catch (Exception $e) {}
+
+    // 11. Reports & Reconciliation Submission Deadlines
+    // Adds daily closing & sales reconciliation reminders to today's and end of month dates
+    $add_mgr_unique_event($today_str, [
+        'id' => 'report_fuel_sales_closing',
+        'type_name' => 'Report Deadline',
+        'type_key' => 'report_schedule',
+        'icon_class' => 'fas fa-file-invoice-dollar',
+        'staff_name' => 'Manager Schedule',
+        'staff_encoder_id' => $user_id,
+        'work_description' => 'Daily Fuel Sales & Shift Reconciliation Submission',
+        'status' => 'pending',
+        'color' => '#10b981',
+        'auto_synced' => true
+    ]);
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -958,12 +1053,12 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
 
                 <select id="filterEventType" onchange="filterCalendarEvents()" style="width: 100%; padding: 5px; font-size: 11px; border: 1px solid #dadce0; border-radius: 4px;">
                     <option value="">All Event Types</option>
-                    <option value="job_order">🟢 Job Orders</option>
-                    <option value="customer_appointment">🔵 Customer Appointments</option>
-                    <option value="pms">🟠 Preventive Maintenance (PMS)</option>
-                    <option value="staff_shift">🟣 Staff Shifts</option>
-                    <option value="merchandise_delivery">🟡 Merchandise Deliveries</option>
-                    <option value="fuel_delivery">🟤 Fuel Deliveries</option>
+                    <option value="job_order"><i class="fas fa-circle text-success"></i> Job Orders</option>
+                    <option value="customer_appointment"><i class="fas fa-circle text-primary"></i> Customer Appointments</option>
+                    <option value="pms"><i class="fas fa-circle" style="color:#f97316;"></i> Preventive Maintenance (PMS)</option>
+                    <option value="staff_shift"><i class="fas fa-circle" style="color:#8b5cf6;"></i> Staff Shifts</option>
+                    <option value="merchandise_delivery"><i class="fas fa-circle text-warning"></i> Merchandise Deliveries</option>
+                    <option value="fuel_delivery"><i class="fas fa-circle" style="color:#b45309;"></i> Fuel Deliveries</option>
                 </select>
 
                 <input type="date" id="filterDate" onchange="filterCalendarEvents()" style="width: 100%; padding: 5px; font-size: 11px; border: 1px solid #dadce0; border-radius: 4px;">
@@ -974,12 +1069,12 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
         <div style="padding: 12px; border-bottom: 1px solid #dadce0;">
             <div style="font-size: 12px; font-weight: 600; color: #3c4043; margin-bottom: 8px;"><i class="fas fa-palette"></i> EVENT TYPES</div>
             <div style="display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: #3c4043;">
-                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #33b679; font-size: 14px;">🟢</span> <span>Job Orders</span></div>
-                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #039be5; font-size: 14px;">🔵</span> <span>Customer Appointments</span></div>
-                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #f6bf26; font-size: 14px;">🟠</span> <span>Preventive Maintenance</span></div>
-                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #8e24aa; font-size: 14px;">🟣</span> <span>Staff Shifts</span></div>
-                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #e67c73; font-size: 14px;">🟡</span> <span>Merchandise Deliveries</span></div>
-                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #795548; font-size: 14px;">🟤</span> <span>Fuel Deliveries</span></div>
+                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #33b679; font-size: 14px;"><i class="fas fa-circle text-success"></i></span> <span>Job Orders</span></div>
+                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #039be5; font-size: 14px;"><i class="fas fa-circle text-primary"></i></span> <span>Customer Appointments</span></div>
+                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #f6bf26; font-size: 14px;"><i class="fas fa-circle" style="color:#f97316;"></i></span> <span>Preventive Maintenance</span></div>
+                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #8e24aa; font-size: 14px;"><i class="fas fa-circle" style="color:#8b5cf6;"></i></span> <span>Staff Shifts</span></div>
+                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #e67c73; font-size: 14px;"><i class="fas fa-circle text-warning"></i></span> <span>Merchandise Deliveries</span></div>
+                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #795548; font-size: 14px;"><i class="fas fa-circle" style="color:#b45309;"></i></span> <span>Fuel Deliveries</span></div>
             </div>
         </div>
 
@@ -1133,18 +1228,22 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                 </button>
             </div>
             <?php endif; ?>
-        </div>
-
-        <!-- Staff color legend -->
-        <div class="cal-calendars">
-            <div class="cal-calendars-title">Staff (Color Filter)</div>
-            <?php foreach($staff_list as $staff_id => $staff): ?>
-            <div class="cal-calendar-item" onclick="toggleStaff(<?= $staff_id ?>)">
-                <div class="cal-calendar-checkbox checked" style="background: <?= htmlspecialchars($staff['color']) ?>; border-color: <?= htmlspecialchars($staff['color']) ?>;"></div>
-                <div><?= htmlspecialchars($staff['name']) ?></div>
+        <!-- Staff Shift Overview Legend -->
+        <div class="cal-calendars" style="padding: 12px; border-top: 1px solid #dadce0;">
+            <div class="cal-calendars-title" style="font-size: 12px; font-weight: 600; color: #3c4043; margin-bottom: 8px;">
+                <i class="fas fa-users"></i> STATION SHIFT COLOR CODES
             </div>
-            <?php endforeach; ?>
-        </div>
+            <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: #3c4043;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 12px; height: 12px; background: #2563eb; border-radius: 3px;"></div>
+                    <span style="font-weight: 600;">Shift 1 Staff</span> <span style="font-size: 10px; color: #64748b;">(06:00 - 14:00)</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 12px; height: 12px; background: #9333ea; border-radius: 3px;"></div>
+                    <span style="font-weight: 600;">Shift 2 Staff</span> <span style="font-size: 10px; color: #64748b;">(14:00 - 22:00)</span>
+                </div>
+            </div>
+        </div>    </div>
     </div>
 
     <!-- Main calendar -->
@@ -1260,7 +1359,7 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                                  data-staff="<?= $staff_id ?>"
                                  style="background: <?= $event_color ?>22; border-left-color: <?= $event_color ?>;" 
                                  title="<?= htmlspecialchars($event['staff_name'] ?? '') ?> - <?= htmlspecialchars($event['work_description'] ?? $event['type_name']) ?>"
-                                 onclick="clickEvent('<?= htmlspecialchars($event_id) ?>', '<?= htmlspecialchars($event_type) ?>')">
+                                 onclick="clickEvent('<?= htmlspecialchars($event_id) ?>', '<?= htmlspecialchars($event_type) ?>', '<?= htmlspecialchars($event['target_url'] ?? '#') ?>')">
                                 <?php if ($time_str): ?>
                                 <span class="cal-event-time"><?= $time_str ?></span>
                                 <?php endif; ?>
@@ -1563,7 +1662,11 @@ const allCalendarEvents = <?= json_encode($month_events) ?>;
 const activeStaffList = <?= json_encode($staff_list) ?>;
 
 // Click on event
-function clickEvent(eventId, eventType) {
+function clickEvent(eventId, eventType, targetUrl) {
+    if (targetUrl && targetUrl !== '#') {
+        window.location.href = targetUrl;
+        return;
+    }
     const match = eventId.match(/\d+$/);
     const numericId = match ? match[0] : eventId;
     
@@ -1698,14 +1801,14 @@ function showManagerDetailsModal(evt) {
     body.innerHTML = html;
 
     // ─── ACTION BUTTONS ─────────────────────────────────────────────
-    // Always: 👁 View  ✏ Reschedule  👤 Assign/Reassign
+    // Always: <i class="fas fa-eye"></i> View  <i class="fas fa-pencil-alt"></i> Reschedule  <i class="fas fa-user"></i> Assign/Reassign
     const isAutoSynced = evt.auto_synced || false;
     const hasNumericId = numericId && !isNaN(numericId);
 
     // Build the reschedule date picker inline
     const reschedulePicker = `
         <div id="reschedulePanel" style="display:none; margin-top:12px; padding:12px; background:#f8f9fa; border-radius:8px; border:1px solid #dadce0;">
-            <label style="font-size:12px; font-weight:600; color:#3c4043; display:block; margin-bottom:6px;">✏ New Date:</label>
+            <label style="font-size:12px; font-weight:600; color:#3c4043; display:block; margin-bottom:6px;"><i class="fas fa-pencil-alt"></i> New Date:</label>
             <input type="date" id="rescheduleDate" value="${evt.event_date || evt.del_date || ''}" style="width:100%; padding:8px; border:1px solid #dadce0; border-radius:4px; font-size:13px; margin-bottom:8px;">
             <button onclick="submitReschedule('${numericId}', '${evt.type_key || ''}')" style="width:100%; padding:8px; border:none; background:#1a73e8; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
                 Confirm Reschedule
@@ -1716,7 +1819,7 @@ function showManagerDetailsModal(evt) {
     // Build assign/reassign staff picker
     const reassignPanel = `
         <div id="reassignPanel" style="display:none; margin-top:12px; padding:12px; background:#f8f9fa; border-radius:8px; border:1px solid #dadce0;">
-            <label style="font-size:12px; font-weight:600; color:#3c4043; display:block; margin-bottom:6px;">👤 Select Mechanic / Staff:</label>
+            <label style="font-size:12px; font-weight:600; color:#3c4043; display:block; margin-bottom:6px;"><i class="fas fa-user"></i> Select Mechanic / Staff:</label>
             <select id="reassignSelectNew" style="width:100%; padding:8px; border:1px solid #dadce0; border-radius:4px; font-size:13px; margin-bottom:8px;">
                 <option value="">-- Select --</option>
                 ${Object.keys(activeStaffList).map(id => `<option value="${id}" ${evt.staff_encoder_id == id ? 'selected' : ''}>${activeStaffList[id].name}</option>`).join('')}
@@ -1732,11 +1835,11 @@ function showManagerDetailsModal(evt) {
 
     let actionButtons = `
         <button type="button" onclick="closeDetailsModal()" style="padding:10px 16px; border:1px solid #dadce0; background:#fff; color:#3c4043; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-            ✕ Close
+            <i class="fas fa-times"></i> Close
         </button>
     `;
 
-    // 👁 View — link to source record
+    // <i class="fas fa-eye"></i> View — link to source record
     let viewUrl = '#';
     if (evt.type_key === 'job_order') viewUrl = `../public/manager_validated_transactions.php?type=job_order&search=${numericId}`;
     else if (evt.type_key === 'merchandise_delivery') viewUrl = `../public/manager_deliveries.php?id=${numericId}`;
@@ -1746,25 +1849,25 @@ function showManagerDetailsModal(evt) {
     if (viewUrl !== '#') {
         actionButtons += `
             <a href="${viewUrl}" target="_blank" style="padding:10px 16px; border:1px solid #1a73e8; background:#fff; color:#1a73e8; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-                👁 View
+                <i class="fas fa-eye"></i> View
             </a>
         `;
     }
 
-    // ✏ Reschedule — toggle panel
+    // <i class="fas fa-pencil-alt"></i> Reschedule — toggle panel
     if (!isAutoSynced || evt.type_key === 'staff_shift' || evt.type_key === 'job_order') {
         actionButtons += `
             <button type="button" onclick="document.getElementById('reschedulePanel').style.display = document.getElementById('reschedulePanel').style.display === 'none' ? 'block' : 'none';" style="padding:10px 16px; border:1px solid #ea8600; background:#fff; color:#ea8600; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                ✏ Reschedule
+                <i class="fas fa-pencil-alt"></i> Reschedule
             </button>
         `;
     }
 
-    // 👤 Assign/Reassign Mechanic
+    // <i class="fas fa-user"></i> Assign/Reassign Mechanic
     if (evt.type_key === 'job_order' || evt.type_key === 'staff_shift' || evt.type_key === 'merchandise_delivery') {
         actionButtons += `
             <button type="button" onclick="document.getElementById('reassignPanel').style.display = document.getElementById('reassignPanel').style.display === 'none' ? 'block' : 'none';" style="padding:10px 16px; border:1px solid #8e24aa; background:#fff; color:#8e24aa; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                👤 Assign/Reassign
+                <i class="fas fa-user"></i> Assign/Reassign
             </button>
         `;
     }
@@ -1773,25 +1876,25 @@ function showManagerDetailsModal(evt) {
     if (evt.type_key === 'job_order') {
         actionButtons += `
             <button type="button" onclick="submitManagerAction('job_order', '${numericId}', 'approve')" style="padding:10px 16px; border:none; background:#188038; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                ✓ Approve
+                <i class="fas fa-check"></i> Approve
             </button>
             <button type="button" onclick="submitManagerAction('job_order', '${numericId}', 'reject')" style="padding:10px 16px; border:none; background:#d93025; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                ✗ Reject
+                <i class="fas fa-times"></i> Reject
             </button>
         `;
     } else if (evt.type_key === 'merchandise_delivery' || evt.type_key === 'fuel_delivery') {
         actionButtons += `
             <button type="button" onclick="submitManagerAction('delivery', '${numericId}', 'approve')" style="padding:10px 16px; border:none; background:#188038; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                ✓ Approve
+                <i class="fas fa-check"></i> Approve
             </button>
             <button type="button" onclick="submitManagerAction('delivery', '${numericId}', 'reject')" style="padding:10px 16px; border:none; background:#d93025; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                ✗ Reject
+                <i class="fas fa-times"></i> Reject
             </button>
         `;
     } else if (evt.type_key === 'fuel_calibration') {
         actionButtons += `
             <button type="button" onclick="submitManagerAction('fuel_calibration', '${numericId}', 'validate')" style="padding:10px 16px; border:none; background:#188038; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                ✓ Validate
+                <i class="fas fa-check"></i> Validate
             </button>
         `;
     }
@@ -1865,7 +1968,7 @@ function submitManagerReassign(evtType, numericId) {
     .catch(e => alert('Network error re-assigning staff'));
 }
 
-// ✏ Reschedule handler
+// <i class="fas fa-pencil-alt"></i> Reschedule handler
 function submitReschedule(numericId, evtType) {
     const newDate = document.getElementById('rescheduleDate')?.value;
     if (!newDate) { alert('Please pick a new date.'); return; }
@@ -1878,13 +1981,13 @@ function submitReschedule(numericId, evtType) {
     fetch('manager_calendar.php', { method: 'POST', body: formData })
         .then(r => r.json())
         .then(data => {
-            if (data.success) { alert('✓ Rescheduled successfully!'); location.reload(); }
+            if (data.success) { alert('<i class="fas fa-check"></i> Rescheduled successfully!'); location.reload(); }
             else { alert('Error: ' + (data.message || 'Could not reschedule.')); }
         })
         .catch(() => alert('Network error rescheduling'));
 }
 
-// 👤 Reassign (new panel version)
+// <i class="fas fa-user"></i> Reassign (new panel version)
 function submitReassignNew(numericId, evtType) {
     const select = document.getElementById('reassignSelectNew');
     const newStaffId = select?.value;
@@ -1898,7 +2001,7 @@ function submitReassignNew(numericId, evtType) {
     fetch('manager_calendar.php', { method: 'POST', body: formData })
         .then(r => r.json())
         .then(data => {
-            if (data.success) { alert('✓ ' + data.message); location.reload(); }
+            if (data.success) { alert('<i class="fas fa-check"></i> ' + data.message); location.reload(); }
             else { alert('Error: ' + (data.message || 'Could not reassign.')); }
         })
         .catch(() => alert('Network error reassigning'));
@@ -1969,7 +2072,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             })
             .catch(e => {
-                alert('✗ Error saving event');
+                alert('<i class="fas fa-times"></i> Error saving event');
                 console.error(e);
                 submitBtn.textContent = originalText;
                 submitBtn.disabled = false;
@@ -2330,5 +2433,40 @@ function handleEventTypeChange() {
     </div>
 </div>
 
+<!-- Auto-Refresh for Calendar Module (Shift 1 & Shift 2 Real-Time Sync) -->
+<script>
+(function() {
+    const REFRESH_INTERVAL_MS = 15000; // 15 seconds auto refresh
+
+    function isUserEditingOrModalOpen() {
+        // 1. Check if any modal is currently visible
+        const modals = document.querySelectorAll('#eventModal, #detailsModal, [id*="modal"], [id*="Modal"]');
+        for (const modal of modals) {
+            if (modal && modal.offsetParent !== null && window.getComputedStyle(modal).display !== 'none') {
+                return true;
+            }
+        }
+        // 2. Check if an input/textarea/select is focused
+        const active = document.activeElement;
+        if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) {
+            return true;
+        }
+        return false;
+    }
+
+    function checkAndAutoRefresh() {
+        if (!isUserEditingOrModalOpen()) {
+            console.log('[Calendar Sync] Auto-refreshing calendar data for Shift 1 & Shift 2 sync...');
+            window.location.reload();
+        } else {
+            console.log('[Calendar Sync] Refresh paused while user is editing or modal is open.');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        setInterval(checkAndAutoRefresh, REFRESH_INTERVAL_MS);
+    });
+})();
+</script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>
 

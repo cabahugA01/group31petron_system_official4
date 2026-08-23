@@ -49,7 +49,7 @@
 </head>
 <body>
     <div class="test-container">
-        <h2>🔍 Bug Condition Exploration Test: .h1 Class Top Margin</h2>
+        <h2><i class="fas fa-search"></i> Bug Condition Exploration Test: .h1 Class Top Margin</h2>
         <p><strong>Test Objective:</strong> Verify that elements with <code>.h1</code> class have proper top margin.</p>
         <p><strong>Expected Behavior:</strong> <code>.h1</code> elements should have <code>margin-top: 20px</code></p>
         <p><strong>Bug Condition:</strong> Current code has <code>.h1{margin:0}</code> which removes all margins</p>
@@ -101,7 +101,7 @@
             
             // Display current state
             let html = '<div class="info">';
-            html += '<strong>📊 Current State of .h1 Element:</strong><br>';
+            html += '<strong><i class="fas fa-chart-bar"></i> Current State of .h1 Element:</strong><br>';
             html += `margin-top: ${actualMarginTop}<br>`;
             html += `margin-right: ${actualMarginRight}<br>`;
             html += `margin-bottom: ${actualMarginBottom}<br>`;
@@ -115,11 +115,11 @@
             
             if (actualMarginTop === expectedMarginTop) {
                 html += 'pass">';
-                html += `✅ PASS: marginTop is '${actualMarginTop}' as expected<br>`;
+                html += `<i class="fas fa-check-circle"></i> PASS: marginTop is '${actualMarginTop}' as expected<br>`;
                 html += 'Expected behavior satisfied: .h1 elements have proper top margin for visual hierarchy';
             } else {
                 html += 'fail">';
-                html += `❌ FAIL: Expected marginTop to be '${expectedMarginTop}', but got '${actualMarginTop}'<br>`;
+                html += `<i class="fas fa-times-circle"></i> FAIL: Expected marginTop to be '${expectedMarginTop}', but got '${actualMarginTop}'<br>`;
                 html += '<strong>Bug Confirmed:</strong> .h1 class has margin:0 which removes all margins<br>';
                 html += '<strong>Impact:</strong> Superadmin pages with .h1 headings appear cramped with insufficient top spacing<br>';
                 html += '<strong>Counterexample:</strong> All .h1 elements have 0px top margin instead of 20px';
@@ -147,7 +147,7 @@
             console.log(`Test Status: ${actualMarginTop === expectedMarginTop ? 'PASS' : 'FAIL'}`);
             
             if (actualMarginTop !== expectedMarginTop) {
-                console.log('❌ Bug Confirmed: .h1 class has 0px top margin instead of 20px');
+                console.log('<i class="fas fa-times-circle"></i> Bug Confirmed: .h1 class has 0px top margin instead of 20px');
                 console.log('Counterexample: Elements with .h1 class on superadmin pages lack proper top spacing');
             }
             
@@ -160,8 +160,8 @@
             
             // Update document title based on result
             document.title = passed ? 
-                '✅ PASS - .h1 Top Margin Test' : 
-                '❌ FAIL - .h1 Top Margin Test (Bug Confirmed)';
+                '<i class="fas fa-check-circle"></i> PASS - .h1 Top Margin Test' : 
+                '<i class="fas fa-times-circle"></i> FAIL - .h1 Top Margin Test (Bug Confirmed)';
         });
     </script>
 </body>

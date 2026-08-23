@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/security_helpers.php';
+
 // Simple JSON-based storage helpers (no DB required)
 function data_path($file){ return __DIR__ . '/../data/' . $file; }
 

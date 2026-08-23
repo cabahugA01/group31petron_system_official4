@@ -101,13 +101,13 @@ if ($confirm !== 'YES_DELETE_ALL') {
     </head>
     <body>
         <div class="warning-box">
-            <h2>⚠️ WARNING: Delete All Merchandise History</h2>
+            <h2><i class="fas fa-exclamation-triangle"></i> WARNING: Delete All Merchandise History</h2>
             <p>You are about to <strong>permanently delete ALL merchandise transaction records</strong> from the database.</p>
             <p>This action cannot be undone!</p>
         </div>
 
         <div class="danger-box">
-            <h3>🚨 What will be deleted:</h3>
+            <h3><i class="fas fa-bell text-danger"></i> What will be deleted:</h3>
             <ul>
                 <li><strong>All merchandise transactions</strong> (merchandise_transactions table)</li>
                 <li><strong>All transaction line items</strong> (merchandise_transaction_items table)</li>
@@ -119,7 +119,7 @@ if ($confirm !== 'YES_DELETE_ALL') {
         </div>
 
         <div class="info-box">
-            <h4>✅ What will NOT be affected:</h4>
+            <h4><i class="fas fa-check-circle"></i> What will NOT be affected:</h4>
             <ul>
                 <li>Product inventory (inventory_products)</li>
                 <li>Station inventory levels (station_inventory)</li>
@@ -234,12 +234,12 @@ try {
     </head>
     <body>
         <div class="success-box">
-            <h2>✅ Merchandise History Cleared Successfully</h2>
+            <h2><i class="fas fa-check-circle"></i> Merchandise History Cleared Successfully</h2>
             <p>All merchandise transaction records have been permanently deleted from the database.</p>
         </div>
 
         <div class="stats">
-            <h3>📊 Deletion Summary:</h3>
+            <h3><i class="fas fa-chart-bar"></i> Deletion Summary:</h3>
             <ul>
                 <li><strong><?php echo number_format($count_transactions); ?></strong> merchandise transactions deleted</li>
                 <li><strong><?php echo number_format($count_items); ?></strong> transaction line items deleted</li>
@@ -318,7 +318,7 @@ try {
     </head>
     <body>
         <div class="error-box">
-            <h2>❌ Error During Deletion</h2>
+            <h2><i class="fas fa-times-circle"></i> Error During Deletion</h2>
             <p>An error occurred while deleting merchandise history. The operation has been rolled back and no changes were made.</p>
             <p><strong>Error message:</strong></p>
             <code><?php echo htmlspecialchars($e->getMessage()); ?></code>

@@ -363,7 +363,7 @@ include __DIR__ . '/../partials/header.php';
                     <td>
                         <span class="status-badge status-<?php echo htmlspecialchars($station['status']); ?>">
                             <?php 
-                            $statusIcon = $station['status'] === 'active' ? '✅' : '❌';
+                            $statusIcon = $station['status'] === 'active' ? '<i class="fas fa-check-circle"></i>' : '<i class="fas fa-times-circle"></i>';
                             echo $statusIcon . ' ' . ucfirst(htmlspecialchars($station['status'])); 
                             ?>
                         </span>

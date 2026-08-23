@@ -397,7 +397,7 @@ try {
 
     <?php if($rec['discrepancy_type']&&$rec['discrepancy_type']!==''): ?>
     <div class="discrepancy-box">
-        <strong>⚠ DISCREPANCY DETECTED: <?php echo htmlspecialchars($rec['discrepancy_type']); ?></strong><br>
+        <strong><i class="fas fa-exclamation-triangle"></i> DISCREPANCY DETECTED: <?php echo htmlspecialchars($rec['discrepancy_type']); ?></strong><br>
         <div style="margin-top:8px;font-size:12px;"><?php echo nl2br(htmlspecialchars($rec['admin_notes']??'')); ?></div>
     </div>
     <?php endif; ?>

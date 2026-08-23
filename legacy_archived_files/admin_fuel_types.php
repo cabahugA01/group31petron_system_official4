@@ -24,13 +24,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             try {
                 $stmt = $pdo->prepare("INSERT INTO fuel_types (name, description) VALUES (?, ?)");
                 $stmt->execute([$name, $description]);
-                $msg = "✅ Fuel type added successfully!";
+                $msg = "Success: Fuel type added successfully!";
                 log_activity($pdo, $user['id'], 'Add Fuel Type', "Added fuel type: $name", 'fuel_types');
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         } else {
-            $msg = "❌ Error: Fuel type name is required.";
+            $msg = "Error: Error: Fuel type name is required.";
         }
     } elseif ($action === 'edit_fuel_type') {
         $id = (int)$_POST['id'];
@@ -41,13 +41,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             try {
                 $stmt = $pdo->prepare("UPDATE fuel_types SET name = ?, description = ? WHERE id = ?");
                 $stmt->execute([$name, $description, $id]);
-                $msg = "✅ Fuel type updated successfully!";
+                $msg = "Success: Fuel type updated successfully!";
                 log_activity($pdo, $user['id'], 'Edit Fuel Type', "Updated fuel type ID $id to: $name", 'fuel_types');
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         } else {
-            $msg = "❌ Error: Invalid request.";
+            $msg = "Error: Error: Invalid request.";
         }
     } elseif ($action === 'delete_fuel_type') {
         $id = (int)$_POST['id'];
@@ -61,18 +61,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $inUse = $stmt->fetch()['count'] > 0;
 
                 if ($inUse) {
-                    $msg = "⚠️ Warning: This fuel type is currently in use and cannot be deleted.";
+                    $msg = "Warning: Warning: This fuel type is currently in use and cannot be deleted.";
                 } else {
                     $stmt = $pdo->prepare("DELETE FROM fuel_types WHERE id = ?");
                     $stmt->execute([$id]);
-                    $msg = "✅ Fuel type deleted successfully!";
+                    $msg = "Success: Fuel type deleted successfully!";
                     log_activity($pdo, $user['id'], 'Delete Fuel Type', "Deleted fuel type ID $id", 'fuel_types');
                 }
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         } else {
-            $msg = "❌ Error: Invalid request.";
+            $msg = "Error: Error: Invalid request.";
         }
     }
 }
@@ -175,7 +175,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
   <div class="modal-card">
     <div class="modal-head">
       <div class="modal-title">Add New Fuel Type</div>
-      <button class="icon-btn" onclick="closeModal('addFuelTypeModal')">✕</button>
+      <button class="icon-btn" onclick="closeModal('addFuelTypeModal')"><i class="fas fa-times"></i></button>
     </div>
     <form method="post">
       <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>" />
@@ -204,7 +204,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
   <div class="modal-card">
     <div class="modal-head">
       <div class="modal-title">Edit Fuel Type</div>
-      <button class="icon-btn" onclick="closeModal('editFuelTypeModal')">✕</button>
+      <button class="icon-btn" onclick="closeModal('editFuelTypeModal')"><i class="fas fa-times"></i></button>
     </div>
     <form method="post">
       <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>" />
@@ -234,7 +234,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
   <div class="modal-card">
     <div class="modal-head">
       <div class="modal-title">Confirm Delete</div>
-      <button class="icon-btn" onclick="closeModal('deleteModal')">✕</button>
+      <button class="icon-btn" onclick="closeModal('deleteModal')"><i class="fas fa-times"></i></button>
     </div>
     <div style="padding: 20px;">
       <p>Are you sure you want to delete this fuel type?</p>

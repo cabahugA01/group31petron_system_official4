@@ -21,15 +21,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'mark_all_read') {
         $stmt = $pdo->prepare("UPDATE notifications SET status = 'read', read_at = NOW() WHERE user_id = ? AND status = 'unread'");
         $stmt->execute([$me['id']]);
-        $notice = '✅ All notifications marked as read.';
+        $notice = '<i class="fas fa-check-circle"></i> All notifications marked as read.';
     } elseif ($action === 'mark_read' && $notif_id > 0) {
         $stmt = $pdo->prepare("UPDATE notifications SET status = 'read', read_at = NOW() WHERE id = ? AND user_id = ?");
         $stmt->execute([$notif_id, $me['id']]);
-        $notice = '✅ Notification marked as read.';
+        $notice = '<i class="fas fa-check-circle"></i> Notification marked as read.';
     } elseif ($action === 'archive' && $notif_id > 0) {
         $stmt = $pdo->prepare("UPDATE notifications SET status = 'archived' WHERE id = ? AND user_id = ?");
         $stmt->execute([$notif_id, $me['id']]);
-        $notice = '📦 Notification moved to archive.';
+        $notice = '<i class="fas fa-box"></i> Notification moved to archive.';
     }
 }
 

@@ -438,8 +438,8 @@ include __DIR__ . '/../partials/header.php';
                         <span class="status-badge status-<?php echo htmlspecialchars($station['status']); ?>">
                             <span class="status-icon"></span>
                             <?php 
-                            $statusIcon = $station['status'] === 'active' ? '✅' : 
-                                         ($station['status'] === 'maintenance' ? '⚠️' : '❌');
+                            $statusIcon = $station['status'] === 'active' ? '<i class="fas fa-check-circle"></i>' : 
+                                         ($station['status'] === 'maintenance' ? '<i class="fas fa-exclamation-triangle"></i>' : '<i class="fas fa-times-circle"></i>');
                             echo $statusIcon . ' ' . ucfirst(htmlspecialchars($station['status'])); 
                             ?>
                         </span>
@@ -549,11 +549,11 @@ function updateStatus(id, currentStatus, stationName) {
     
     let statusIcon = '';
     if (currentStatus === 'active') {
-        statusIcon = '✅ Active';
+        statusIcon = 'Active';
     } else if (currentStatus === 'maintenance') {
-        statusIcon = '⚠️ Maintenance';
+        statusIcon = 'Maintenance';
     } else {
-        statusIcon = '❌ Inactive';
+        statusIcon = 'Inactive';
     }
     
     statusDisplay.innerHTML = `<span class="status-icon"></span>${statusIcon}`;

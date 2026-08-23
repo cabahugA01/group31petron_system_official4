@@ -1,7 +1,7 @@
 
 // Prevent zero price display in job order form
 function preventZeroPriceDisplay() {
-    console.log("🔧 Preventing zero price display...");
+    console.log("<i class="fas fa-wrench"></i> Preventing zero price display...");
     
     // Override price display functions
     const originalDisplayParts = window.displayPartsEmergency || window.displayServicePartsDirect;
@@ -32,7 +32,7 @@ function preventZeroPriceDisplay() {
         };
     }
     
-    console.log("✅ Zero price prevention enabled");
+    console.log("<i class="fas fa-check-circle"></i> Zero price prevention enabled");
 }
 
 function getDefaultPriceForPart(partName) {

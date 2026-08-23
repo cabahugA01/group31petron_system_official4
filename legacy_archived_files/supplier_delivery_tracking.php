@@ -32,16 +32,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $po = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$po) {
-                $msg = "❌ Purchase Order not found.";
+                $msg = "Error: Purchase Order not found.";
             } else {
                 $update_stmt = $pdo->prepare("UPDATE purchase_orders SET status=?, delivery_date=?, supplier_notes=?, updated_at=NOW() WHERE id=?");
                 $update_stmt->execute([$status, $delivery_date, $supplier_notes, $po_id]);
                 
                 log_activity($pdo, $me['id'], 'Update PO Delivery Status', "PO #{$po['po_number']} | Status: $status | Delivery Date: $delivery_date | Notes: $supplier_notes");
-                $msg = "✅ Delivery status updated! Ready for receiving confirmation.";
+                $msg = "Success: Delivery status updated! Ready for receiving confirmation.";
             }
         } catch (Exception $e) {
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
 }
@@ -143,7 +143,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="st-wrapper">
   <div class="st-header">
     <div class="st-header-content">
-      <div class="st-header-icon">🚚</div>
+      <div class="st-header-icon"><i class="fas fa-truck-loading"></i></div>
       <div>
         <h1>Supplier Delivery Tracking</h1>
         <p>Admin - Track Purchase Order delivery status from suppliers</p>
@@ -152,15 +152,15 @@ include __DIR__ . '/../partials/header.php';
   </div>
   
   <?php if($msg): ?>
-    <div class="st-alert <?php echo strpos($msg, '✅') !== false ? 'st-alert-success' : 'st-alert-error'; ?>">
-      <i class="fas <?php echo strpos($msg, '✅') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
+    <div class="st-alert <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'st-alert-success' : 'st-alert-error'; ?>">
+      <i class="fas <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
       <?php echo htmlspecialchars($msg); ?>
     </div>
   <?php endif; ?>
   
   <?php if(empty($pos)): ?>
     <div class="st-empty">
-      <div style="font-size: 48px; margin-bottom: 12px;">📦</div>
+      <div style="font-size: 48px; margin-bottom: 12px;"><i class="fas fa-box"></i></div>
       <div style="font-size: 16px; font-weight: 500;">No Purchase Orders</div>
       <div style="font-size: 13px; margin-top: 6px; opacity: 0.7;">All POs have been received or there are no active orders.</div>
     </div>
@@ -217,7 +217,7 @@ include __DIR__ . '/../partials/header.php';
   <?php endif; ?>
   
   <div style="margin-top: 40px; padding: 20px; background: #e8f1f8; border-left: 4px solid #003d7a; border-radius: 8px;">
-    <strong style="color: #b45309;">📌 Delivery Tracking Flow:</strong>
+    <strong style="color: #b45309;"><i class="fas fa-thumbtack"></i> Delivery Tracking Flow:</strong>
     <ul style="margin-top: 8px; margin-left: 20px; color: #b45309; font-size: 13px; line-height: 1.8;">
       <li><strong>Pending Supplier</strong> - PO created, awaiting supplier confirmation</li>
       <li><strong>In Transit</strong> - Supplier confirmed delivery, items on the way</li>

@@ -165,9 +165,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             log_activity($pdo, $me['id'], 'Add User', "Created user $username ($role)");
 
             if ($email_sent) {
-                $msg = "✅ User created successfully. Credentials have been sent to $email.";
+                $msg = "Success: User created successfully. Credentials have been sent to $email.";
             } else {
-                $msg = "✅ User created successfully. Account created but email delivery failed. Please share credentials manually.";
+                $msg = "Success: User created successfully. Account created but email delivery failed. Please share credentials manually.";
             }
         }
         
@@ -218,7 +218,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$name, $role, $assigned_shift, $shift_start_time, $shift_end_time, $email, $phone, $id]);
             
             log_activity($pdo, $me['id'], 'Edit User', "Updated details for user #$id");
-            $msg = "✅ User details updated.";
+            $msg = "Success: User details updated.";
         }
         
         // 3. Reset Password
@@ -245,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$hashed, $id]);
             
             log_activity($pdo, $me['id'], 'Reset Password', "Reset password for user #$id");
-            $msg = "✅ Password reset successfully. Temporary password: $new_pass";
+            $msg = "Success: Password reset successfully. Temporary password: $new_pass";
         }
         
         // 4. Deactivate/Activate User
@@ -270,11 +270,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$new_status, $id]);
             
             log_activity($pdo, $me['id'], 'Change Status', "Changed user #$id status to $new_status");
-            $msg = "✅ User status updated to $new_status.";
+            $msg = "Success: User status updated to $new_status.";
         }
         
     } catch (Exception $e) {
-        $msg = "❌ " . $e->getMessage();
+        $msg = "Error: " . $e->getMessage();
     }
 }
 
@@ -319,7 +319,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <?php if($msg): ?>
-<div class="card" style="padding:15px; margin-bottom:20px; background: <?php echo strpos($msg, '❌') !== false ? '#f8d7da' : '#d4edda'; ?>; color: <?php echo strpos($msg, '❌') !== false ? '#721c24' : '#155724'; ?>;">
+<div class="card" style="padding:15px; margin-bottom:20px; background: <?php echo strpos($msg, '<i class="fas fa-times-circle"></i>') !== false ? '#f8d7da' : '#d4edda'; ?>; color: <?php echo strpos($msg, '<i class="fas fa-times-circle"></i>') !== false ? '#721c24' : '#155724'; ?>;">
     <?php echo $msg; ?>
 </div>
 <?php endif; ?>

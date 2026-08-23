@@ -21,13 +21,13 @@ if (empty($_SESSION['csrf_token'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') 
     // CSRF Check
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
-        $msg = "❌ Error: Invalid request.";
+        $msg = "Error: Error: Invalid request.";
     } else {
         $action = $_POST['action'] ?? '';
 
         if ($action === 'save_fuel') {
             if (!$canStock) {
-                $msg = "❌ Error: Not permitted by RBAC to manage fuel inventory.";
+                $msg = "Error: Error: Not permitted by RBAC to manage fuel inventory.";
             } else {
                 $fuel_type = trim($_POST['fuel_type'] ?? '');
                 $liters = (float)($_POST['liters'] ?? 0);
@@ -35,13 +35,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST')
 
                 // Input validation
                 if (empty($fuel_type)) {
-                    $msg = "❌ Error: Fuel type is required.";
+                    $msg = "Error: Error: Fuel type is required.";
                 } elseif (!in_array($fuel_type, ["Diesel", "XCS Plus", "XTRA UNL", "Turbo Diesel", "Kerosene"])) {
-                    $msg = "❌ Error: Invalid fuel type.";
+                    $msg = "Error: Error: Invalid fuel type.";
                 } elseif ($liters <= 0 || $liters > 100000) { // Reasonable max to prevent abuse
-                    $msg = "❌ Error: Liters must be a positive number and less than 100,000.";
+                    $msg = "Error: Error: Liters must be a positive number and less than 100,000.";
                 } elseif ($role === 'superadmin' && empty($station)) {
-                    $msg = "❌ Error: Station is required for Super Admin.";
+                    $msg = "Error: Error: Station is required for Super Admin.";
                 } else {
                     try {
                         // Check if fuel type exists in inventory
@@ -51,23 +51,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST')
                             // Update existing
                             $stmt = $pdo->prepare("UPDATE inventory SET stock_level = stock_level + ? WHERE station_id = ? AND product_name = ? AND type = 'fuel'");
                             $stmt->execute([$liters, $station, $fuel_type]);
-                            $msg = "✅ Fuel stock updated successfully.";
+                            $msg = "Success: Fuel stock updated successfully.";
                             log_activity($pdo, $me['id'], 'Update Fuel Inventory', "Added $liters liters of $fuel_type to station $station");
                         } else {
                             // Insert new
                             $stmt = $pdo->prepare("INSERT INTO inventory (station_id, product_name, stock_level, type) VALUES (?, ?, ?, 'fuel')");
                             $stmt->execute([$station, $fuel_type, $liters]);
-                            $msg = "✅ Fuel stock added successfully.";
+                            $msg = "Success: Fuel stock added successfully.";
                             log_activity($pdo, $me['id'], 'Create Fuel Inventory', "Created $liters liters of $fuel_type for station $station");
                         }
                     } catch (PDOException $e) {
-                        $msg = "❌ Error: " . $e->getMessage();
+                        $msg = "Error: Error: " . $e->getMessage();
                     }
                 }
             }
         } elseif ($action === 'save_merch') {
             if (!$canStock) {
-                $msg = "❌ Error: Not permitted by RBAC to manage merchandise inventory.";
+                $msg = "Error: Error: Not permitted by RBAC to manage merchandise inventory.";
             } else {
                 $id = trim($_POST['id'] ?? '');
                 $name = trim($_POST['name'] ?? '');
@@ -80,56 +80,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST')
 
                 // Input validation
                 if (empty($name) || strlen($name) > 255) {
-                    $msg = "❌ Error: Product name is required and must be less than 255 characters.";
+                    $msg = "Error: Error: Product name is required and must be less than 255 characters.";
                 } elseif (strlen($sku) > 100) {
-                    $msg = "❌ Error: SKU must be less than 100 characters.";
+                    $msg = "Error: Error: SKU must be less than 100 characters.";
                 } elseif (strlen($category) > 100) {
-                    $msg = "❌ Error: Category must be less than 100 characters.";
+                    $msg = "Error: Error: Category must be less than 100 characters.";
                 } elseif ($stock < 0 || $stock > 1000000) { // Reasonable max
-                    $msg = "❌ Error: Stock must be non-negative and less than 1,000,000.";
+                    $msg = "Error: Error: Stock must be non-negative and less than 1,000,000.";
                 } elseif ($cost < 0 || $cost > 100000) {
-                    $msg = "❌ Error: Cost must be non-negative and less than 100,000.";
+                    $msg = "Error: Error: Cost must be non-negative and less than 100,000.";
                 } elseif ($price < 0 || $price > 100000) {
-                    $msg = "❌ Error: Price must be non-negative and less than 100,000.";
+                    $msg = "Error: Error: Price must be non-negative and less than 100,000.";
                 } elseif ($price < $cost) {
-                    $msg = "❌ Error: Selling price must be at least equal to cost.";
+                    $msg = "Error: Error: Selling price must be at least equal to cost.";
                 } elseif ($role === 'superadmin' && empty($station)) {
-                    $msg = "❌ Error: Station is required for Super Admin.";
+                    $msg = "Error: Error: Station is required for Super Admin.";
                 } else {
                     try {
                         if ($id) {
                             // Update
                             $stmt = $pdo->prepare("UPDATE inventory SET product_name=?, sku=?, category=?, stock_level=?, cost=?, price=? WHERE id=? AND station_id=? AND type='merch'");
                             $stmt->execute([$name, $sku, $category, $stock, $cost, $price, $id, $station]);
-                            $msg = "✅ Merchandise updated successfully.";
+                            $msg = "Success: Merchandise updated successfully.";
                             log_activity($pdo, $me['id'], 'Update Merchandise Inventory', "Updated $name (ID: $id)");
                         } else {
                             // Insert
                             $stmt = $pdo->prepare("INSERT INTO inventory (station_id, product_name, sku, category, stock_level, cost, price, type) VALUES (?, ?, ?, ?, ?, ?, ?, 'merch')");
                             $stmt->execute([$station, $name, $sku, $category, $stock, $cost, $price]);
-                            $msg = "✅ Merchandise added successfully.";
+                            $msg = "Success: Merchandise added successfully.";
                             log_activity($pdo, $me['id'], 'Create Merchandise Inventory', "Created $name for station $station");
                         }
                     } catch (PDOException $e) {
-                        $msg = "❌ Error: " . $e->getMessage();
+                        $msg = "Error: Error: " . $e->getMessage();
                     }
                 }
             }
         } elseif ($action === 'delete_merch') {
             if (!$canStock) {
-                $msg = "❌ Error: Not permitted by RBAC to delete merchandise.";
+                $msg = "Error: Error: Not permitted by RBAC to delete merchandise.";
             } else {
                 $id = (int)($_POST['id'] ?? 0);
                 if ($id <= 0) {
-                    $msg = "❌ Error: Invalid item ID.";
+                    $msg = "Error: Error: Invalid item ID.";
                 } else {
                     try {
                         $stmt = $pdo->prepare("DELETE FROM inventory WHERE id=? AND type='merch'");
                         $stmt->execute([$id]);
-                        $msg = "✅ Merchandise deleted successfully.";
+                        $msg = "Success: Merchandise deleted successfully.";
                         log_activity($pdo, $me['id'], 'Delete Merchandise Inventory', "Deleted item ID: $id");
                     } catch (PDOException $e) {
-                        $msg = "❌ Error: " . $e->getMessage();
+                        $msg = "Error: Error: " . $e->getMessage();
                     }
                 }
             }
@@ -143,19 +143,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST')
             $station = ($role === 'superadmin') ? (int)($_POST['station_id'] ?? 0) : (int)$station_id;
 
             if ($station <= 0) {
-                $msg = "❌ Error: Station is required.";
+                $msg = "Error: Error: Station is required.";
             } elseif ($product === '') {
-                $msg = "❌ Error: Product is required.";
+                $msg = "Error: Error: Product is required.";
             } else {
                 try {
                     $stmt = $pdo->prepare("INSERT INTO stock_requests (station_id, requested_by, type, product_name, qty, notes, status, created_at)
                                           VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW())");
                     $stmt->execute([$station, (int)($me['id'] ?? 0), $req_type, $product, $qty, $notes]);
-                    $msg = "✅ Stock request submitted. Waiting for manager approval.";
+                    $msg = "Success: Stock request submitted. Waiting for manager approval.";
                     log_activity($pdo, $me['id'], 'Create Stock Request', "Requested $product ($req_type) for station $station");
                 } catch (PDOException $e) {
                     // Most common cause: table doesn't exist yet
-                    $msg = "❌ Error: Unable to save stock request. (Make sure stock_requests table exists.)";
+                    $msg = "Error: Error: Unable to save stock request. (Make sure stock_requests table exists.)";
                 }
             }
         }
@@ -163,29 +163,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST')
         // Admin/Super Admin: Approve/Reject a stock request
         elseif (in_array($action, ['approve_request','reject_request'], true)) {
             if (!in_array($role, ['admin','superadmin','manager'], true)) {
-                $msg = "❌ Error: Not permitted.";
+                $msg = "Error: Error: Not permitted.";
             } else {
                 $rid = (int)($_POST['request_id'] ?? 0);
                 if ($rid <= 0) {
-                    $msg = "❌ Error: Invalid request.";
+                    $msg = "Error: Error: Invalid request.";
                 } else {
                     try {
                         $stmt = $pdo->prepare("SELECT * FROM stock_requests WHERE id=?");
                         $stmt->execute([$rid]);
                         $req = $stmt->fetch(PDO::FETCH_ASSOC);
                         if (!$req) {
-                            $msg = "❌ Error: Request not found.";
+                            $msg = "Error: Error: Request not found.";
                         } elseif (($req['status'] ?? '') !== 'pending') {
-                            $msg = "❌ Error: Request already processed.";
+                            $msg = "Error: Error: Request already processed.";
                         } else {
                             // Station-level admins can only act on their station
                             if ($role !== 'superadmin' && (int)$req['station_id'] !== (int)$station_id) {
-                                $msg = "❌ Error: You can only process requests from your station.";
+                                $msg = "Error: Error: You can only process requests from your station.";
                             } else {
                                 if ($action === 'reject_request') {
                                     $stmt = $pdo->prepare("UPDATE stock_requests SET status='rejected', processed_by=?, processed_at=NOW() WHERE id=?");
                                     $stmt->execute([(int)($me['id'] ?? 0), $rid]);
-                                    $msg = "✅ Request rejected.";
+                                    $msg = "Success: Request rejected.";
                                 } else {
                                     // Approve: update inventory based on type
                                     $reqType = ($req['type'] ?? '') === 'merch' ? 'merch' : 'fuel';
@@ -219,13 +219,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST')
 
                                     $stmt = $pdo->prepare("UPDATE stock_requests SET status='approved', processed_by=?, processed_at=NOW() WHERE id=?");
                                     $stmt->execute([(int)($me['id'] ?? 0), $rid]);
-                                    $msg = "✅ Request approved and stock updated.";
+                                    $msg = "Success: Request approved and stock updated.";
                                     log_activity($pdo, $me['id'], 'Approve Stock Request', "Approved request #$rid ($qty $product) station $station");
                                 }
                             }
                         }
                     } catch (PDOException $e) {
-                        $msg = "❌ Error: " . $e->getMessage();
+                        $msg = "Error: Error: " . $e->getMessage();
                     }
                 }
             }
@@ -519,7 +519,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-card">
       <div class="modal-head">
         <div class="modal-title" id="fuelModalTitle">Stock In Fuel</div>
-        <button class="icon-btn" onclick="document.getElementById('fuelModal').classList.remove('active')">✕</button>
+        <button class="icon-btn" onclick="document.getElementById('fuelModal').classList.remove('active')"><i class="fas fa-times"></i></button>
       </div>
       <form method="post">
         <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>" />
@@ -565,7 +565,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="modal-card">
       <div class="modal-head">
         <div class="modal-title" id="merchModalTitle">Add Item</div>
-        <button class="icon-btn" data-close="merchModal">✕</button>
+        <button class="icon-btn" data-close="merchModal"><i class="fas fa-times"></i></button>
       </div>
 
       <form method="post" id="merchForm">

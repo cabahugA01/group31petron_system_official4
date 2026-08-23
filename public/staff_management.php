@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Insert or update shift
             $stmt = $pdo->prepare("INSERT INTO staff_schedules (user_id, shift, scheduled_date, status) VALUES (?, ?, ?, 'scheduled') ON DUPLICATE KEY UPDATE shift = ?, scheduled_date = ?, updated_at = NOW()");
             $stmt->execute([$user_id, $shift, $scheduled_date, $shift, $scheduled_date]);
-            $msg = "✅ Shift updated successfully.";
+            $msg = "Success: Shift updated successfully.";
         }
         
         if ($action === 'assign_task') {
@@ -56,11 +56,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $stmt = $pdo->prepare("INSERT INTO staff_tasks (user_id, task, priority, status, assigned_date, due_date) VALUES (?, ?, ?, 'pending', CURDATE(), ?)");
             $stmt->execute([$user_id, $task, $priority, $due_date]);
-            $msg = "✅ Task assigned successfully.";
+            $msg = "Success: Task assigned successfully.";
         }
         
     } catch (Exception $e) {
-        $msg = "❌ " . $e->getMessage();
+        $msg = "Error: " . $e->getMessage();
     }
 }
 
@@ -80,7 +80,7 @@ $staff = $stmt->fetchAll(PDO::FETCH_ASSOC);
 </div>
 
 <?php if($msg): ?>
-<div class="card" style="padding: 15px; margin-bottom: 20px; background: <?php echo strpos($msg, '❌') !== false ? '#f8d7da' : '#d4edda'; ?>; color: <?php echo strpos($msg, '❌') !== false ? '#721c24' : '#155724'; ?>;">
+<div class="card" style="padding: 15px; margin-bottom: 20px; background: <?php echo strpos($msg, '<i class="fas fa-times-circle"></i>') !== false ? '#f8d7da' : '#d4edda'; ?>; color: <?php echo strpos($msg, '<i class="fas fa-times-circle"></i>') !== false ? '#721c24' : '#155724'; ?>;">
     <?php echo $msg; ?>
 </div>
 <?php endif; ?>

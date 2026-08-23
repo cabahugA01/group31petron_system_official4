@@ -59,7 +59,7 @@ $impact_sign = $adjustment['adjustment_type'] === 'Loss' ? '-' : '+';
 <div class="modal-dialog modal-lg">
     <div class="modal-content">
         <div class="modal-header">
-            <h5 class="modal-title">📋 Approve Fuel Adjustment</h5>
+            <h5 class="modal-title"><i class="fas fa-clipboard-list"></i> Approve Fuel Adjustment</h5>
             <button type="button" class="btn-close" onclick="closeModal()"></button>
         </div>
         
@@ -67,7 +67,7 @@ $impact_sign = $adjustment['adjustment_type'] === 'Loss' ? '-' : '+';
             <!-- Adjustment Details -->
             <div class="card mb-3">
                 <div class="card-header">
-                    <strong>📊 Adjustment Information</strong>
+                    <strong><i class="fas fa-chart-bar"></i> Adjustment Information</strong>
                 </div>
                 <div class="card-body">
                     <div class="row">
@@ -91,7 +91,7 @@ $impact_sign = $adjustment['adjustment_type'] === 'Loss' ? '-' : '+';
             <!-- Adjustment Volume & Reason -->
             <div class="card mb-3">
                 <div class="card-header">
-                    <strong>⛽ Adjustment Details</strong>
+                    <strong><i class="fas fa-gas-pump"></i> Adjustment Details</strong>
                 </div>
                 <div class="card-body">
                     <div class="row">
@@ -201,7 +201,7 @@ $impact_sign = $adjustment['adjustment_type'] === 'Loss' ? '-' : '+';
                 
                 <div class="card">
                     <div class="card-header">
-                        <strong>✅ Manager Approval</strong>
+                        <strong><i class="fas fa-check-circle"></i> Manager Approval</strong>
                     </div>
                     <div class="card-body">
                         <div class="mb-3">

@@ -45,12 +45,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Update existing service (map to current schema)
             $stmt = $pdo->prepare("UPDATE service_rates SET service_category_id = ?, rate_name = ?, flat_rate = ?, is_active = ?, updated_at = NOW() WHERE id = ?");
             $stmt->execute([$service_category_id, $service_name, $rate, $is_active, $service_id]);
-            $notice = '✅ Service updated successfully';
+            $notice = '<i class="fas fa-check-circle"></i> Service updated successfully';
         } else {
             // Add new service
             $stmt = $pdo->prepare("INSERT INTO service_rates (service_category_id, rate_name, flat_rate, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())");
             $stmt->execute([$service_category_id, $service_name, $rate, $is_active]);
-            $notice = '✅ Service added successfully';
+            $notice = '<i class="fas fa-check-circle"></i> Service added successfully';
         }
         
         // Log activity
@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $service_id = $_POST['service_id'] ?? '';
         $stmt = $pdo->prepare("DELETE FROM service_rates WHERE id = ?");
         $stmt->execute([$service_id]);
-        $notice = '✅ Service deleted successfully';
+        $notice = '<i class="fas fa-check-circle"></i> Service deleted successfully';
         
         // Log activity
         try {
@@ -84,12 +84,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Update existing calibration
             $stmt = $pdo->prepare("UPDATE fuel_calibration SET fuel_type = ?, calibration_constant = ?, effective_date = ?, status = ?, updated_at = NOW() WHERE id = ?");
             $stmt->execute([$fuel_type, $calibration_constant, $effective_date, $status, $calibration_id]);
-            $notice = '✅ Calibration value updated successfully';
+            $notice = '<i class="fas fa-check-circle"></i> Calibration value updated successfully';
         } else {
             // Add new calibration
             $stmt = $pdo->prepare("INSERT INTO fuel_calibration (fuel_type, calibration_constant, effective_date, status, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())");
             $stmt->execute([$fuel_type, $calibration_constant, $effective_date, $status]);
-            $notice = '✅ Calibration value added successfully';
+            $notice = '<i class="fas fa-check-circle"></i> Calibration value added successfully';
         }
         
         // Log activity
@@ -100,17 +100,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     elseif ($action === 'save_supplier') {
-        $notice = '❌ Supplier modification is disabled. Petron Corporation is the sole supplier for the system.';
+        $notice = '<i class="fas fa-times-circle"></i> Supplier modification is disabled. Petron Corporation is the sole supplier for the system.';
     }
     
     elseif ($action === 'delete_supplier') {
-        $notice = '❌ Supplier deletion is disabled. Petron Corporation must remain as the sole supplier.';
+        $notice = '<i class="fas fa-times-circle"></i> Supplier deletion is disabled. Petron Corporation must remain as the sole supplier.';
     }
     
     elseif ($action === 'set_default_supplier') {
         $supplier_id = $_POST['supplier_id'] ?? 0;
         $pdo->prepare("UPDATE system_settings SET setting_value=?, updated_at=NOW(), updated_by=? WHERE setting_key='default_supplier_id'")->execute([$supplier_id, $me['id']]);
-        $notice = '✅ Default supplier updated successfully';
+        $notice = '<i class="fas fa-check-circle"></i> Default supplier updated successfully';
         log_activity($pdo, $me['id'], 'Supplier Management', "Set default supplier ID: $supplier_id", $_SERVER['REMOTE_ADDR']);
     }
 }
@@ -1835,7 +1835,7 @@ window.showToast = function(message, type = 'success') {
     const toast = document.createElement('div');
     toast.className = `toast ${type} show`;
     toast.innerHTML = `
-        <div class="toast-icon">${type === 'success' ? '✓' : '⚠'}</div>
+        <div class="toast-icon">${type === 'success' ? '<i class="fas fa-check"></i>' : '<i class="fas fa-exclamation-triangle"></i>'}</div>
         <div class="toast-message">${message}</div>
     `;
     document.body.appendChild(toast);
@@ -1854,7 +1854,7 @@ setTimeout(function() {
     }
     
     // Redirect to suppliers section after successful operation for professional UX
-    <?php if (strpos($notice, '✅') !== false): ?>
+    <?php if (strpos($notice, '<i class="fas fa-check-circle"></i>') !== false): ?>
     // Only redirect on success messages (checkmark emoji)
     setTimeout(function() {
         window.location.href = 'settings.php?section=suppliers';

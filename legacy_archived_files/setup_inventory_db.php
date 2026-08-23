@@ -340,8 +340,8 @@ try {
         <div class="summary">
             <h3>Setup Summary</h3>
             <div style="display:flex;gap:24px;font-size:14px;">
-                <div><strong>✅ Successful:</strong> <?= $success_count ?></div>
-                <div><strong>❌ Errors:</strong> <?= $error_count ?></div>
+                <div><strong><i class="fas fa-check-circle"></i> Successful:</strong> <?= $success_count ?></div>
+                <div><strong><i class="fas fa-times-circle"></i> Errors:</strong> <?= $error_count ?></div>
             </div>
         </div>
         <?php endif; ?>

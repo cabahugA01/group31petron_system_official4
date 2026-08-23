@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $reading = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$reading) {
-                $msg = "❌ Reading record not found.";
+                $msg = "Error: Reading record not found.";
             } else if ($approved) {
                 // MANAGER APPROVED: Create reconciliation record with status='Verified' for Admin
                 $present_reading = $reading['current_reading'] ?? 0;
@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Validate the data before insertion
                 $validation = validateFuelReconciliationData($pdo, $reconciliation_data);
                 if (!$validation['valid']) {
-                    $msg = "❌ Validation Error: " . implode(', ', $validation['errors']);
+                    $msg = "Error: Validation Error: " . implode(', ', $validation['errors']);
                 } else {
                     // Use cleaned data for insertion
                     $clean_data = $validation['cleaned_data'];
@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $manager_notes
                     ]);
                     
-                    $msg = "✅ Reading approved and reconciliation record created successfully.";
+                    $msg = "Success: Reading approved and reconciliation record created successfully.";
                     
                     // Mark the staff reading as 'approved' so it disappears from pending list
                     $pdo->prepare("UPDATE fuel_daily_readings SET status='approved' WHERE id=?")->execute([$reading_id]);
@@ -95,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     log_activity($pdo, $me['id'], 'Manager Approved Reading', 
                         "Reading #{$reading_id} approved and moved to reconciliation | Ready for Admin finalization");
                     
-                    $msg = "✅ Reading APPROVED and ready for Admin finalization!";
+                    $msg = "Success: Reading APPROVED and ready for Admin finalization!";
                 }
             } else {
                 // Rejected - mark as rejected and remove from pending list
@@ -104,10 +104,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 log_activity($pdo, $me['id'], 'Manager Rejected Reading', 
                     "Reading #{$reading_id} rejected | Notes: $manager_notes");
                 
-                $msg = "❌ Reading REJECTED. Marked in logs.";
+                $msg = "Error: Reading REJECTED. Marked in logs.";
             }
         } catch (Exception $e) {
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
 }
@@ -223,7 +223,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="fr-wrapper">
   <div class="fr-header">
     <div class="fr-header-content">
-      <div class="fr-header-icon">⛽</div>
+      <div class="fr-header-icon"><i class="fas fa-gas-pump"></i></div>
       <div>
         <h1>Fuel Reconciliation - Manager Validation</h1>
         <p>Manager - Validate fuel readings and calibration adjustments</p>
@@ -232,15 +232,15 @@ include __DIR__ . '/../partials/header.php';
   </div>
   
   <?php if($msg): ?>
-    <div class="fr-alert <?php echo strpos($msg, '✅') !== false ? 'fr-alert-success' : 'fr-alert-error'; ?>">
-      <i class="fas <?php echo strpos($msg, '✅') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
+    <div class="fr-alert <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'fr-alert-success' : 'fr-alert-error'; ?>">
+      <i class="fas <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
       <?php echo htmlspecialchars($msg); ?>
     </div>
   <?php endif; ?>
   
   <?php if(empty($reconciliations)): ?>
     <div class="fr-empty">
-      <div style="font-size: 48px; margin-bottom: 12px;">✓</div>
+      <div style="font-size: 48px; margin-bottom: 12px;"><i class="fas fa-check"></i></div>
       <div style="font-size: 16px; font-weight: 500;">No pending reconciliations</div>
       <div style="font-size: 13px; margin-top: 6px; opacity: 0.7;">All fuel reconciliations have been validated.</div>
     </div>
@@ -264,7 +264,7 @@ include __DIR__ . '/../partials/header.php';
             
             <!-- Reconciliation Formula Display -->
             <div class="fr-calc-box">
-              <div class="fr-calc-label">📊 Reconciliation Formula:</div>
+              <div class="fr-calc-label"><i class="fas fa-chart-bar"></i> Reconciliation Formula:</div>
               <div class="fr-calc-line">Present Reading: <?php echo number_format($rec['current_reading'], 2); ?> L</div>
               <div class="fr-calc-line">− Previous Reading: <?php echo number_format($rec['previous_reading'], 2); ?> L</div>
               <div class="fr-calc-line">= Raw Difference: <?php echo number_format($rec['current_reading'] - $rec['previous_reading'], 2); ?> L</div>
@@ -318,7 +318,7 @@ include __DIR__ . '/../partials/header.php';
   <?php endif; ?>
   
   <div style="margin-top: 40px; padding: 20px; background: #cffafe; border-left: 4px solid #06b6d4; border-radius: 8px;">
-    <strong style="color: #164e63;">📊 Fuel Reconciliation Formula:</strong>
+    <strong style="color: #164e63;"><i class="fas fa-chart-bar"></i> Fuel Reconciliation Formula:</strong>
     <div style="margin-top: 12px; color: #164e63; font-size: 13px; line-height: 2;">
       <code style="background: white; padding: 12px; border-radius: 6px; display: block;">
         Adjusted Variance (L) = (Present Reading - Previous Reading - Calibration) × Unit Price/L

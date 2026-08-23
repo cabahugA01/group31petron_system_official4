@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     // STAFF: Record Daily Pump Reading
     if ($action === 'record_pump_reading') {
         if (!$isStaff) {
-            $msg = "❌ Error: Only authorized users can record pump readings.";
+            $msg = "Error: Error: Only authorized users can record pump readings.";
         } else {
             $fuel_station_id = $_POST['fuel_station_id'];
             $reading_date = $_POST['reading_date'];
@@ -98,13 +98,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             // Validation & error prevention
             if ($present_reading < $previous_reading) {
-              $msg = "❌ Error: Present reading must be greater than or equal to previous reading.";
+              $msg = "Error: Error: Present reading must be greater than or equal to previous reading.";
             } elseif ($calibration > $difference) {
-              $msg = "❌ Error: Calibration cannot exceed the difference between present and previous readings.";
+              $msg = "Error: Error: Calibration cannot exceed the difference between present and previous readings.";
             } elseif ($price_per_liter <= 0) {
-              $msg = "❌ Error: Price per liter must be greater than zero.";
+              $msg = "Error: Error: Price per liter must be greater than zero.";
             } elseif ($sales_liters < 0) {
-              $msg = "❌ Error: Negative liters computed. Please review present, previous, and calibration values.";
+              $msg = "Error: Error: Negative liters computed. Please review present, previous, and calibration values.";
             }
             
             if (!$msg && $fuel_station_id && $reading_date && $shift) {
@@ -113,23 +113,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt->execute([$station_id, $fuel_station_id, $fuel_station_id, $reading_date, $shift, $previous_reading, $present_reading, $sales_liters, $calibration, $me['id'], $notes]);
                     
                     log_activity($pdo, $me['id'], 'Record Pump Reading', "Recorded reading for pump #$fuel_station_id ($shift shift). Sales: $sales_liters L (Calibration: $calibration L excluded)", 'fuel_management');
-                  $msg = "✅ Pump reading recorded successfully. Net liters sold: " . number_format($sales_liters, 2) . " L | Peso sales: ₱" . number_format($sales_amount, 2) . " (Calibration: " . number_format($calibration, 2) . " L excluded)";
+                  $msg = "Success: Pump reading recorded successfully. Net liters sold: " . number_format($sales_liters, 2) . " L | Peso sales: ₱" . number_format($sales_amount, 2) . " (Calibration: " . number_format($calibration, 2) . " L excluded)";
                 } catch (PDOException $e) {
                     if ($e->errorInfo[1] == 1062) { // Duplicate entry
-                        $msg = "❌ Error: Reading already recorded for this pump, date, and shift.";
+                        $msg = "Error: Error: Reading already recorded for this pump, date, and shift.";
                     } else {
-                        $msg = "❌ Error: " . $e->getMessage();
+                        $msg = "Error: Error: " . $e->getMessage();
                     }
                 }
             } else {
-                $msg = "❌ Error: Please fill all required fields.";
+                $msg = "Error: Error: Please fill all required fields.";
             }
         }
     
     // STAFF: Record Fuel Delivery
     } elseif ($action === 'record_delivery') {
         if (!$isStaff) {
-            $msg = "❌ Error: Only authorized users can record deliveries.";
+            $msg = "Error: Error: Only authorized users can record deliveries.";
         } else {
             $delivery_date = $_POST['delivery_date'];
             $fuel_type = $_POST['fuel_type'];
@@ -145,19 +145,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $stmt->execute([$station_id, $delivery_date, $fuel_type, $supplier, $invoice_no, $delivery_liters, $tanker_number, $me['id'], $notes]);
                     
                     log_activity($pdo, $me['id'], 'Record Delivery', "Recorded delivery of " . number_format($delivery_liters, 2) . " liters of $fuel_type", 'fuel_management');
-                    $msg = "✅ Fuel delivery recorded successfully.";
+                    $msg = "Success: Fuel delivery recorded successfully.";
                 } catch (PDOException $e) {
-                    $msg = "❌ Error: " . $e->getMessage();
+                    $msg = "Error: Error: " . $e->getMessage();
                 }
             } else {
-                $msg = "❌ Error: Please fill all required fields.";
+                $msg = "Error: Error: Please fill all required fields.";
             }
         }
     
     // STAFF: Record Adjustment
     } elseif ($action === 'record_adjustment') {
         if (!$isStaff) {
-            $msg = "❌ Error: Only authorized users can record adjustments.";
+            $msg = "Error: Error: Only authorized users can record adjustments.";
         } else {
             $adjustment_date = $_POST['adjustment_date'];
             $fuel_type = $_POST['fuel_type'];
@@ -173,19 +173,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     
                     $adj_type = ucfirst($adjustment_type);
                     log_activity($pdo, $me['id'], 'Record Adjustment', "$adj_type of " . number_format($liters, 2) . " liters ($fuel_type)", 'fuel_management');
-                    $msg = "✅ Adjustment recorded successfully.";
+                    $msg = "Success: Adjustment recorded successfully.";
                 } catch (PDOException $e) {
-                    $msg = "❌ Error: " . $e->getMessage();
+                    $msg = "Error: Error: " . $e->getMessage();
                 }
             } else {
-                $msg = "❌ Error: Please fill all required fields.";
+                $msg = "Error: Error: Please fill all required fields.";
             }
         }
     
     // MANAGER: Verify Pump Reading
     } elseif ($action === 'verify_reading') {
         if (!$isManager) {
-            $msg = "❌ Error: Only managers can verify readings.";
+            $msg = "Error: Error: Only managers can verify readings.";
         } else {
             $id = $_POST['id'];
             $status = $_POST['status'];
@@ -197,19 +197,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 
                 if ($stmt->rowCount() > 0) {
                     log_activity($pdo, $me['id'], 'Verify Reading', "Verified pump reading #$id as $status", 'fuel_management');
-                    $msg = "✅ Pump reading #$id has been $status.";
+                    $msg = "Success: Pump reading #$id has been $status.";
                 } else {
-                    $msg = "❌ Error: Reading not found.";
+                    $msg = "Error: Error: Reading not found.";
                 }
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         }
     
     // MANAGER: Verify Delivery
     } elseif ($action === 'verify_delivery') {
         if (!$isManager) {
-            $msg = "❌ Error: Only managers can verify deliveries.";
+            $msg = "Error: Error: Only managers can verify deliveries.";
         } else {
             $id = $_POST['id'];
             $status = $_POST['status'];
@@ -221,19 +221,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 
                 if ($stmt->rowCount() > 0) {
                     log_activity($pdo, $me['id'], 'Verify Delivery', "Verified delivery #$id as $status", 'fuel_management');
-                    $msg = "✅ Delivery #$id has been $status.";
+                    $msg = "Success: Delivery #$id has been $status.";
                 } else {
-                    $msg = "❌ Error: Delivery not found.";
+                    $msg = "Error: Error: Delivery not found.";
                 }
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         }
     
     // MANAGER: Approve Adjustment
     } elseif ($action === 'approve_adjustment') {
         if (!$isManager) {
-            $msg = "❌ Error: Only managers can approve adjustments.";
+            $msg = "Error: Error: Only managers can approve adjustments.";
         } else {
             $id = $_POST['id'];
             $status = $_POST['status'];
@@ -245,19 +245,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 
                 if ($stmt->rowCount() > 0) {
                     log_activity($pdo, $me['id'], 'Approve Adjustment', "Approved adjustment #$id as $status", 'fuel_management');
-                    $msg = "✅ Adjustment #$id has been $status.";
+                    $msg = "Success: Adjustment #$id has been $status.";
                 } else {
-                    $msg = "❌ Error: Adjustment not found.";
+                    $msg = "Error: Error: Adjustment not found.";
                 }
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         }
     
     // MANAGER: Run Reconciliation
     } elseif ($action === 'run_reconciliation') {
         if (!$isManager) {
-            $msg = "❌ Error: Only managers can run reconciliation.";
+            $msg = "Error: Error: Only managers can run reconciliation.";
         } else {
             $reconciliation_date = $_POST['reconciliation_date'];
             $fuel_type = $_POST['fuel_type'];
@@ -338,7 +338,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     // Validate and get a valid pump_id for this station and fuel type
                     $pump_id = getValidPumpId($pdo, $station_id, $fuel_type_id);
                     if ($pump_id === null) {
-                        $msg = "❌ Error: No fuel pumps configured for this station. Please add pumps first.";
+                        $msg = "Error: Error: No fuel pumps configured for this station. Please add pumps first.";
                         throw new Exception("No fuel pumps configured for this station. Please add pumps first.");
                     }
                     
@@ -353,7 +353,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     // Validate the data before insertion
                     $validation = validateFuelReconciliationData($pdo, $reconciliation_data);
                     if (!$validation['valid']) {
-                        $msg = "❌ Validation Error: " . implode(', ', $validation['errors']);
+                        $msg = "Error: Validation Error: " . implode(', ', $validation['errors']);
                         throw new Exception("Validation Error: " . implode(', ', $validation['errors']));
                     }
                     
@@ -372,23 +372,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                     
                     log_activity($pdo, $me['id'], 'Run Reconciliation', "Reconciliation for $fuel_type on $reconciliation_date", 'fuel_management');
-                    $msg = "✅ Reconciliation completed. Variance: " . number_format($variance, 2) . " liters (" . number_format($variance_percent, 2) . "%)";
+                    $msg = "Success: Reconciliation completed. Variance: " . number_format($variance, 2) . " liters (" . number_format($variance_percent, 2) . "%)";
                 } catch (PDOException $e) {
                     if ($e->errorInfo[1] == 1062) { // Duplicate entry
-                        $msg = "❌ Error: Reconciliation already done for this date and fuel type.";
+                        $msg = "Error: Error: Reconciliation already done for this date and fuel type.";
                     } else {
-                        $msg = "❌ Error: " . $e->getMessage();
+                        $msg = "Error: Error: " . $e->getMessage();
                     }
                 }
             } else {
-                $msg = "❌ Error: Please fill all required fields.";
+                $msg = "Error: Error: Please fill all required fields.";
             }
         }
     
     // MANAGER: Approve Reconciliation (changes status from Pending to Approved)
     } elseif ($action === 'approve_reconciliation') {
         if (!$isManager) {
-            $msg = "❌ Error: Only managers can approve reconciliations.";
+            $msg = "Error: Error: Only managers can approve reconciliations.";
         } else {
             $recon_id = (int)($_POST['recon_id'] ?? 0);
             $manager_notes = trim($_POST['manager_notes'] ?? '');
@@ -401,22 +401,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $recon = $stmt->fetch();
                     
                     if (!$recon) {
-                        $msg = "❌ Error: Reconciliation record not found.";
+                        $msg = "Error: Error: Reconciliation record not found.";
                     } elseif ($recon['status'] !== 'Pending') {
-                        $msg = "❌ Error: Only Pending reconciliations can be approved.";
+                        $msg = "Error: Error: Only Pending reconciliations can be approved.";
                     } else {
                         // Update status to Approved
                         $stmt = $pdo->prepare("UPDATE fuel_reconciliation SET status = 'approved', manager_notes = ?, approved_by = ?, approved_at = NOW() WHERE id = ?");
                         $stmt->execute([$manager_notes, $me['id'], $recon_id]);
                         
                         log_activity($pdo, $me['id'], 'Approve Reconciliation', "Approved reconciliation #{$recon_id} for {$recon['fuel_type']} on {$recon['reconciliation_date']}", 'fuel_management');
-                        $msg = "✅ Reconciliation approved! Admin can now finalize it.";
+                        $msg = "Success: Reconciliation approved! Admin can now finalize it.";
                     }
                 } catch (Exception $e) {
-                    $msg = "❌ Error: " . $e->getMessage();
+                    $msg = "Error: Error: " . $e->getMessage();
                 }
             } else {
-                $msg = "❌ Error: Invalid reconciliation ID.";
+                $msg = "Error: Error: Invalid reconciliation ID.";
             }
         }
     }

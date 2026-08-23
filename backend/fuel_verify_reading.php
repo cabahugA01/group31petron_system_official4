@@ -63,7 +63,7 @@ try {
 <div class="modal-dialog modal-lg">
     <div class="modal-content">
         <div class="modal-header">
-            <h5 class="modal-title">🔍 Verify Pump Reading</h5>
+            <h5 class="modal-title"><i class="fas fa-search"></i> Verify Pump Reading</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         
@@ -71,7 +71,7 @@ try {
             <!-- Reading Details -->
             <div class="card mb-3">
                 <div class="card-header">
-                    <strong>📊 Reading Details</strong>
+                    <strong><i class="fas fa-chart-bar"></i> Reading Details</strong>
                 </div>
                 <div class="card-body">
                     <div class="row">
@@ -92,7 +92,7 @@ try {
             <!-- Reading Values -->
             <div class="card mb-3">
                 <div class="card-header">
-                    <strong>⛽ Meter Readings</strong>
+                    <strong><i class="fas fa-gas-pump"></i> Meter Readings</strong>
                 </div>
                 <div class="card-body">
                     <div class="row text-center">
@@ -138,7 +138,7 @@ try {
                 
                 <div class="card">
                     <div class="card-header">
-                        <strong>✅ Manager Verification</strong>
+                        <strong><i class="fas fa-check-circle"></i> Manager Verification</strong>
                     </div>
                     <div class="card-body">
                         <div class="mb-3">

@@ -528,7 +528,7 @@ include __DIR__ . '/../partials/header.php';
 <section class="cards two">
     <div class="wizard-container">
         <div class="wizard-header">
-            <h2 style="margin: 0; font-size: 24px;">🔑 Reset User Password</h2>
+            <h2 style="margin: 0; font-size: 24px;"><i class="fas fa-key"></i> Reset User Password</h2>
         </div>
         
         <form method="post" id="resetPasswordForm">
@@ -538,14 +538,14 @@ include __DIR__ . '/../partials/header.php';
             <div class="wizard-content">
                 <!-- Step 1: Select User -->
                 <div class="wizard-step active" id="step1">
-                    <h3 style="margin-top: 0; color: var(--petron-blue);">👤 Select User</h3>
+                    <h3 style="margin-top: 0; color: var(--petron-blue);"><i class="fas fa-user"></i> Select User</h3>
                     <p style="color: #666; margin-bottom: 24px;">Choose the user account whose password you want to reset.</p>
                     
                     <div class="user-search-container">
                         <input type="text" 
                                class="user-search-input" 
                                id="user_search" 
-                               placeholder="🔍 Search users by name, username, or email..."
+                               placeholder="<i class="fas fa-search"></i> Search users by name, username, or email..."
                                autocomplete="off">
                         <div class="user-dropdown" id="user_dropdown"></div>
                     </div>
@@ -568,7 +568,7 @@ include __DIR__ . '/../partials/header.php';
                 
                 <!-- Step 2: Verify Password -->
                 <div class="wizard-step" id="step2">
-                    <h3 style="margin-top: 0; color: var(--petron-blue);">🔒 Verify Your Password</h3>
+                    <h3 style="margin-top: 0; color: var(--petron-blue);"><i class="fas fa-lock"></i> Verify Your Password</h3>
                     <p style="color: #666; margin-bottom: 24px;">For security and audit logging, please verify your current password.</p>
                     
                     <div class="password-input-group">
@@ -591,7 +591,7 @@ include __DIR__ . '/../partials/header.php';
                 
                 <!-- Step 3: Complete -->
                 <div class="wizard-step" id="step3">
-                    <h3 style="margin-top: 0; color: var(--petron-blue);">✅ Reset Complete</h3>
+                    <h3 style="margin-top: 0; color: var(--petron-blue);"><i class="fas fa-check-circle"></i> Reset Complete</h3>
                     
                     <div id="success_result" class="success-result">
                         <div class="success-icon">
@@ -618,7 +618,7 @@ include __DIR__ . '/../partials/header.php';
                         Next <i class="fas fa-arrow-right"></i>
                     </button>
                     <button type="submit" class="btn-wizard primary" id="resetBtn" style="display: none;" form="resetPasswordForm" name="action" value="reset_password">
-                        <i class="fas fa-key"></i> 🔑 Generate New Password
+                        <i class="fas fa-key"></i> <i class="fas fa-key"></i> Generate New Password
                     </button>
                 </div>
             </div>
@@ -627,7 +627,7 @@ include __DIR__ . '/../partials/header.php';
     
     <!-- Side Panel -->
     <div class="card" style="padding:20px;">
-        <h3 class="h3" style="color: var(--petron-blue); margin-bottom: 20px;">📊 Password Reset Statistics</h3>
+        <h3 class="h3" style="color: var(--petron-blue); margin-bottom: 20px;"><i class="fas fa-chart-bar"></i> Password Reset Statistics</h3>
         
         <div style="background: linear-gradient(135deg, #e3f2fd, #ffffff); padding: 16px; border-radius: 12px; margin-bottom: 16px;">
             <div style="font-size: 24px; font-weight: bold; color: var(--petron-blue);"><?php echo count($users); ?></div>
@@ -677,7 +677,7 @@ include __DIR__ . '/../partials/header.php';
 <!-- Confirmation Modal -->
 <div id="confirmModal" class="modal" style="display: none;">
     <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 32px; border-radius: 16px; width: 500px; max-width: 90%; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);">
-        <h3 style="margin-top: 0; color: var(--petron-blue);">🔍 Confirm Password Reset</h3>
+        <h3 style="margin-top: 0; color: var(--petron-blue);"><i class="fas fa-search"></i> Confirm Password Reset</h3>
         <div id="confirm_summary" style="margin: 20px 0; padding: 20px; background: #f8f9ff; border-radius: 8px;"></div>
         <div style="display: flex; gap: 12px; justify-content: flex-end;">
             <button class="btn-wizard secondary" onclick="closeConfirmModal()">Cancel</button>
@@ -836,11 +836,11 @@ function updateWizardButtons() {
 function showConfirmModal() {
     const summary = `
         <div style="line-height: 1.8;">
-            <div><strong>👤 User:</strong> ${selectedUser.name}</div>
-            <div><strong>🔐 Username:</strong> ${selectedUser.username}</div>
-            <div><strong>🏢 Station:</strong> ${selectedUser.station}</div>
-            <div><strong>👥 Role:</strong> ${selectedUser.role ? selectedUser.role.charAt(0).toUpperCase() + selectedUser.role.slice(1) : 'No Role'}</div>
-            <div><strong>📧 Email:</strong> ${selectedUser.email || 'No email'}</div>
+            <div><strong><i class="fas fa-user"></i> User:</strong> ${selectedUser.name}</div>
+            <div><strong><i class="fas fa-user-lock"></i> Username:</strong> ${selectedUser.username}</div>
+            <div><strong><i class="fas fa-building"></i> Station:</strong> ${selectedUser.station}</div>
+            <div><strong><i class="fas fa-users"></i> Role:</strong> ${selectedUser.role ? selectedUser.role.charAt(0).toUpperCase() + selectedUser.role.slice(1) : 'No Role'}</div>
+            <div><strong><i class="fas fa-envelope"></i> Email:</strong> ${selectedUser.email || 'No email'}</div>
         </div>
     `;
     

@@ -149,7 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'encod
                     ->execute([$me['id'], $detail, null, $ip, $ua]);
             } catch (Exception $e) {}
 
-            $typeLabel = $delivery_type === 'fuel' ? '⛽ Fuel' : '📦 Merchandise';
+            $typeLabel = $delivery_type === 'fuel' ? '<i class="fas fa-gas-pump"></i> Fuel' : '<i class="fas fa-box"></i> Merchandise';
             $msg      = "New {$typeLabel} delivery encoded. Status: Pending Validation. Reference: <strong>" . htmlspecialchars($delivery_ref) . "</strong> | Batch: <strong>" . htmlspecialchars($batch_id) . "</strong>";
             $msg_type = 'success';
         } catch (Exception $e) {

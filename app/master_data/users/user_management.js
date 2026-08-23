@@ -248,9 +248,9 @@ class UserManagement {
         
         let icon = '';
         if (status === 'active') {
-            icon = '✅';
+            icon = 'Active';
         } else if (status === 'inactive') {
-            icon = '❌';
+            icon = 'Inactive';
         }
         
         badge.innerHTML = `${icon} ${status.charAt(0).toUpperCase() + status.slice(1)}`;

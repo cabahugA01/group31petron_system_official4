@@ -61,9 +61,9 @@ include __DIR__ . '/../partials/header.php';
 .cust-tab:last-child, button.cust-tab:last-child { border-right: none !important; }
 .cust-tab:hover, button.cust-tab:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
 .cust-tab.active, button.cust-tab.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; box-shadow: none !important; }
-.cust-tab-badge { font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 20px; min-width: 18px; text-align: center; background: rgba(255,255,255,.3); color: #fff; }
-.cust-tab:not(.active) .cust-tab-badge { background: #cbd5e1 !important; color: #334155 !important; }
-.cust-tab.active .cust-tab-badge { background: rgba(255,255,255,.25) !important; color: #ffffff !important; }
+.cust-tab-badge { font-size: 11px !important; font-weight: 800 !important; padding: 2px 8px !important; border-radius: 20px !important; min-width: 18px !important; text-align: center !important; background: #dc2626 !important; color: #ffffff !important; }
+.cust-tab:not(.active) .cust-tab-badge,
+.cust-tab.active .cust-tab-badge { background: #dc2626 !important; color: #ffffff !important; }
 
 
 /* Buttons - Plain Outline Uniform Style */
@@ -2019,9 +2019,17 @@ function submitReviewAction(type) {
         });
 }
 
-// Initial Load
+// Initial Load & Silent 15s Auto-Refresh
 document.addEventListener('DOMContentLoaded', function() {
     loadManagerCustomers();
+    setInterval(function() {
+        if (!document.hidden) {
+            loadManagerCustomers();
+            if (typeof loadCustomerRequests === 'function') {
+                loadCustomerRequests();
+            }
+        }
+    }, 15000);
 });
 </script>
 

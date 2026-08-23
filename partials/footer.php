@@ -571,7 +571,7 @@
             }
             if (btn.style.pointerEvents !== 'auto' || btn.style.zIndex !== '2147483647') {
                 btn.style.cssText = 'pointer-events: auto !important; cursor: pointer !important; z-index: 2147483647 !important; position: fixed !important; opacity: 1 !important; visibility: visible !important; display: flex !important;';
-                console.log('⚠ Scroll button styles reset - reapplied maximum priority clickability');
+                console.log('<i class="fas fa-exclamation-triangle"></i> Scroll button styles reset - reapplied maximum priority clickability');
             }
         }, 500); // Check every 500ms
 

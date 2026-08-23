@@ -31,12 +31,12 @@
                     element.textContent = "IN STOCK";
                     element.className = element.className.replace(/out-of-stock|unavailable/gi, "in-stock");
                     element.style.color = "#28a745";
-                    console.log("✅ Fixed display for:", productName);
+                    console.log("<i class="fas fa-check-circle"></i> Fixed display for:", productName);
                 }
             }
         });
         
-        console.log("✅ All OUT OF STOCK labels removed");
+        console.log("<i class="fas fa-check-circle"></i> All OUT OF STOCK labels removed");
     }
     
     function getProductNameFromElement(element) {
@@ -77,13 +77,13 @@
                     if (costInput && parseFloat(this.value) <= parseFloat(costInput.value)) {
                         const minPrice = parseFloat(costInput.value) * 1.20; // 20% markup
                         this.value = minPrice.toFixed(2);
-                        console.log("💰 Enforced price > cost with 20% markup");
+                        console.log("<i class="fas fa-coins"></i> Enforced price > cost with 20% markup");
                     }
                 }
             });
         });
         
-        console.log("✅ Quantity and price rules enforced");
+        console.log("<i class="fas fa-check-circle"></i> Quantity and price rules enforced");
     }
     
     // Run fixes when page loads

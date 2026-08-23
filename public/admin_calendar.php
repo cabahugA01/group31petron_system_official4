@@ -682,352 +682,410 @@ switch($current_view) {
         $view_title = $month_name;
 }
 
-// Load events for the entire calendar range
+    // Load events for the entire calendar range
 $month_events = [];
 $staff_list = [];
 $staff_colors = ['#039be5', '#7986cb', '#33b679', '#8e24aa', '#e67c73', '#f6bf26', '#f4511e', '#0b8043', '#d50000'];
 
 try {
-    // Load staff list with assigned colors (ALL STATIONS or filtered)
     if ($filter_station > 0) {
-        $staff_stmt = $pdo->prepare("SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant','manager','supervisor') AND status = 'Active' ORDER BY first_name, last_name");
+        $staff_stmt = $pdo->prepare("SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE (station_id = ? OR station_id = 0 OR station_id IS NULL) AND status = 'Active' ORDER BY first_name, last_name");
         $staff_stmt->execute([$filter_station]);
     } else {
-        $staff_stmt = $pdo->prepare("SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE role IN ('staff','cashier','pump_attendant','manager','supervisor') AND status = 'Active' ORDER BY first_name, last_name");
+        $staff_stmt = $pdo->prepare("SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE status = 'Active' ORDER BY first_name, last_name");
         $staff_stmt->execute();
     }
-    $all_staff = $staff_stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    foreach ($all_staff as $idx => $staff) {
+    foreach ($staff_stmt->fetchAll(PDO::FETCH_ASSOC) as $idx => $staff) {
         $color = $staff_colors[$idx % count($staff_colors)];
         $staff_list[$staff['id']] = [
             'name' => $staff['name'],
             'color' => $color
         ];
     }
+} catch (Exception $e) {}
 
-    // Load calendar events (ALL STATIONS or filtered)
-    if ($filter_station > 0) {
-        $stmt = $pdo->prepare("SELECT sce.*, et.type_name, et.type_key, et.icon_class, su.name AS staff_name, sce.staff_encoder_id
-            FROM staff_calendar_events sce
-            JOIN staff_event_types et ON sce.event_type_id = et.id
-            JOIN users su ON sce.staff_encoder_id = su.id
-            WHERE sce.station_id = ? AND sce.event_date BETWEEN ? AND ?
-            ORDER BY sce.event_date, sce.start_time");
-        $stmt->execute([$filter_station, $view_start, $view_end]);
-    } else {
-        $stmt = $pdo->prepare("SELECT sce.*, et.type_name, et.type_key, et.icon_class, su.name AS staff_name, sce.staff_encoder_id
-            FROM staff_calendar_events sce
-            JOIN staff_event_types et ON sce.event_type_id = et.id
-            JOIN users su ON sce.staff_encoder_id = su.id
-            WHERE sce.event_date BETWEEN ? AND ?
-            ORDER BY sce.event_date, sce.start_time");
-        $stmt->execute([$view_start, $view_end]);
-    }
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $row['color'] = $staff_list[$row['staff_encoder_id']]['color'] ?? '#757575';
-        $month_events[$row['event_date']][] = $row;
-    }
+// ── COMPLETE DEDUPLICATED ADMIN / OWNER OPERATIONAL & APPROVAL CALENDAR ENGINE ──
+    
+    // Master Target URL Resolver for Direct Module Navigation on Event Click
+    $resolve_target_url = function($type_key, $id, $role = 'admin') {
+        $id_num = preg_replace('/[^0-9]/', '', (string)$id);
+        switch($type_key) {
+            case 'job_order':
+                if ($role === 'admin') return 'admin_all_transactions.php?search=JO-' . $id_num;
+                if ($role === 'manager') return 'manager_transactions_hub.php?tab=job_orders';
+                return 'staff_transactions_hub.php?tab=job_orders';
+            case 'merchandise_delivery':
+            case 'fuel_delivery':
+                if ($role === 'admin') return 'admin_fuel_transactions_oversight.php';
+                if ($role === 'manager') return 'deliveries_oversight.php';
+                return 'staff_transactions_hub.php?tab=deliveries';
+            case 'validation_task':
+            case 'validation_delivery':
+            case 'manager_approval':
+            case 'master_data_approval':
+            case 'admin_approval':
+                if ($role === 'admin') return 'admin_user_management.php';
+                return 'manager_fuel_transaction_validation.php';
+            case 'fuel_calibration':
+                if ($role === 'admin') return 'admin_calibration_review.php';
+                if ($role === 'manager') return 'manager_calibration_review.php';
+                return 'staff_fuel_adjustments.php';
+            case 'stock_request':
+            case 'restock_reminder':
+            case 'stock_alert':
+                if ($role === 'admin') return 'admin_inventory_management.php';
+                return 'inventory_management.php';
+            case 'report_schedule':
+                if ($role === 'admin') return 'admin_reports.php';
+                if ($role === 'manager') return 'manager_reports.php';
+                return 'staff_reports.php';
+            default:
+                return '#';
+        }
+    };
 
-    // Auto-sync staff schedules/shifts (ALL STATIONS or filtered)
+$seen_events = []; // Prevents duplicate events per date
+
+    $add_admin_unique_event = function($date, $event) use (&$month_events, &$seen_events, $resolve_target_url) {
+        if (!$date || !isset($event['id'])) return;
+        $key = (string)$event['id'];
+        if (isset($seen_events[$date][$key])) return;
+        $seen_events[$date][$key] = true;
+        if (!isset($event['target_url'])) {
+            $event['target_url'] = $resolve_target_url($event['type_key'] ?? '', $event['id'] ?? '', 'admin');
+        }
+        // Strip any HTML tags from work_description to prevent unescaped HTML code displaying on cell items
+        if (isset($event['work_description'])) {
+            $event['work_description'] = strip_tags($event['work_description']);
+        }
+        $month_events[$date][] = $event;
+    };
+
+    // 1. Manual Calendar Events (Branch-Wide or Filtered Station)
     try {
         if ($filter_station > 0) {
-            $sh = $pdo->prepare("SELECT ss.id, ss.user_id, ss.shift, ss.scheduled_date, ss.status, u.name AS staff_name, s.start_time, s.end_time
+            $stmt = $pdo->prepare("
+                SELECT sce.*, et.type_name, et.type_key, et.icon_class, su.name AS staff_name,
+                       sce.staff_encoder_id, s.name AS station_name
+                FROM staff_calendar_events sce
+                JOIN staff_event_types et ON sce.event_type_id = et.id
+                JOIN users su ON sce.staff_encoder_id = su.id
+                LEFT JOIN stations s ON sce.station_id = s.id
+                WHERE sce.station_id = ? AND sce.event_date BETWEEN ? AND ?
+                ORDER BY sce.event_date, sce.start_time
+            ");
+            $stmt->execute([$filter_station, $view_start, $view_end]);
+        } else {
+            $stmt = $pdo->prepare("
+                SELECT sce.*, et.type_name, et.type_key, et.icon_class, su.name AS staff_name,
+                       sce.staff_encoder_id, s.name AS station_name
+                FROM staff_calendar_events sce
+                JOIN staff_event_types et ON sce.event_type_id = et.id
+                JOIN users su ON sce.staff_encoder_id = su.id
+                LEFT JOIN stations s ON sce.station_id = s.id
+                WHERE sce.event_date BETWEEN ? AND ?
+                ORDER BY sce.event_date, sce.start_time
+            ");
+            $stmt->execute([$view_start, $view_end]);
+        }
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $row['color'] = $staff_list[$row['staff_encoder_id']]['color'] ?? '#039be5';
+            $add_admin_unique_event($row['event_date'], $row);
+        }
+    } catch (Exception $e) {}
+
+    // 2. Staff Schedules / Shifts & Turnover (Shift 1 & Shift 2 Color Coded)
+    try {
+        if ($filter_station > 0) {
+            $sh = $pdo->prepare("
+                SELECT ss.id, ss.user_id, ss.shift, ss.scheduled_date, ss.status, u.name AS staff_name,
+                       s.start_time, s.end_time, st.name AS station_name
                 FROM staff_schedules ss
                 JOIN users u ON ss.user_id = u.id
+                JOIN stations st ON u.station_id = st.id
                 LEFT JOIN shifts s ON ss.shift = s.name
-                WHERE u.station_id = ? AND ss.scheduled_date BETWEEN ? AND ?");
+                WHERE u.station_id = ? AND ss.scheduled_date BETWEEN ? AND ?
+            ");
             $sh->execute([$filter_station, $view_start, $view_end]);
         } else {
-            $sh = $pdo->prepare("SELECT ss.id, ss.user_id, ss.shift, ss.scheduled_date, ss.status, u.name AS staff_name, s.start_time, s.end_time
+            $sh = $pdo->prepare("
+                SELECT ss.id, ss.user_id, ss.shift, ss.scheduled_date, ss.status, u.name AS staff_name,
+                       s.start_time, s.end_time, st.name AS station_name
                 FROM staff_schedules ss
                 JOIN users u ON ss.user_id = u.id
+                JOIN stations st ON u.station_id = st.id
                 LEFT JOIN shifts s ON ss.shift = s.name
-                WHERE ss.scheduled_date BETWEEN ? AND ?");
+                WHERE ss.scheduled_date BETWEEN ? AND ?
+            ");
             $sh->execute([$view_start, $view_end]);
         }
         foreach ($sh->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $month_events[$r['scheduled_date']][] = [
+            $shift_txt = strtolower($r['shift'] ?? '');
+            // Shift 1 = Royal Blue (#2563eb), Shift 2 = Deep Purple (#9333ea)
+            $shift_color = (strpos($shift_txt, '1') !== false || strpos($shift_txt, 'morn') !== false) ? '#2563eb' : ((strpos($shift_txt, '2') !== false || strpos($shift_txt, 'after') !== false || strpos($shift_txt, 'night') !== false) ? '#9333ea' : '#0284c7');
+
+            $add_admin_unique_event($r['scheduled_date'], [
                 'id' => 'shift_'.$r['id'],
-                'type_name' => 'Shift',
+                'type_name' => 'Shift (' . $r['shift'] . ')',
                 'type_key' => 'staff_shift',
                 'icon_class' => 'fas fa-clock',
                 'staff_name' => $r['staff_name'],
                 'staff_encoder_id' => $r['user_id'],
-                'work_description' => $r['staff_name'] . ' - ' . $r['shift'] . ' Shift',
-                'status' => strtolower($r['status'] ?? 'pending'),
-                'color' => $staff_list[$r['user_id']]['color'] ?? '#757575',
-                'start_time' => $r['start_time'] ?? '00:00',
-                'end_time' => $r['end_time'] ?? '00:00',
+                'work_description' => $r['staff_name'] . ' — ' . $r['shift'] . ' Shift @ ' . ($r['station_name'] ?? 'Station'),
+                'status' => strtolower($r['status'] ?? 'active'),
+                'color' => $shift_color,
                 'auto_synced' => true
-            ];
+            ]);
         }
     } catch (Exception $e) {}
 
-    // Auto-sync deliveries (ALL STATIONS or filtered)
-    if ($filter_station > 0) {
-        $dl = $pdo->prepare("SELECT d.id, d.encoded_by, DATE(d.delivery_date) AS event_date, u.name AS staff_name, d.status, d.supplier, d.product
-            FROM deliveries_oversight d
-            JOIN users u ON d.encoded_by = u.id
-            WHERE d.station_id = ? AND DATE(d.delivery_date) BETWEEN ? AND ?");
-        $dl->execute([$filter_station, $view_start, $view_end]);
-    } else {
-        $dl = $pdo->prepare("SELECT d.id, d.encoded_by, DATE(d.delivery_date) AS event_date, u.name AS staff_name, d.status, d.supplier, d.product
-            FROM deliveries_oversight d
-            JOIN users u ON d.encoded_by = u.id
-            WHERE DATE(d.delivery_date) BETWEEN ? AND ?");
-        $dl->execute([$view_start, $view_end]);
-    }
-    foreach ($dl->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $month_events[$r['event_date']][] = [
-            'id' => 'del_'.$r['id'],
-            'type_name' => 'Delivery',
-            'type_key' => 'merchandise_delivery',
-            'icon_class' => 'fas fa-box',
-            'staff_name' => $r['staff_name'],
-            'staff_encoder_id' => $r['encoded_by'],
-            'work_description' => $r['supplier'] . ' - ' . $r['product'],
-            'status' => strtolower($r['status'] ?? 'pending'),
-            'color' => $staff_list[$r['encoded_by']]['color'] ?? '#757575',
-            'auto_synced' => true
-        ];
-    }
+    // 3. Job Orders (Branch-wide scheduled, active, & completed Job Orders)
+    try {
+        $jo_query = "
+            SELECT jo.id, jo.created_by, DATE(jo.created_at) AS event_date, jo.due_date,
+                   jo.service_type, jo.status, u.name AS staff_name, jo.customer_name,
+                   st.name AS station_name
+            FROM job_orders jo
+            JOIN users u ON jo.created_by = u.id
+            JOIN stations st ON jo.station_id = st.id
+            WHERE (DATE(jo.created_at) BETWEEN ? AND ? OR jo.due_date BETWEEN ? AND ?)
+        ";
+        $jo_params = [$view_start, $view_end, $view_start, $view_end];
+        if ($filter_station > 0) {
+            $jo_query .= " AND jo.station_id = ?";
+            $jo_params[] = $filter_station;
+        }
+        $jo = $pdo->prepare($jo_query);
+        $jo->execute($jo_params);
+        foreach ($jo->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $edate = $r['due_date'] ?: $r['event_date'];
+            $st_label = strtolower($r['status'] ?? 'pending');
+            $color = ($st_label === 'completed' || $st_label === 'verified') ? '#10b981' : (($st_label === 'in progress' || $st_label === 'in_progress') ? '#3b82f6' : '#f59e0b');
+            $add_admin_unique_event($edate, [
+                'id' => 'jo_'.$r['id'],
+                'type_name' => 'Job Order',
+                'type_key' => 'job_order',
+                'icon_class' => 'fas fa-wrench',
+                'staff_name' => $r['staff_name'],
+                'staff_encoder_id' => $r['created_by'],
+                'work_description' => 'JO #' . $r['id'] . ' (' . ucfirst($st_label) . '): ' . $r['service_type'] . ' @ ' . $r['station_name'],
+                'status' => $st_label,
+                'color' => $color,
+                'auto_synced' => true
+            ]);
+        }
+    } catch (Exception $e) {}
 
-    // Auto-sync job orders (ALL STATIONS or filtered)
-    if ($filter_station > 0) {
-        $jo = $pdo->prepare("SELECT jo.id, jo.created_by, DATE(jo.created_at) AS event_date, jo.service_type, jo.status, u.name AS staff_name, jo.customer_name
-            FROM job_orders jo
-            JOIN users u ON jo.created_by = u.id
-            WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?");
-        $jo->execute([$filter_station, $view_start, $view_end]);
-    } else {
-        $jo = $pdo->prepare("SELECT jo.id, jo.created_by, DATE(jo.created_at) AS event_date, jo.service_type, jo.status, u.name AS staff_name, jo.customer_name
-            FROM job_orders jo
-            JOIN users u ON jo.created_by = u.id
-            WHERE DATE(jo.created_at) BETWEEN ? AND ?");
-        $jo->execute([$view_start, $view_end]);
-    }
-    foreach ($jo->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $month_events[$r['event_date']][] = [
-            'id' => 'jo_'.$r['id'],
-            'type_name' => 'Job Order',
-            'type_key' => 'job_order',
-            'icon_class' => 'fas fa-wrench',
-            'staff_name' => $r['staff_name'],
-            'staff_encoder_id' => $r['created_by'],
-            'work_description' => $r['service_type'] . ' - ' . $r['customer_name'],
-            'status' => strtolower($r['status'] ?? 'pending'),
-            'color' => $staff_list[$r['created_by']]['color'] ?? '#757575',
-            'auto_synced' => true
-        ];
-    }
-    
-    // ADMIN CALENDAR ENHANCEMENTS: Compliance Deadlines & Oversight
-    
-    // Auto-sync compliance deadlines (reports, audits, contracts)
+    // 4. Deliveries Oversight & Expected Merchandise Deliveries
     try {
-        $compliance_query = "SELECT c.id, c.deadline_date, c.deadline_type, c.title, c.station_id, 
-            c.status, s.name as station_name
-            FROM admin_compliance_deadlines c
-            LEFT JOIN stations s ON c.station_id = s.id
-            WHERE c.deadline_date BETWEEN ? AND ?";
-        
-        $compliance_params = [$view_start, $view_end];
+        $dl_query = "
+            SELECT d.id, d.encoded_by, DATE(d.delivery_date) AS event_date, u.name AS staff_name,
+                   d.status, d.supplier, d.product, st.name AS station_name
+            FROM deliveries_oversight d
+            JOIN users u ON d.encoded_by = u.id
+            JOIN stations st ON d.station_id = st.id
+            WHERE DATE(d.delivery_date) BETWEEN ? AND ?
+        ";
+        $dl_params = [$view_start, $view_end];
         if ($filter_station > 0) {
-            $compliance_query .= " AND (c.station_id = ? OR c.station_id IS NULL)";
-            $compliance_params[] = $filter_station;
+            $dl_query .= " AND d.station_id = ?";
+            $dl_params[] = $filter_station;
         }
-        $compliance_query .= " ORDER BY c.deadline_date";
-        
-        $compliance = $pdo->prepare($compliance_query);
-        $compliance->execute($compliance_params);
-        
-        foreach ($compliance->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $days_until = (strtotime($r['deadline_date']) - strtotime($today_str)) / 86400;
-            $is_overdue = $days_until < 0;
-            $is_urgent = $days_until <= 3 && $days_until >= 0;
-            
-            $month_events[$r['deadline_date']][] = [
-                'id' => 'compliance_'.$r['id'],
-                'type_name' => ucfirst($r['deadline_type']),
-                'type_key' => 'compliance_deadline',
-                'icon_class' => 'fas fa-clipboard-list',
-                'staff_name' => 'Admin Task',
-                'staff_encoder_id' => $user_id,
-                'work_description' => ($is_overdue ? '🔴 OVERDUE: ' : ($is_urgent ? '⚠ URGENT: ' : '📋 ')) . 
-                    $r['title'] . ($r['station_name'] ? ' (' . $r['station_name'] . ')' : ' (All Stations)'),
+        $dl = $pdo->prepare($dl_query);
+        $dl->execute($dl_params);
+        foreach ($dl->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $add_admin_unique_event($r['event_date'], [
+                'id' => 'del_'.$r['id'],
+                'type_name' => 'Merchandise Delivery',
+                'type_key' => 'merchandise_delivery',
+                'icon_class' => 'fas fa-box',
+                'staff_name' => $r['staff_name'],
+                'staff_encoder_id' => $r['encoded_by'],
+                'work_description' => 'Delivery: ' . $r['supplier'] . ' - ' . $r['product'] . ' @ ' . $r['station_name'],
                 'status' => strtolower($r['status'] ?? 'pending'),
-                'color' => $is_overdue ? '#d93025' : ($is_urgent ? '#ea8600' : '#7986cb'),
-                'auto_synced' => true,
-                'priority' => $is_overdue ? 'urgent' : ($is_urgent ? 'high' : 'normal')
-            ];
+                'color' => '#06b6d4',
+                'auto_synced' => true
+            ]);
         }
-    } catch (Exception $e) {
-        // Create compliance deadlines table if not exists
-        try {
-            $pdo->exec("CREATE TABLE IF NOT EXISTS admin_compliance_deadlines (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                station_id INT NULL,
-                deadline_type ENUM('report','audit','contract','license','inspection','other') DEFAULT 'report',
-                title VARCHAR(255) NOT NULL,
-                description TEXT,
-                deadline_date DATE NOT NULL,
-                status ENUM('pending','submitted','approved','overdue','cancelled') DEFAULT 'pending',
-                assigned_to INT,
-                created_by INT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP NULL,
-                INDEX idx_deadline (deadline_date, status),
-                INDEX idx_station (station_id)
-            )");
-        } catch (Exception $e2) {}
-    }
-    
-    // Auto-sync ALL pending validations across stations (admin oversight)
+    } catch (Exception $e) {}
+
+    // 5. Fuel Deliveries
     try {
-        $validation_query = "SELECT t.id, DATE(t.transaction_date) AS event_date, t.customer_name, t.total_amount, 
-            t.station_id, s.name as station_name, u.name as staff_name
-            FROM merchandise_transactions t
-            JOIN stations s ON t.station_id = s.id
-            JOIN users u ON t.staff_id = u.id
-            WHERE t.validation_status = 'Pending' AND DATE(t.transaction_date) BETWEEN ? AND ?";
-        
-        $validation_params = [$view_start, $view_end];
+        $fd_query = "
+            SELECT fd.id, DATE(fd.created_at) AS event_date, fd.fuel_type, fd.liters, fd.status,
+                   fd.supplier, st.name AS station_name
+            FROM fuel_deliveries fd
+            JOIN stations st ON fd.station_id = st.id
+            WHERE DATE(fd.created_at) BETWEEN ? AND ?
+        ";
+        $fd_params = [$view_start, $view_end];
         if ($filter_station > 0) {
-            $validation_query .= " AND t.station_id = ?";
-            $validation_params[] = $filter_station;
+            $fd_query .= " AND fd.station_id = ?";
+            $fd_params[] = $filter_station;
         }
-        $validation_query .= " ORDER BY t.transaction_date DESC LIMIT 50";
-        
-        $pending_validations = $pdo->prepare($validation_query);
-        $pending_validations->execute($validation_params);
-        
-        foreach ($pending_validations->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $month_events[$r['event_date']][] = [
-                'id' => 'admin_validation_'.$r['id'],
-                'type_name' => 'Oversight: Validation',
-                'type_key' => 'admin_validation',
-                'icon_class' => 'fas fa-eye',
-                'staff_name' => $r['staff_name'] . ' @ ' . $r['station_name'],
+        $fd = $pdo->prepare($fd_query);
+        $fd->execute($fd_params);
+        foreach ($fd->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $add_admin_unique_event($r['event_date'], [
+                'id' => 'fuel_del_'.$r['id'],
+                'type_name' => 'Fuel Delivery',
+                'type_key' => 'fuel_delivery',
+                'icon_class' => 'fas fa-gas-pump',
+                'staff_name' => $r['supplier'] ?: 'Fuel Supplier',
                 'staff_encoder_id' => $user_id,
-                'work_description' => '👁 Monitor: ' . $r['customer_name'] . ' - ₱' . number_format($r['total_amount'], 2) . ' [' . $r['station_name'] . ']',
+                'work_description' => 'Fuel Delivery: ' . ($r['fuel_type'] ?: 'Fuel') . ' (' . number_format((float)($r['liters'] ?? 0), 2) . ' L) @ ' . $r['station_name'],
+                'status' => strtolower($r['status'] ?? 'pending'),
+                'color' => '#ef4444',
+                'auto_synced' => true
+            ]);
+        }
+    } catch (Exception $e) {}
+
+    // 6. Purchase Orders
+    try {
+        $po_query = "
+            SELECT po.id, DATE(po.order_date) AS event_date, po.supplier_name, po.status,
+                   st.name AS station_name
+            FROM purchase_orders po
+            JOIN stations st ON po.station_id = st.id
+            WHERE DATE(po.order_date) BETWEEN ? AND ?
+        ";
+        $po_params = [$view_start, $view_end];
+        if ($filter_station > 0) {
+            $po_query .= " AND po.station_id = ?";
+            $po_params[] = $filter_station;
+        }
+        $po = $pdo->prepare($po_query);
+        $po->execute($po_params);
+        foreach ($po->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $add_admin_unique_event($r['event_date'], [
+                'id' => 'po_'.$r['id'],
+                'type_name' => 'Purchase Order',
+                'type_key' => 'purchase_order',
+                'icon_class' => 'fas fa-file-invoice',
+                'staff_name' => $r['supplier_name'],
+                'staff_encoder_id' => $user_id,
+                'work_description' => 'PO #' . $r['id'] . ': ' . $r['supplier_name'] . ' @ ' . $r['station_name'],
+                'status' => strtolower($r['status'] ?? 'pending'),
+                'color' => '#8b5cf6',
+                'auto_synced' => true
+            ]);
+        }
+    } catch (Exception $e) {}
+
+    // 7. Fuel Calibration & Meter Readings
+    try {
+        $fc_query = "
+            SELECT fc.id, DATE(fc.calibration_date) AS event_date, fc.fuel_type, fc.status,
+                   fc.technician_name, st.name AS station_name
+            FROM fuel_calibration_records fc
+            JOIN stations st ON fc.station_id = st.id
+            WHERE DATE(fc.calibration_date) BETWEEN ? AND ?
+        ";
+        $fc_params = [$view_start, $view_end];
+        if ($filter_station > 0) {
+            $fc_query .= " AND fc.station_id = ?";
+            $fc_params[] = $filter_station;
+        }
+        $fc = $pdo->prepare($fc_query);
+        $fc->execute($fc_params);
+        foreach ($fc->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $add_admin_unique_event($r['event_date'], [
+                'id' => 'calib_'.$r['id'],
+                'type_name' => 'Fuel Reading / Calibration',
+                'type_key' => 'fuel_calibration',
+                'icon_class' => 'fas fa-tachometer-alt',
+                'staff_name' => $r['technician_name'] ?: 'Technician',
+                'staff_encoder_id' => $user_id,
+                'work_description' => 'Meter Reading: ' . ($r['fuel_type'] ?: 'Pump') . ' @ ' . $r['station_name'],
+                'status' => strtolower($r['status'] ?? 'pending'),
+                'color' => '#64748b',
+                'auto_synced' => true
+            ]);
+        }
+    } catch (Exception $e) {}
+
+    // 8. ADMIN APPROVALS: Price Change Approvals & Master Data Requests
+    try {
+        $md_query = "
+            SELECT m.id, DATE(m.created_at) AS event_date, m.request_type, m.entity_type,
+                   u.name AS staff_name, st.name AS station_name
+            FROM master_data_requests m
+            JOIN users u ON m.requested_by = u.id
+            JOIN stations st ON m.station_id = st.id
+            WHERE m.status = 'Pending' AND DATE(m.created_at) BETWEEN ? AND ?
+        ";
+        $md_params = [$view_start, $view_end];
+        if ($filter_station > 0) {
+            $md_query .= " AND m.station_id = ?";
+            $md_params[] = $filter_station;
+        }
+        $md = $pdo->prepare($md_query);
+        $md->execute($md_params);
+        foreach ($md->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $add_admin_unique_event($r['event_date'], [
+                'id' => 'admin_md_'.$r['id'],
+                'type_name' => 'Master Data / Price Approval',
+                'type_key' => 'admin_approval',
+                'icon_class' => 'fas fa-gavel',
+                'staff_name' => $r['staff_name'],
+                'staff_encoder_id' => $user_id,
+                'work_description' => '[ADMIN ACTION REQUIRED] ' . ucfirst($r['request_type']) . ' ' . $r['entity_type'] . ' @ ' . $r['station_name'],
                 'status' => 'pending',
-                'color' => '#ea8600',
+                'color' => '#dc2626',
+                'priority' => 'urgent',
                 'auto_synced' => true
-            ];
+            ]);
         }
     } catch (Exception $e) {}
-    
-    // Auto-sync overdue reports from all stations
+
+    // 9. Low & Critical Stock Alerts
     try {
-        $overdue_reports_query = "SELECT DATE(CURDATE()) as event_date, station_id, s.name as station_name,
-            COUNT(*) as overdue_count
-            FROM merchandise_transactions t
-            JOIN stations s ON t.station_id = s.id
-            WHERE t.validation_status = 'Pending' AND DATE(t.transaction_date) < DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
-        
-        if ($filter_station > 0) {
-            $overdue_reports_query .= " AND t.station_id = ?";
-            $overdue_reports = $pdo->prepare($overdue_reports_query . " GROUP BY t.station_id, s.name");
-            $overdue_reports->execute([$filter_station]);
-        } else {
-            $overdue_reports = $pdo->prepare($overdue_reports_query . " GROUP BY t.station_id, s.name");
-            $overdue_reports->execute();
-        }
-        
-        foreach ($overdue_reports->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            if ($r['overdue_count'] > 0) {
-                $month_events[$today_str][] = [
-                    'id' => 'overdue_report_'.$r['station_id'],
-                    'type_name' => 'Overdue Reports',
-                    'type_key' => 'overdue_alert',
-                    'icon_class' => 'fas fa-exclamation-circle',
-                    'staff_name' => 'Admin Alert',
-                    'staff_encoder_id' => $user_id,
-                    'work_description' => '🚨 ' . $r['station_name'] . ' has ' . $r['overdue_count'] . ' overdue validation(s) (>7 days)',
-                    'status' => 'urgent',
-                    'color' => '#d93025',
-                    'auto_synced' => true,
-                    'priority' => 'urgent'
-                ];
-            }
-        }
-    } catch (Exception $e) {}
-    
-    // Auto-sync system-wide inventory alerts
-    try {
-        $critical_stock_query = "SELECT ip.id, ip.product_name,
-            COALESCE(si.stock_level, ip.stock_quantity, ip.stock, 0) AS current_stock,
-            COALESCE(si.reorder_level, ip.min_stock, 0) AS minimum_stock,
-            ip.station_id, s.name as station_name
+        $low_stock_query = "
+            SELECT ip.id, ip.product_name, 
+                   COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
+                   COALESCE(si.reorder_level, ip.min_stock, 10) AS minimum_stock,
+                   COALESCE(si.unit, ip.size, 'pcs') AS unit,
+                   st.name AS station_name
             FROM inventory_products ip
-            JOIN stations s ON ip.station_id = s.id
-            LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ip.station_id
-            WHERE COALESCE(si.stock_level, ip.stock_quantity, ip.stock, 0) <= (COALESCE(si.reorder_level, ip.min_stock, 0) * 0.5)
-            AND LOWER(ip.status) = 'active'";
-        
-        if ($filter_station > 0) {
-            $critical_stock_query .= " AND ip.station_id = ?";
-            $critical_stock = $pdo->prepare($critical_stock_query . " LIMIT 20");
-            $critical_stock->execute([$filter_station]);
-        } else {
-            $critical_stock = $pdo->prepare($critical_stock_query . " LIMIT 20");
-            $critical_stock->execute();
-        }
-        
-        foreach ($critical_stock->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $month_events[$today_str][] = [
-                'id' => 'critical_stock_'.$r['id'],
-                'type_name' => 'Critical Stock Alert',
+            LEFT JOIN station_inventory si ON si.product_id = ip.id
+            LEFT JOIN stations st ON si.station_id = st.id
+            WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+              AND ip.status = 'Active'
+              AND COALESCE(si.stock_level, ip.stock, 0) <= COALESCE(si.reorder_level, ip.min_stock, 10)
+            LIMIT 10
+        ";
+        $low_stock = $pdo->prepare($low_stock_query);
+        $low_stock->execute();
+        foreach ($low_stock->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $add_admin_unique_event($today_str, [
+                'id' => 'admin_restock_'.$r['id'],
+                'type_name' => 'Low Stock Alert',
                 'type_key' => 'stock_alert',
-                'icon_class' => 'fas fa-box-open',
-                'staff_name' => 'System Alert',
+                'icon_class' => 'fas fa-exclamation-triangle',
+                'staff_name' => 'Branch Alert',
                 'staff_encoder_id' => $user_id,
-                'work_description' => '🔴 CRITICAL: ' . $r['product_name'] . ' @ ' . $r['station_name'] . ' (' . $r['current_stock'] . ' units remaining)',
-                'status' => 'urgent',
-                'color' => '#d93025',
-                'auto_synced' => true,
-                'priority' => 'urgent'
-            ];
-        }
-    } catch (Exception $e) {}
-    
-    // Auto-sync operational & financial events integration
-    try {
-        // High-value transactions for admin oversight
-        $high_value_query = "SELECT t.id, DATE(t.transaction_date) AS event_date, t.customer_name, t.total_amount,
-            t.payment_method, s.name as station_name, u.name as staff_name
-            FROM merchandise_transactions t
-            JOIN stations s ON t.station_id = s.id
-            JOIN users u ON t.staff_id = u.id
-            WHERE t.total_amount >= 50000 AND DATE(t.transaction_date) BETWEEN ? AND ?";
-        
-        $high_value_params = [$view_start, $view_end];
-        if ($filter_station > 0) {
-            $high_value_query .= " AND t.station_id = ?";
-            $high_value_params[] = $filter_station;
-        }
-        $high_value_query .= " ORDER BY t.total_amount DESC LIMIT 30";
-        
-        $high_value_tx = $pdo->prepare($high_value_query);
-        $high_value_tx->execute($high_value_params);
-        
-        foreach ($high_value_tx->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $month_events[$r['event_date']][] = [
-                'id' => 'high_value_'.$r['id'],
-                'type_name' => 'High-Value Transaction',
-                'type_key' => 'financial_event',
-                'icon_class' => 'fas fa-coins',
-                'staff_name' => $r['staff_name'] . ' @ ' . $r['station_name'],
-                'staff_encoder_id' => $user_id,
-                'work_description' => '💰 ' . $r['customer_name'] . ' - ₱' . number_format($r['total_amount'], 2) . ' (' . $r['payment_method'] . ') [' . $r['station_name'] . ']',
-                'status' => 'completed',
-                'color' => '#188038',
+                'work_description' => '[LOW STOCK] ' . $r['product_name'] . ' (' . (int)$r['current_stock'] . ' ' . $r['unit'] . ' remaining) @ ' . ($r['station_name'] ?? 'Branch'),
+                'status' => 'pending',
+                'color' => '#ef4444',
                 'auto_synced' => true
-            ];
+            ]);
         }
     } catch (Exception $e) {}
-} catch (Exception $e) {}
+
+    // 10. Reports & Reconciliation Deadlines
+    $add_admin_unique_event($today_str, [
+        'id' => 'admin_report_fuel_sales',
+        'type_name' => 'Branch Report Schedule',
+        'type_key' => 'report_schedule',
+        'icon_class' => 'fas fa-chart-line',
+        'staff_name' => 'Admin Schedule',
+        'staff_encoder_id' => $user_id,
+        'work_description' => 'Daily & Monthly Fuel Sales & Inventory Reconciliation Audit',
+        'status' => 'pending',
+        'color' => '#10b981',
+        'auto_synced' => true
+    ]);
 
 if (isset($_GET['action']) && $_GET['action'] === 'export_csv') {
     header('Content-Type: text/csv; charset=utf-8');
@@ -1087,7 +1145,7 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
 .cal-calendar-item { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 8px; cursor: pointer; font-size: 14px; color: #3c4043; }
 .cal-calendar-item:hover { background: #f1f3f4; }
 .cal-calendar-checkbox { width: 20px; height: 20px; border-radius: 3px; border: 2px solid; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; }
-.cal-calendar-checkbox.checked::before { content: '✓'; }
+.cal-calendar-checkbox.checked::before { content: '<i class="fas fa-check"></i>'; }
 
 /* Main content */
 .cal-main { flex: 1 1 auto; display: flex; flex-direction: column; overflow: hidden; width: calc(100% - 256px); min-width: 0; max-width: calc(100% - 256px); box-sizing: border-box; }
@@ -1171,13 +1229,13 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
 
                 <select id="adminFilterType" onchange="filterAdminCalendar()" style="width:100%; padding:6px; font-size:11px; border:1px solid #dadce0; border-radius:4px;">
                     <option value="">All Event Types</option>
-                    <option value="job_order">🟢 Job Orders</option>
-                    <option value="customer_appointment">🔵 Customer Appointments</option>
-                    <option value="staff_shift">🟣 Staff Shifts</option>
-                    <option value="merchandise_delivery">🟡 Merchandise Deliveries</option>
-                    <option value="fuel_delivery">🟤 Fuel Deliveries</option>
-                    <option value="purchase_order">⚫ Purchase Orders</option>
-                    <option value="holiday">🔴 Holidays</option>
+                    <option value="job_order"><i class="fas fa-circle text-success"></i> Job Orders</option>
+                    <option value="customer_appointment"><i class="fas fa-circle text-primary"></i> Customer Appointments</option>
+                    <option value="staff_shift"><i class="fas fa-circle" style="color:#8b5cf6;"></i> Staff Shifts</option>
+                    <option value="merchandise_delivery"><i class="fas fa-circle text-warning"></i> Merchandise Deliveries</option>
+                    <option value="fuel_delivery"><i class="fas fa-circle" style="color:#b45309;"></i> Fuel Deliveries</option>
+                    <option value="purchase_order"><i class="fas fa-circle text-dark"></i> Purchase Orders</option>
+                    <option value="holiday"><i class="fas fa-circle text-danger"></i> Holidays</option>
                 </select>
 
                 <select id="adminFilterStaff" onchange="filterAdminCalendar()" style="width:100%; padding:6px; font-size:11px; border:1px solid #dadce0; border-radius:4px;">
@@ -1194,35 +1252,35 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
 
         <!-- ── EVENT TYPE LEGEND ────────────────────────────── -->
         <div style="padding:12px; border-bottom:1px solid #dadce0;">
-            <div style="font-size:12px; font-weight:600; color:#3c4043; margin-bottom:8px;"><i class="fas fa-palette" style="color:#1a73e8;"></i> EVENTS</div>
+            <div style="font-size:12px; font-weight:600; color:#3c4043; margin-bottom:8px;"><i class="fas fa-palette" style="color:#1a73e8;"></i> EVENTS & SHIFT COLOR CODES</div>
             <div style="display:flex; flex-direction:column; gap:5px; font-size:11px; color:#3c4043;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="width:12px; height:12px; background:#2563eb; border-radius:3px;"></div>
+                    <span style="font-weight:600;">Shift 1 Staff</span> <span style="font-size:10px; color:#64748b;">(06:00 - 14:00)</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="width:12px; height:12px; background:#9333ea; border-radius:3px;"></div>
+                    <span style="font-weight:600;">Shift 2 Staff</span> <span style="font-size:10px; color:#64748b;">(14:00 - 22:00)</span>
+                </div>
                 <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCategory('job_order')">
-                    <span>🟢</span><span>Job Orders</span>
+                    <span><i class="fas fa-circle text-success"></i></span><span>Job Orders</span>
                     <div class="cal-calendar-checkbox checked" id="cb_cat_job_order" style="background:#33b679; border-color:#33b679; margin-left:auto; width:16px; height:16px;"></div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCategory('customer_appointment')">
-                    <span>🔵</span><span>Customer Appointments</span>
+                    <span><i class="fas fa-circle text-primary"></i></span><span>Customer Appointments</span>
                     <div class="cal-calendar-checkbox checked" id="cb_cat_customer_appointment" style="background:#039be5; border-color:#039be5; margin-left:auto; width:16px; height:16px;"></div>
                 </div>
-                <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCategory('staff_shift')">
-                    <span>🟣</span><span>Staff Shifts</span>
-                    <div class="cal-calendar-checkbox checked" id="cb_cat_staff_shift" style="background:#8e24aa; border-color:#8e24aa; margin-left:auto; width:16px; height:16px;"></div>
-                </div>
                 <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCategory('merchandise_delivery')">
-                    <span>🟡</span><span>Merchandise Deliveries</span>
+                    <span><i class="fas fa-circle text-warning"></i></span><span>Merchandise Deliveries</span>
                     <div class="cal-calendar-checkbox checked" id="cb_cat_merchandise_delivery" style="background:#f6bf26; border-color:#f6bf26; margin-left:auto; width:16px; height:16px;"></div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCategory('fuel_delivery')">
-                    <span>🟤</span><span>Fuel Deliveries</span>
+                    <span><i class="fas fa-circle" style="color:#b45309;"></i></span><span>Fuel Deliveries</span>
                     <div class="cal-calendar-checkbox checked" id="cb_cat_fuel_delivery" style="background:#795548; border-color:#795548; margin-left:auto; width:16px; height:16px;"></div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCategory('purchase_order')">
-                    <span>⚫</span><span>Purchase Orders</span>
+                    <span><i class="fas fa-circle text-dark"></i></span><span>Purchase Orders</span>
                     <div class="cal-calendar-checkbox checked" id="cb_cat_purchase_order" style="background:#607d8b; border-color:#607d8b; margin-left:auto; width:16px; height:16px;"></div>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCategory('holiday')">
-                    <span>🔴</span><span>Holidays</span>
-                    <div class="cal-calendar-checkbox checked" id="cb_cat_holiday" style="background:#d93025; border-color:#d93025; margin-left:auto; width:16px; height:16px;"></div>
                 </div>
             </div>
         </div>
@@ -1332,15 +1390,21 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
 
 
 
-        <!-- ── STAFF (Color Filter) ──────────────────────────── -->
-        <div class="cal-calendars">
-            <div class="cal-calendars-title">Staff (Color Filter)</div>
-            <?php foreach($staff_list as $staff_id => $staff): ?>
-            <div class="cal-calendar-item" onclick="toggleStaff(<?= $staff_id ?>)">
-                <div class="cal-calendar-checkbox checked" style="background: <?= htmlspecialchars($staff['color']) ?>; border-color: <?= htmlspecialchars($staff['color']) ?>;"></div>
-                <div style="font-size:13px;"><?= htmlspecialchars($staff['name']) ?></div>
+        <!-- ── SHIFT COLOR CODES ──────────────────────────── -->
+        <div class="cal-calendars" style="padding:12px; border-top:1px solid #dadce0;">
+            <div class="cal-calendars-title" style="font-size:12px; font-weight:600; color:#3c4043; margin-bottom:8px;">
+                <i class="fas fa-users"></i> SHIFT COLOR CODES
             </div>
-            <?php endforeach; ?>
+            <div style="display:flex; flex-direction:column; gap:6px; font-size:11px; color:#3c4043;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="width:12px; height:12px; background:#2563eb; border-radius:3px;"></div>
+                    <span style="font-weight:600;">Shift 1 Staff</span> <span style="font-size:10px; color:#64748b;">(06:00 - 14:00)</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="width:12px; height:12px; background:#9333ea; border-radius:3px;"></div>
+                    <span style="font-weight:600;">Shift 2 Staff</span> <span style="font-size:10px; color:#64748b;">(14:00 - 22:00)</span>
+                </div>
+            </div>
         </div>
 
     </div>
@@ -1473,7 +1537,7 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                                  data-status="<?= htmlspecialchars($status) ?>"
                                  style="background: <?= $event_color ?>22; border-left-color: <?= $event_color ?>;" 
                                  title="<?= htmlspecialchars($event['staff_name'] ?? '') ?> - <?= htmlspecialchars($event['work_description'] ?? $event['type_name']) ?>"
-                                 onclick="clickEvent('<?= htmlspecialchars($event_id) ?>', '<?= htmlspecialchars($event_type) ?>')">
+                                 onclick="clickEvent('<?= htmlspecialchars($event_id) ?>', '<?= htmlspecialchars($event_type) ?>', '<?= htmlspecialchars($event['target_url'] ?? '#') ?>')">
                                 <?php if ($time_str): ?>
                                 <span class="cal-event-time"><?= $time_str ?></span>
                                 <?php endif; ?>
@@ -1783,7 +1847,11 @@ function closeModal() {
 }
 
 // Click on event
-function clickEvent(eventId, eventType) {
+function clickEvent(eventId, eventType, targetUrl) {
+    if (targetUrl && targetUrl !== '#') {
+        window.location.href = targetUrl;
+        return;
+    }
     const match = eventId.toString().match(/\d+$/);
     const numericId = match ? match[0] : eventId;
     
@@ -1931,11 +1999,11 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    alert('✓ Event saved successfully!');
+                    alert('<i class="fas fa-check"></i> Event saved successfully!');
                     location.reload();
                 } else if (data.conflict) {
                     // Show conflict warning
-                    if (confirm('⚠ ' + data.message + '\n\nDo you want to save anyway? (Not recommended)')) {
+                    if (confirm('<i class="fas fa-exclamation-triangle"></i> ' + data.message + '\n\nDo you want to save anyway? (Not recommended)')) {
                         formData.append('force_save', '1');
                         // Retry with force flag
                         fetch('admin_calendar.php', {
@@ -1945,10 +2013,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         .then(r => r.json())
                         .then(data2 => {
                             if (data2.success) {
-                                alert('✓ Event saved with conflict warning!');
+                                alert('<i class="fas fa-check"></i> Event saved with conflict warning!');
                                 location.reload();
                             } else {
-                                alert('✗ Error: ' + (data2.message || 'Failed to save event'));
+                                alert('<i class="fas fa-times"></i> Error: ' + (data2.message || 'Failed to save event'));
                             }
                         });
                     } else {
@@ -1956,13 +2024,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         submitBtn.disabled = false;
                     }
                 } else {
-                    alert('✗ Error: ' + (data.message || 'Failed to save event'));
+                    alert('<i class="fas fa-times"></i> Error: ' + (data.message || 'Failed to save event'));
                     submitBtn.textContent = originalText;
                     submitBtn.disabled = false;
                 }
             })
             .catch(e => {
-                alert('✗ Error saving event');
+                alert('<i class="fas fa-times"></i> Error saving event');
                 console.error(e);
                 submitBtn.textContent = originalText;
                 submitBtn.disabled = false;
@@ -2456,4 +2524,39 @@ function handleEventTypeChange() {
     </div>
 </div>
 
+<!-- Auto-Refresh for Calendar Module (Shift 1 & Shift 2 Real-Time Sync) -->
+<script>
+(function() {
+    const REFRESH_INTERVAL_MS = 15000; // 15 seconds auto refresh
+
+    function isUserEditingOrModalOpen() {
+        // 1. Check if any modal is currently visible
+        const modals = document.querySelectorAll('#eventModal, #detailsModal, [id*="modal"], [id*="Modal"]');
+        for (const modal of modals) {
+            if (modal && modal.offsetParent !== null && window.getComputedStyle(modal).display !== 'none') {
+                return true;
+            }
+        }
+        // 2. Check if an input/textarea/select is focused
+        const active = document.activeElement;
+        if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) {
+            return true;
+        }
+        return false;
+    }
+
+    function checkAndAutoRefresh() {
+        if (!isUserEditingOrModalOpen()) {
+            console.log('[Calendar Sync] Auto-refreshing calendar data for Shift 1 & Shift 2 sync...');
+            window.location.reload();
+        } else {
+            console.log('[Calendar Sync] Refresh paused while user is editing or modal is open.');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        setInterval(checkAndAutoRefresh, REFRESH_INTERVAL_MS);
+    });
+})();
+</script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

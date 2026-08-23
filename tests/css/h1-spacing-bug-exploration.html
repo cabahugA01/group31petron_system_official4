@@ -84,7 +84,7 @@
                 testPassed = true;
                 resultHTML = `
                     <div class="test-result test-pass">
-                        ✓ TEST PASSED: Bug Condition Test
+                        <i class="fas fa-check"></i> TEST PASSED: Bug Condition Test
                     </div>
                     <div class="test-details">
                         <p><strong>Result:</strong> The .h1 class has the expected margin-top of 20px.</p>
@@ -97,7 +97,7 @@
                 testPassed = false;
                 resultHTML = `
                     <div class="test-result test-fail">
-                        ✗ TEST FAILED: Bug Condition Test
+                        <i class="fas fa-times"></i> TEST FAILED: Bug Condition Test
                     </div>
                     <div class="test-details">
                         <p><strong>Result:</strong> The .h1 class does NOT have the expected margin-top.</p>

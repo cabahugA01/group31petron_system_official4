@@ -26,13 +26,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             try {
                 $stmt = $pdo->prepare("INSERT INTO shifts (name, start_time, end_time, description) VALUES (?, ?, ?, ?)");
                 $stmt->execute([$name, $start_time, $end_time, $description]);
-                $msg = "✅ Shift added successfully!";
+                $msg = "Success: Shift added successfully!";
                 log_activity($pdo, $user['id'], 'Add Shift', "Added shift: $name", 'shift_management');
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         } else {
-            $msg = "❌ Error: Name, start time, and end time are required.";
+            $msg = "Error: Error: Name, start time, and end time are required.";
         }
     } elseif ($action === 'edit_shift') {
         $id = (int)$_POST['id'];
@@ -45,13 +45,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             try {
                 $stmt = $pdo->prepare("UPDATE shifts SET name = ?, start_time = ?, end_time = ?, description = ? WHERE id = ?");
                 $stmt->execute([$name, $start_time, $end_time, $description, $id]);
-                $msg = "✅ Shift updated successfully!";
+                $msg = "Success: Shift updated successfully!";
                 log_activity($pdo, $user['id'], 'Edit Shift', "Updated shift ID $id to: $name", 'shift_management');
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         } else {
-            $msg = "❌ Error: All fields are required.";
+            $msg = "Error: Error: All fields are required.";
         }
     } elseif ($action === 'delete_shift') {
         $id = (int)$_POST['id'];
@@ -65,18 +65,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $inUse = $stmt->fetch()['count'] > 0;
 
                 if ($inUse) {
-                    $msg = "⚠️ Warning: This shift is currently in use and cannot be deleted.";
+                    $msg = "Warning: Warning: This shift is currently in use and cannot be deleted.";
                 } else {
                     $stmt = $pdo->prepare("DELETE FROM shifts WHERE id = ?");
                     $stmt->execute([$id]);
-                    $msg = "✅ Shift deleted successfully!";
+                    $msg = "Success: Shift deleted successfully!";
                     log_activity($pdo, $user['id'], 'Delete Shift', "Deleted shift ID $id", 'shift_management');
                 }
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         } else {
-            $msg = "❌ Error: Invalid request.";
+            $msg = "Error: Error: Invalid request.";
         }
     } elseif ($action === 'toggle_shift') {
         $id = (int)$_POST['id'];
@@ -86,10 +86,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             try {
                 $stmt = $pdo->prepare("UPDATE shifts SET is_active = NOT is_active WHERE id = ?");
                 $stmt->execute([$id]);
-                $msg = "✅ Shift status updated successfully!";
+                $msg = "Success: Shift status updated successfully!";
                 log_activity($pdo, $user['id'], 'Toggle Shift', "Toggled shift ID $id", 'shift_management');
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         }
     }
@@ -220,7 +220,7 @@ require_once __DIR__ . '/../partials/header.php';
   <div class="modal-card">
     <div class="modal-head">
       <div class="modal-title">Add New Shift</div>
-      <button class="icon-btn" onclick="closeModal('addShiftModal')">✕</button>
+      <button class="icon-btn" onclick="closeModal('addShiftModal')"><i class="fas fa-times"></i></button>
     </div>
     <form method="post">
       <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>" />
@@ -259,7 +259,7 @@ require_once __DIR__ . '/../partials/header.php';
   <div class="modal-card">
     <div class="modal-head">
       <div class="modal-title">Edit Shift</div>
-      <button class="icon-btn" onclick="closeModal('editShiftModal')">✕</button>
+      <button class="icon-btn" onclick="closeModal('editShiftModal')"><i class="fas fa-times"></i></button>
     </div>
     <form method="post">
       <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>" />
@@ -299,7 +299,7 @@ require_once __DIR__ . '/../partials/header.php';
   <div class="modal-card">
     <div class="modal-head">
       <div class="modal-title">Confirm Delete</div>
-      <button class="icon-btn" onclick="closeModal('deleteModal')">✕</button>
+      <button class="icon-btn" onclick="closeModal('deleteModal')"><i class="fas fa-times"></i></button>
     </div>
     <div style="padding: 20px;">
       <p>Are you sure you want to delete this shift?</p>

@@ -26,9 +26,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $price = (float)($_POST['price'] ?? 0);
         
         if ($product_id <= 0 || $price < 0 || $cost < 0) {
-            $msg = "❌ Invalid product or price values.";
+            $msg = "Error: Invalid product or price values.";
         } elseif ($price < $cost) {
-            $msg = "❌ Selling price must be at least equal to cost.";
+            $msg = "Error: Selling price must be at least equal to cost.";
         } else {
             try {
                 // Check if product exists
@@ -37,16 +37,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $prod = $stmt->fetch(PDO::FETCH_ASSOC);
                 
                 if (!$prod) {
-                    $msg = "❌ Product not found.";
+                    $msg = "Error: Product not found.";
                 } else {
                     // Store proposed prices temporarily (don't apply yet)
                     // They'll only apply after manager approves
                     log_activity($pdo, $me['id'], 'Propose Price', "PROPOSED: Product ID $product_id | Old Cost: {$prod['old_cost']} → New Cost: $cost | Old Price: {$prod['old_price']} → New Price: $price");
                     
-                    $msg = "✅ Price proposal submitted! Awaiting manager approval.";
+                    $msg = "Success: Price proposal submitted! Awaiting manager approval.";
                 }
             } catch (Exception $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         }
     }
@@ -156,8 +156,8 @@ include __DIR__ . '/../partials/header.php';
   </div>
   
   <?php if($msg): ?>
-    <div class="pp-alert <?php echo strpos($msg, '✅') !== false ? 'pp-alert-success' : 'pp-alert-error'; ?>">
-      <i class="fas <?php echo strpos($msg, '✅') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
+    <div class="pp-alert <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'pp-alert-success' : 'pp-alert-error'; ?>">
+      <i class="fas <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
       <?php echo htmlspecialchars($msg); ?>
     </div>
   <?php endif; ?>
@@ -166,7 +166,7 @@ include __DIR__ . '/../partials/header.php';
   <?php if (!empty($staff_encoded)): ?>
   <div style="background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); border: 2px solid #d8b4fe; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-      <span style="font-size: 24px;">📦</span>
+      <span style="font-size: 24px;"><i class="fas fa-box"></i></span>
       <h3 style="margin: 0; color: #6b21a8; font-size: 18px; font-weight: 700;">Staff Recently Encoded Items (Last 7 Days)</h3>
     </div>
     <div style="max-height: 300px; overflow-y: auto; border: 1px solid #e9d5ff; border-radius: 8px; background: white;">

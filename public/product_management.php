@@ -1233,7 +1233,7 @@ function updateAddProfitPreview() {
     const profit = price - cost;
     el.textContent = profit >= 0
         ? `Profit margin: ₱${profit.toFixed(2)} per unit`
-        : `⚠ Selling below cost by ₱${Math.abs(profit).toFixed(2)}`;
+        : `<i class="fas fa-exclamation-triangle"></i> Selling below cost by ₱${Math.abs(profit).toFixed(2)}`;
     el.style.color = profit >= 0 ? '#002F70' : '#dc3545';
 }
 
@@ -1259,7 +1259,7 @@ function updateProfitPreview() {
     if (el) {
         el.textContent = profit >= 0
             ? `Profit margin: ₱${profit.toFixed(2)} per unit`
-            : `⚠ Selling below cost by ₱${Math.abs(profit).toFixed(2)}`;
+            : `<i class="fas fa-exclamation-triangle"></i> Selling below cost by ₱${Math.abs(profit).toFixed(2)}`;
         el.style.color = profit >= 0 ? '#002F70' : '#dc3545';
     }
 }
@@ -1281,7 +1281,7 @@ function viewProduct(productId) {
         document.getElementById('viewUnitPrice').textContent   = '₱' + price.toFixed(2);
         document.getElementById('viewProfit').textContent      = profit >= 0
             ? `+₱${profit.toFixed(2)} per unit`
-            : `⚠ Below cost by ₱${Math.abs(profit).toFixed(2)}`;
+            : `<i class="fas fa-exclamation-triangle"></i> Below cost by ₱${Math.abs(profit).toFixed(2)}`;
         document.getElementById('viewStockLevel').textContent  = product.quantity;
         document.getElementById('viewStatus').textContent      = product.status;
         document.getElementById('viewCreatedAt').textContent   = 'N/A';

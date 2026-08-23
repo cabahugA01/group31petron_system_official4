@@ -71,15 +71,15 @@ class MultiServiceManager {
                     }))
                 });
                 
-                console.log(`✅ Loaded ${serviceName}: ${result.data.length} parts`);
+                console.log(`<i class="fas fa-check-circle"></i> Loaded ${serviceName}: ${result.data.length} parts`);
                 
             } else {
-                console.error(`❌ Failed to load parts for ${serviceName}:`, result.error);
+                console.error(`<i class="fas fa-times-circle"></i> Failed to load parts for ${serviceName}:`, result.error);
                 this.showErrorState(serviceName);
             }
             
         } catch (error) {
-            console.error(`❌ Error loading ${serviceName}:`, error);
+            console.error(`<i class="fas fa-times-circle"></i> Error loading ${serviceName}:`, error);
             this.showErrorState(serviceName);
         }
     }
@@ -309,11 +309,11 @@ class MultiServiceManager {
             if (result.success) {
                 this.displayCostSummary(result);
             } else {
-                console.error('❌ Cost calculation failed:', result.error);
+                console.error('<i class="fas fa-times-circle"></i> Cost calculation failed:', result.error);
             }
             
         } catch (error) {
-            console.error('❌ Error calculating totals:', error);
+            console.error('<i class="fas fa-times-circle"></i> Error calculating totals:', error);
         }
     }
     
@@ -362,11 +362,11 @@ class MultiServiceManager {
     }
     
     showLoadingState(serviceName) {
-        console.log(`⏳ Loading ${serviceName}...`);
+        console.log(`<i class="fas fa-clock"></i> Loading ${serviceName}...`);
     }
     
     showErrorState(serviceName) {
-        console.error(`❌ Error loading ${serviceName}`);
+        console.error(`<i class="fas fa-times-circle"></i> Error loading ${serviceName}`);
     }
     
     getServiceKeyFromName(serviceName) {

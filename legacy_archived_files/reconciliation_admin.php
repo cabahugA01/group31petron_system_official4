@@ -32,7 +32,7 @@ try {
     $stmt->execute([$station_id]);
     $pending_finalization = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    $msg = "❌ Error loading records: " . $e->getMessage();
+    $msg = "Error: Error loading records: " . $e->getMessage();
 }
 
 // Handle selection of a record to finalize
@@ -55,11 +55,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         error_log("DEBUG: user_id=".$u['id'].", stored_pass=".substr($u['password_hash'] ?? '', 0, 10));
         
         if ($recon_id === 0) {
-            $msg = "❌ No reconciliation selected";
+            $msg = "Error: No reconciliation selected";
         } elseif ($physical_stock <= 0) {
-            $msg = "❌ Please enter a valid physical stock value (greater than 0)";
+            $msg = "Error: Please enter a valid physical stock value (greater than 0)";
         } elseif (empty($admin_password)) {
-            $msg = "❌ Admin password required to finalize";
+            $msg = "Error: Admin password required to finalize";
         } else {
             // Verify password: check session, then check database directly
             $pwd_from_session = $u['password_hash'] ?? '';
@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             error_log("DEBUG: Password check - entered: '$admin_password', session: '".substr($pwd_from_session, 0, 10)."', db: '".substr($db_pwd, 0, 10)."', match: ".($password_match ? 'YES' : 'NO'));
             
             if (!$password_match) {
-                $msg = "❌ Incorrect password";
+                $msg = "Error: Incorrect password";
             } else {
                 error_log("DEBUG: Password verification PASSED");
                 try {
@@ -84,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $recon = $stmt->fetch(PDO::FETCH_ASSOC);
                 
                 if (!$recon) {
-                    $msg = "❌ Reconciliation not found";
+                    $msg = "Error: Reconciliation not found";
                 } else {
                     // Calculate variance
                     $system_stock = ($recon['present_reading'] - $recon['previous_reading'] - ($recon['calibration'] ?? 0));
@@ -138,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     log_activity($pdo, $u['id'], 'Reconciliation Finalized', 
                         "ID: $recon_id | Fuel: {$recon['fuel_type_id']} | Physical: {$physical_stock}L | Variance: {$variance_liters}L | LOCKED");
                     
-                    $msg = "✅ Reconciliation finalized and LOCKED!";
+                    $msg = "Success: Reconciliation finalized and LOCKED!";
                     $selected_recon_id = null;
                     $selected_recon = null;
                     
@@ -154,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $pending_finalization = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 }
             } catch (Exception $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
             }
         }
@@ -279,7 +279,7 @@ try {
         
         <!-- Messages -->
         <?php if (!empty($msg)): ?>
-            <div class="alert <?php echo strpos($msg, '✅') === 0 ? 'alert-success' : 'alert-error'; ?>">
+            <div class="alert <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') === 0 ? 'alert-success' : 'alert-error'; ?>">
                 <?php echo htmlspecialchars($msg); ?>
             </div>
         <?php endif; ?>
@@ -317,13 +317,13 @@ try {
                                     <?php echo htmlspecialchars($recon['fuel_type_name'] ?? 'Unknown'); ?>
                                 </div>
                                 <div class="recon-card-details">
-                                    📅 Date: <?php echo date('M d, Y', strtotime($recon['reconciliation_date'])); ?>
+                                    <i class="fas fa-calendar-alt"></i> Date: <?php echo date('M d, Y', strtotime($recon['reconciliation_date'])); ?>
                                 </div>
                                 <div class="recon-card-details">
-                                    📊 System Stock: <?php echo number_format($recon['present_reading'] - $recon['previous_reading'] - ($recon['calibration'] ?? 0), 2); ?>L
+                                    <i class="fas fa-chart-bar"></i> System Stock: <?php echo number_format($recon['present_reading'] - $recon['previous_reading'] - ($recon['calibration'] ?? 0), 2); ?>L
                                 </div>
                                 <div class="recon-card-details">
-                                    ✓ Approved by Manager
+                                    <i class="fas fa-check"></i> Approved by Manager
                                 </div>
                                 <span class="badge badge-info" style="margin-top: 10px;">Ready for Admin</span>
                             </div>
@@ -420,11 +420,11 @@ try {
                         </div>
                         
                         <button type="submit" style="width: 100% !important; padding: 20px !important; margin-top: 30px !important; background: #003d7a !important; color: white !important; border: none !important; border-radius: 4px !important; font-weight: bold !important; font-size: 18px !important; cursor: pointer !important; display: block !important;">
-                            🔒 FINALIZE & LOCK REPORT
+                            <i class="fas fa-lock"></i> FINALIZE & LOCK REPORT
                         </button>
                         
                         <a href="?" style="width: 100% !important; padding: 20px !important; margin-top: 10px !important; background: #6c757d !important; color: white !important; border: none !important; border-radius: 4px !important; font-weight: bold !important; font-size: 18px !important; text-align: center !important; display: block !important; text-decoration: none !important;">
-                            ✕ CANCEL
+                            <i class="fas fa-times"></i> CANCEL
                         </a>
                     </form>
                 </div>

@@ -2973,6 +2973,24 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         
         
       </style>
+
+<style id="globalRedBadgeStyle">
+/* === GLOBAL ENFORCEMENT: ALL BADGES MUST BE RED (#dc2626 / #E30613) === */
+span[data-badge],
+span[data-sidebar-badge],
+.badge,
+#notificationBadge,
+.notif-badge,
+.sidebar-badge,
+.nav-badge,
+.cal-badge,
+.sub-badge,
+a.sidebar-sub-item span[data-badge] {
+    background-color: #dc2626 !important; /* Petron / System Vivid Red */
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+</style>
 </head>
 <body class="app" data-page="<?php echo htmlspecialchars($page_id); ?>" data-role="<?php echo htmlspecialchars($role); ?>">
 <!-- NUCLEAR-HEADER-FIX: Force header above any overlays and ensure clicks reach controls -->
@@ -5530,7 +5548,7 @@ require_once __DIR__ . '/rbac_menu.php';
                     if (count > 0) {
                         badge.textContent = count > 99 ? '99+' : count;
                         badge.style.display = 'block';
-                        badge.style.background = '#dc3545';
+                        badge.style.background = '#dc2626';
                     } else {
                         badge.style.display = 'none';
                     }
@@ -5634,7 +5652,7 @@ require_once __DIR__ . '/rbac_menu.php';
             generateAndRefresh();
 
             // Poll every 60 seconds for new alerts
-            setInterval(generateAndRefresh, 60000);
+            setInterval(generateAndRefresh, 15000);
         })();
 
         <?php else: ?>
@@ -5758,11 +5776,32 @@ require_once __DIR__ . '/rbac_menu.php';
                         if (cnt > 0) {
                             el.textContent = cnt > 99 ? '99+' : cnt;
                             el.style.display = 'flex';
+                            el.style.backgroundColor = '#dc2626';
+                            el.style.color = '#ffffff';
                         } else {
                             el.style.display = 'none';
                         }
                     });
                 }
+                // Automatically recalculate parent badges for sub-menus
+                document.querySelectorAll('[id^="sub-"]').forEach(container => {
+                    const parentLink = container.previousElementSibling;
+                    if (!parentLink) return;
+                    const parentBadgeSpan = parentLink.querySelector('span[data-badge]');
+                    if (!parentBadgeSpan) return;
+                    let sum = 0;
+                    container.querySelectorAll('a.sidebar-sub-item span[data-badge]').forEach(span => {
+                        if (span.style.display !== 'none') {
+                            sum += parseInt(span.textContent, 10) || 0;
+                        }
+                    });
+                    if (sum > 0) {
+                        parentBadgeSpan.textContent = sum > 99 ? '99+' : sum;
+                        parentBadgeSpan.style.display = 'flex';
+                    } else {
+                        parentBadgeSpan.style.display = 'none';
+                    }
+                });
             }
 
             // ── Load & render notifications (fast — no generator wait) ────────
@@ -5948,8 +5987,8 @@ require_once __DIR__ . '/rbac_menu.php';
             setTimeout(runGeneratorBackground, 800);
 
             // â”€â”€ Poll: count every 60s, generator every 5 min â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            setInterval(fetchUnreadCount, 60000);
-            setInterval(runGeneratorBackground, 300000);
+            setInterval(fetchUnreadCount, 15000);
+            setInterval(runGeneratorBackground, 30000);
 
         })();
         <?php endif; ?>

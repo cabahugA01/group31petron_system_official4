@@ -47,11 +47,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $_POST['action'] === 'process_shift
     if ($station_id && $shift) {
         $result = $shiftOps->process_shift_end($station_id, $shift, $me['id']);
         if ($result['success']) {
-            $msg = "✅ {$result['message']} ({$result['readings_processed']} readings processed)";
+            $msg = "Success: {$result['message']} ({$result['readings_processed']} readings processed)";
             // Refresh to show summary
             $_GET['view'] = 'summary';
         } else {
-            $msg = "❌ {$result['message']}";
+            $msg = "Error: {$result['message']}";
         }
     }
 }
@@ -278,7 +278,7 @@ if ($station_id && $shift) {
     <div class="container">
         <!-- Header -->
         <div class="header">
-            <h1>⏱️ Shift-End Processing</h1>
+            <h1><i class="fas fa-stopwatch"></i>️ Shift-End Processing</h1>
             <p>Process pump readings and deduct sales from fuel inventory</p>
         </div>
         
@@ -306,7 +306,7 @@ if ($station_id && $shift) {
         
         <!-- Messages -->
         <?php if ($msg): ?>
-            <div class="alert <?= strpos($msg, '✅') === 0 ? 'alert-success' : 'alert-error' ?>">
+            <div class="alert <?= strpos($msg, '<i class="fas fa-check-circle"></i>') === 0 ? 'alert-success' : 'alert-error' ?>">
                 <?= htmlspecialchars($msg) ?>
             </div>
         <?php endif; ?>
@@ -360,12 +360,12 @@ if ($station_id && $shift) {
                     <?php endforeach; ?>
                 </div>
                 
-                <button type="submit" class="btn btn-process">✓ Process Shift-End (Approve All)</button>
+                <button type="submit" class="btn btn-process"><i class="fas fa-check"></i> Process Shift-End (Approve All)</button>
             
             <?php elseif ($_GET['view'] === 'summary' && !empty($shift_summary)): ?>
                 <!-- Summary View -->
                 <div class="alert alert-success">
-                    ✅ Shift processing complete! All <?= count($shift_summary) ?> readings have been approved and stock has been updated.
+                    <i class="fas fa-check-circle"></i> Shift processing complete! All <?= count($shift_summary) ?> readings have been approved and stock has been updated.
                 </div>
                 
                 <div class="readings-container">
@@ -401,7 +401,7 @@ if ($station_id && $shift) {
                                 <div class="reading-value">--</div>
                             </div>
                             
-                            <span style="color: #28a745; font-size: 12px; font-weight: bold;">✓ APPROVED</span>
+                            <span style="color: #28a745; font-size: 12px; font-weight: bold;"><i class="fas fa-check"></i> APPROVED</span>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -441,7 +441,7 @@ if ($station_id && $shift) {
                 
                 <div class="readings-container">
                     <div class="empty-state">
-                        <div class="empty-state-icon">✓</div>
+                        <div class="empty-state-icon"><i class="fas fa-check"></i></div>
                         <h3>All Set!</h3>
                         <p>There are no pending readings to process for the selected shift.</p>
                     </div>

@@ -351,10 +351,10 @@ $products = $pdo->query("SELECT * FROM inventory_products ORDER BY category, pro
                         <i class="fas fa-plus me-2"></i>[+] New Delivery
                     </a>
                     <a href="#" class="quick-action-btn" onclick="generateHistoryReport()">
-                        <i class="fas fa-file-download me-2"></i>📄 History Report
+                        <i class="fas fa-file-download me-2"></i><i class="fas fa-file-alt"></i> History Report
                     </a>
                     <a href="#" class="quick-action-btn" onclick="openVarianceReview()">
-                        <i class="fas fa-exclamation-triangle me-2"></i>⚠️ Variance Review
+                        <i class="fas fa-exclamation-triangle me-2"></i><i class="fas fa-exclamation-triangle"></i> Variance Review
                     </a>
                 </div>
                 

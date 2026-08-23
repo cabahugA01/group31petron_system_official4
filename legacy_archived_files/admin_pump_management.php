@@ -72,9 +72,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $status = $_POST['status'] ?? 'active';
         
         if (!$pump_number) {
-            $msg = "❌ Error: Pump number is required.";
+            $msg = "Error: Error: Pump number is required.";
         } elseif (!$fuel_type_id) {
-            $msg = "❌ Error: Fuel type is required.";
+            $msg = "Error: Error: Fuel type is required.";
         } else {
             try {
                 // Check if pump number already exists for this station
@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$station_id, $pump_number]);
                 
                 if ($stmt->rowCount() > 0) {
-                    $msg = "❌ Error: Pump number already exists for this station.";
+                    $msg = "Error: Error: Pump number already exists for this station.";
                 } else {
                     // Insert new pump
                     $stmt = $pdo->prepare("INSERT INTO fuel_pumps (station_id, pump_number, fuel_type_id, status) VALUES (?, ?, ?, ?)");
@@ -94,10 +94,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $fuel_type = $stmt->fetch();
                     
                     log_activity($pdo, $me['id'], 'Add Pump', "Created Pump $pump_number with fuel type " . ($fuel_type['name'] ?? 'Unknown'), 'fuel_management');
-                    $msg = "✅ Pump $pump_number created successfully.";
+                    $msg = "Success: Pump $pump_number created successfully.";
                 }
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         }
     }
@@ -110,9 +110,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $calibration_value = trim($_POST['calibration_value'] ?? '');
         
         if (!$pump_id) {
-            $msg = "❌ Error: Pump ID is required.";
+            $msg = "Error: Error: Pump ID is required.";
         } elseif (!$fuel_type_id) {
-            $msg = "❌ Error: Fuel type is required.";
+            $msg = "Error: Error: Fuel type is required.";
         } else {
             try {
                 // Check if pump exists
@@ -121,19 +121,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pump = $stmt->fetch();
                 
                 if (!$pump) {
-                    $msg = "❌ Error: Pump not found.";
+                    $msg = "Error: Error: Pump not found.";
                 } else {
                     // Validate calibration_value if provided
                     $calibration_to_store = null;
                     if ($calibration_value !== '') {
                         if (!is_numeric($calibration_value)) {
-                            $msg = "❌ Error: Calibration value must be a number.";
+                            $msg = "Error: Error: Calibration value must be a number.";
                         } else {
                             $calibration_to_store = $calibration_value;
                         }
                     }
                     
-                    if (!isset($msg) || strpos($msg, '❌') === false) {
+                    if (!isset($msg) || strpos($msg, '<i class="fas fa-times-circle"></i>') === false) {
                         // Update pump
                         $stmt = $pdo->prepare("UPDATE fuel_pumps SET fuel_type_id = ?, status = ?, calibration_value = ? WHERE id = ?");
                         $stmt->execute([$fuel_type_id, $status, $calibration_to_store, $pump_id]);
@@ -148,11 +148,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $log_msg .= ", Calibration: $calibration_to_store";
                         }
                         log_activity($pdo, $me['id'], 'Edit Pump', $log_msg, 'fuel_management');
-                        $msg = "✅ Pump " . $pump['pump_number'] . " updated successfully.";
+                        $msg = "Success: Pump " . $pump['pump_number'] . " updated successfully.";
                     }
                 }
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         }
     }
@@ -160,12 +160,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // DELETE PUMP (Superadmin only)
     elseif ($action === 'delete_pump') {
         if (!$isSuper) {
-            $msg = "❌ Error: Only superadmin can delete pumps.";
+            $msg = "Error: Error: Only superadmin can delete pumps.";
         } else {
             $pump_id = $_POST['pump_id'] ?? '';
             
             if (!$pump_id) {
-                $msg = "❌ Error: Pump ID is required.";
+                $msg = "Error: Error: Pump ID is required.";
             } else {
                 try {
                     // Get pump details
@@ -174,17 +174,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pump = $stmt->fetch();
                     
                     if (!$pump) {
-                        $msg = "❌ Error: Pump not found.";
+                        $msg = "Error: Error: Pump not found.";
                     } else {
                         // Delete pump
                         $stmt = $pdo->prepare("DELETE FROM fuel_pumps WHERE id = ?");
                         $stmt->execute([$pump_id]);
                         
                         log_activity($pdo, $me['id'], 'Delete Pump', "Deleted Pump " . $pump['pump_number'], 'fuel_management');
-                        $msg = "✅ Pump " . $pump['pump_number'] . " deleted successfully.";
+                        $msg = "Success: Pump " . $pump['pump_number'] . " deleted successfully.";
                     }
                 } catch (PDOException $e) {
-                    $msg = "❌ Error: " . $e->getMessage();
+                    $msg = "Error: Error: " . $e->getMessage();
                 }
             }
         }
@@ -251,7 +251,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     <p>CONFIGURE AND MANAGE FUEL PUMPS FOR STATIONS</p>
     
     <?php if ($msg): ?>
-        <div class="alert <?php echo strpos($msg, '✅') === 0 ? 'alert-success' : 'alert-error'; ?>">
+        <div class="alert <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') === 0 ? 'alert-success' : 'alert-error'; ?>">
             <?php echo htmlspecialchars($msg); ?>
         </div>
     <?php endif; ?>

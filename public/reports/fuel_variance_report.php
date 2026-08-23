@@ -175,16 +175,16 @@ include __DIR__ . '/../partials/header.php';
                 foreach ($variance_data as $row):
                     // Determine status color
                     $status_color = '#28a745'; // Green - OK
-                    $status_text = '✓ OK';
+                    $status_text = '<i class="fas fa-check"></i> OK';
                     $status_bg = '#d4edda';
                     
                     if (abs($row['variance_percent']) > 5) {
                         $status_color = '#dc3545'; // Red - High variance
-                        $status_text = '⚠ High';
+                        $status_text = '<i class="fas fa-exclamation-triangle"></i> High';
                         $status_bg = '#f8d7da';
                     } elseif (abs($row['variance_percent']) > 2) {
                         $status_color = '#ffc107'; // Yellow - Medium variance
-                        $status_text = '⚠ Medium';
+                        $status_text = '<i class="fas fa-exclamation-triangle"></i> Medium';
                         $status_bg = '#fff3cd';
                     }
             ?>

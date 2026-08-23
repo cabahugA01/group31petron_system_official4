@@ -340,15 +340,162 @@ switch($current_view) {
         $view_title = $month_name;
 }
 
+// Get summary stats for panels
+$summary_stats = [
+    'today_events' => 0,
+    'today_shifts' => 0,
+    'today_deliveries' => 0,
+    'today_job_orders' => 0,
+    'week_pending' => 0,
+    'week_in_progress' => 0,
+    'week_completed' => 0,
+    'upcoming_count' => 0,
+    'conflicts' => []
+];
+
+try {
+    $today_date = date('Y-m-d');
+    $week_start = date('Y-m-d', strtotime('monday this week'));
+    $week_end = date('Y-m-d', strtotime('sunday this week'));
+    $upcoming_end = date('Y-m-d', strtotime('+3 days'));
+    
+    // Today's events count
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM staff_calendar_events
+        WHERE station_id = ? AND event_date = ? AND (staff_encoder_id = ? OR manager_assigned_id = ?)");
+    $stmt->execute([$station_id, $today_date, $user_id, $user_id]);
+    $summary_stats['today_events'] = $stmt->fetchColumn();
+    
+    // Today's shifts
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM staff_schedules WHERE scheduled_date = ? AND user_id = ?");
+    $stmt->execute([$today_date, $user_id]);
+    $summary_stats['today_shifts'] = $stmt->fetchColumn();
+    
+    // Today's deliveries
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND DATE(delivery_date) = ? AND encoded_by = ?");
+    $stmt->execute([$station_id, $today_date, $user_id]);
+    $summary_stats['today_deliveries'] = $stmt->fetchColumn();
+    
+    // Today's job orders
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND DATE(created_at) = ? AND created_by = ?");
+    $stmt->execute([$station_id, $today_date, $user_id]);
+    $summary_stats['today_job_orders'] = $stmt->fetchColumn();
+    
+    // Week status counts
+    $stmt = $pdo->prepare("SELECT status, COUNT(*) as cnt FROM staff_calendar_events
+        WHERE station_id = ? AND (staff_encoder_id = ? OR manager_assigned_id = ?) AND event_date BETWEEN ? AND ?
+        GROUP BY status");
+    $stmt->execute([$station_id, $user_id, $user_id, $week_start, $week_end]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $status = strtolower($row['status']);
+        if ($status === 'pending') $summary_stats['week_pending'] = $row['cnt'];
+        if ($status === 'approved' || $status === 'in_progress') $summary_stats['week_in_progress'] += $row['cnt'];
+        if ($status === 'completed') $summary_stats['week_completed'] = $row['cnt'];
+    }
+    
+    // Upcoming events (next 3 days)
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM staff_calendar_events
+        WHERE station_id = ? AND (staff_encoder_id = ? OR manager_assigned_id = ?) AND event_date BETWEEN ? AND ?");
+    $stmt->execute([$station_id, $user_id, $user_id, $today_date, $upcoming_end]);
+    $summary_stats['upcoming_count'] = $stmt->fetchColumn();
+    
+    // Check for schedule conflicts (overlapping events for same user on same day)
+    $stmt = $pdo->prepare("SELECT e1.event_date, e1.start_time, e1.end_time, e1.work_description,
+            e2.start_time as conflict_start, e2.end_time as conflict_end, e2.work_description as conflict_desc
+        FROM staff_calendar_events e1
+        JOIN staff_calendar_events e2 ON e1.event_date = e2.event_date AND e1.id < e2.id
+        WHERE e1.staff_encoder_id = ? AND e2.staff_encoder_id = ?
+        AND e1.start_time IS NOT NULL AND e2.start_time IS NOT NULL
+        AND (
+            (e1.start_time < e2.end_time AND e1.end_time > e2.start_time)
+            OR (e2.start_time < e1.end_time AND e2.end_time > e1.start_time)
+        )
+        AND e1.status != 'cancelled' AND e2.status != 'cancelled'
+        LIMIT 10");
+    $stmt->execute([$user_id, $user_id]);
+    $summary_stats['conflicts'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+// Month navigation
+$today = new DateTime();
+$month_offset = (int)($_GET['month_offset'] ?? 0);
+$current_view = $_GET['view'] ?? 'month'; // day, week, month, year
+
+$current_month = clone $today;
+$current_month->modify($month_offset . ' months');
+$current_month->modify('first day of this month');
+
+$month_name = $current_month->format('F Y');
+$prev_offset = $month_offset - 1;
+$next_offset = $month_offset + 1;
+$today_str = $today->format('Y-m-d');
+$current_month_str = $current_month->format('Y-m');
+
+// Get all days in month
+$first_day = clone $current_month;
+$last_day = clone $current_month;
+$last_day->modify('last day of this month');
+
+// Get calendar grid (include previous/next month days to fill weeks)
+$calendar_start = clone $first_day;
+$start_weekday = (int)$calendar_start->format('N'); // 1=Monday, 7=Sunday
+if ($start_weekday > 1) {
+    $calendar_start->modify('-' . ($start_weekday - 1) . ' days');
+}
+
+$calendar_end = clone $last_day;
+$end_weekday = (int)$calendar_end->format('N');
+if ($end_weekday < 7) {
+    $calendar_end->modify('+' . (7 - $end_weekday) . ' days');
+}
+
+// Build array of all dates to display
+$calendar_dates = [];
+$current_date = clone $calendar_start;
+while ($current_date <= $calendar_end) {
+    $calendar_dates[] = $current_date->format('Y-m-d');
+    $current_date->modify('+1 day');
+}
+
+// Prepare date ranges based on view
+switch($current_view) {
+    case 'day':
+        $view_start = $today_str;
+        $view_end = $today_str;
+        $view_title = $today->format('l, F j, Y');
+        break;
+    case 'week':
+        $week_start = clone $today;
+        $week_start->modify('sunday this week');
+        $week_end = clone $week_start;
+        $week_end->modify('+6 days');
+        $view_start = $week_start->format('Y-m-d');
+        $view_end = $week_end->format('Y-m-d');
+        $view_title = $week_start->format('M j') . ' - ' . $week_end->format('M j, Y');
+        break;
+    case 'year':
+        $year_start = clone $today;
+        $year_start->modify('first day of January ' . $today->format('Y'));
+        $year_end = clone $year_start;
+        $year_end->modify('last day of December ' . $today->format('Y'));
+        $view_start = $year_start->format('Y-m-d');
+        $view_end = $year_end->format('Y-m-d');
+        $view_title = $today->format('Y');
+        break;
+    default: // month
+        $view_start = $calendar_dates[0];
+        $view_end = end($calendar_dates);
+        $view_title = $month_name;
+}
+
 // Load events for the entire calendar range
 $month_events = [];
 $staff_list = [];
 $staff_colors = ['#039be5', '#7986cb', '#33b679', '#8e24aa', '#e67c73', '#f6bf26', '#f4511e', '#0b8043', '#d50000'];
 
 try {
-    // Load staff list with assigned colors
-    $staff_stmt = $pdo->prepare("SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant') AND status = 'Active' ORDER BY first_name, last_name");
-    $staff_stmt->execute([$station_id]);
+    // Load staff list with assigned colors (Logged-in staff ONLY)
+    $staff_stmt = $pdo->prepare("SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE id = ? AND status = 'Active'");
+    $staff_stmt->execute([$user_id]);
     $all_staff = $staff_stmt->fetchAll(PDO::FETCH_ASSOC);
     
     foreach ($all_staff as $idx => $staff) {
@@ -358,95 +505,247 @@ try {
             'color' => $color
         ];
     }
+} catch (Exception $e) {}
+// ── COMPLETE DEDUPLICATED STAFF CALENDAR ENGINE ────────────────────────────
+    
+    // Master Target URL Resolver for Direct Module Navigation on Event Click
+    $resolve_target_url = function($type_key, $id, $role = 'staff') {
+        $id_num = preg_replace('/[^0-9]/', '', (string)$id);
+        switch($type_key) {
+            case 'job_order':
+                if ($role === 'admin') return 'admin_all_transactions.php?search=JO-' . $id_num;
+                if ($role === 'manager') return 'manager_transactions_hub.php?tab=job_orders';
+                return 'staff_transactions_hub.php?tab=job_orders';
+            case 'merchandise_delivery':
+            case 'fuel_delivery':
+                if ($role === 'admin') return 'admin_fuel_transactions_oversight.php';
+                if ($role === 'manager') return 'deliveries_oversight.php';
+                return 'staff_transactions_hub.php?tab=deliveries';
+            case 'validation_task':
+            case 'validation_delivery':
+            case 'manager_approval':
+            case 'master_data_approval':
+            case 'admin_approval':
+                if ($role === 'admin') return 'admin_user_management.php';
+                return 'manager_fuel_transaction_validation.php';
+            case 'fuel_calibration':
+                if ($role === 'admin') return 'admin_calibration_review.php';
+                if ($role === 'manager') return 'manager_calibration_review.php';
+                return 'staff_fuel_adjustments.php';
+            case 'stock_request':
+            case 'restock_reminder':
+            case 'stock_alert':
+                if ($role === 'admin') return 'admin_inventory_management.php';
+                return 'inventory_management.php';
+            case 'report_schedule':
+                if ($role === 'admin') return 'admin_reports.php';
+                if ($role === 'manager') return 'manager_reports.php';
+                return 'staff_reports.php';
+            default:
+                return '#';
+        }
+    };
 
-    // Load calendar events (filtered by staff)
-    $stmt = $pdo->prepare("SELECT sce.*, et.type_name, et.type_key, et.icon_class, su.name AS staff_name, sce.staff_encoder_id, m.name AS manager_name
-        FROM staff_calendar_events sce
-        JOIN staff_event_types et ON sce.event_type_id = et.id
-        JOIN users su ON sce.staff_encoder_id = su.id
-        LEFT JOIN users m ON sce.manager_assigned_id = m.id
-        WHERE sce.station_id = ? AND (sce.staff_encoder_id = ? OR sce.manager_assigned_id = ?) AND sce.event_date BETWEEN ? AND ?
-        ORDER BY sce.event_date, sce.start_time");
-    $stmt->execute([$station_id, $user_id, $user_id, $view_start, $view_end]);
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $row['color'] = $staff_list[$row['staff_encoder_id']]['color'] ?? '#757575';
-        $row['manager_name'] = $row['manager_name'] ?? 'Not Assigned';
-        $month_events[$row['event_date']][] = $row;
-    }
+$seen_events = []; // Keeps track of unique [date][type_id] to prevent duplicates
 
-    // Auto-sync staff schedules/shifts (Own Shifts only)
+    // Helper closure to safely insert unique events
+    $add_unique_event = function($date, $event) use (&$month_events, &$seen_events, $resolve_target_url) {
+        if (!$date || !isset($event['id'])) return;
+        $key = (string)$event['id'];
+        if (isset($seen_events[$date][$key])) {
+            return; // Skip duplicate!
+        }
+        $seen_events[$date][$key] = true;
+        if (!isset($event['target_url'])) {
+            $event['target_url'] = $resolve_target_url($event['type_key'] ?? '', $event['id'] ?? '', 'staff');
+        }
+        $month_events[$date][] = $event;
+    };
+
+    // 1. Manual Staff Calendar Events (Filtered by station & staff)
     try {
-        $sh = $pdo->prepare("SELECT ss.id, ss.user_id, ss.shift, ss.scheduled_date, ss.status, u.name AS staff_name, s.start_time, s.end_time
+        $stmt = $pdo->prepare("
+            SELECT sce.*, et.type_name, et.type_key, et.icon_class, su.name AS staff_name,
+                   sce.staff_encoder_id, m.name AS manager_name
+            FROM staff_calendar_events sce
+            JOIN staff_event_types et ON sce.event_type_id = et.id
+            JOIN users su ON sce.staff_encoder_id = su.id
+            LEFT JOIN users m ON sce.manager_assigned_id = m.id
+            WHERE sce.station_id = ? 
+              AND (sce.staff_encoder_id = ? OR sce.manager_assigned_id = ?)
+              AND sce.event_date BETWEEN ? AND ?
+            ORDER BY sce.event_date, sce.start_time
+        ");
+        $stmt->execute([$station_id, $user_id, $user_id, $view_start, $view_end]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $row['color'] = $staff_list[$row['staff_encoder_id']]['color'] ?? '#039be5';
+            $row['manager_name'] = $row['manager_name'] ?? 'Not Assigned';
+            $add_unique_event($row['event_date'], $row);
+        }
+    } catch (Exception $e) {}
+
+    // 2. Job Orders (Assigned to, created by, or relevant to this staff)
+    try {
+        $jo = $pdo->prepare("
+            SELECT jo.id, jo.created_by, DATE(jo.created_at) AS event_date, jo.service_type,
+                   jo.status, u.name AS staff_name, jo.customer_name, m.name AS manager_name
+            FROM job_orders jo
+            JOIN users u ON jo.created_by = u.id
+            LEFT JOIN users m ON jo.validated_by = m.id
+            WHERE jo.station_id = ? 
+              AND (jo.created_by = ? OR jo.assigned_mechanic_id = ? OR jo.user_id = ?)
+              AND DATE(jo.created_at) BETWEEN ? AND ?
+        ");
+        $jo->execute([$station_id, $user_id, $user_id, $user_id, $view_start, $view_end]);
+        foreach ($jo->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $add_unique_event($r['event_date'], [
+                'id' => 'jo_'.$r['id'],
+                'type_name' => 'Job Order',
+                'type_key' => 'job_order',
+                'icon_class' => 'fas fa-wrench',
+                'staff_name' => $r['staff_name'],
+                'staff_encoder_id' => $r['created_by'],
+                'work_description' => 'JO #' . $r['id'] . ': ' . $r['service_type'] . ' (' . ($r['customer_name'] ?: 'Customer') . ')',
+                'status' => strtolower($r['status'] ?? 'pending'),
+                'color' => '#f59e0b',
+                'manager_name' => $r['manager_name'] ?? 'Assigned',
+                'auto_synced' => true
+            ]);
+        }
+    } catch (Exception $e) {}
+
+    // 3. Deliveries & Stock-In (Station-scoped merchandise & fuel deliveries)
+    try {
+        $dl = $pdo->prepare("
+            SELECT d.id, d.encoded_by, DATE(d.delivery_date) AS event_date, u.name AS staff_name,
+                   d.status, d.supplier, d.product, m.name AS manager_name
+            FROM deliveries_oversight d
+            JOIN users u ON d.encoded_by = u.id
+            LEFT JOIN users m ON d.manager_id = m.id
+            WHERE d.station_id = ? AND DATE(d.delivery_date) BETWEEN ? AND ?
+        ");
+        $dl->execute([$station_id, $view_start, $view_end]);
+        foreach ($dl->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $add_unique_event($r['event_date'], [
+                'id' => 'del_'.$r['id'],
+                'type_name' => 'Delivery / Stock-In',
+                'type_key' => 'merchandise_delivery',
+                'icon_class' => 'fas fa-box',
+                'staff_name' => $r['staff_name'],
+                'staff_encoder_id' => $r['encoded_by'],
+                'work_description' => 'Delivery: ' . $r['supplier'] . ' - ' . $r['product'],
+                'status' => strtolower($r['status'] ?? 'pending'),
+                'color' => '#06b6d4',
+                'manager_name' => $r['manager_name'] ?? 'Station Delivery',
+                'auto_synced' => true
+            ]);
+        }
+    } catch (Exception $e) {}
+
+    // 4. Fuel Deliveries (Station-scoped fuel delivery schedule)
+    try {
+        $fd = $pdo->prepare("
+            SELECT id, DATE(created_at) AS event_date, fuel_type, liters, status, supplier
+            FROM fuel_deliveries
+            WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
+        ");
+        $fd->execute([$station_id, $view_start, $view_end]);
+        foreach ($fd->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $add_unique_event($r['event_date'], [
+                'id' => 'fuel_del_'.$r['id'],
+                'type_name' => 'Fuel Delivery',
+                'type_key' => 'fuel_delivery',
+                'icon_class' => 'fas fa-gas-pump',
+                'staff_name' => 'Station Delivery',
+                'staff_encoder_id' => $user_id,
+                'work_description' => 'Fuel Delivery: ' . ($r['fuel_type'] ?: 'Fuel') . ' (' . number_format((float)($r['liters'] ?? 0), 2) . ' L)',
+                'status' => strtolower($r['status'] ?? 'pending'),
+                'color' => '#ef4444',
+                'auto_synced' => true
+            ]);
+        }
+    } catch (Exception $e) {}
+
+    // 5. Fuel Calibration & Reading Reminders
+    try {
+        $fc = $pdo->prepare("
+            SELECT id, DATE(calibration_date) AS event_date, fuel_type, status, technician_name
+            FROM fuel_calibration_records
+            WHERE station_id = ? AND DATE(calibration_date) BETWEEN ? AND ?
+        ");
+        $fc->execute([$station_id, $view_start, $view_end]);
+        foreach ($fc->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $add_unique_event($r['event_date'], [
+                'id' => 'calib_'.$r['id'],
+                'type_name' => 'Fuel Reading / Calibration',
+                'type_key' => 'fuel_calibration',
+                'icon_class' => 'fas fa-tachometer-alt',
+                'staff_name' => $r['technician_name'] ?: 'Technician',
+                'staff_encoder_id' => $user_id,
+                'work_description' => 'Meter Reading / Calibration: ' . ($r['fuel_type'] ?: 'Fuel Pump'),
+                'status' => strtolower($r['status'] ?? 'pending'),
+                'color' => '#6b7280',
+                'auto_synced' => true
+            ]);
+        }
+    } catch (Exception $e) {}
+
+    // 6. Stock Requests (Station Stock Requests)
+    try {
+        $sr = $pdo->prepare("
+            SELECT id, DATE(created_at) AS event_date, product_name, quantity, status
+            FROM stock_requests
+            WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
+        ");
+        $sr->execute([$station_id, $view_start, $view_end]);
+        foreach ($sr->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $add_unique_event($r['event_date'], [
+                'id' => 'stock_req_'.$r['id'],
+                'type_name' => 'Stock Request',
+                'type_key' => 'stock_request',
+                'icon_class' => 'fas fa-boxes',
+                'staff_name' => 'Station Request',
+                'staff_encoder_id' => $user_id,
+                'work_description' => 'Stock Request: ' . ($r['product_name'] ?: 'Item') . ' (Qty: ' . $r['quantity'] . ')',
+                'status' => strtolower($r['status'] ?? 'pending'),
+                'color' => '#8b5cf6',
+                'auto_synced' => true
+            ]);
+        }
+    } catch (Exception $e) {}
+
+    // 7. Staff Schedules / Shifts (Shift 1 Blue & Shift 2 Purple)
+    try {
+        $sh = $pdo->prepare("
+            SELECT ss.id, ss.user_id, ss.shift, ss.scheduled_date, ss.status, u.name AS staff_name,
+                   s.start_time, s.end_time
             FROM staff_schedules ss
             JOIN users u ON ss.user_id = u.id
             LEFT JOIN shifts s ON ss.shift = s.name
-            WHERE ss.user_id = ? AND ss.scheduled_date BETWEEN ? AND ?");
+            WHERE ss.user_id = ? AND ss.scheduled_date BETWEEN ? AND ?
+        ");
         $sh->execute([$user_id, $view_start, $view_end]);
         foreach ($sh->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $month_events[$r['scheduled_date']][] = [
+            $shift_txt = strtolower($r['shift'] ?? '');
+            // Shift 1 = Royal Blue (#2563eb), Shift 2 = Deep Purple (#9333ea)
+            $shift_color = (strpos($shift_txt, '1') !== false || strpos($shift_txt, 'morn') !== false) ? '#2563eb' : ((strpos($shift_txt, '2') !== false || strpos($shift_txt, 'after') !== false || strpos($shift_txt, 'night') !== false) ? '#9333ea' : '#0284c7');
+
+            $add_unique_event($r['scheduled_date'], [
                 'id' => 'shift_'.$r['id'],
-                'type_name' => 'Shift',
+                'type_name' => 'Shift Schedule (' . $r['shift'] . ')',
                 'type_key' => 'staff_shift',
                 'icon_class' => 'fas fa-clock',
                 'staff_name' => $r['staff_name'],
                 'staff_encoder_id' => $r['user_id'],
-                'work_description' => $r['staff_name'] . ' - ' . $r['shift'] . ' Shift',
-                'status' => strtolower($r['status'] ?? 'pending'),
-                'color' => $staff_list[$r['user_id']]['color'] ?? '#757575',
-                'start_time' => $r['start_time'] ?? '00:00',
-                'end_time' => $r['end_time'] ?? '00:00',
-                'manager_name' => 'System Auto-schedule',
+                'work_description' => $r['staff_name'] . ' — ' . $r['shift'] . ' Shift (' . ($r['start_time'] ?? '06:00') . ' - ' . ($r['end_time'] ?? '14:00') . ')',
+                'status' => strtolower($r['status'] ?? 'active'),
+                'color' => $shift_color,
+                'start_time' => $r['start_time'] ?? '06:00',
+                'end_time' => $r['end_time'] ?? '14:00',
                 'auto_synced' => true
-            ];
+            ]);
         }
     } catch (Exception $e) {}
-
-    // Auto-sync deliveries (encoded by this staff)
-    $dl = $pdo->prepare("SELECT d.id, d.encoded_by, DATE(d.delivery_date) AS event_date, u.name AS staff_name, d.status, d.supplier, d.product, m.name AS manager_name
-        FROM deliveries_oversight d
-        JOIN users u ON d.encoded_by = u.id
-        LEFT JOIN users m ON d.manager_id = m.id
-        WHERE d.station_id = ? AND d.encoded_by = ? AND DATE(d.delivery_date) BETWEEN ? AND ?");
-    $dl->execute([$station_id, $user_id, $view_start, $view_end]);
-    foreach ($dl->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $month_events[$r['event_date']][] = [
-            'id' => 'del_'.$r['id'],
-            'type_name' => 'Delivery',
-            'type_key' => 'merchandise_delivery',
-            'icon_class' => 'fas fa-box',
-            'staff_name' => $r['staff_name'],
-            'staff_encoder_id' => $r['encoded_by'],
-            'work_description' => $r['supplier'] . ' - ' . $r['product'],
-            'status' => strtolower($r['status'] ?? 'pending'),
-            'color' => $staff_list[$r['encoded_by']]['color'] ?? '#757575',
-            'manager_name' => $r['manager_name'] ?? 'Not Validated Yet',
-            'auto_synced' => true
-        ];
-    }
-
-    // Auto-sync job orders (assigned to or created by this staff)
-    $jo = $pdo->prepare("SELECT jo.id, jo.created_by, DATE(jo.created_at) AS event_date, jo.service_type, jo.status, u.name AS staff_name, jo.customer_name, m.name AS manager_name
-        FROM job_orders jo
-        JOIN users u ON jo.created_by = u.id
-        LEFT JOIN users m ON jo.validated_by = m.id
-        WHERE jo.station_id = ? AND (jo.created_by = ? OR jo.assigned_mechanic_id = ? OR jo.user_id = ?) AND DATE(jo.created_at) BETWEEN ? AND ?");
-    $jo->execute([$station_id, $user_id, $user_id, $user_id, $view_start, $view_end]);
-    foreach ($jo->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $month_events[$r['event_date']][] = [
-            'id' => 'jo_'.$r['id'],
-            'type_name' => 'Job Order',
-            'type_key' => 'job_order',
-            'icon_class' => 'fas fa-wrench',
-            'staff_name' => $r['staff_name'],
-            'staff_encoder_id' => $r['created_by'],
-            'work_description' => $r['service_type'] . ' - ' . $r['customer_name'],
-            'status' => strtolower($r['status'] ?? 'pending'),
-            'color' => $staff_list[$r['created_by']]['color'] ?? '#757575',
-            'manager_name' => $r['manager_name'] ?? 'Not Validated Yet',
-            'auto_synced' => true
-        ];
-    }
-} catch (Exception $e) {}
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -488,7 +787,7 @@ i.fas, i.far, i.fab, i.fa, i[class*="fa-"] {
 .cal-calendar-item { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 8px; cursor: pointer; font-size: 14px; color: #3c4043; }
 .cal-calendar-item:hover { background: #f1f3f4; }
 .cal-calendar-checkbox { width: 20px; height: 20px; border-radius: 3px; border: 2px solid; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; }
-.cal-calendar-checkbox.checked::before { content: '✓'; }
+.cal-calendar-checkbox.checked::before { content: '<i class="fas fa-check"></i>'; }
 
 /* Main content */
 .cal-main { flex: 1 1 auto; display: flex; flex-direction: column; overflow: hidden; width: calc(100% - 256px); min-width: 0; max-width: calc(100% - 256px); box-sizing: border-box; }
@@ -660,17 +959,7 @@ i.fas, i.far, i.fab, i.fa, i[class*="fa-"] {
             </div>
             <?php endif; ?>
         </div>
-
-        <!-- Staff color legend -->
-        <div class="cal-calendars">
-            <div class="cal-calendars-title">Staff</div>
-            <?php foreach($staff_list as $staff_id => $staff): ?>
-            <div class="cal-calendar-item" onclick="toggleStaff(<?= $staff_id ?>)">
-                <div class="cal-calendar-checkbox checked" style="background: <?= htmlspecialchars($staff['color']) ?>; border-color: <?= htmlspecialchars($staff['color']) ?>;"></div>
-                <div><?= htmlspecialchars($staff['name']) ?></div>
-            </div>
-            <?php endforeach; ?>
-        </div>
+        <!-- Sidebar end -->
     </div>
 
     <!-- Main calendar -->
@@ -786,7 +1075,7 @@ i.fas, i.far, i.fab, i.fa, i[class*="fa-"] {
                                  data-staff="<?= $staff_id ?>"
                                  style="background: <?= $event_color ?>22; border-left-color: <?= $event_color ?>;" 
                                  title="<?= htmlspecialchars($event['staff_name'] ?? '') ?> - <?= htmlspecialchars($event['work_description'] ?? $event['type_name']) ?>"
-                                 onclick="clickEvent('<?= htmlspecialchars($event_id) ?>', '<?= htmlspecialchars($event_type) ?>')">
+                                 onclick="clickEvent('<?= htmlspecialchars($event_id) ?>', '<?= htmlspecialchars($event_type) ?>', '<?= htmlspecialchars($event['target_url'] ?? '#') ?>')">
                                 <?php if ($time_str): ?>
                                 <span class="cal-event-time"><?= $time_str ?></span>
                                 <?php endif; ?>
@@ -1087,7 +1376,11 @@ function closeModal() {
 const allCalendarEvents = <?= json_encode($month_events) ?>;
 
 // Click on event
-function clickEvent(eventId, eventType) {
+function clickEvent(eventId, eventType, targetUrl) {
+    if (targetUrl && targetUrl !== '#') {
+        window.location.href = targetUrl;
+        return;
+    }
     const match = eventId.match(/\d+$/);
     const numericId = match ? match[0] : eventId;
     
@@ -1239,7 +1532,7 @@ function flagConflict(eventId, eventDate) {
     }
     
     // Save conflict notification / flag in system
-    alert("✓ Conflict has been flagged and reported to your Manager.");
+    alert("<i class="fas fa-check"></i> Conflict has been flagged and reported to your Manager.");
     closeDetailsModal();
 }
 
@@ -1277,11 +1570,11 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    alert('✓ Event saved successfully!');
+                    alert('<i class="fas fa-check"></i> Event saved successfully!');
                     location.reload();
                 } else if (data.conflict) {
                     // Show conflict warning
-                    if (confirm('⚠ ' + data.message + '\n\nDo you want to save anyway? (Not recommended)')) {
+                    if (confirm('<i class="fas fa-exclamation-triangle"></i> ' + data.message + '\n\nDo you want to save anyway? (Not recommended)')) {
                         formData.append('force_save', '1');
                         // Retry with force flag
                         fetch('staff_calendar.php', {
@@ -1291,10 +1584,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         .then(r => r.json())
                         .then(data2 => {
                             if (data2.success) {
-                                alert('✓ Event saved with conflict warning!');
+                                alert('<i class="fas fa-check"></i> Event saved with conflict warning!');
                                 location.reload();
                             } else {
-                                alert('✗ Error: ' + (data2.message || 'Failed to save event'));
+                                alert('<i class="fas fa-times"></i> Error: ' + (data2.message || 'Failed to save event'));
                             }
                         });
                     } else {
@@ -1302,13 +1595,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         submitBtn.disabled = false;
                     }
                 } else {
-                    alert('✗ Error: ' + (data.message || 'Failed to save event'));
+                    alert('<i class="fas fa-times"></i> Error: ' + (data.message || 'Failed to save event'));
                     submitBtn.textContent = originalText;
                     submitBtn.disabled = false;
                 }
             })
             .catch(e => {
-                alert('✗ Error saving event');
+                alert('<i class="fas fa-times"></i> Error saving event');
                 console.error(e);
                 submitBtn.textContent = originalText;
                 submitBtn.disabled = false;
@@ -1631,4 +1924,39 @@ function handleEventTypeChange() {
     </div>
 </div>
 
+<!-- Auto-Refresh for Calendar Module (Shift 1 & Shift 2 Real-Time Sync) -->
+<script>
+(function() {
+    const REFRESH_INTERVAL_MS = 15000; // 15 seconds auto refresh
+
+    function isUserEditingOrModalOpen() {
+        // 1. Check if any modal is currently visible
+        const modals = document.querySelectorAll('#eventModal, #detailsModal, [id*="modal"], [id*="Modal"]');
+        for (const modal of modals) {
+            if (modal && modal.offsetParent !== null && window.getComputedStyle(modal).display !== 'none') {
+                return true;
+            }
+        }
+        // 2. Check if an input/textarea/select is focused
+        const active = document.activeElement;
+        if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) {
+            return true;
+        }
+        return false;
+    }
+
+    function checkAndAutoRefresh() {
+        if (!isUserEditingOrModalOpen()) {
+            console.log('[Calendar Sync] Auto-refreshing calendar data for Shift 1 & Shift 2 sync...');
+            window.location.reload();
+        } else {
+            console.log('[Calendar Sync] Refresh paused while user is editing or modal is open.');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        setInterval(checkAndAutoRefresh, REFRESH_INTERVAL_MS);
+    });
+})();
+</script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

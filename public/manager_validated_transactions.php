@@ -2787,16 +2787,16 @@ function submitAdjustment() {
             closeAdjustModal();
             const oldTot = parseFloat(data.old_total || 0).toFixed(2);
             const newTot = parseFloat(data.new_total || 0).toFixed(2);
-            showToast('✔ Transaction adjusted successfully! ₱' + oldTot + ' → ₱' + newTot, 'success');
+            showToast('<i class="fas fa-check"></i> Transaction adjusted successfully! ₱' + oldTot + ' → ₱' + newTot, 'success');
             setTimeout(() => location.reload(), 1400);
         } else {
-            showToast('❌ ' + (data.error || 'Adjustment failed. Please try again.'), 'error');
+            showToast('<i class="fas fa-times-circle"></i> ' + (data.error || 'Adjustment failed. Please try again.'), 'error');
         }
     })
     .catch(err => {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-save"></i> Save Adjustment';
-        showToast('❌ Connection error. Please try again.', 'error');
+        showToast('<i class="fas fa-times-circle"></i> Connection error. Please try again.', 'error');
     });
 }
 
@@ -3211,20 +3211,20 @@ function submitVoidNew() {
         if (data.success) {
             const txnIdStr = document.getElementById('voidInfoTxnId')?.innerText || _voidRowId;
             closeVoidModal();
-            showToast('✔ Transaction ' + txnIdStr + ' successfully voided! Inventory restored.', 'success');
+            showToast('<i class="fas fa-check"></i> Transaction ' + txnIdStr + ' successfully voided! Inventory restored.', 'success');
             
             setTimeout(() => {
                 location.reload();
             }, 1200);
         } else {
-            showToast('❌ ' + (data.error || 'Failed to void transaction.'), 'error');
+            showToast('<i class="fas fa-times-circle"></i> ' + (data.error || 'Failed to void transaction.'), 'error');
         }
     })
     .catch(err => {
         console.error(err);
         confirmBtn.disabled = false;
         confirmBtn.innerHTML = '<i class="fas fa-ban"></i> Confirm Void';
-        showToast('❌ ' + (err.message || 'Error processing request.'), 'error');
+        showToast('<i class="fas fa-times-circle"></i> ' + (err.message || 'Error processing request.'), 'error');
     });
 }
 

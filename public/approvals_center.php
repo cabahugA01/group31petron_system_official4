@@ -81,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $batch = $stmt->fetch(PDO::FETCH_ASSOC);
                 
                 if (!$batch) {
-                    $msg = "❌ Batch not found or already processed.";
+                    $msg = "Error: Batch not found or already processed.";
                 } else {
                     // NOTE: Do NOT change batch status to 'received' yet
                     // Keep it 'pending' until pricing is confirmed
@@ -160,13 +160,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     log_activity($pdo, $me['id'], 'Receiving Batch Verified', "Batch {$batch['batch_number']} verified and inventory updated by {$me['name']}", $_SERVER['REMOTE_ADDR']);
                     
                     $pdo->commit();
-                    $msg = "✅ Batch {$batch['batch_number']} verified! Inventory updated. Now proceed to pricing.";
+                    $msg = "Success: Batch {$batch['batch_number']} verified! Inventory updated. Now proceed to pricing.";
                     header("Location: pricing_received_items.php?batch={$batch_id}");
                     exit;
                 }
             } catch (Exception $e) {
                 $pdo->rollBack();
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         }
         
@@ -175,7 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $reason = trim($_POST['reason'] ?? '');
             
             if (strlen($reason) < 10) {
-                $msg = "❌ Rejection reason must be at least 10 characters.";
+                $msg = "Error: Rejection reason must be at least 10 characters.";
             } else {
                 try {
                     $pdo->beginTransaction();
@@ -186,7 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $batch = $stmt->fetch(PDO::FETCH_ASSOC);
                     
                     if (!$batch) {
-                        $msg = "❌ Batch not found or already processed.";
+                        $msg = "Error: Batch not found or already processed.";
                     } else {
                         // Update batch to rejected
                         $stmt_update = $pdo->prepare("
@@ -207,13 +207,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         log_activity($pdo, $me['id'], 'Receiving Batch Rejected', "Batch {$batch['batch_number']} rejected: {$reason}", $_SERVER['REMOTE_ADDR']);
                         
                         $pdo->commit();
-                        $msg = "✅ Batch {$batch['batch_number']} rejected.";
+                        $msg = "Success: Batch {$batch['batch_number']} rejected.";
                         header("Location: approvals_center.php?tab=receiving");
                         exit;
                     }
                 } catch (Exception $e) {
                     $pdo->rollBack();
-                    $msg = "❌ Error: " . $e->getMessage();
+                    $msg = "Error: Error: " . $e->getMessage();
                 }
             }
         }
@@ -276,7 +276,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <?php if (!empty($msg)): ?>
-<div style="margin: 20px auto; max-width: 1200px; padding: 15px; border-radius: 8px; <?php echo strpos($msg, '✅') !== false ? 'background: #d4edda; color: #155724; border: 1px solid #c3e6cb;' : 'background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;'; ?>">
+<div style="margin: 20px auto; max-width: 1200px; padding: 15px; border-radius: 8px; <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'background: #d4edda; color: #155724; border: 1px solid #c3e6cb;' : 'background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;'; ?>">
     <?php echo $msg; ?>
 </div>
 <?php endif; ?>

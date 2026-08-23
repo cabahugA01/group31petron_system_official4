@@ -476,7 +476,7 @@ include __DIR__ . '/../partials/header.php';
 
     <!-- Flash Message -->
     <?php if ($msg): ?>
-    <div class="alert <?php echo (strpos($msg, '❌') !== false || stripos($msg, 'error') !== false) ? 'alert-error' : 'alert-success'; ?>">
+    <div class="alert <?php echo (strpos($msg, '<i class="fas fa-times-circle"></i>') !== false || stripos($msg, 'error') !== false) ? 'alert-error' : 'alert-success'; ?>">
         <?php echo htmlspecialchars($msg); ?>
     </div>
     <?php endif; ?>

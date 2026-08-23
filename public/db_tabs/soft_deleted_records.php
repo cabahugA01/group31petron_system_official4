@@ -92,7 +92,7 @@ global $pdo, $config;
         </div>
         <div class="modal-body">
             <div class="alert alert-danger">
-                <strong>⚠️ WARNING:</strong> This action will permanently delete records and cannot be undone!
+                <strong><i class="fas fa-exclamation-triangle"></i> WARNING:</strong> This action will permanently delete records and cannot be undone!
             </div>
             <p>Select records to permanently purge:</p>
             <div id="purgeContent"></div>
@@ -568,7 +568,7 @@ function confirmPurge() {
         return;
     }
     
-    const confirmMessage = `⚠️ DANGER: You are about to permanently delete ${recordIds.length} record(s).\n\nThis action cannot be undone and will permanently remove all selected data from the system.\n\nAre you absolutely sure you want to continue?`;
+    const confirmMessage = `<i class="fas fa-exclamation-triangle"></i> DANGER: You are about to permanently delete ${recordIds.length} record(s).\n\nThis action cannot be undone and will permanently remove all selected data from the system.\n\nAre you absolutely sure you want to continue?`;
     
     if (confirm(confirmMessage)) {
         fetch('../backend/api/soft_deleted_records.php', {
@@ -608,7 +608,7 @@ function restoreSingleRecord(tableName, recordId) {
 }
 
 function purgeSingleRecord(tableName, recordId) {
-    const confirmMessage = `⚠️ DANGER: You are about to permanently delete this record.\n\nThis action cannot be undone.\n\nAre you absolutely sure you want to continue?`;
+    const confirmMessage = `<i class="fas fa-exclamation-triangle"></i> DANGER: You are about to permanently delete this record.\n\nThis action cannot be undone.\n\nAre you absolutely sure you want to continue?`;
     
     if (confirm(confirmMessage)) {
         // Implementation for single record purge

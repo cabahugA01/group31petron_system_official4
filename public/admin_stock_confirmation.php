@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $notes = $_POST['notes'] ?? '';
         
         if (empty($item_ids)) {
-            $msg = "❌ No items to confirm.";
+            $msg = "Error: No items to confirm.";
         } else {
             try {
                 $pdo->beginTransaction();
@@ -42,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $batch = $stmt->fetch(PDO::FETCH_ASSOC);
                 
                 if (!$batch) {
-                    $msg = "❌ Batch not found or not ready for confirmation.";
+                    $msg = "Error: Batch not found or not ready for confirmation.";
                 } else {
                     $items_confirmed = 0;
                     $total_quantity = 0;
@@ -166,18 +166,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $stmt_batch->execute([$me['id'], $batch_id]);
                         
                         log_activity($pdo, $me['id'], 'Stock Confirmation', "Batch {$batch['batch_number']} fully confirmed. Added $items_confirmed items ($total_quantity pcs) to inventory with cost/price.", $_SERVER['REMOTE_ADDR']);
-                        $msg = "✅ Batch {$batch['batch_number']} fully confirmed! All $items_confirmed items added to inventory.";
+                        $msg = "Success: Batch {$batch['batch_number']} fully confirmed! All $items_confirmed items added to inventory.";
                     } else {
                         // Partially confirmed - keep as received
                         log_activity($pdo, $me['id'], 'Stock Confirmation', "Batch {$batch['batch_number']} partially confirmed. $items_confirmed items ($total_quantity pcs) added to inventory.", $_SERVER['REMOTE_ADDR']);
-                        $msg = "✅ Partially confirmed $items_confirmed items ($total_quantity pcs). Batch remains for remaining items.";
+                        $msg = "Success: Partially confirmed $items_confirmed items ($total_quantity pcs). Batch remains for remaining items.";
                     }
                     
                     $pdo->commit();
                 }
             } catch (Exception $e) {
                 $pdo->rollBack();
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         }
     }
@@ -187,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $reason = trim($_POST['reason'] ?? '');
         
         if (strlen($reason) < 10) {
-            $msg = "❌ Reason must be at least 10 characters.";
+            $msg = "Error: Reason must be at least 10 characters.";
         } else {
             try {
                 $pdo->beginTransaction();
@@ -198,7 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $batch = $stmt->fetch(PDO::FETCH_ASSOC);
                 
                 if (!$batch) {
-                    $msg = "❌ Batch not found.";
+                    $msg = "Error: Batch not found.";
                 } else {
                     // Update batch back to pending
                     $stmt_update = $pdo->prepare("
@@ -219,11 +219,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     log_activity($pdo, $me['id'], 'Batch Returned to Pending', "Batch {$batch['batch_number']} returned. Reason: $reason", $_SERVER['REMOTE_ADDR']);
                     
                     $pdo->commit();
-                    $msg = "✅ Batch {$batch['batch_number']} returned to pending status.";
+                    $msg = "Success: Batch {$batch['batch_number']} returned to pending status.";
                 }
             } catch (Exception $e) {
                 $pdo->rollBack();
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         }
     }
@@ -316,8 +316,8 @@ include __DIR__ . '/../partials/header.php';
     </div>
     
     <?php if ($msg): ?>
-        <div style="padding: 16px 20px; border-radius: 12px; margin-bottom: 24px; background: <?php echo strpos($msg, '✅') !== false ? '#e6f4ea' : '#fee2e2'; ?>; color: <?php echo strpos($msg, '✅') !== false ? '#065f46' : '#dc2626'; ?>; border: 1px solid <?php echo strpos($msg, '✅') !== false ? '#a7f3d0' : '#fecaca'; ?>; display: flex; align-items: center; gap: 10px;">
-            <i class="fas <?php echo strpos($msg, '✅') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
+        <div style="padding: 16px 20px; border-radius: 12px; margin-bottom: 24px; background: <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? '#e6f4ea' : '#fee2e2'; ?>; color: <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? '#065f46' : '#dc2626'; ?>; border: 1px solid <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? '#a7f3d0' : '#fecaca'; ?>; display: flex; align-items: center; gap: 10px;">
+            <i class="fas <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
             <?php echo htmlspecialchars($msg); ?>
         </div>
     <?php endif; ?>

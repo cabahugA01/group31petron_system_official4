@@ -381,7 +381,7 @@ header('Content-Type: text/html; charset=utf-8');
     <!-- No Print Buttons -->
     <div class="no-print">
         <button class="btn-print" onclick="window.print()">Print</button>
-        <button class="btn-close" onclick="window.close()">✖ Close Window</button>
+        <button class="btn-close" onclick="window.close()"><i class="fas fa-times"></i> Close Window</button>
     </div>
     
     <!-- Report Header -->
@@ -485,7 +485,7 @@ header('Content-Type: text/html; charset=utf-8');
     <!-- Low Stock Items Section -->
     <?php if (!empty($low_stock_items)): ?>
     <div class="alert-section">
-        <h3>⚠ LOW STOCK ITEMS</h3>
+        <h3><i class="fas fa-exclamation-triangle"></i> LOW STOCK ITEMS</h3>
         <table>
             <thead>
                 <tr>
@@ -514,7 +514,7 @@ header('Content-Type: text/html; charset=utf-8');
     <!-- Critical Items Section -->
     <?php if (!empty($critical_items)): ?>
     <div class="alert-section">
-        <h3>🚨 CRITICAL ITEMS</h3>
+        <h3><i class="fas fa-bell text-danger"></i> CRITICAL ITEMS</h3>
         <table>
             <thead>
                 <tr>

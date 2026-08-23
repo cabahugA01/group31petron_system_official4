@@ -324,7 +324,7 @@ include __DIR__ . '/../partials/header.php';
                                 ?>
                                 <span style="color: <?php echo $status_color; ?>; font-weight: bold;"><?php echo $status; ?></span>
                                 <?php if ($was_out_of_stock && $stock > 0): ?>
-                                    <span style="color: #17a2b8; font-size: 0.8em; margin-left: 5px;">📦 Auto-stocked</span>
+                                    <span style="color: #17a2b8; font-size: 0.8em; margin-left: 5px;"><i class="fas fa-box"></i> Auto-stocked</span>
                                 <?php endif; ?>
                             </td>
                             <td class="cost-column">₱<?php echo number_format($item['cost'], 2); ?></td>

@@ -324,7 +324,7 @@ body,html{overflow-x:hidden;max-width:100%;}
 .inv-stat-card[data-filter]{cursor:pointer;user-select:none;}
 .inv-stat-card[data-filter]:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.12);border-color:#94a3b8;}
 .inv-stat-card.card-active{border-width:2px!important;box-shadow:0 4px 14px rgba(0,0,0,.15)!important;}
-.inv-stat-card.card-active .inv-stat-label::after{content:' ✕ (click to reset)';font-size:9px;opacity:.75;}
+.inv-stat-card.card-active .inv-stat-label::after{content:' <i class="fas fa-times"></i> (click to reset)';font-size:9px;opacity:.75;}
 .inv-stat-info{display:flex;flex-direction:column;}
 .inv-stat-label{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;}
 .inv-stat-val{font-size:20px;font-weight:700;color:#1e293b;}
@@ -1893,23 +1893,23 @@ function updateAdjActionDetection() {
 
     if (type === 'Damaged Product' || type === 'Expired Product' || type === 'Missing Item') {
         detectedAction = 'Decrease';
-        badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;"><i class="fas fa-minus-circle"></i> ➖ Inventory Adjustment (Decrease)</div>';
-        if (hint) hint.innerText = '⚡ Auto-detected: Inventory Adjustment (Decrease) • Reason: ' + type;
+        badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;"><i class="fas fa-minus-circle"></i> <i class="fas fa-minus"></i> Inventory Adjustment (Decrease)</div>';
+        if (hint) hint.innerText = '<i class="fas fa-bolt"></i> Auto-detected: Inventory Adjustment (Decrease) • Reason: ' + type;
     } else if (type === 'Returned Item' || type === 'Return to Inventory') {
         detectedAction = 'Increase';
-        badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; color:#16a34a; font-weight:800; font-size:13px;"><i class="fas fa-plus-circle"></i> ➕ Inventory Adjustment (Increase)</div>';
-        if (hint) hint.innerText = '⚡ Auto-detected: Inventory Adjustment (Increase) • Reason: ' + type;
+        badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; color:#16a34a; font-weight:800; font-size:13px;"><i class="fas fa-plus-circle"></i> <i class="fas fa-plus"></i> Inventory Adjustment (Increase)</div>';
+        if (hint) hint.innerText = '<i class="fas fa-bolt"></i> Auto-detected: Inventory Adjustment (Increase) • Reason: ' + type;
     } else if (type === 'Physical Count') {
         if (!isNaN(qtyVal)) {
             calcQtyChange = qtyVal - stock;
             if (calcQtyChange > 0) {
                 detectedAction = 'Increase';
-                badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; color:#16a34a; font-weight:800; font-size:13px;"><i class="fas fa-plus-circle"></i> ➕ Inventory Adjustment (Increase)</div>';
-                if (hint) hint.innerText = '⚡ Auto-detected: Inventory Adjustment (Increase) • Physical Count (' + qtyVal + ') > Current Stock (' + stock + ') → Increase by +' + calcQtyChange;
+                badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; color:#16a34a; font-weight:800; font-size:13px;"><i class="fas fa-plus-circle"></i> <i class="fas fa-plus"></i> Inventory Adjustment (Increase)</div>';
+                if (hint) hint.innerText = '<i class="fas fa-bolt"></i> Auto-detected: Inventory Adjustment (Increase) • Physical Count (' + qtyVal + ') > Current Stock (' + stock + ') → Increase by +' + calcQtyChange;
             } else if (calcQtyChange < 0) {
                 detectedAction = 'Decrease';
-                badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;"><i class="fas fa-minus-circle"></i> ➖ Inventory Adjustment (Decrease)</div>';
-                if (hint) hint.innerText = '⚡ Auto-detected: Inventory Adjustment (Decrease) • Physical Count (' + qtyVal + ') < Current Stock (' + stock + ') → Decrease by ' + Math.abs(calcQtyChange);
+                badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;"><i class="fas fa-minus-circle"></i> <i class="fas fa-minus"></i> Inventory Adjustment (Decrease)</div>';
+                if (hint) hint.innerText = '<i class="fas fa-bolt"></i> Auto-detected: Inventory Adjustment (Decrease) • Physical Count (' + qtyVal + ') < Current Stock (' + stock + ') → Decrease by ' + Math.abs(calcQtyChange);
             } else {
                 detectedAction = 'None';
                 badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:6px; color:#475569; font-weight:700; font-size:13px;"><i class="fas fa-minus"></i> No Stock Change (Matched)</div>';
@@ -1926,11 +1926,11 @@ function updateAdjActionDetection() {
         var manualDir = optSelect ? optSelect.value : 'Decrease';
         detectedAction = manualDir;
         if (manualDir === 'Increase') {
-            badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; color:#16a34a; font-weight:800; font-size:13px;"><i class="fas fa-plus-circle"></i> ➕ Inventory Adjustment (Increase)</div>';
+            badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; color:#16a34a; font-weight:800; font-size:13px;"><i class="fas fa-plus-circle"></i> <i class="fas fa-plus"></i> Inventory Adjustment (Increase)</div>';
         } else {
-            badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;"><i class="fas fa-minus-circle"></i> ➖ Inventory Adjustment (Decrease)</div>';
+            badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;"><i class="fas fa-minus-circle"></i> <i class="fas fa-minus"></i> Inventory Adjustment (Decrease)</div>';
         }
-        if (hint) hint.innerText = '⚡ Auto-detected: Inventory Adjustment (' + manualDir + ') • Reason: ' + (type || 'Custom adjustment');
+        if (hint) hint.innerText = '<i class="fas fa-bolt"></i> Auto-detected: Inventory Adjustment (' + manualDir + ') • Reason: ' + (type || 'Custom adjustment');
     } else {
         detectedAction = 'Decrease';
         badgeHtml = '<div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; color:#64748b; font-weight:600; font-size:13px;">Select Adjustment Type</div>';
@@ -2073,7 +2073,7 @@ function submitAdjustmentForm(e) {
                     <input type="hidden" id="adj_action" name="adjustment_action" value="Decrease">
                     <div id="adj_action_display" style="min-height:36px; display:flex; align-items:center;">
                         <div style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;">
-                            <i class="fas fa-minus-circle"></i> ➖ Inventory Adjustment (Decrease)
+                            <i class="fas fa-minus-circle"></i> <i class="fas fa-minus"></i> Inventory Adjustment (Decrease)
                         </div>
                     </div>
                     <small id="adj_action_hint" style="color:#64748b; font-size:11px; margin-top:4px; display:block; font-weight:600;"></small>
@@ -2084,8 +2084,8 @@ function submitAdjustmentForm(e) {
                             <i class="fas fa-arrows-alt-v"></i> Select Stock Action Direction:
                         </label>
                         <select id="adj_manual_direction" onchange="updateAdjActionDetection()" style="width:100%; padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; color:#0f172a;">
-                            <option value="Decrease">➖ Inventory Adjustment (Decrease)</option>
-                            <option value="Increase">➕ Inventory Adjustment (Increase)</option>
+                            <option value="Decrease"><i class="fas fa-minus"></i> Inventory Adjustment (Decrease)</option>
+                            <option value="Increase"><i class="fas fa-plus"></i> Inventory Adjustment (Increase)</option>
                         </select>
                     </div>
                 </div>

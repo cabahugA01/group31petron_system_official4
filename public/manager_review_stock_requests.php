@@ -32,10 +32,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($req && !empty($notes)) {
                 // Log manager review in activity logs
                 log_activity($pdo, $me['id'], 'Review Stock Request', "Stock Request #$rid | Product: {$req['product_name']} | Qty: {$req['qty']} | Review: $notes");
-                $msg = "✅ Review recorded. Awaiting Admin approval.";
+                $msg = "Success: Review recorded. Awaiting Admin approval.";
             }
         } catch (Exception $e) {
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
 }
@@ -132,7 +132,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="mr-wrapper">
   <div class="mr-header">
     <div class="mr-header-content">
-      <div class="mr-header-icon">✓</div>
+      <div class="mr-header-icon"><i class="fas fa-check"></i></div>
       <div>
         <h1>Review Stock Requests</h1>
       </div>
@@ -140,15 +140,15 @@ include __DIR__ . '/../partials/header.php';
   </div>
   
   <?php if($msg): ?>
-    <div class="mr-alert <?php echo strpos($msg, '✅') !== false ? 'mr-alert-success' : 'mr-alert-error'; ?>">
-      <i class="fas <?php echo strpos($msg, '✅') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
+    <div class="mr-alert <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'mr-alert-success' : 'mr-alert-error'; ?>">
+      <i class="fas <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
       <?php echo htmlspecialchars($msg); ?>
     </div>
   <?php endif; ?>
   
   <?php if(empty($requests)): ?>
     <div class="mr-empty">
-      <div class="mr-empty-icon">📋</div>
+      <div class="mr-empty-icon"><i class="fas fa-clipboard-list"></i></div>
       <div style="font-size: 16px; font-weight: 500;">No pending stock requests</div>
       <div style="font-size: 13px; margin-top: 6px;">All requests have been processed or approved by Admin.</div>
     </div>
@@ -205,7 +205,7 @@ include __DIR__ . '/../partials/header.php';
   <?php endif; ?>
   
   <div style="margin-top: 40px; padding: 20px; background: #f0fdf4; border-left: 4px solid #059669; border-radius: 8px;">
-    <strong style="color: #047857;">📌 Manager Role:</strong>
+    <strong style="color: #047857;"><i class="fas fa-thumbtack"></i> Manager Role:</strong>
     <ul style="margin-top: 8px; margin-left: 20px; color: #047857; font-size: 13px; line-height: 1.8;">
       <li>Review stock requests from Operations Staff</li>
       <li>Verify quantity is justified and aligned with operational needs</li>

@@ -194,7 +194,7 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .status-active::before {
-    content: '✅';
+    content: '<i class="fas fa-check-circle"></i>';
 }
 
 .status-inactive { 
@@ -203,7 +203,7 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .status-inactive::before {
-    content: '❌';
+    content: '<i class="fas fa-times-circle"></i>';
 }
 
 .action-buttons {
@@ -466,7 +466,7 @@ include __DIR__ . '/../partials/header.php';
                 <option value="inactive">Inactive</option>
             </select>
             
-            <input type="text" class="filter-input" placeholder="🔍 Search users..." id="searchInput">
+            <input type="text" class="filter-input" placeholder="<i class="fas fa-search"></i> Search users..." id="searchInput">
         </div>
 
         <div class="table-container">
@@ -495,7 +495,7 @@ include __DIR__ . '/../partials/header.php';
                         <td>
                             <span class="status-badge status-<?php echo htmlspecialchars($user['status']); ?>">
                                 <?php 
-                                $statusIcon = $user['status'] === 'active' ? '✅' : '❌';
+                                $statusIcon = $user['status'] === 'active' ? '<i class="fas fa-check-circle"></i>' : '<i class="fas fa-times-circle"></i>';
                                 echo $statusIcon . ' ' . ucfirst(htmlspecialchars($user['status'])); 
                                 ?>
                             </span>

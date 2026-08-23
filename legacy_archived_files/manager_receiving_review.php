@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $batch = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$batch) {
-                $msg = "❌ Batch not found or already processed.";
+                $msg = "Error: Batch not found or already processed.";
             } else {
                 // Update batch to received
                 $stmt_update = $pdo->prepare("
@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } catch (Exception $e) {
             $pdo->rollBack();
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
     
@@ -73,7 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $reason = trim($_POST['reason'] ?? '');
         
         if (strlen($reason) < 10) {
-            $msg = "❌ Rejection reason must be at least 10 characters.";
+            $msg = "Error: Rejection reason must be at least 10 characters.";
         } else {
             try {
                 $pdo->beginTransaction();
@@ -84,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $batch = $stmt->fetch(PDO::FETCH_ASSOC);
                 
                 if (!$batch) {
-                    $msg = "❌ Batch not found or already processed.";
+                    $msg = "Error: Batch not found or already processed.";
                 } else {
                     // Update batch to rejected
                     $stmt_update = $pdo->prepare("
@@ -105,11 +105,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     log_activity($pdo, $me['id'], 'Receiving Batch Rejected', "Batch {$batch['batch_number']} rejected. Reason: $reason", $_SERVER['REMOTE_ADDR']);
                     
                     $pdo->commit();
-                    $msg = "✅ Batch {$batch['batch_number']} rejected successfully.";
+                    $msg = "Success: Batch {$batch['batch_number']} rejected successfully.";
                 }
             } catch (Exception $e) {
                 $pdo->rollBack();
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         }
     }
@@ -184,7 +184,7 @@ include __DIR__ . '/../partials/header.php';
             </p>
             <div style="margin-top: 8px; padding: 8px 12px; background: #e8f0fb; border-left: 4px solid #002F70; border-radius: 4px; font-size: 12px; color: #002F70;">
                 <i class="fas fa-shield-alt"></i> 
-                <strong>Validation Checks:</strong> Physical count ✓ | Product codes ✓ | Batch numbers ✓ | Supplier match ✓ | Flag discrepancies ❌
+                <strong>Validation Checks:</strong> Physical count <i class="fas fa-check"></i> | Product codes <i class="fas fa-check"></i> | Batch numbers <i class="fas fa-check"></i> | Supplier match <i class="fas fa-check"></i> | Flag discrepancies <i class="fas fa-times-circle"></i>
             </div>
         </div>
         
@@ -199,8 +199,8 @@ include __DIR__ . '/../partials/header.php';
     </div>
     
     <?php if ($msg): ?>
-        <div style="padding: 16px 20px; border-radius: 12px; margin-bottom: 24px; background: <?php echo strpos($msg, '✅') !== false ? '#e6f4ea' : '#fee2e2'; ?>; color: <?php echo strpos($msg, '✅') !== false ? '#065f46' : '#dc2626'; ?>; border: 1px solid <?php echo strpos($msg, '✅') !== false ? '#a7f3d0' : '#fecaca'; ?>; display: flex; align-items: center; gap: 10px;">
-            <i class="fas <?php echo strpos($msg, '✅') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
+        <div style="padding: 16px 20px; border-radius: 12px; margin-bottom: 24px; background: <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? '#e6f4ea' : '#fee2e2'; ?>; color: <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? '#065f46' : '#dc2626'; ?>; border: 1px solid <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? '#a7f3d0' : '#fecaca'; ?>; display: flex; align-items: center; gap: 10px;">
+            <i class="fas <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
             <?php echo htmlspecialchars($msg); ?>
         </div>
     <?php endif; ?>

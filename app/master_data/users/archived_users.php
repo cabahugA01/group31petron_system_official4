@@ -30,11 +30,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             // Log restoration
             log_activity($pdo, $me['id'], 'Restore User', "Restored deleted user #$id");
-            $msg = "✅ User restored successfully. The user can now log in again.";
+            $msg = "Success: User restored successfully. The user can now log in again.";
         }
         
     } catch (Exception $e) {
-        $msg = "❌ " . $e->getMessage();
+        $msg = "Error: " . $e->getMessage();
     }
 }
 
@@ -64,7 +64,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <?php if($msg): ?>
-<div class="card" style="padding:15px; margin-bottom:20px; background: <?php echo strpos($msg, '❌') !== false ? '#f8d7da' : '#d4edda'; ?>; color: <?php echo strpos($msg, '❌') !== false ? '#721c24' : '#155724'; ?>;">
+<div class="card" style="padding:15px; margin-bottom:20px; background: <?php echo strpos($msg, '<i class="fas fa-times-circle"></i>') !== false ? '#f8d7da' : '#d4edda'; ?>; color: <?php echo strpos($msg, '<i class="fas fa-times-circle"></i>') !== false ? '#721c24' : '#155724'; ?>;">
     <?php echo $msg; ?>
 </div>
 <?php endif; ?>

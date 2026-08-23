@@ -226,11 +226,11 @@ class StationManagement {
         
         let icon = '';
         if (status === 'active') {
-            icon = '✅';
+            icon = 'Active';
         } else if (status === 'maintenance') {
-            icon = '⚠️';
+            icon = '<i class="fas fa-exclamation-triangle"></i>';
         } else if (status === 'inactive') {
-            icon = '❌';
+            icon = 'Inactive';
         }
         
         badge.innerHTML = `<span class="status-icon"></span>${icon} ${status.charAt(0).toUpperCase() + status.slice(1)}`;

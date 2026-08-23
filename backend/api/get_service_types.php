@@ -97,10 +97,10 @@ try {
     exit;
 }
 
-$method = $_SERVER['REQUEST_METHOD'];
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 // ── GET: return approved and pending service types ───────────────────────────
-if ($method === 'GET') {
+if ($method === 'GET' || empty($method)) {
     $rows = $pdo->query("
         SELECT id, service_key, service_name, category, service_price, min_price, max_price,
                price_description, pricing_notes, icon_class, color_class, status

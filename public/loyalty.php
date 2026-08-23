@@ -42,13 +42,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$points, $customer_id, $points]);
                 
                 $pdo->commit();
-                $msg = "✅ Points " . ($transaction_type === 'earn' ? 'earned' : 'redeemed') . " successfully!";
+                $msg = "Success: Points " . ($transaction_type === 'earn' ? 'earned' : 'redeemed') . " successfully!";
             } catch (Exception $e) {
                 $pdo->rollBack();
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         } else {
-            $msg = "❌ Please fill in all required fields.";
+            $msg = "Error: Please fill in all required fields.";
         }
     }
 }
@@ -137,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <?php if(isset($msg)): ?>
-    <div class="alert <?php echo strpos($msg, '✅') !== false ? 'alert-success' : 'alert-error'; ?>" style="margin-bottom:16px;">
+    <div class="alert <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'alert-success' : 'alert-error'; ?>" style="margin-bottom:16px;">
         <?php echo htmlspecialchars($msg); ?>
     </div>
 <?php endif; ?>

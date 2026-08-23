@@ -129,7 +129,7 @@
         console.log('');
 
         if (passedTests < totalTests) {
-            console.log('✗ TEST FAILED (EXPECTED on unfixed code)');
+            console.log('<i class="fas fa-times"></i> TEST FAILED (EXPECTED on unfixed code)');
             console.log('Counterexamples found:');
             results.filter(r => !r.passed).forEach(r => {
                 console.log(`  - ${r.name}`);
@@ -139,7 +139,7 @@
             console.log('BUG CONFIRMED: All .h1 elements have 0px top margin instead of 20px');
             console.log('This causes cramped appearance on superadmin pages');
         } else {
-            console.log('✓ ALL TESTS PASSED');
+            console.log('<i class="fas fa-check"></i> ALL TESTS PASSED');
             console.log('Bug fix confirmed: .h1 elements now have proper 20px top margin');
         }
 
@@ -150,7 +150,7 @@
         results.forEach(result => {
             html += `
                 <div class="test-case ${result.passed ? 'pass' : 'fail'}">
-                    <div class="test-title">${result.passed ? '✓' : '✗'} ${result.name}</div>
+                    <div class="test-title">${result.passed ? '<i class="fas fa-check"></i>' : '<i class="fas fa-times"></i>'} ${result.name}</div>
                     <div class="test-detail">Expected: ${result.expected}, Got: ${result.actual}</div>
                 </div>
             `;
@@ -158,7 +158,7 @@
 
         html += `
             <div class="summary ${passedTests === totalTests ? 'all-pass' : 'has-fail'}">
-                ${passedTests === totalTests ? '✓' : '✗'} ${passedTests}/${totalTests} tests passed
+                ${passedTests === totalTests ? '<i class="fas fa-check"></i>' : '<i class="fas fa-times"></i>'} ${passedTests}/${totalTests} tests passed
             </div>
         `;
 

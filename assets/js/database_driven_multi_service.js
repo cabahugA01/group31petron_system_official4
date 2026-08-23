@@ -67,15 +67,15 @@ class DatabaseDrivenMultiServiceManager {
                     }))
                 });
                 
-                console.log(`✅ Loaded ${serviceName} with database pricing: ${serviceData.parts.length} parts, Total: ₱${serviceData.total_cost.toFixed(2)}`);
+                console.log(`<i class="fas fa-check-circle"></i> Loaded ${serviceName} with database pricing: ${serviceData.parts.length} parts, Total: ₱${serviceData.total_cost.toFixed(2)}`);
                 
             } else {
-                console.error(`❌ Failed to load ${serviceName} with database pricing:`, result.error);
+                console.error(`<i class="fas fa-times-circle"></i> Failed to load ${serviceName} with database pricing:`, result.error);
                 this.showErrorState(serviceName);
             }
             
         } catch (error) {
-            console.error(`❌ Error loading ${serviceName} from database:`, error);
+            console.error(`<i class="fas fa-times-circle"></i> Error loading ${serviceName} from database:`, error);
             this.showErrorState(serviceName);
         }
     }
@@ -303,13 +303,13 @@ class DatabaseDrivenMultiServiceManager {
             
             if (result.success) {
                 this.displayDatabaseDrivenCostSummary(result);
-                console.log('✅ Database-driven cost calculation completed:', result.summary);
+                console.log('<i class="fas fa-check-circle"></i> Database-driven cost calculation completed:', result.summary);
             } else {
-                console.error('❌ Database-driven cost calculation failed:', result.error);
+                console.error('<i class="fas fa-times-circle"></i> Database-driven cost calculation failed:', result.error);
             }
             
         } catch (error) {
-            console.error('❌ Error calculating totals with database pricing:', error);
+            console.error('<i class="fas fa-times-circle"></i> Error calculating totals with database pricing:', error);
         }
     }
     
@@ -346,7 +346,7 @@ class DatabaseDrivenMultiServiceManager {
                             <div class="parts-summary">
                                 ${service.parts_details.map(part => `
                                     <small class="part-detail">
-                                        ${part.from_inventory ? '📦' : '💾'} ${part.part_name} × ${part.quantity} = ₱${part.total_cost.toFixed(2)}
+                                        ${part.from_inventory ? '<i class="fas fa-box"></i>' : '💾'} ${part.part_name} × ${part.quantity} = ₱${part.total_cost.toFixed(2)}
                                     </small>
                                 `).join('')}
                             </div>
@@ -363,17 +363,17 @@ class DatabaseDrivenMultiServiceManager {
                 <span>Total Services: ${result.summary.total_services}</span>
                 <span>Total Service Fees: ₱${result.summary.total_service_fees.toFixed(2)}</span>
                 <span>Total Parts Cost: ₱${result.summary.total_parts_cost.toFixed(2)}</span>
-                <span>Pricing Source: Database Driven ✅</span>
+                <span>Pricing Source: Database Driven <i class="fas fa-check-circle"></i></span>
             </div>
         `;
     }
     
     showLoadingState(serviceName) {
-        console.log(`⏳ Loading ${serviceName} from database...`);
+        console.log(`<i class="fas fa-clock"></i> Loading ${serviceName} from database...`);
     }
     
     showErrorState(serviceName) {
-        console.error(`❌ Error loading ${serviceName} from database`);
+        console.error(`<i class="fas fa-times-circle"></i> Error loading ${serviceName} from database`);
     }
     
     getServiceKeyFromName(serviceName) {
@@ -415,14 +415,14 @@ class DatabaseDrivenMultiServiceManager {
             const result = await response.json();
             
             if (result.success) {
-                console.log('✅ Database pricing verification:', result.summary);
+                console.log('<i class="fas fa-check-circle"></i> Database pricing verification:', result.summary);
                 return result;
             } else {
-                console.error('❌ Database pricing verification failed:', result.error);
+                console.error('<i class="fas fa-times-circle"></i> Database pricing verification failed:', result.error);
                 return null;
             }
         } catch (error) {
-            console.error('❌ Error verifying database pricing:', error);
+            console.error('<i class="fas fa-times-circle"></i> Error verifying database pricing:', error);
             return null;
         }
     }

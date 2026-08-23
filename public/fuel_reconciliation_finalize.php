@@ -265,7 +265,7 @@ include __DIR__ . '/../partials/header.php';
   
   <?php if(empty($reconciliations)): ?>
     <div class="ff-empty">
-      <div style="font-size: 48px; margin-bottom: 12px;">✓</div>
+      <div style="font-size: 48px; margin-bottom: 12px;"><i class="fas fa-check"></i></div>
       <div style="font-size: 16px; font-weight: 500;">No reconciliations to finalize</div>
       <div style="font-size: 13px; margin-top: 6px; opacity: 0.7;">Waiting for manager validation before finalization.</div>
     </div>

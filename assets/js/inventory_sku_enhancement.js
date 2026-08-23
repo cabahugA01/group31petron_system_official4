@@ -1,7 +1,7 @@
 
 // Enhance inventory display to show SKU and stock for Car Battery items
 function enhanceInventoryDisplay() {
-    console.log("🔧 Enhancing inventory display for Car Battery items");
+    console.log("<i class="fas fa-wrench"></i> Enhancing inventory display for Car Battery items");
     
     const tableRows = document.querySelectorAll("table tr");
     tableRows.forEach(row => {

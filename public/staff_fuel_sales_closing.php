@@ -679,7 +679,7 @@ async function saveClosingData() {
 
         if (result.success) {
             const targetUrl = result.report_url || 'staff_transactions_hub.php?section=fuel&closing_saved=1';
-            alert('✅ Fuel Sales Closing saved successfully.');
+            alert('<i class="fas fa-check-circle"></i> Fuel Sales Closing saved successfully.');
             window.location.href = targetUrl;
         } else {
             alert('Error: ' + (result.message || 'Failed to save closing.'));

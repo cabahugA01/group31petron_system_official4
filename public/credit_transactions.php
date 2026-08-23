@@ -74,10 +74,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // NOTE: Balance is updated only upon Admin Approval
         
             $pdo->commit();
-            $msg = "✅ Credit transaction submitted for approval.";
+            $msg = "Success: Credit transaction submitted for approval.";
         } catch (Exception $e) {
             $pdo->rollBack();
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
     elseif ($action === 'approve' && $isAdmin) {
@@ -100,12 +100,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $updSale->execute([$sale_id]);
 
                 log_activity($pdo, $me['id'], 'Approve Credit', "Approved credit sale #$sale_id for ₱{$sale['total']}");
-                $msg = "✅ Transaction approved. Customer balance updated.";
+                $msg = "Success: Transaction approved. Customer balance updated.";
             }
             $pdo->commit();
         } catch (Exception $e) {
             $pdo->rollBack();
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
     elseif ($action === 'reject' && $isAdmin) {
@@ -113,9 +113,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $pdo->prepare("UPDATE sales SET status = 'Rejected' WHERE id = ?")->execute([$sale_id]);
             log_activity($pdo, $me['id'], 'Reject Credit', "Rejected credit sale #$sale_id");
-            $msg = "⚠️ Transaction rejected.";
+            $msg = "Warning: Transaction rejected.";
         } catch (Exception $e) {
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
     elseif ($action === 'adjust_terms' && $isAdmin) {
@@ -123,8 +123,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $new_due_date = $_POST['due_date'];
         try {
             $pdo->prepare("UPDATE sales SET due_date = ? WHERE id = ?")->execute([$new_due_date, $sale_id]);
-            $msg = "✅ Terms adjusted.";
-        } catch (Exception $e) { $msg = "❌ Error: " . $e->getMessage(); }
+            $msg = "Success: Terms adjusted.";
+        } catch (Exception $e) { $msg = "Error: Error: " . $e->getMessage(); }
     }
     elseif ($action === 'mark_paid' && $isAdmin) {
         $customer_id = $_POST['customer_id'];
@@ -132,8 +132,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $pdo->prepare("UPDATE customers SET current_balance = current_balance - ? WHERE id = ?")->execute([$amount, $customer_id]);
             log_activity($pdo, $me['id'], 'Payment Received', "Recorded payment of ₱$amount for customer #$customer_id");
-            $msg = "✅ Payment recorded.";
-        } catch (Exception $e) { $msg = "❌ Error: " . $e->getMessage(); }
+            $msg = "Success: Payment recorded.";
+        } catch (Exception $e) { $msg = "Error: Error: " . $e->getMessage(); }
     }
 }
 
@@ -270,15 +270,15 @@ include __DIR__ . '/../partials/header.php';
                             <form method="post" style="display:inline;">
                                 <input type="hidden" name="action" value="approve">
                                 <input type="hidden" name="sale_id" value="<?php echo $t['id']; ?>">
-                                <button type="submit" class="btn small success" title="Approve">✅</button>
+                                <button type="submit" class="btn small success" title="Approve"><i class="fas fa-check-circle"></i></button>
                             </form>
                             <form method="post" style="display:inline;">
                                 <input type="hidden" name="action" value="reject">
                                 <input type="hidden" name="sale_id" value="<?php echo $t['id']; ?>">
-                                <button type="submit" class="btn small danger" title="Reject">❌</button>
+                                <button type="submit" class="btn small danger" title="Reject"><i class="fas fa-times-circle"></i></button>
                             </form>
                         <?php endif; ?>
-                        <button class="btn small ghost" onclick="adjustTerms(<?php echo $t['id']; ?>, '<?php echo $t['due_date']; ?>')" title="Adjust Terms">✏️</button>
+                        <button class="btn small ghost" onclick="adjustTerms(<?php echo $t['id']; ?>, '<?php echo $t['due_date']; ?>')" title="Adjust Terms"><i class="fas fa-pencil-alt"></i>️</button>
                     </td>
                 </tr>
                 <?php endforeach; ?>

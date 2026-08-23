@@ -3,7 +3,7 @@
  * Merchandise Stock Adjustments API (Step 8 & 9)
  * Workflow:
  * 1. Manager creates adjustment -> Status: Pending Admin Approval
- * 2. Admin reviews -> ✅ Approve (updates inventory & logs movement) or ❌ Reject
+ * 2. Admin reviews -> <i class="fas fa-check-circle"></i> Approve (updates inventory & logs movement) or <i class="fas fa-times-circle"></i> Reject
  */
 
 header('Content-Type: application/json; charset=utf-8');

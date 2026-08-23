@@ -15,10 +15,10 @@ if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
 
 /* ── Flash messages from redirect ── */
 $flash_messages = [
-    'received'     => '✓ Fuel delivery received and submitted for Manager Validation. Check status below.',
-    'discrepancy'  => '⚠ Variance detected! Delivery was flagged for Manager review. Please monitor status.',
-    'manual_saved' => '✓ Manual fuel delivery saved successfully and submitted for Manager Validation.',
-    'resubmitted'  => '✓ Fuel delivery resubmitted successfully. Awaiting Manager Validation.',
+    'received'     => '<i class="fas fa-check"></i> Fuel delivery received and submitted for Manager Validation. Check status below.',
+    'discrepancy'  => '<i class="fas fa-exclamation-triangle"></i> Variance detected! Delivery was flagged for Manager review. Please monitor status.',
+    'manual_saved' => '<i class="fas fa-check"></i> Manual fuel delivery saved successfully and submitted for Manager Validation.',
+    'resubmitted'  => '<i class="fas fa-check"></i> Fuel delivery resubmitted successfully. Awaiting Manager Validation.',
 ];
 $msg_key  = trim($_GET['msg'] ?? '');
 $msg      = $flash_messages[$msg_key] ?? '';

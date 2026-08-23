@@ -226,7 +226,7 @@ class ManualServiceInput {
                 alert('Manual service type and parts saved successfully!');
                 document.querySelector('.manual-service-dialog').remove();
                 this.displayManualParts(serviceName, parts);
-                console.log('✅ Manual service saved:', result);
+                console.log('<i class="fas fa-check-circle"></i> Manual service saved:', result);
             } else {
                 alert('Error saving manual service: ' + result.error);
             }

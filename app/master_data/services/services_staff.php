@@ -42,12 +42,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // Log activity
                 log_activity($pdo, $me['id'], 'Add Service', "Added service #$service_id: $service_description", 'services');
                 
-                $msg = "✅ Service entry added successfully! Status: Pending (Awaiting Admin review)";
+                $msg = "Success: Service entry added successfully! Status: Pending (Awaiting Admin review)";
             } catch (PDOException $e) {
-                $msg = "❌ Error: " . $e->getMessage();
+                $msg = "Error: Error: " . $e->getMessage();
             }
         } else {
-            $msg = "❌ Error: Service description is required.";
+            $msg = "Error: Error: Service description is required.";
         }
     }
     
@@ -63,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $service = $stmt->fetch();
         
         if (!$service) {
-            $msg = "❌ Error: Service not found or unauthorized.";
+            $msg = "Error: Error: Service not found or unauthorized.";
         } else {
             $allowed_transitions = [
                 'Pending' => ['In Progress'],
@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             ];
             
             if (!in_array($status, $allowed_transitions[$service['status']] ?? [])) {
-                $msg = "❌ Error: Invalid status transition from {$service['status']} to $status";
+                $msg = "Error: Error: Invalid status transition from {$service['status']} to $status";
             } else {
                 $update_data = ['status' => $status];
                 
@@ -90,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt->execute([$notes, $id]);
                 
                 log_activity($pdo, $me['id'], 'Update Service Status', "Changed service #$id from {$service['status']} to $status", 'services');
-                $msg = "✅ Service #$id status updated to $status.";
+                $msg = "Success: Service #$id status updated to $status.";
             }
         }
     }
@@ -107,9 +107,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $service = $stmt->fetch();
         
         if (!$service) {
-            $msg = "❌ Error: Service not found or unauthorized.";
+            $msg = "Error: Error: Service not found or unauthorized.";
         } elseif ($service['status'] === 'Finalized' || $service['status'] === 'Cancelled') {
-            $msg = "❌ Error: Cannot add parts to a finalized or cancelled service.";
+            $msg = "Error: Error: Cannot add parts to a finalized or cancelled service.";
         } else {
             // Get inventory item details
             $stmt = $pdo->prepare("SELECT * FROM inventory WHERE id = ? AND station_id = ?");
@@ -117,9 +117,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $item = $stmt->fetch();
             
             if (!$item) {
-                $msg = "❌ Error: Inventory item not found.";
+                $msg = "Error: Error: Inventory item not found.";
             } elseif ($item['stock_level'] < $quantity) {
-                $msg = "❌ Error: Insufficient stock. Available: {$item['stock_level']}";
+                $msg = "Error: Error: Insufficient stock. Available: {$item['stock_level']}";
             } else {
                 $unit_cost = $item['selling_price'] ?? $item['cost_price'] ?? 0;
                 $total_cost = $unit_cost * $quantity;
@@ -133,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt->execute([$total_cost, $total_cost, $service_id]);
                 
                 log_activity($pdo, $me['id'], 'Add Parts to Service', "Added {$item['product_name']} (x$quantity) to service #$service_id", 'services');
-                $msg = "✅ Parts added to service #$service_id. Cost: ₱" . number_format($total_cost, 2);
+                $msg = "Success: Parts added to service #$service_id. Cost: ₱" . number_format($total_cost, 2);
             }
         }
     }
@@ -213,7 +213,7 @@ require_once __DIR__ . '/partials/header.php';
   </div>
 
   <?php if($msg): ?>
-    <div class="alert <?php echo strpos($msg, '✅') !== false ? 'alert-success' : 'alert-danger'; ?>" style="margin-top:15px;">
+    <div class="alert <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? 'alert-success' : 'alert-danger'; ?>" style="margin-top:15px;">
       <?php echo $msg; ?>
     </div>
   <?php endif; ?>

@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unlock_record'])) {
     $reason = $_POST['reason'] ?? '';
 
     if (empty($table) || empty($record_id) || empty($password) || empty($reason)) {
-        $msg = "❌ All fields are required.";
+        $msg = "Error: All fields are required.";
     } else {
         try {
             // Call API
@@ -62,15 +62,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unlock_record'])) {
             $result = json_decode($response, true);
 
             if ($result && $result['success']) {
-                $msg = "✅ {$result['message']}";
+                $msg = "Success: {$result['message']}";
                 $unlock_success = true;
                 $unlock_history = null;
             } else {
-                $msg = "❌ " . ($result['error'] ?? 'Unlock failed');
+                $msg = "Error: " . ($result['error'] ?? 'Unlock failed');
             }
 
         } catch (Exception $e) {
-            $msg = "❌ Error: " . $e->getMessage();
+            $msg = "Error: Error: " . $e->getMessage();
         }
     }
 }
@@ -145,7 +145,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <?php if($msg): ?>
-<div class="card" style="padding:15px; margin-bottom:20px; background: <?php echo strpos($msg, '✅') !== false ? '#d4edda' : '#f8d7da'; ?>; color: <?php echo strpos($msg, '✅') !== false ? '#155724' : '#721c24'; ?>;">
+<div class="card" style="padding:15px; margin-bottom:20px; background: <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? '#d4edda' : '#f8d7da'; ?>; color: <?php echo strpos($msg, '<i class="fas fa-check-circle"></i>') !== false ? '#155724' : '#721c24'; ?>;">
     <?php echo $msg; ?>
 </div>
 <?php endif; ?>

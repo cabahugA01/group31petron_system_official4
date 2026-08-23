@@ -584,14 +584,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ">
                 <i class="fas fa-tools" style="color:#fbbf24; font-size:18px; flex-shrink:0; margin-top:2px;"></i>
                 <div style="color:#fde68a; line-height:1.5; flex:1;">
-                    <strong style="display:block; margin-bottom:8px;">⚠ Dev Mode — Debug Info</strong>
+                    <strong style="display:block; margin-bottom:8px;"><i class="fas fa-exclamation-triangle"></i> Dev Mode — Debug Info</strong>
                     <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:6px; font-family:monospace; margin-bottom:8px;">
                         <div><strong>Latest OTP:</strong> <span style="font-size:20px; letter-spacing:4px; color:#fff;"><?php echo htmlspecialchars($dev_otp_login); ?></span></div>
                         <div><strong>Token Type:</strong> <?php echo htmlspecialchars($debug_info['token_type'] ?? 'unknown'); ?></div>
                         <div><strong>Expected Type:</strong> login</div>
                         <?php if (isset($debug_info['token_type']) && $debug_info['token_type'] !== 'login'): ?>
                             <div style="color:#f87171; margin-top:8px;">
-                                <strong>⚠️ TYPE MISMATCH!</strong><br>
+                                <strong><i class="fas fa-exclamation-triangle"></i> TYPE MISMATCH!</strong><br>
                                 This token has type '<?php echo $debug_info['token_type']; ?>' but verify_login_otp expects 'login'
                             </div>
                         <?php endif; ?>

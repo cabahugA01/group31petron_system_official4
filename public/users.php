@@ -942,7 +942,7 @@ include __DIR__ . '/../partials/header.php';
     text-align: center !important;
 }
 
-/* 👁 View Button */
+/* <i class="fas fa-eye"></i> View Button */
 .btn-view,
 .action-btn.btn-view {
     border: 1px solid #16a34a !important;
@@ -955,7 +955,7 @@ include __DIR__ . '/../partials/header.php';
     color: #ffffff !important;
 }
 
-/* ✏️ Edit Button */
+/* <i class="fas fa-pencil-alt"></i>️ Edit Button */
 .btn-edit,
 .action-btn.btn-edit {
     border: 1px solid #16a34a !important;
@@ -968,7 +968,7 @@ include __DIR__ . '/../partials/header.php';
     color: #ffffff !important;
 }
 
-/* 🔑 Reset Button */
+/* <i class="fas fa-key"></i> Reset Button */
 .btn-reset,
 .action-btn.btn-reset {
     border: 1px solid #00264D !important;
@@ -981,7 +981,7 @@ include __DIR__ . '/../partials/header.php';
     color: #ffffff !important;
 }
 
-/* 📦 Archive Button */
+/* <i class="fas fa-box"></i> Archive Button */
 .btn-archive,
 .action-btn.btn-archive {
     border: 1px solid #dc3545 !important;

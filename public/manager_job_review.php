@@ -462,7 +462,7 @@ include __DIR__ . '/../partials/header.php';
 <div class="manager-review">
     <div class="page-header">
         <div>
-            <h1 class="page-title">📋 Job Review Dashboard</h1>
+            <h1 class="page-title"><i class="fas fa-clipboard-list"></i> Job Review Dashboard</h1>
             <p style="color: var(--muted); margin-top: 5px;">Review completed jobs and approve final billing</p>
         </div>
     </div>
@@ -492,7 +492,7 @@ include __DIR__ . '/../partials/header.php';
 
     <div class="review-section">
         <h3 class="section-title">
-            ⏳ Pending Review
+            <i class="fas fa-clock"></i> Pending Review
             <?php if (count($pending_review) > 0): ?>
                 <span style="background: #DC3545; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px;">
                     <?php echo count($pending_review); ?> jobs
@@ -502,7 +502,7 @@ include __DIR__ . '/../partials/header.php';
         
         <?php if (empty($pending_review)): ?>
             <div class="empty-state">
-                <div class="empty-state-icon">✅</div>
+                <div class="empty-state-icon"><i class="fas fa-check-circle"></i></div>
                 <div class="empty-state-title">All caught up!</div>
                 <div class="empty-state-text">No jobs pending review at the moment.</div>
             </div>
@@ -544,10 +544,10 @@ include __DIR__ . '/../partials/header.php';
                     
                     <div class="job-actions">
                         <button class="btn btn-primary" onclick="reviewJob(<?php echo $job['id']; ?>)">
-                            👁️ Review & Approve
+                            <i class="fas fa-eye"></i>️ Review & Approve
                         </button>
                         <button class="btn btn-secondary" onclick="viewJobDetails(<?php echo $job['id']; ?>)">
-                            📄 View Details
+                            <i class="fas fa-file-alt"></i> View Details
                         </button>
                     </div>
                 </div>
@@ -557,12 +557,12 @@ include __DIR__ . '/../partials/header.php';
 
     <div class="review-section">
         <h3 class="section-title">
-            ✅ Recently Reviewed
+            <i class="fas fa-check-circle"></i> Recently Reviewed
         </h3>
         
         <?php if (empty($recently_reviewed)): ?>
             <div class="empty-state">
-                <div class="empty-state-icon">📅</div>
+                <div class="empty-state-icon"><i class="fas fa-calendar-alt"></i></div>
                 <div class="empty-state-title">No recent reviews</div>
                 <div class="empty-state-text">Jobs reviewed in the last 7 days will appear here.</div>
             </div>
@@ -605,15 +605,15 @@ include __DIR__ . '/../partials/header.php';
 <div id="reviewModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h3 class="modal-title">📋 Review Job Order</h3>
+            <h3 class="modal-title"><i class="fas fa-clipboard-list"></i> Review Job Order</h3>
             <button class="modal-close" onclick="closeModal('reviewModal')">&times;</button>
         </div>
         <div class="modal-body" id="reviewModalBody">
             <!-- Content will be loaded dynamically -->
         </div>
         <div class="modal-footer">
-            <button type="button" class="btn btn-danger" onclick="rejectJob()">❌ Reject</button>
-            <button type="button" class="btn btn-success" onclick="approveJob()">✅ Approve</button>
+            <button type="button" class="btn btn-danger" onclick="rejectJob()"><i class="fas fa-times-circle"></i> Reject</button>
+            <button type="button" class="btn btn-success" onclick="approveJob()"><i class="fas fa-check-circle"></i> Approve</button>
         </div>
     </div>
 </div>

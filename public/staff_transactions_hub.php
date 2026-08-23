@@ -1071,7 +1071,8 @@ if ($section === 'history' || $section === 'fuel_history') {
         header('Content-Disposition: attachment; filename="Staff_Transactions_' . date('Y-m-d') . '.xls"');
         echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8">';
         echo '<style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F70;color:#fff;font-weight:700}</style>';
-        echo '</head><body>';
+        echo '
+</head><body>';
         echo '<h2>Staff Transactions Report</h2>';
         echo '<p>Generated: ' . date('F d, Y h:i A') . ' | Records: ' . count($recent_merch) . '</p>';
         echo '<table><thead><tr>';
@@ -1129,7 +1130,8 @@ if ($section === 'history' || $section === 'fuel_history') {
         echo '.amount{text-align:right;font-weight:700;color:#002F70;}';
         echo '.total-row td{background:#f0f7ff!important;font-weight:800;color:#002F70;border-top:2px solid #002F70;}';
         echo '@media print{.action-bar{display:none!important;}body{background:#fff;}.report{box-shadow:none;margin:0;}}';
-        echo '</style></head><body>';
+        echo '</style>
+</head><body>';
         echo '<div class="action-bar">';
         echo '  <h2>Staff Transactions Report</h2>';
         echo '  <button onclick="window.print()" class="btn-print">Print</button>';
@@ -1193,7 +1195,8 @@ if ($section === 'history' || $section === 'fuel_history') {
         header('Content-Disposition: attachment; filename="Staff_Fuel_Transactions_' . date('Y-m-d') . '.xls"');
         echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8">';
         echo '<style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F70;color:#fff;font-weight:700}</style>';
-        echo '</head><body>';
+        echo '
+</head><body>';
         echo '<h2>Staff Fuel Transactions Report</h2>';
         echo '<p>Generated: ' . date('F d, Y h:i A') . ' | Records: ' . count($recent_fuel) . '</p>';
         echo '<table><thead><tr>';
@@ -1255,7 +1258,8 @@ if ($section === 'history' || $section === 'fuel_history') {
         echo '.amount{text-align:right;font-weight:700;color:#002F70;}';
         echo '.total-row td{background:#f0f7ff!important;font-weight:800;color:#002F70;border-top:2px solid #002F70;}';
         echo '@media print{.action-bar{display:none!important;}body{background:#fff;}.report{box-shadow:none;margin:0;}}';
-        echo '</style></head><body>';
+        echo '</style>
+</head><body>';
         echo '<div class="action-bar">';
         echo '  <h2>Staff Fuel Transactions Report</h2>';
         echo '  <button onclick="window.print()" class="btn-print">Print</button>';
@@ -2076,6 +2080,44 @@ if ($section === 'merchandise') {
 
 include __DIR__ . '/../partials/header.php';
 ?>
+<style>
+/* Clean Checkbox Alignment for Merchandise Products and Service Types */
+#productDropdownList .prod-option,
+.prod-option {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+    padding: 10px 14px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    cursor: pointer !important;
+}
+
+#productDropdownList input[type="checkbox"].merch-prod-checkbox,
+.prod-option input[type="checkbox"].merch-prod-checkbox,
+.txn-field input[type="checkbox"].merch-prod-checkbox,
+input[type="checkbox"].merch-prod-checkbox,
+input[type="checkbox"].jo-svc-checkbox {
+    width: 18px !important;
+    height: 18px !important;
+    min-width: 18px !important;
+    max-width: 18px !important;
+    flex: 0 0 18px !important;
+    flex-shrink: 0 !important;
+    display: inline-block !important;
+    margin: 0 10px 0 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    cursor: pointer !important;
+    accent-color: #002F70 !important;
+    vertical-align: middle !important;
+    align-self: center !important;
+    box-shadow: none !important;
+}
+</style>
 <script>
 // Early global definition of Merchandise Details & Action Request Modals
 window.openMerchView = function(btn) {
@@ -2094,7 +2136,6 @@ window.openMerchView = function(btn) {
     }
     return false;
 };
-
 window.openMerchRequest = function(btn, type) {
     if (window.event) {
         if (typeof window.event.stopPropagation === 'function') window.event.stopPropagation();
@@ -4743,7 +4784,7 @@ setTimeout(function() {
             // Update button label
             const buttonLabel = document.getElementById('remarksButtonLabel');
             if (remarks) {
-                buttonLabel.textContent = 'Edit Remarks ✓';
+                buttonLabel.textContent = 'Edit Remarks <i class="fas fa-check"></i>';
                 showToast('Remarks saved! They will be applied to all fuel transactions.', 'success');
             } else {
                 buttonLabel.textContent = 'Add Remarks';
@@ -4830,7 +4871,7 @@ setTimeout(function() {
 
             let confirmMsg = `Submit ${formsToSubmit.length} fuel reading(s) for manager validation?`;
             if (skippedForms.length > 0) {
-                confirmMsg += `\n\n⚠️ ${skippedForms.length} row(s) will be SKIPPED due to errors:\n` +
+                confirmMsg += `\n\n<i class="fas fa-exclamation-triangle"></i> ${skippedForms.length} row(s) will be SKIPPED due to errors:\n` +
                     skippedForms.map(s => `• ${s.ftId.replace(/_/g,' ').toUpperCase()}: ${s.reason}`).join('\n');
             }
 
@@ -5466,7 +5507,7 @@ setTimeout(function() {
                 <?php if (!empty($tc['badge_warn'])): ?>
                 <span style="background:#dc2626;color:#fff;font-size:10px;font-weight:800;
                              padding:1px 7px;border-radius:20px;" title="Variance alerts detected">
-                    ⚠ <?= $tc['badge_warn'] ?>
+                    <i class="fas fa-exclamation-triangle"></i> <?= $tc['badge_warn'] ?>
                 </span>
                 <?php endif; ?>
             </button>
@@ -6116,7 +6157,7 @@ setTimeout(function() {
                                                    data-unit="<?= htmlspecialchars($p['unit'] ?? 'pc') ?>"
                                                    <?= $out_of_stock ? 'disabled' : '' ?>
                                                    onchange="onProductCheckboxChange(this)"
-                                                   style="width:16px;height:16px;accent-color:#002F70;cursor:pointer;flex-shrink:0;">
+                                                   style="width:18px !important;height:18px !important;min-width:18px !important;max-width:18px !important;flex-shrink:0 !important;display:inline-block !important;margin:0 10px 0 0 !important;accent-color:#002F70;cursor:pointer;">
                                             <!-- Product name + SKU -->
                                             <span style="min-width:0;flex:1;">
                                                 <span style="font-size:13px;font-weight:600;color:<?= $out_of_stock ? '#94a3b8' : '#1e293b' ?>;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
@@ -7459,6 +7500,7 @@ setTimeout(function() {
                 window.cart = c;
                 if (typeof renderCart === 'function') renderCart();
                 if (typeof updateCheckoutBtn === 'function') updateCheckoutBtn();
+            closeProductDropdown();
                 if (typeof onPaymentChange === 'function') onPaymentChange();
             }
         };
@@ -7595,11 +7637,14 @@ setTimeout(function() {
             list.style.display = list.style.display === 'none' ? 'block' : 'none';
         }
 
-        function filterProductDropdown() {
-            const q = (document.getElementById('productSearch')?.value || '').toLowerCase();
+        function filterProductDropdown(shouldOpen = true) {
+            const searchInput = document.getElementById('productSearch');
+            const q = (searchInput?.value || '').toLowerCase();
             const list = document.getElementById('productDropdownList');
             if (!list) return;
-            list.style.display = 'block';
+            if (shouldOpen && document.activeElement === searchInput) {
+                list.style.display = 'block';
+            }
             list.querySelectorAll('.prod-option').forEach(opt => {
                 const search = (opt.dataset.search || '').toLowerCase();
                 opt.style.display = (!q || search.includes(q)) ? '' : 'none';
@@ -7669,6 +7714,7 @@ setTimeout(function() {
 
             renderCart();
             updateCheckoutBtn();
+            closeProductDropdown();
         }
 
         // ── Sync checkbox states to match cart (called after cart changes) ───
@@ -7992,6 +8038,7 @@ setTimeout(function() {
             }
 
             updateServiceSelectionState();
+            hideServiceDropdown();
         }
 
         function updateServiceSelectionState() {
@@ -8053,9 +8100,10 @@ setTimeout(function() {
         function removeServiceByName(name) {
             cart = cart.filter(i => !(i.item_type === 'service' && i.product_name === name));
             updateServiceSelectionState();
+            hideServiceDropdown();
         }
 
-        function filterServiceTypes() {
+        function filterServiceTypes(shouldOpen = false) {
             const input = document.getElementById('joServiceType');
             const list = document.getElementById('joServiceTypeList');
             const dropdown = document.getElementById('joServiceTypeDropdown');
@@ -8092,7 +8140,7 @@ setTimeout(function() {
                                        data-category="${escapeHtml(cat)}"
                                        ${isChecked}
                                        onchange="onServiceCheckboxChange(this)"
-                                       style="width:16px;height:16px;accent-color:#002F70;cursor:pointer;flex-shrink:0;">
+                                       style="width:18px !important;height:18px !important;min-width:18px !important;max-width:18px !important;flex-shrink:0 !important;display:inline-block !important;margin:0 10px 0 0 !important;accent-color:#002F70;cursor:pointer;">
                                 <span style="flex:1;">${escapeHtml(t.name)}</span>
                             </label>`;
                     });
@@ -8100,7 +8148,9 @@ setTimeout(function() {
                 list.innerHTML = html;
             }
             
-            if (dropdown) dropdown.style.display = 'block';
+            if (dropdown && (shouldOpen || document.activeElement === input)) {
+                dropdown.style.display = 'block';
+            }
         }
         
         // ── Show service dropdown ─────────────────────────────────────────────
@@ -8108,7 +8158,7 @@ setTimeout(function() {
             const dropdown = document.getElementById('joServiceTypeDropdown');
             const input = document.getElementById('joServiceType');
             if (!dropdown || !input) return;
-            filterServiceTypes();
+            filterServiceTypes(true);
             dropdown.style.display = 'block';
         }
         
@@ -8118,8 +8168,13 @@ setTimeout(function() {
             if (dropdown) dropdown.style.display = 'none';
         }
 
-        // Close service dropdown when clicking outside the input or panel
+        // Close dropdowns when clicking outside
         document.addEventListener('click', function(e) {
+            const pWrap = document.getElementById('productDropdownWrap');
+            if (pWrap && !pWrap.contains(e.target)) {
+                closeProductDropdown();
+            }
+
             const input    = document.getElementById('joServiceType');
             const dropdown = document.getElementById('joServiceTypeDropdown');
             if (input && dropdown &&
@@ -8127,6 +8182,16 @@ setTimeout(function() {
                 !dropdown.contains(e.target)) {
                 hideServiceDropdown();
             }
+        });
+
+        // Ensure dropdowns are strictly hidden on page load / refresh
+        document.addEventListener('DOMContentLoaded', function() {
+            closeProductDropdown();
+            hideServiceDropdown();
+        });
+        window.addEventListener('load', function() {
+            closeProductDropdown();
+            hideServiceDropdown();
         });
         
         // ── Select service type ───────────────────────────────────────────────
@@ -8154,6 +8219,7 @@ setTimeout(function() {
                     });
                 }
                 updateServiceSelectionState();
+            hideServiceDropdown();
             }
         }
         
@@ -8775,7 +8841,7 @@ setTimeout(function() {
             // First Name is editable for search/filter
             if (firstNameInput) {
                 firstNameInput.value = '';
-                firstNameInput.readOnly = false;  // ✅ Can type freely
+                firstNameInput.readOnly = false;  // <i class="fas fa-check-circle"></i> Can type freely
                 firstNameInput.style.background = '#fff';  // White background
             }
             
@@ -9543,11 +9609,11 @@ setTimeout(function() {
             else uomLabel = selectedProduct.unit || 'pcs';
 
             if (stock <= 0) { 
-                showTxnAlert(`❌ Insufficient stock.\nAvailable: 0 ${uomLabel}`, 'warning'); 
+                showTxnAlert(`<i class="fas fa-times-circle"></i> Insufficient stock.\nAvailable: 0 ${uomLabel}`, 'warning'); 
                 return; 
             }
             if (qty > stock) {
-                showTxnAlert(`❌ Insufficient stock.\nAvailable: ${stock} ${uomLabel}`, 'warning'); 
+                showTxnAlert(`<i class="fas fa-times-circle"></i> Insufficient stock.\nAvailable: ${stock} ${uomLabel}`, 'warning'); 
                 return;
             }
 
@@ -9556,7 +9622,7 @@ setTimeout(function() {
             if (existing) {
                 const newQty = existing.quantity + qty;
                 if (newQty > stock) {
-                    showTxnAlert(`❌ Insufficient stock.\nAvailable: ${stock} ${uomLabel} (${existing.quantity} already in cart)`, 'warning'); 
+                    showTxnAlert(`<i class="fas fa-times-circle"></i> Insufficient stock.\nAvailable: ${stock} ${uomLabel} (${existing.quantity} already in cart)`, 'warning'); 
                     return;
                 }
                 existing.quantity = newQty;
@@ -9576,7 +9642,7 @@ setTimeout(function() {
             renderCart();
             updateCheckoutBtn();
             resetMerchandiseForm();
-            showTxnAlert(`✔ Item successfully added to cart.`, 'success');
+            showTxnAlert(`<i class="fas fa-check"></i> Item successfully added to cart.`, 'success');
         }
 
         // ── Quick Add selected product directly from dropdown list option ───
@@ -10367,6 +10433,7 @@ setTimeout(function() {
             if (!confirm('Clear all items from the cart?')) return;
             cart = [];
             if (typeof updateServiceSelectionState === 'function') updateServiceSelectionState();
+            hideServiceDropdown();
             renderCart();
             updateCheckoutBtn();
             syncProductCheckboxes();
@@ -10442,6 +10509,7 @@ setTimeout(function() {
             cart.splice(idx, 1);
             if (item && item.item_type === 'service' && item.category !== 'Labor' && item.product_name !== 'Labor Charge') {
                 if (typeof updateServiceSelectionState === 'function') updateServiceSelectionState();
+            hideServiceDropdown();
             } else {
                 renderCart();
                 updateCheckoutBtn();
@@ -11213,7 +11281,7 @@ setTimeout(function() {
                                 $shift_label = 'Shift 2'; $shift_key_data = 'shift2';
                             }
                         }
-                        $shift_icon  = ($shift_key_data === 'shift1') ? '🌤' : '🌙';
+                        $shift_icon  = ($shift_key_data === 'shift1') ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
                         $shift_color = ($shift_key_data === 'shift1') ? '#d97706' : '#4f46e5';
                         $shift_bg    = ($shift_key_data === 'shift1') ? '#fef9c3' : '#ede9fe';
                     ?>
@@ -12522,12 +12590,12 @@ setTimeout(function() {
                           style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
                                  color:#1e293b;background:#fff;outline:none;cursor:pointer;">
                     <option value="">Select new status...</option>
-                    <option value="Pending">⏳ Pending</option>
-                    <option value="Waiting for Parts">📦 Waiting for Parts</option>
+                    <option value="Pending"><i class="fas fa-clock"></i> Pending</option>
+                    <option value="Waiting for Parts"><i class="fas fa-box"></i> Waiting for Parts</option>
                     <option value="In Progress">▶ In Progress</option>
-                    <option value="Completed">✓ Completed</option>
-                    <option value="Released">🚗 Released</option>
-                    <option value="Rejected">✗ Rejected</option>
+                    <option value="Completed"><i class="fas fa-check"></i> Completed</option>
+                    <option value="Released"><i class="fas fa-car"></i> Released</option>
+                    <option value="Rejected"><i class="fas fa-times"></i> Rejected</option>
                   </select>
                 </div>
                 
@@ -13128,16 +13196,16 @@ setTimeout(function() {
                 btn.innerHTML = origText;
                 if (data.success) {
                     closeTxnRequestModal();
-                    showTxnAlert('✔ ' + (data.message || 'Request submitted successfully! Status: Pending Manager Review.'), 'success');
+                    showTxnAlert('<i class="fas fa-check"></i> ' + (data.message || 'Request submitted successfully! Status: Pending Manager Review.'), 'success');
                     setTimeout(function() { location.reload(); }, 1500);
                 } else {
-                    showTxnAlert('❌ ' + (data.error || 'Failed to submit request'), 'error');
+                    showTxnAlert('<i class="fas fa-times-circle"></i> ' + (data.error || 'Failed to submit request'), 'error');
                 }
             })
             .catch(err => {
                 btn.disabled = false;
                 btn.innerHTML = origText;
-                showTxnAlert('❌ Network error: ' + err.message, 'error');
+                showTxnAlert('<i class="fas fa-times-circle"></i> Network error: ' + err.message, 'error');
             });
         }
         
@@ -13203,16 +13271,16 @@ setTimeout(function() {
                 btn.innerHTML = origText;
                 if (data.success) {
                     closeRequestAdjustModal();
-                    showTxnAlert('✔ ' + (data.message || 'Adjustment request submitted successfully! Status: ADJUSTMENT REQUESTED.'), 'success');
+                    showTxnAlert('<i class="fas fa-check"></i> ' + (data.message || 'Adjustment request submitted successfully! Status: ADJUSTMENT REQUESTED.'), 'success');
                     setTimeout(function() { location.reload(); }, 1200);
                 } else {
-                    showTxnAlert('❌ ' + (data.error || 'Failed to submit adjustment request'), 'error');
+                    showTxnAlert('<i class="fas fa-times-circle"></i> ' + (data.error || 'Failed to submit adjustment request'), 'error');
                 }
             })
             .catch(err => {
                 btn.disabled = false;
                 btn.innerHTML = origText;
-                showTxnAlert('❌ Network error: ' + err.message, 'error');
+                showTxnAlert('<i class="fas fa-times-circle"></i> Network error: ' + err.message, 'error');
             });
         };
 
@@ -13246,16 +13314,16 @@ setTimeout(function() {
                 btn.innerHTML = origText;
                 if (data.success) {
                     closeRequestVoidModal();
-                    showTxnAlert('✔ ' + (data.message || 'Void request submitted successfully! Status: VOID REQUESTED.'), 'success');
+                    showTxnAlert('<i class="fas fa-check"></i> ' + (data.message || 'Void request submitted successfully! Status: VOID REQUESTED.'), 'success');
                     setTimeout(function() { location.reload(); }, 1200);
                 } else {
-                    showTxnAlert('❌ ' + (data.error || 'Failed to submit void request'), 'error');
+                    showTxnAlert('<i class="fas fa-times-circle"></i> ' + (data.error || 'Failed to submit void request'), 'error');
                 }
             })
             .catch(err => {
                 btn.disabled = false;
                 btn.innerHTML = origText;
-                showTxnAlert('❌ Network error: ' + err.message, 'error');
+                showTxnAlert('<i class="fas fa-times-circle"></i> Network error: ' + err.message, 'error');
             });
         };
         

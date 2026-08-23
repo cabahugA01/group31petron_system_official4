@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 "Success: {$result['message']}" : 
                 "Error: {$result['message']}";
         } else {
-            $msg = "❌ Invalid delivery ID.";
+            $msg = "Error: Invalid delivery ID.";
         }
     } elseif ($action === 'reject_delivery') {
         $delivery_id = (int)$_POST['delivery_id'];
@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 "Success: {$result['message']}" : 
                 "Error: {$result['message']}";
         } else {
-            $msg = "❌ Rejection reason is required.";
+            $msg = "Error: Rejection reason is required.";
         }
     }
 }
@@ -90,7 +90,7 @@ if ($station_id) {
         $stmt->execute([$station_id]);
         $deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
-        $msg = "❌ Error fetching deliveries: " . $e->getMessage();
+        $msg = "Error: Error fetching deliveries: " . $e->getMessage();
     }
 }
 
@@ -478,7 +478,7 @@ try {
                                 Verify Delivery
                             </button>
                             <button class="btn btn-reject" onclick="openRejectModal(<?= $delivery['id'] ?>)">
-                                ✗ Reject Delivery
+                                <i class="fas fa-times"></i> Reject Delivery
                             </button>
                         </div>
                     </div>
