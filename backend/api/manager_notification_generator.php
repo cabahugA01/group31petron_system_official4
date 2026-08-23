@@ -100,30 +100,36 @@ function mgr_push(
 }
 
 // ════════════════════════════════════════════════════════════
-// 1. FUEL TRANSACTIONS — Pending Validation (48h)
-//    Column verified: status='Pending Validation', station_id, staff_id
+// 1. FUEL TRANSACTIONS — Single Consolidated Notification Per Shift (Pending Validation)
 // ════════════════════════════════════════════════════════════
 try {
     $s = $sw ? "AND ft.station_id = {$sw}" : '';
     $rows = $pdo->query(
-        "SELECT ft.id, ft.transaction_id, ft.status, ft.fuel_type,
-                ft.transaction_date, ft.liters_sold, u.name AS staff_name
+        "SELECT ft.station_id,
+                DATE(ft.transaction_date) AS tx_date,
+                ft.shift_period,
+                COUNT(*) AS total_readings,
+                MAX(ft.transaction_date) AS max_date,
+                COALESCE(NULLIF(CONCAT(u.first_name, ' ', u.last_name), ' '), u.name, u.username, 'Staff') AS staff_name
          FROM fuel_transactions ft
          LEFT JOIN users u ON u.id = ft.staff_id
-         WHERE ft.status IN ('Pending Validation','pending_validation','Pending','pending')
+         WHERE ft.status IN ('Pending Validation','pending_validation','Pending','pending','READINGS_SUBMITTED','CLOSING_COMPLETED')
            AND ft.transaction_date >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
            {$s}
-         ORDER BY ft.transaction_date DESC LIMIT 15"
+         GROUP BY ft.station_id, DATE(ft.transaction_date), ft.shift_period
+         ORDER BY max_date DESC LIMIT 10"
     )->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($rows as $r) {
-        $staff  = $r['staff_name'] ?? 'Staff';
-        $liters = $r['liters_sold'] ? number_format($r['liters_sold'], 2) . 'L' : '';
-        $ts     = date('M d, H:i', strtotime($r['transaction_date']));
-        $key    = 'mgr_fuel_txn_' . $r['id'];
-        $generated += mgr_push($pdo, $user_id, 'warning', 'transaction', 'medium',
-            "Fuel Transaction #{$r['id']} Pending Validation",
-            "Fuel Transaction #{$r['id']} ({$r['fuel_type']} {$liters}) by {$staff} pending validation at {$ts}.",
+        $staff   = $r['staff_name'] ?? 'Staff';
+        $readCnt = (int)($r['total_readings'] ?? 1);
+        $shift   = !empty($r['shift_period']) ? (ucfirst($r['shift_period']) . ' Shift') : 'First Shift';
+        $dateStr = date('M d, Y', strtotime($r['tx_date']));
+        $key     = 'mgr_fuel_shift_' . $r['station_id'] . '_' . date('Ymd', strtotime($r['tx_date'])) . '_' . strtolower($r['shift_period'] ?? 'shift1');
+
+        $generated += mgr_push($pdo, $user_id, 'info', 'transaction', 'high',
+            "New Fuel Reading — Pending Validation",
+            "{$staff} submitted {$readCnt} Fuel Readings for {$dateStr} ({$shift}). Ready for manager validation.",
             $key, 'manager_fuel_transaction_validation.php'
         );
     }
@@ -237,6 +243,21 @@ try {
 } catch (Exception $e) {}
 
 // ════════════════════════════════════════════════════════════
+// Auto-purge stale notifications for items whose stock level is OK
+try {
+    if ($sw) {
+        $pdo->prepare("
+            DELETE n FROM notifications n
+            INNER JOIN station_inventory si ON (n.source_key LIKE CONCAT('mgr_inv_low_', si.product_id, '%') OR n.title LIKE '%Low Stock%' OR n.title LIKE '%Inventory Alert%')
+            INNER JOIN inventory_products ip ON ip.id = si.product_id
+            WHERE n.user_id = ?
+              AND si.station_id = ?
+              AND si.stock_level > COALESCE(NULLIF(si.reorder_level, 0), NULLIF(ip.min_stock, 0), 10)
+              AND LOWER(COALESCE(ip.category, '')) NOT IN ('fuel', 'fuels')
+        ")->execute([$user_id, $sw]);
+    }
+} catch (Exception $e) {}
+
 // 5. INVENTORY — low stock alerts (station_inventory)
 //    Column verified: si.reorder_level (station_inventory), ip.min_stock (inventory_products)
 // ════════════════════════════════════════════════════════════

@@ -162,7 +162,7 @@ if (!function_exists('getAdminReportData')) {
                          FROM fuel_transactions
                          WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
                            {$st_clause('fuel_transactions')}
-                           AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+                           AND LOWER(COALESCE(status, '')) IN ('verified','approved','adjusted','validated','completed')
                          GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
                      ) latest ON ft.id = latest.max_id
                      WHERE 1=1 {$extra_where}
@@ -194,7 +194,7 @@ if (!function_exists('getAdminReportData')) {
                             FROM fuel_transactions
                             WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
                               {$st_clause('fuel_transactions')}
-                              AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+                              AND LOWER(COALESCE(status, '')) IN ('verified','approved','adjusted','validated','completed')
                             GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
                         ) latest ON ft.id = latest.max_id
                         WHERE 1=1 {$extra_where}
@@ -219,7 +219,7 @@ if (!function_exists('getAdminReportData')) {
                          FROM fuel_transactions
                          WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
                            {$st_clause('fuel_transactions')}
-                           AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+                           AND LOWER(COALESCE(status, '')) IN ('verified','approved','adjusted','validated','completed')
                          GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
                      ) latest ON ft.id = latest.max_id
                      WHERE 1=1 {$extra_where}"
@@ -243,7 +243,7 @@ if (!function_exists('getAdminReportData')) {
                             FROM fuel_transactions
                             WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
                               {$st_clause('fuel_transactions')}
-                              AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+                              AND LOWER(COALESCE(status, '')) IN ('verified','approved','adjusted','validated','completed')
                             GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
                         ) latest ON ft.id = latest.max_id
                         WHERE 1=1 {$extra_where}
@@ -395,7 +395,7 @@ if (!function_exists('getAdminReportData')) {
                              FROM fuel_transactions
                              WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
                                {$st_clause('fuel_transactions')}
-                               AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+                               AND LOWER(COALESCE(status, '')) IN ('verified','approved','adjusted','validated','completed')
                              GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at)), COALESCE(shift_period, shift_name, shift_id)
                          ) latest ON ft.id = latest.max_id
                          WHERE (LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%first%' OR LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%shift 1%' OR ft.shift_id = 1 OR COALESCE(ft.shift_period, ft.shift_name, '') = '1')"
@@ -413,7 +413,7 @@ if (!function_exists('getAdminReportData')) {
                              FROM fuel_transactions
                              WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
                                {$st_clause('fuel_transactions')}
-                               AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+                               AND LOWER(COALESCE(status, '')) IN ('verified','approved','adjusted','validated','completed')
                              GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at)), COALESCE(shift_period, shift_name, shift_id)
                          ) latest ON ft.id = latest.max_id
                          WHERE (LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%second%' OR LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%shift 2%' OR ft.shift_id = 2 OR COALESCE(ft.shift_period, ft.shift_name, '') = '2')"
@@ -1130,9 +1130,9 @@ if (!function_exists('getAdminReportData')) {
                 }
                 if (!empty($filters['status'])) {
                     if (strtolower($filters['status']) === 'submitted') {
-                        $fr_where .= " AND LOWER(COALESCE(ft.status, '')) IN ('verified','approved','completed','submitted')";
+                        $fr_where .= " AND LOWER(COALESCE(ft.status, '')) IN ('verified','approved','adjusted','validated','completed')";
                     } elseif (strtolower($filters['status']) === 'pending') {
-                        $fr_where .= " AND LOWER(COALESCE(ft.status, '')) NOT IN ('verified','approved','completed','submitted')";
+                        $fr_where .= " AND LOWER(COALESCE(ft.status, '')) NOT IN ('verified','approved','adjusted','validated','completed')";
                     }
                 }
 
@@ -1146,7 +1146,7 @@ if (!function_exists('getAdminReportData')) {
                                COALESCE(ft.price_per_liter, 0) as selling_price,
                                COALESCE(ft.total_amount, 0) as fuel_sales,
                                CASE 
-                                 WHEN LOWER(COALESCE(ft.status, '')) IN ('verified','approved','completed','submitted') THEN 'Submitted'
+                                 WHEN LOWER(COALESCE(ft.status, '')) IN ('verified','approved','adjusted','validated','completed') THEN 'Submitted'
                                  ELSE 'Pending'
                                END as status,
                                ft.transaction_date
@@ -1608,7 +1608,7 @@ if (!function_exists('getAdminReportData')) {
                             COALESCE(ft.total_amount, 0) AS total_amount,
                             CASE
                                 WHEN LOWER(COALESCE(ft.status,'')) IN ('voided','rejected','cancelled') THEN 'Cancelled'
-                                WHEN LOWER(COALESCE(ft.status,'')) IN ('verified','approved','completed','submitted') THEN 'Completed'
+                                WHEN LOWER(COALESCE(ft.status,'')) IN ('verified','approved','adjusted','validated','completed') THEN 'Completed'
                                 ELSE 'Pending'
                             END AS status,
                             ft.staff_id AS user_id

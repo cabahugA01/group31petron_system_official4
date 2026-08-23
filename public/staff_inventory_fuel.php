@@ -89,7 +89,7 @@ $TANK_CONFIG_17 = get_tank_config((int)$station_id);
 $fi_raw = [];
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) NOT IN ('archived', 'deleted', 'inactive') ORDER BY id ASC");
     $s->execute([$station_id]);
     $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fi_raw as $row) {
@@ -270,7 +270,7 @@ try {
         $calibration_adj = $same_type_count > 0 ? round($adj_total / $same_type_count, 2) : 0;
 
         // Beginning Balance
-        $beginning = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
+        $beginning = $cur_level;
 
         $total_available = $beginning + $purchases;
         $ending_system   = min(max(0, $total_available - $sales - $calibration_adj), $capacity);
@@ -1007,7 +1007,7 @@ body.sidebar-collapsed .modal-overlay,
 
                     <?php endforeach; ?>
                 <?php endif; ?>
-                    <tr id="fuelNoResultsRow" class="no-paginate" style="display:none;">
+                    <tr id="fuelNoResultsRow" class="no-paginate no-results search-hidden" style="display:none !important;">
                         <td colspan="8" style="text-align:center;padding:32px;color:#64748b;font-size:14px;">
                             No fuel tanks match the selected filters.
                         </td>

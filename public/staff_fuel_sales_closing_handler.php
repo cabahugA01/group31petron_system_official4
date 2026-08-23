@@ -286,17 +286,7 @@ if ($action === 'save_closing') {
             $shift_label
         );
 
-        // 2. Notify manager: Closing submitted for review
-        notify_manager(
-            $pdo, $station_id,
-            'info', 'fuel_sales_closing', 'medium',
-            "Fuel Sales Closing Submitted ({$shift_label})",
-            "Fuel sales closing for {$report_date} ({$shift_label}) is ready for manager review.",
-            "fuel_closing_mgr_{$saved_id}",
-            'staff_fuel_sales_closing.php',
-            'fuel_sales_closing', (int)$saved_id,
-            $shift_label
-        );
+// 2. Manager notification for fuel sales closing removed (handled by Fuel Readings pending validation)
 
         $report_url = 'staff_transactions_hub.php?section=fuel&closing_saved=1';
 

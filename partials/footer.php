@@ -951,6 +951,9 @@
         function updatePagination() {
             var allRows = Array.from(tbody.querySelectorAll('tr'));
             allRows.forEach(function(row) {
+                if (row.id.indexOf('NoResults') !== -1 || row.classList.contains('no-paginate') || row.classList.contains('no-results')) {
+                    return;
+                }
                 if (row.classList.contains('search-hidden')) {
                     row.style.display = 'none';
                 } else {

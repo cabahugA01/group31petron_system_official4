@@ -209,7 +209,7 @@ if (isset($_GET['ajax_action']) && $_GET['ajax_action'] === 'get_closing_for_rev
 }
 
 // ── AJAX Action: Save Closing and Validate Fuel Transactions ─────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && (($_POST['action'] ?? '') === 'save_closing_and_validate')) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (in_array($_POST['action'] ?? '', ['save_closing_and_validate', 'save_closing_and_approve']))) {
     header('Content-Type: application/json');
     $tx_ids_raw = $_POST['tx_ids'] ?? [];
     if (is_string($tx_ids_raw)) {
@@ -1549,38 +1549,39 @@ input[type="checkbox"]:indeterminate {
 
 <!-- Fuel Sales Closing Review & Approval Modal -->
 <div id="fuelClosingApprovalModal" class="modal" style="display:none; align-items:center; justify-content:center;">
-    <div class="modal-content" style="max-width: 880px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 14px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
-        <!-- Header -->
-        <div class="modal-header" style="background: linear-gradient(135deg, #002F6C 0%, #001A3D 100%); color: #fff; padding: 18px 24px; margin-bottom: 0; border-bottom: none;">
+    <div class="modal-content" style="max-width: 920px; width: 92%; height: 85vh; max-height: 850px; display: flex; flex-direction: column; padding: 0; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35); border: 1px solid #cbd5e1; background: #ffffff;">
+        
+        <!-- Steady Fixed Header Box -->
+        <div class="modal-header" style="background: linear-gradient(135deg, #002F70 0%, #001F4D 100%); color: #ffffff; padding: 22px 28px !important; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid rgba(255,255,255,0.15) !important; flex-shrink: 0; margin-bottom: 0;">
             <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.15); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <div style="width: 42px; height: 42px; background: rgba(255, 255, 255, 0.15); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                     <i class="fas fa-file-invoice-dollar" style="color: #FBBF24; font-size: 20px;"></i>
                 </div>
                 <div>
-                    <h3 style="margin: 0; color: #fff; font-size: 17px; font-weight: 800; letter-spacing: 0.3px;">Fuel Sales Closing Review &amp; Approval</h3>
-                    <div style="font-size: 12px; color: #93C5FD; margin-top: 2px;">
+                    <h3 style="margin: 0; color: #ffffff !important; font-size: 17px; font-weight: 800; letter-spacing: 0.3px;">FUEL SALES CLOSING REVIEW &amp; APPROVAL</h3>
+                    <div style="font-size: 12px; color: #93C5FD; margin-top: 3px;">
                         <span id="fsc_badge_station">Petron Carmen Station</span> • 
-                        <span id="fsc_badge_date" style="font-weight: 700; color: #fff;"></span> • 
+                        <span id="fsc_badge_date" style="font-weight: 700; color: #ffffff;"></span> • 
                         <span id="fsc_badge_shift" class="afto-badge bg-amber" style="font-size: 10px; padding: 2px 8px;"></span>
                     </div>
                 </div>
             </div>
-            <span class="modal-close" style="color: #fff; opacity: 0.8; font-size: 24px;" onclick="closeModal('fuelClosingApprovalModal')">&times;</span>
+            <span class="modal-close" style="color: #ffffff; opacity: 0.85; font-size: 26px; cursor: pointer;" onclick="closeModal('fuelClosingApprovalModal')">&times;</span>
         </div>
 
-        <!-- Scrollable Modal Body -->
-        <div class="modal-body" style="padding: 20px 24px; overflow-y: auto; flex: 1; background: #F8FAFC; margin-bottom: 0;">
+        <!-- Scrollable Middle Body Container -->
+        <div class="modal-body" style="padding: 28px !important; overflow-y: auto; flex: 1; background: #F8FAFC; box-sizing: border-box;">
             <!-- Loading Indicator -->
-            <div id="fsc_loading" style="display: none; text-align: center; padding: 40px 20px; color: #64748B;">
-                <i class="fas fa-circle-notch fa-spin" style="font-size: 32px; color: #002F6C; margin-bottom: 12px;"></i>
-                <div style="font-weight: 600; font-size: 14px;">Loading Fuel Sales Closing data...</div>
+            <div id="fsc_loading" style="display: none; text-align: center; padding: 50px 20px; color: #64748B;">
+                <i class="fas fa-circle-notch fa-spin" style="font-size: 36px; color: #002F70; margin-bottom: 14px;"></i>
+                <div style="font-weight: 700; font-size: 15px; color: #002F70;">Loading Fuel Sales Closing data...</div>
             </div>
 
             <div id="fsc_content_wrap">
                 <!-- Section 1: Selected Meter Readings & Volume Breakdown -->
-                <div style="background: #fff; border: 1px solid #E2E8F0; border-radius: 10px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
-                        <div style="font-size: 13px; font-weight: 800; color: #002F6C; text-transform: uppercase;">
+                <div style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #F1F5F9; padding-bottom: 10px;">
+                        <div style="font-size: 13px; font-weight: 800; color: #002F70; text-transform: uppercase;">
                             <i class="fas fa-gas-pump" style="color: #DC2626; margin-right: 6px;"></i> Pump Meter Readings Summary
                         </div>
                         <div style="font-size: 11px; color: #64748B;">
@@ -1588,17 +1589,17 @@ input[type="checkbox"]:indeterminate {
                         </div>
                     </div>
                     
-                    <div style="max-height: 180px; overflow-y: auto; border: 1px solid #E2E8F0; border-radius: 6px; margin-bottom: 12px;">
+                    <div style="max-height: 180px; overflow-y: auto; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 14px;">
                         <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-                            <thead style="background: #002F6C; color: #fff; position: sticky; top: 0;">
+                            <thead style="background: #002F70; color: #ffffff; position: sticky; top: 0; z-index: 2;">
                                 <tr>
-                                    <th style="padding: 6px 8px; text-align: left;">Pump</th>
-                                    <th style="padding: 6px 8px; text-align: left;">Fuel Type</th>
-                                    <th style="padding: 6px 8px; text-align: right;">Begin</th>
-                                    <th style="padding: 6px 8px; text-align: right;">Ending</th>
-                                    <th style="padding: 6px 8px; text-align: right;">Cal</th>
-                                    <th style="padding: 6px 8px; text-align: right;">Net Liters</th>
-                                    <th style="padding: 6px 8px; text-align: right;">Amount</th>
+                                    <th style="padding: 8px 10px; text-align: left;">Pump</th>
+                                    <th style="padding: 8px 10px; text-align: left;">Fuel Type</th>
+                                    <th style="padding: 8px 10px; text-align: right;">Begin</th>
+                                    <th style="padding: 8px 10px; text-align: right;">Ending</th>
+                                    <th style="padding: 8px 10px; text-align: right;">Cal</th>
+                                    <th style="padding: 8px 10px; text-align: right;">Net Liters</th>
+                                    <th style="padding: 8px 10px; text-align: right;">Amount</th>
                                 </tr>
                             </thead>
                             <tbody id="fsc_readings_tbody">
@@ -1608,17 +1609,17 @@ input[type="checkbox"]:indeterminate {
                     </div>
 
                     <!-- Computed KPI Cards -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                        <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                        <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
                             <div>
-                                <div style="font-size: 10px; font-weight: 700; color: #1E40AF; text-transform: uppercase;">Total Fuel Liters Sold</div>
+                                <div style="font-size: 11px; font-weight: 700; color: #1E40AF; text-transform: uppercase;">Total Fuel Liters Sold</div>
                                 <div id="fsc_disp_liters" style="font-size: 18px; font-weight: 800; color: #1E3A8A; margin-top: 2px;">0.00 L</div>
                             </div>
                             <i class="fas fa-tint" style="font-size: 24px; color: #3B82F6; opacity: 0.6;"></i>
                         </div>
-                        <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
+                        <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
                             <div>
-                                <div style="font-size: 10px; font-weight: 700; color: #166534; text-transform: uppercase;">Total Fuel Sales Amount</div>
+                                <div style="font-size: 11px; font-weight: 700; color: #166534; text-transform: uppercase;">Total Fuel Sales Amount</div>
                                 <div id="fsc_disp_sales" style="font-size: 18px; font-weight: 800; color: #14532D; margin-top: 2px;">₱0.00</div>
                             </div>
                             <i class="fas fa-peso-sign" style="font-size: 24px; color: #22C55E; opacity: 0.6;"></i>
@@ -1626,95 +1627,113 @@ input[type="checkbox"]:indeterminate {
                     </div>
                 </div>
 
-                <!-- Section 2: Editable Closing Breakdown (Cash & AR) -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                    <!-- Cash Breakdown Card -->
-                    <div style="background: #fff; border: 1px solid #E2E8F0; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                        <div style="font-size: 13px; font-weight: 800; color: #15803D; text-transform: uppercase; margin-bottom: 12px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
-                            <i class="fas fa-money-bill-wave" style="margin-right: 6px;"></i> Cash Breakdown (Editable)
+                                <!-- Section 2: Cash & Credit Remittance Breakdown (Matching Staff Closing) -->
+                <div style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <div style="font-size: 13px; font-weight: 800; color: #002F70; text-transform: uppercase; margin-bottom: 14px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
+                        <i class="fas fa-wallet" style="margin-right: 6px; color: #2563EB;"></i> Cash &amp; Credit Collection Summary (Staff Closing Breakdown)
+                    </div>
+                    
+                    <!-- Cash Turnover Breakdown -->
+                    <div style="font-size: 11px; font-weight: 800; color: #1E40AF; text-transform: uppercase; margin-bottom: 8px;">
+                        <i class="fas fa-money-bill-wave me-1"></i> Cash Turnover Summary
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 16px; background: #F8FAFC; padding: 12px; border-radius: 8px; border: 1px solid #E2E8F0;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="font-size: 11px; font-weight: 700; color: #475569;">SHIFT 1 CASH (₱)</label>
+                            <input type="text" inputmode="decimal" id="fsc_cash_shift1" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
                         </div>
-                        <div class="form-group" style="margin-bottom: 10px;">
-                            <label style="font-size: 11px; font-weight: 700; color: #475569;">Shift 1 Cash (₱)</label>
-                            <input type="text" id="fsc_cash_shift1" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="font-size: 11px; font-weight: 700; color: #475569;">SHIFT 2 CASH (₱)</label>
+                            <input type="text" inputmode="decimal" id="fsc_cash_shift2" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
                         </div>
-                        <div class="form-group" style="margin-bottom: 10px;">
-                            <label style="font-size: 11px; font-weight: 700; color: #475569;">Shift 2 Cash (₱)</label>
-                            <input type="text" id="fsc_cash_shift2" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00">
-                        </div>
-                        <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                            <span style="font-size: 11px; font-weight: 700; color: #166534;">Total Cash Sales:</span>
-                            <span id="fsc_total_cash_val" style="font-size: 15px; font-weight: 800; color: #15803D;">₱0.00</span>
+                        <div style="display:flex; flex-direction:column; justify-content:center;">
+                            <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">TOTAL CASH COLLECTED</div>
+                            <div id="fsc_disp_total_cash" style="font-size: 16px; font-weight: 800; color: #002F70; margin-top: 2px;">₱0.00</div>
                         </div>
                     </div>
 
-                    <!-- AR Breakdown Card -->
-                    <div style="background: #fff; border: 1px solid #E2E8F0; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                        <div style="font-size: 13px; font-weight: 800; color: #D97706; text-transform: uppercase; margin-bottom: 12px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
-                            <i class="fas fa-file-invoice" style="margin-right: 6px;"></i> Accounts Receivable / Credit (Editable)
+                    <!-- Accounts Receivable (AR) Breakdown -->
+                    <div style="font-size: 11px; font-weight: 800; color: #166534; text-transform: uppercase; margin-bottom: 8px;">
+                        <i class="fas fa-file-invoice-dollar me-1"></i> Credit &amp; Accounts Receivable (AR) Summary
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 16px; background: #F8FAFC; padding: 12px; border-radius: 8px; border: 1px solid #E2E8F0;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="font-size: 11px; font-weight: 700; color: #475569;">SHIFT 1 CREDIT / AR (₱)</label>
+                            <input type="text" inputmode="decimal" id="fsc_ar_shift1" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
                         </div>
-                        <div class="form-group" style="margin-bottom: 10px;">
-                            <label style="font-size: 11px; font-weight: 700; color: #475569;">Shift 1 AR (₱)</label>
-                            <input type="text" id="fsc_ar_shift1" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="font-size: 11px; font-weight: 700; color: #475569;">SHIFT 2 CREDIT / AR (₱)</label>
+                            <input type="text" inputmode="decimal" id="fsc_ar_shift2" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
                         </div>
-                        <div class="form-group" style="margin-bottom: 10px;">
-                            <label style="font-size: 11px; font-weight: 700; color: #475569;">Shift 2 AR (₱)</label>
-                            <input type="text" id="fsc_ar_shift2" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00">
+                        <div style="display:flex; flex-direction:column; justify-content:center;">
+                            <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">TOTAL CREDIT / AR</div>
+                            <div id="fsc_disp_total_ar" style="font-size: 16px; font-weight: 800; color: #166534; margin-top: 2px;">₱0.00</div>
                         </div>
-                        <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                            <span style="font-size: 11px; font-weight: 700; color: #B45309;">Total AR Sales:</span>
-                            <span id="fsc_total_ar_val" style="font-size: 15px; font-weight: 800; color: #B45309;">₱0.00</span>
+                    </div>
+
+                    <!-- Net Sales & Total Cash in Bank -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                        <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-size: 10px; font-weight: 700; color: #1E40AF; text-transform: uppercase;">Net Fuel Sales (Cash + AR)</div>
+                                <div id="fsc_disp_net_sales" style="font-size: 18px; font-weight: 800; color: #1E3A8A; margin-top: 2px;">₱0.00</div>
+                            </div>
+                            <i class="fas fa-calculator" style="font-size: 22px; color: #3B82F6; opacity: 0.6;"></i>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="font-size: 11px; font-weight: 700; color: #475569;">TOTAL CASH IN BANK / DEPOSITED (₱)</label>
+                            <input type="text" inputmode="decimal" id="fsc_total_cash_bank" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:800; color:#0f172a; box-sizing:border-box;">
+                        </div>
+                    </div>
+
+                    <!-- Staff & Manager Encoder Info -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="font-size: 10px; font-weight: 700; color: #64748B;">CHECKED / ENCODED BY</label>
+                            <input type="text" id="fsc_checked_by" class="fsc-calc-input" placeholder="Staff Name" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:11px; color:#334155; box-sizing:border-box;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="font-size: 10px; font-weight: 700; color: #64748B;">VERIFIED / APPROVED BY</label>
+                            <input type="text" id="fsc_verified_by" class="fsc-calc-input" placeholder="Manager Name" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:11px; color:#334155; box-sizing:border-box;">
                         </div>
                     </div>
                 </div>
 
-                <!-- Section 3: Net Sales & Bank Summary + Manager Sign-Off -->
-                <div style="background: #fff; border: 1px solid #E2E8F0; border-radius: 10px; padding: 16px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px;">
-                        <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <span style="font-size: 11px; font-weight: 700; color: #1E40AF; text-transform: uppercase;">Net Sales (Total Cash + AR):</span>
-                                <div id="fsc_net_sales_val" style="font-size: 16px; font-weight: 800; color: #1E3A8A; margin-top: 2px;">₱0.00</div>
-                            </div>
-                            <i class="fas fa-calculator" style="font-size: 22px; color: #3B82F6; opacity: 0.5;"></i>
+                <!-- Section 3: Overall Closing Summary & Reconciliation -->
+                <div style="background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+                    <div style="font-size: 13px; font-weight: 800; color: #002F70; margin-bottom: 12px;"><i class="fas fa-calculator me-1"></i> Overall Closing Summary &amp; Reconciliation</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px;">
+                        <div>
+                            <div style="font-size: 11px; font-weight: 600; color: #475569;">Total Remittance (Cash + AR):</div>
+                            <div id="fsc_disp_remittance" style="font-size: 16px; font-weight: 800; color: #002F70; margin-top: 2px;">₱0.00</div>
                         </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 11px; font-weight: 700; color: #475569;">Total Cash to Bank / Deposit (₱)</label>
-                            <input type="text" id="fsc_total_cash_bank" class="fsc-calc-input" oninput="formatAutoCommaDot(this);" onblur="formatAutoCommaDotOnBlur(this);" placeholder="0.00" style="font-weight: 700; color: #002F6C; background: #F8FAFC;">
+                        <div>
+                            <div style="font-size: 11px; font-weight: 600; color: #475569;">Expected Fuel Sales:</div>
+                            <div id="fsc_disp_expected" style="font-size: 16px; font-weight: 800; color: #0F172A; margin-top: 2px;">₱0.00</div>
                         </div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 11px; font-weight: 700; color: #475569;">Checked By (Staff Encoder)</label>
-                            <input type="text" id="fsc_checked_by" placeholder="Staff Name" style="font-size: 13px;">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 11px; font-weight: 700; color: #475569;">Verified By (Manager)</label>
-                            <input type="text" id="fsc_verified_by" placeholder="Manager Name" style="font-size: 13px; font-weight: 700; color: #002F6C;">
+                        <div>
+                            <div style="font-size: 11px; font-weight: 600; color: #475569;">Over / Short Variance:</div>
+                            <div id="fsc_disp_over_short" style="font-size: 16px; font-weight: 800; color: #16A34A; margin-top: 2px;">₱0.00 (EXACT)</div>
                         </div>
                     </div>
-
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label style="font-size: 11px; font-weight: 700; color: #475569;">Manager Validation Remarks / Notes <span style="color:#94A3B8; font-weight: normal;">(Optional)</span></label>
-                        <textarea id="fsc_remarks" rows="2" placeholder="Enter validation remarks or approval notes (e.g. 'Readings reconciled, cash verified with deposit slip')..." style="font-size: 12px;"></textarea>
-                    </div>
+                </div>
+<!-- Section 4: Validation Remarks -->
+                <div style="background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 20px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <div style="font-size: 12px; font-weight: 700; color: #002F70; margin-bottom: 8px;"><i class="fas fa-user-check me-1"></i> Validation Remarks &amp; Verification Notes <span style="color:#94a3b8; font-weight:normal;">(Optional)</span></div>
+                    <textarea id="fsc_remarks" class="closing-textarea" rows="2" placeholder="Add optional manager review notes or validation remarks..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; font-size: 12px; box-sizing: border-box;"></textarea>
                 </div>
             </div>
         </div>
 
-        <!-- Modal Footer -->
-        <div class="modal-footer" style="padding: 14px 24px; background: #F1F5F9; border-top: 1px solid #E2E8F0; display: flex; justify-content: space-between; align-items: center;">
-            <button type="button" class="ato-btn ato-btn-back" onclick="closeModal('fuelClosingApprovalModal')">
-                <i class="fas fa-times"></i> Cancel
-            </button>
-            <button type="button" id="btnConfirmFscApprove" class="ato-btn" style="background: #16A34A !important; color: #fff !important; border-color: #16A34A !important; padding: 10px 24px !important; font-size: 13px !important; font-weight: 700 !important; border-radius: 8px !important; box-shadow: 0 4px 12px rgba(22,163,74,0.3);" onclick="saveClosingAndValidate()">
+        <!-- Steady Fixed Footer Box -->
+        <div class="modal-footer" style="padding: 16px 24px; background: #F1F5F9; border-top: 1px solid #E2E8F0; display: flex; justify-content: flex-end; gap: 12px; align-items: center; flex-shrink: 0;">
+            <button type="button" class="ato-btn ato-btn-back" style="padding: 10px 22px; font-size: 13px; font-weight: 700; border-radius: 8px;" onclick="closeModal('fuelClosingApprovalModal')">Close</button>
+            <button type="button" id="btnConfirmFscApprove" class="ato-btn ato-btn-filter" style="background: #16a34a !important; color: #ffffff !important; border-color: #16a34a !important; padding: 10px 24px; font-weight: 800; font-size: 13px; border-radius: 8px !important; box-shadow: 0 4px 12px rgba(22,163,74,0.3);" onclick="approveFscClosing()">
                 <i class="fas fa-check-circle" style="margin-right: 6px;"></i> Save Closing &amp; Approve Transactions
             </button>
         </div>
     </div>
-</div>
-
-<!-- Review Selected Modal (Batch Summary) -->
+</div><!-- Review Selected Modal (Batch Summary) -->
 <div id="reviewModal" class="modal">
     <div class="modal-content" style="max-width: 700px;">
         <div class="modal-header">
@@ -1777,96 +1796,118 @@ input[type="checkbox"]:indeterminate {
 </div>
 
 <!-- Batch Reject Modal -->
-<div id="batchRejectModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:36px;height:36px;background:#fef2f2;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <i class="fas fa-times" style="color:#dc2626;font-size:15px;"></i>
+<div id="batchRejectModal" class="modal" style="display:none; align-items:center; justify-content:center;">
+    <div class="modal-content" style="max-width: 520px; width: 94%; border-radius: 14px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.3); border: 1px solid #fecaca; background: #ffffff; padding: 0; display: flex; flex-direction: column;">
+        <!-- Header -->
+        <div class="modal-header" style="background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%); color: #ffffff; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid rgba(255,255,255,0.15); flex-shrink: 0;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.15); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <i class="fas fa-ban" style="color: #fca5a5; font-size: 18px;"></i>
                 </div>
-                <h3 style="margin:0;">Reject Selected Transactions</h3>
+                <div>
+                    <h3 style="margin: 0; color: #ffffff !important; font-size: 16px; font-weight: 800; letter-spacing: 0.3px;">REJECT SELECTED TRANSACTIONS</h3>
+                    <div style="font-size: 11px; color: #fca5a5; margin-top: 2px;">This action will return the transactions to staff for correction.</div>
+                </div>
             </div>
-            <span class="modal-close" onclick="closeModal('batchRejectModal')">&times;</span>
+            <span class="modal-close" style="color: #ffffff; opacity: 0.85; font-size: 26px; cursor: pointer; line-height: 1;" onclick="closeModal('batchRejectModal')">&times;</span>
         </div>
-        <div class="modal-body">
-            <p id="batchRejPrompt" style="font-size: 13px; color: #475569; margin: 0 0 14px; font-weight: 500;"></p>
-            <div class="form-group">
-                <label>Rejection Reason <span style="color:#dc2626;">*</span></label>
-                <textarea id="batchRejectReason" rows="3" required placeholder="Enter reason for rejecting these transactions..."></textarea>
+        <!-- Body -->
+        <div class="modal-body" style="padding: 22px 24px; background: #fff7f7; flex: 1; box-sizing: border-box;">
+            <p id="batchRejPrompt" style="font-size: 13px; color: #475569; margin: 0 0 16px; font-weight: 600; line-height: 1.6; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 14px;"></p>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label style="font-size: 12px; font-weight: 700; color: #991b1b; margin-bottom: 6px; display: block;">REJECTION REASON <span style="color:#dc2626;">*</span></label>
+                <textarea id="batchRejectReason" rows="3" required placeholder="Enter reason for rejecting these transactions (e.g., 'Wrong meter reading', 'Incomplete entry')..." style="width: 100%; padding: 10px 12px; border: 1px solid #fca5a5; border-radius: 6px; font-size: 13px; color: #1e293b; resize: vertical; box-sizing: border-box; outline: none;"></textarea>
             </div>
         </div>
-        <div class="modal-footer">
-            <button type="button" class="ato-btn ato-btn-back" onclick="closeModal('batchRejectModal')">Cancel</button>
-            <button type="button" class="ato-btn" style="background:#dc2626; color:#fff;" onclick="confirmBatchReject()">
-                <i class="fas fa-times"></i> Reject Selected
+        <!-- Footer -->
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 12px; align-items: center; padding: 16px 24px; background: #fef2f2; border-top: 1px solid #fecaca; flex-shrink: 0;">
+            <button type="button" class="ato-btn ato-btn-back" style="padding: 10px 22px; font-size: 13px; font-weight: 700; border-radius: 8px;" onclick="closeModal('batchRejectModal')">Cancel</button>
+            <button type="button" id="btnConfirmReject" style="padding: 10px 24px; font-size: 13px; font-weight: 800; border-radius: 8px; cursor: pointer; border: none; background: #dc2626; color: #ffffff; box-shadow: 0 4px 12px rgba(220,38,38,0.35); display: inline-flex; align-items: center; gap: 8px;" onclick="confirmBatchReject()">
+                <i class="fas fa-ban"></i> Reject Transactions
             </button>
         </div>
     </div>
 </div>
-
-<!-- Batch Adjust Modal -->
-<div id="batchAdjustModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:36px;height:36px;background:#eff6ff;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <i class="fas fa-edit" style="color:#0ea5e9;font-size:15px;"></i>
+<!-- Fuel Meter Reading Adjustment Modal -->
+<div id="batchAdjustModal" class="modal" style="display:none; align-items:center; justify-content:center;">
+    <div class="modal-content" style="max-width: 960px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.35); border: 1px solid #cbd5e1; background: #ffffff; padding: 0;">
+        
+        <!-- Steady Fixed Header Box -->
+        <div class="modal-header" style="background: linear-gradient(135deg, #002F70 0%, #001F4D 100%); color: #ffffff; padding: 22px 28px !important; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid rgba(255,255,255,0.15) !important; flex-shrink: 0; margin-bottom: 0;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 42px; height: 42px; background: rgba(56, 189, 248, 0.2); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <i class="fas fa-sliders-h" style="color: #38BDF8; font-size: 20px;"></i>
                 </div>
-                <h3 style="margin:0;">Adjust Selected Transactions</h3>
+                <div>
+                    <h3 style="margin: 0; color: #ffffff !important; font-size: 17px; font-weight: 800; letter-spacing: 0.3px;">FUEL METER READING ADJUSTMENT</h3>
+                    <div style="font-size: 12px; color: #93C5FD; margin-top: 3px;">
+                        Selected Transactions: <strong id="adj_nozzle_count_badge" style="color: #ffffff;">0 Nozzles</strong>
+                    </div>
+                </div>
             </div>
+            <span class="modal-close" style="color: #ffffff; opacity: 0.85; font-size: 26px; cursor: pointer;" onclick="closeModal('batchAdjustModal')">&times;</span>
         </div>
-        <div class="modal-body">
-            <p id="batchAdjustPrompt" style="font-size: 13px; color: #475569; margin: 0 0 14px; font-weight: 500;"></p>
-            
-            <!-- Edit Fields for Single Transaction Adjustment -->
-            <div id="singleAdjustFields" style="border-top: 1px solid #f1f5f9; padding-top: 14px; margin-top: 14px; margin-bottom: 14px; display: none;">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                    <div class="form-group">
-                        <label>Beginning Reading</label>
-                        <input type="text" inputmode="decimal" autocomplete="off" id="adj_beginning" name="beginning" oninput="formatAutoCommaDot(this); calcAdjTotals();" onblur="formatAutoCommaDotOnBlur(this); calcAdjTotals();">
-                    </div>
-                    <div class="form-group">
-                        <label>Ending Reading</label>
-                        <input type="text" inputmode="decimal" autocomplete="off" id="adj_ending" name="ending" oninput="formatAutoCommaDot(this); calcAdjTotals();" onblur="formatAutoCommaDotOnBlur(this); calcAdjTotals();">
-                    </div>
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                    <div class="form-group">
-                        <label>Calibration</label>
-                        <input type="text" inputmode="decimal" autocomplete="off" id="adj_calibration" name="calibration" oninput="formatAutoCommaDot(this); calcAdjTotals();" onblur="formatAutoCommaDotOnBlur(this); calcAdjTotals();">
-                    </div>
-                    <div class="form-group">
-                        <label>Price per Liter</label>
-                        <input type="text" id="adj_price" readonly style="background:#f8fafc; color:#64748b; cursor:not-allowed;">
-                    </div>
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #eff6ff; padding: 10px; border-radius: 8px; margin-top: 10px;">
-                    <div>
-                        <div style="font-size: 10px; color: #1e40af; font-weight: bold; text-transform: uppercase;">Adj. Liters</div>
-                        <div id="adj_liters_val" style="font-size: 14px; font-weight: 700; color: #1e3a8a; margin-top: 2px;">0.00 L</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 10px; color: #166534; font-weight: bold; text-transform: uppercase;">Adj. Amount</div>
-                        <div id="adj_amount_val" style="font-size: 14px; font-weight: 700; color: #14532d; margin-top: 2px;">₱0.00</div>
-                    </div>
-                </div>
+
+        <!-- Scrollable Middle Body Container -->
+        <div class="modal-body" style="padding: 28px !important; overflow-y: auto; flex: 1; background: #F8FAFC; box-sizing: border-box;">
+            <p id="batchAdjustPrompt" style="font-size: 13px; color: #334155; margin: 0 0 16px; font-weight: 600; line-height: 1.5;"></p>
+
+            <!-- Scrollable Meter Reading Values Table -->
+            <div style="max-height: 380px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 10px; background: #ffffff; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                    <thead style="background: #002F70; color: #ffffff; position: sticky; top: 0; z-index: 2;">
+                        <tr>
+                            <th style="padding: 10px 8px; text-align: center; width: 3%;">#</th>
+                            <th style="padding: 10px 10px; width: 23%;">Txn ID / Pump / Shift</th>
+                            <th style="padding: 10px 8px; width: 11%;">Fuel Type</th>
+                            <th style="padding: 10px 8px; text-align: right; width: 14%;">Beginning <i class="fas fa-edit" style="font-size:10px; margin-left:3px; opacity:0.8;"></i></th>
+                            <th style="padding: 10px 8px; text-align: right; width: 14%;">Ending <i class="fas fa-edit" style="font-size:10px; margin-left:3px; opacity:0.8;"></i></th>
+                            <th style="padding: 10px 8px; text-align: right; width: 10%;">Cal (L) <i class="fas fa-edit" style="font-size:10px; margin-left:3px; opacity:0.8;"></i></th>
+                            <th style="padding: 10px 8px; text-align: right; width: 9%;">Price / L</th>
+                            <th style="padding: 10px 8px; text-align: right; width: 12%;">Liters Sold</th>
+                            <th style="padding: 10px 10px; text-align: right; width: 14%;">Total Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody id="batchAdjustTableBody">
+                        <!-- Populated dynamically with editable meter values -->
+                    </tbody>
+                </table>
             </div>
 
-            <div class="form-group">
-                <label>Adjustment Reason <span style="color:#dc2626;">*</span></label>
-                <textarea id="batchAdjustReason" rows="3" required placeholder="Explain why these transactions need adjustment (e.g., 'Incorrect meter reading', 'Price correction needed')..."></textarea>
+            <!-- Grand Totals Automatic Recalculation Cards -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; background: #eff6ff; padding: 16px; border-radius: 10px; margin-bottom: 18px; border: 1px solid #bfdbfe;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        <div style="font-size: 11px; color: #1e40af; font-weight: 800; text-transform: uppercase;">Total Adjusted Volume</div>
+                        <div id="adj_total_vol_sum" style="font-size: 18px; font-weight: 800; color: #1e3a8a; margin-top: 2px;">0.00 L</div>
+                    </div>
+                    <i class="fas fa-gas-pump" style="font-size: 24px; color: #3b82f6; opacity: 0.6;"></i>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        <div style="font-size: 11px; color: #166534; font-weight: 800; text-transform: uppercase;">Total Adjusted Amount</div>
+                        <div id="adj_total_amt_sum" style="font-size: 18px; font-weight: 800; color: #14532d; margin-top: 2px;">₱0.00</div>
+                    </div>
+                    <i class="fas fa-peso-sign" style="font-size: 24px; color: #22c55e; opacity: 0.6;"></i>
+                </div>
+            </div>
+
+            <!-- Adjustment Reason (Required) -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px; display: block;">ADJUSTMENT REASON <span style="color:#dc2626;">*</span></label>
+                <textarea id="batchAdjustReason" rows="2" required placeholder="Explain why these meter readings are being adjusted (e.g., 'Incorrect meter reading encoded', 'Calibration correction')..." style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; color: #1e293b; resize: vertical; box-sizing: border-box;"></textarea>
             </div>
         </div>
-        <div class="modal-footer">
-            <button type="button" class="ato-btn ato-btn-back" onclick="closeModal('batchAdjustModal')">Cancel</button>
-            <button type="button" class="ato-btn" style="background:#0ea5e9 !important; color:#fff !important; border-color:#0ea5e9 !important;" onclick="confirmBatchAdjust()">
-                <i class="fas fa-edit"></i> Submit Adjust
+
+        <!-- Steady Fixed Footer Box -->
+        <div class="modal-footer" style="padding: 16px 24px; background: #F1F5F9; border-top: 1px solid #E2E8F0; display: flex; justify-content: flex-end; gap: 12px; align-items: center; flex-shrink: 0;">
+            <button type="button" class="ato-btn ato-btn-back" style="padding: 10px 22px; font-size: 13px; font-weight: 700; border-radius: 8px;" onclick="closeModal('batchAdjustModal')">Cancel</button>
+            <button type="button" id="btnConfirmBatchAdjust" class="ato-btn-adjust" style="padding: 10px 24px; font-size: 13px; font-weight: 800; border-radius: 8px; cursor: pointer; border: none; background:#0ea5e9 !important; color:#ffffff !important; box-shadow: 0 4px 12px rgba(14,165,233,0.4); display: inline-flex; align-items: center; gap: 8px;" onclick="confirmBatchAdjust()">
+                <i class="fas fa-save" style="color:#ffffff !important;"></i> <span style="color:#ffffff !important;">Submit Adjustment</span>
             </button>
         </div>
     </div>
-</div>
-
-<script>
+</div><script>
 // Details View Modal
 function viewDetails(tx) {
     const shift_display = tx.shift_name ? tx.shift_name : (tx.shift_period === 'second' ? 'Second Shift' : (tx.shift_period ? tx.shift_period : '—'));
@@ -2215,29 +2256,49 @@ let currentFscTotalLiters = 0;
 let currentFscTotalSales = 0;
 
 function fscRecalcTotals() {
-    const c1 = getRawNumber('fsc_cash_shift1');
-    const c2 = getRawNumber('fsc_cash_shift2');
+    const c1  = getRawNumber('fsc_cash_shift1');
+    const c2  = getRawNumber('fsc_cash_shift2');
     const totCash = c1 + c2;
-    const elTotCash = document.getElementById('fsc_total_cash_val');
-    if (elTotCash) {
-        elTotCash.textContent = '₱' + totCash.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    }
 
     const ar1 = getRawNumber('fsc_ar_shift1');
     const ar2 = getRawNumber('fsc_ar_shift2');
     const totAr = ar1 + ar2;
-    const elTotAr = document.getElementById('fsc_total_ar_val');
-    if (elTotAr) {
-        elTotAr.textContent = '₱' + totAr.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    }
 
     const netSales = totCash + totAr;
-    const elNetSales = document.getElementById('fsc_net_sales_val');
-    if (elNetSales) {
-        elNetSales.textContent = '₱' + netSales.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const totBank  = getRawNumber('fsc_total_cash_bank');
+
+    const expectedSales = currentFscTotalSales || 0;
+    const diff = netSales - expectedSales;
+
+    const elTotCash = document.getElementById('fsc_disp_total_cash');
+    if (elTotCash) elTotCash.textContent = '₱' + totCash.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+    const elTotAr = document.getElementById('fsc_disp_total_ar');
+    if (elTotAr) elTotAr.textContent = '₱' + totAr.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+    const elNetSales = document.getElementById('fsc_disp_net_sales');
+    if (elNetSales) elNetSales.textContent = '₱' + netSales.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+    const elRemittance = document.getElementById('fsc_disp_remittance');
+    if (elRemittance) elRemittance.textContent = '₱' + netSales.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+    const elExpected = document.getElementById('fsc_disp_expected');
+    if (elExpected) elExpected.textContent = '₱' + expectedSales.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+    const elOverShort = document.getElementById('fsc_disp_over_short');
+    if (elOverShort) {
+        if (Math.abs(diff) < 0.01) {
+            elOverShort.textContent = '₱0.00 (EXACT)';
+            elOverShort.style.color = '#16a34a';
+        } else if (diff > 0) {
+            elOverShort.textContent = '+₱' + diff.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' (OVER)';
+            elOverShort.style.color = '#2563eb';
+        } else {
+            elOverShort.textContent = '-₱' + Math.abs(diff).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' (SHORT)';
+            elOverShort.style.color = '#dc2626';
+        }
     }
 }
-
 async function openFuelClosingApprovalModal(txIds) {
     if (!txIds || txIds.length === 0) {
         const selected = getSelectedTransactions();
@@ -2310,17 +2371,26 @@ async function openFuelClosingApprovalModal(txIds) {
             }
         }
 
-        document.getElementById('fsc_cash_shift1').value = c1.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('fsc_cash_shift2').value = c2.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('fsc_ar_shift1').value = ar1.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('fsc_ar_shift2').value = ar2.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                const elCash1 = document.getElementById('fsc_cash_shift1');
+        const elCash2 = document.getElementById('fsc_cash_shift2');
+        const elAr1   = document.getElementById('fsc_ar_shift1');
+        const elAr2   = document.getElementById('fsc_ar_shift2');
+        const elBank  = document.getElementById('fsc_total_cash_bank');
+        const elChk   = document.getElementById('fsc_checked_by');
+        const elVer   = document.getElementById('fsc_verified_by');
+        const elRem   = document.getElementById('fsc_remarks');
+
+        if (elCash1) elCash1.value = c1.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        if (elCash2) elCash2.value = c2.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        if (elAr1)   elAr1.value   = ar1.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        if (elAr2)   elAr2.value   = ar2.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
         const bankVal = parseFloat(closing.total_cash_bank || (c1 + c2) || 0);
-        document.getElementById('fsc_total_cash_bank').value = bankVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        if (elBank)  elBank.value  = bankVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
-        document.getElementById('fsc_checked_by').value = closing.checked_by || data.staff_name || 'Staff';
-        document.getElementById('fsc_verified_by').value = closing.verified_by || data.manager_name || 'Edgar Eslit';
-        document.getElementById('fsc_remarks').value = '';
+        if (elChk)   elChk.value   = closing.checked_by || data.staff_name || 'Staff';
+        if (elVer)   elVer.value   = closing.verified_by || data.manager_name || 'Edgar Eslit';
+        if (elRem)   elRem.value   = '';
 
         fscRecalcTotals();
 
@@ -2335,14 +2405,14 @@ async function openFuelClosingApprovalModal(txIds) {
     }
 }
 
-async function saveClosingAndValidate() {
-    const btn = document.getElementById('btnConfirmFscApprove');
-    const originalText = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Processing Approval...';
+async function approveFscClosing() {
+    if (!currentFscTxIds || currentFscTxIds.length === 0) {
+        notifySelectWarning('No transactions selected for validation.');
+        return;
+    }
 
-    const c1 = getRawNumber('fsc_cash_shift1');
-    const c2 = getRawNumber('fsc_cash_shift2');
+    const c1  = getRawNumber('fsc_cash_shift1');
+    const c2  = getRawNumber('fsc_cash_shift2');
     const totCash = c1 + c2;
 
     const ar1 = getRawNumber('fsc_ar_shift1');
@@ -2350,11 +2420,18 @@ async function saveClosingAndValidate() {
     const totAr = ar1 + ar2;
 
     const netSales = totCash + totAr;
-    const totBank = getRawNumber('fsc_total_cash_bank');
+    const totBank  = getRawNumber('fsc_total_cash_bank');
 
-    const checkedBy = document.getElementById('fsc_checked_by').value.trim();
-    const verifiedBy = document.getElementById('fsc_verified_by').value.trim();
-    const remarks = document.getElementById('fsc_remarks').value.trim();
+    const checkedBy  = document.getElementById('fsc_checked_by')?.value.trim() || '';
+    const verifiedBy = document.getElementById('fsc_verified_by')?.value.trim() || '';
+    const remarks    = document.getElementById('fsc_remarks')?.value.trim() || '';
+
+    const btn = document.getElementById('btnConfirmFscApprove');
+    const originalText = btn ? btn.innerHTML : 'Save Closing & Approve Transactions';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Saving Closing...';
+    }
 
     try {
         const formData = new FormData();
@@ -2365,12 +2442,15 @@ async function saveClosingAndValidate() {
         formData.append('shift_period', currentFscShiftPeriod);
         formData.append('total_fuel_sales', currentFscTotalSales);
         formData.append('total_liters', currentFscTotalLiters);
+        
         formData.append('cash_shift1', c1);
         formData.append('cash_shift2', c2);
         formData.append('total_cash', totCash);
+        
         formData.append('ar_shift1', ar1);
         formData.append('ar_shift2', ar2);
         formData.append('total_ar', totAr);
+        
         formData.append('net_sales', netSales);
         formData.append('total_cash_bank', totBank);
         formData.append('checked_by', checkedBy);
@@ -2386,23 +2466,27 @@ async function saveClosingAndValidate() {
         const jsonRes = await response.json();
         if (jsonRes && jsonRes.success) {
             closeModal('fuelClosingApprovalModal');
-            sessionStorage.setItem('petron_post_reload_toast_msg', jsonRes.message);
-            sessionStorage.setItem('petron_post_reload_toast_type', 'success');
-            location.reload();
+            if (window.showPetronFlash) {
+                window.showPetronFlash(jsonRes.message, 'success');
+            } else {
+                alert(jsonRes.message);
+            }
+            setTimeout(() => location.reload(), 1000);
         } else {
-            throw new Error(jsonRes?.message || 'Approval failed.');
+            alert('Error: ' + (jsonRes?.message || 'Approval failed.'));
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
         }
     } catch (err) {
-        btn.disabled = false;
-        btn.innerHTML = originalText;
-        if (window.showPetronFlash) {
-            window.showPetronFlash('Error: ' + err.message, 'error', 6000);
-        } else {
-            alert('Error: ' + err.message);
+        alert('Error: ' + err.message);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
         }
     }
 }
-
 // Batch Validate (Approve) - Opens Fuel Sales Closing Review Modal
 function batchValidate() {
     const selected = getSelectedTransactions();
@@ -2639,55 +2723,127 @@ function getRawNumber(elId) {
     return parseFloat(raw) || 0;
 }
 
-// Open Batch Adjust Modal
-function openBatchAdjust() {
-    const selected = getSelectedTransactions();
-    if (selected.length === 0) {
+// Confirm Batch Adjust
+// Single Transaction Adjustment
+function openAdjustModal(tx) {
+    openBatchAdjust([tx]);
+}
+
+// Open Fuel Meter Reading Adjustment Modal (Single or Multi-Nozzle)
+function openBatchAdjust(specificTxs) {
+    let selected = specificTxs || getSelectedTransactions();
+    if (!selected || selected.length === 0) {
         notifySelectWarning('Please select at least one transaction to adjust.');
         return;
     }
     
-    document.getElementById('batchAdjustPrompt').textContent = `You are about to mark ${selected.length} transaction(s) for adjustment. Please provide a reason:`;
-    document.getElementById('batchRejectReason') ? null : null;
-    document.getElementById('batchAdjustReason').value = '';
+    const promptEl = document.getElementById('batchAdjustPrompt');
+    if (promptEl) {
+        promptEl.innerHTML = `Edit the <strong>Beginning Reading</strong>, <strong>Ending Reading</strong>, or <strong>Calibration</strong> below. Liters Sold and Amount will automatically recalculate.`;
+    }
     
-    const singleFields = document.getElementById('singleAdjustFields');
-    if (selected.length === 1) {
-        const tx = selected[0];
+    const reasonEl = document.getElementById('batchAdjustReason');
+    if (reasonEl) reasonEl.value = '';
+    
+    const badgeEl = document.getElementById('adj_nozzle_count_badge');
+    if (badgeEl) badgeEl.textContent = `${selected.length} Nozzle(s)`;
+
+    let tbodyHtml = '';
+    selected.forEach((tx, idx) => {
         const begVal = parseFloat(tx.previous_reading || 0);
         const endVal = parseFloat(tx.present_reading || 0);
         const calVal = parseFloat(tx.calibration || 0);
         const prcVal = parseFloat(tx.price_per_liter || 0);
+        
+        const txCode     = tx.transaction_id || `TXN-${tx.id}`;
+        const nozzleName = tx.pump_name || tx._seq_label || tx.fuel_type || `Nozzle #${idx+1}`;
+        const shiftDisp  = tx.shift_name || (tx.shift_period === 'second' ? 'Second Shift' : (tx.shift_period ? tx.shift_period : '—'));
 
-        document.getElementById('adj_beginning').value = begVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('adj_ending').value = endVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('adj_calibration').value = calVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('adj_price').value = prcVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        singleFields.style.display = 'block';
-        calcAdjTotals();
-    } else {
-        singleFields.style.display = 'none';
-    }
+        tbodyHtml += `
+            <tr data-tx-id="${tx.id}" style="border-bottom: 1px solid #e2e8f0; background: #ffffff;">
+                <td style="padding: 8px 6px; text-align: center; font-weight: 700; color: #64748b;">${idx + 1}</td>
+                <td style="padding: 8px 10px;">
+                    <div style="font-weight: 800; color: #002F70; font-size: 12px;">${escapeHtml(txCode)}</div>
+                    <div style="font-size: 11px; font-weight: 700; color: #334155;">${escapeHtml(nozzleName)} • <span style="color:#64748b;">${escapeHtml(shiftDisp)}</span></div>
+                </td>
+                <td style="padding: 8px 8px; font-size: 11px; font-weight: 700; color: #002F70;">${escapeHtml(tx.fuel_type || '')}</td>
+                <td style="padding: 6px 4px;">
+                    <input type="text" inputmode="decimal" class="adj-row-beg" id="adj_beg_${tx.id}" data-id="${tx.id}" value="${begVal.toFixed(2)}" oninput="formatAutoCommaDot(this); recalcAdjRow(${tx.id}, ${prcVal});" onblur="formatAutoCommaDotOnBlur(this); recalcAdjRow(${tx.id}, ${prcVal});" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; text-align:right; color:#0f172a; box-sizing:border-box;">
+                </td>
+                <td style="padding: 6px 4px;">
+                    <input type="text" inputmode="decimal" class="adj-row-end" id="adj_end_${tx.id}" data-id="${tx.id}" value="${endVal.toFixed(2)}" oninput="formatAutoCommaDot(this); recalcAdjRow(${tx.id}, ${prcVal});" onblur="formatAutoCommaDotOnBlur(this); recalcAdjRow(${tx.id}, ${prcVal});" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; text-align:right; color:#0f172a; box-sizing:border-box;">
+                </td>
+                <td style="padding: 6px 4px;">
+                    <input type="text" inputmode="decimal" class="adj-row-cal" id="adj_cal_${tx.id}" data-id="${tx.id}" value="${calVal.toFixed(2)}" oninput="formatAutoCommaDot(this); recalcAdjRow(${tx.id}, ${prcVal});" onblur="formatAutoCommaDotOnBlur(this); recalcAdjRow(${tx.id}, ${prcVal});" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; text-align:right; color:#0f172a; box-sizing:border-box;">
+                </td>
+                <td style="padding: 8px 8px; text-align: right; font-weight: 700; color: #475569; font-size: 11px;">
+                    ₱${prcVal.toFixed(2)}
+                </td>
+                <td style="padding: 8px 8px; text-align: right; font-weight: 800; color: #1e3a8a;" id="adj_liters_${tx.id}">
+                    0.00 L
+                </td>
+                <td style="padding: 8px 10px; text-align: right; font-weight: 800; color: #15803d;" id="adj_amount_${tx.id}">
+                    ₱0.00
+                </td>
+            </tr>
+        `;
+    });
+
+    const tbodyEl = document.getElementById('batchAdjustTableBody');
+    if (tbodyEl) tbodyEl.innerHTML = tbodyHtml;
+
+    // Store selected list on window for recalculations
+    window.currentAdjustTxs = selected;
+
+    // Trigger initial recalculation for all rows
+    selected.forEach(tx => {
+        recalcAdjRow(tx.id, parseFloat(tx.price_per_liter || 0));
+    });
     
     document.getElementById('batchAdjustModal').style.display = 'flex';
 }
 
-function calcAdjTotals() {
-    const beg = getRawNumber('adj_beginning');
-    const end = getRawNumber('adj_ending');
-    const cal = getRawNumber('adj_calibration');
-    const price = getRawNumber('adj_price');
+// Automatic Recalculation per row
+function recalcAdjRow(txId, price) {
+    const beg = getRawNumber(`adj_beg_${txId}`);
+    const end = getRawNumber(`adj_end_${txId}`);
+    const cal = getRawNumber(`adj_cal_${txId}`);
 
     let liters = end - beg - cal;
     if (liters < 0) liters = 0;
-
     const amount = liters * price;
 
-    document.getElementById('adj_liters_val').textContent = liters.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
-    document.getElementById('adj_amount_val').textContent = '₱' + amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const elLiters = document.getElementById(`adj_liters_${txId}`);
+    const elAmount = document.getElementById(`adj_amount_${txId}`);
+    if (elLiters) elLiters.textContent = liters.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
+    if (elAmount) elAmount.textContent = '₱' + amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+    calcAdjTotals();
 }
 
-// Confirm Batch Adjust
+function calcAdjTotals() {
+    let grandLiters = 0;
+    let grandAmount = 0;
+
+    const selected = window.currentAdjustTxs || getSelectedTransactions();
+    selected.forEach(tx => {
+        const beg = getRawNumber(`adj_beg_${tx.id}`);
+        const end = getRawNumber(`adj_end_${tx.id}`);
+        const cal = getRawNumber(`adj_cal_${tx.id}`);
+        const price = parseFloat(tx.price_per_liter || 0);
+
+        let liters = end - beg - cal;
+        if (liters < 0) liters = 0;
+        grandLiters += liters;
+        grandAmount += (liters * price);
+    });
+
+    const elTotVol = document.getElementById('adj_total_vol_sum');
+    const elTotAmt = document.getElementById('adj_total_amt_sum');
+    if (elTotVol) elTotVol.textContent = grandLiters.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
+    if (elTotAmt) elTotAmt.textContent = '₱' + grandAmount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
 async function confirmBatchAdjust() {
     const reason = document.getElementById('batchAdjustReason').value.trim();
     if (!reason) {

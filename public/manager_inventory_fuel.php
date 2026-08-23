@@ -129,7 +129,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_fuel_details') {
 $fi_raw = [];
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) NOT IN ('archived', 'deleted', 'inactive') ORDER BY id ASC");
     $s->execute([$station_id]);
     $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fi_raw as $row) {
@@ -255,7 +255,7 @@ foreach ($TANK_CONFIG_17 as $tc) {
     $sales       = $same_type_count > 0 ? round($sales_total / $same_type_count, 2) : 0;
     $calibration = $same_type_count > 0 ? round($adj_total / $same_type_count, 2) : 0;
 
-    $beginning = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
+    $beginning = $cur_level;
     $total_available = $beginning + $purchases;
     $ending_system   = min(max(0, $total_available - $sales - $calibration), $capacity);
 

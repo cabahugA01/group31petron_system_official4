@@ -41,7 +41,7 @@ if ($section === 'sales') {
     $has_vt = false;
     try { $pdo->query("SELECT 1 FROM fuel_variance_reports LIMIT 1"); $has_vt = true; } catch(Exception $e){}
     global $fsc;
-    $fsc_local = "LOWER(TRIM(COALESCE(ft.status,''))) NOT IN ('rejected','cancelled','voided','void')";
+    $fsc_local = "LOWER(TRIM(COALESCE(ft.status,''))) IN ('verified','approved','adjusted','validated','completed')";
     if ($has_vt) {
         $fuel_rows = q($pdo,"SELECT DATE(ft.transaction_date) AS sale_date, ft.fuel_type,
             COUNT(ft.transaction_id) AS txn_count, COALESCE(SUM(ft.liters_sold),0) AS total_liters,

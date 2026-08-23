@@ -4361,7 +4361,7 @@ setTimeout(function() {
             <!-- Summary Cards Row -->
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px; padding:20px 20px 0 20px; background:#ffffff;">
                 <!-- Card 1: Transactions Encoded -->
-                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:18px; display:flex; align-items:center; gap:16px; transition: transform 0.2s, box-shadow 0.2s; cursor:default;" 
+                <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:18px; display:flex; align-items:center; gap:16px; transition: transform 0.2s, box-shadow 0.2s; cursor:default;" 
                      onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.05)';" 
                      onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
                     <div style="background:#eff6ff; color:#2563eb; width:48px; height:48px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;">
@@ -4374,7 +4374,7 @@ setTimeout(function() {
                 </div>
 
                 <!-- Card 2: Pending Manager Validation -->
-                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:18px; display:flex; align-items:center; gap:16px; transition: transform 0.2s, box-shadow 0.2s; cursor:default;"
+                <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:18px; display:flex; align-items:center; gap:16px; transition: transform 0.2s, box-shadow 0.2s; cursor:default;"
                      onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.05)';" 
                      onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
                     <div style="background:#fffbeb; color:#d97706; width:48px; height:48px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;">
@@ -5037,8 +5037,12 @@ setTimeout(function() {
             });
         }
 
-        // ── Today's Entries (Table A) — auto-load + refresh after submit ──────
-        async function loadTodayEntries() {
+                // ── Today's Entries (Table A) — auto-load + refresh after submit ──────
+        window.todayEntriesPageSize = 999999;
+        window.todayEntriesPage     = 1;
+        window.todayEntriesData     = [];
+
+        async function loadTodayEntries(keepPage = false) {
             const body = document.getElementById('todayEntriesBody');
             const icon = document.getElementById('refreshIcon');
             if (icon) icon.className = 'fas fa-spinner fa-spin';
@@ -5076,27 +5080,30 @@ setTimeout(function() {
                 if (elPending) elPending.textContent = pendingCount;
 
                 if (!json.success) {
-                    body.innerHTML = `<div style="text-align:center;padding:40px;color:#ef4444;font-size:14px;background:#ffffff;">
-                        <i class="fas fa-exclamation-circle" style="font-size:28px;display:block;margin-bottom:10px;color:#f87171;"></i>
-                        Failed to load history entries.
-                    </div>`;
+                    if (body) {
+                        body.innerHTML = `<div style="text-align:center;padding:40px;color:#ef4444;font-size:14px;background:#ffffff;">
+                            <i class="fas fa-exclamation-circle" style="font-size:28px;display:block;margin-bottom:10px;color:#f87171;"></i>
+                            Failed to load history entries.
+                        </div>`;
+                    }
                     if (icon) icon.className = 'fas fa-sync';
                     return;
                 }
 
                 window.todayEntriesData = readings;
-                window.todayEntriesPage = 1;
+                if (!keepPage) window.todayEntriesPage = 1;
                 renderTodayEntriesTable();
             } catch(e) {
-                body.innerHTML = `<div style="text-align:center;padding:30px;color:#ef4444;font-size:13px;background:#ffffff;">
-                    <i class="fas fa-exclamation-circle" style="display:block;margin-bottom:6px;font-size:20px;"></i>
-                    Could not load entries. Please check your connection or refresh the page.
-                </div>`;
+                console.error('loadTodayEntries error:', e);
+                if (body && (!window.todayEntriesData || window.todayEntriesData.length === 0)) {
+                    body.innerHTML = `<div style="text-align:center;padding:30px;color:#ef4444;font-size:13px;background:#ffffff;">
+                        <i class="fas fa-exclamation-circle" style="display:block;margin-bottom:6px;font-size:20px;"></i>
+                        Could not load entries. Please check your connection or refresh the page.
+                    </div>`;
+                }
             }
             if (icon) icon.className = 'fas fa-sync';
         }
-
-                window.todayEntriesPageSize = 10;
 
         // ── 10-SECOND REAL-TIME AUTO REFRESH FOR METER READING HISTORY ──────────
         async function autoRefreshMeterReadingHistory() {
@@ -5128,7 +5135,7 @@ setTimeout(function() {
             const rows = window.todayEntriesData || [];
             
             const totalRows = rows.length;
-            const totalPages = Math.max(1, Math.ceil(totalRows / window.todayEntriesPageSize));
+            const pageSize = window.todayEntriesPageSize || 999999; const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
             if (window.todayEntriesPage > totalPages) window.todayEntriesPage = totalPages;
             
             const startIdx = (window.todayEntriesPage - 1) * window.todayEntriesPageSize;
@@ -5251,7 +5258,7 @@ setTimeout(function() {
                         <col style="width: 9%;">  <!-- Amount -->
                         <col style="width: 9%;">  <!-- Encoded By -->
                         <col style="width: 10%;"> <!-- Status -->
-                        <col style="width: 7%;">  <!-- Notes -->
+                        
                     </colgroup>
                     <thead>
                         <tr style="background:#002F70; border-bottom:2px solid #001f4d;">
@@ -5266,7 +5273,7 @@ setTimeout(function() {
                             <th style="${THR}" title="Amount">Amount</th>
                             <th style="${TH}" title="Encoded By">Encoded By</th>
                             <th style="${TH}" title="Status">Status</th>
-                            <th style="${TH}" title="Notes">Notes</th>
+                            
                         </tr>
                     </thead>
                     <tbody>`;
@@ -5306,13 +5313,13 @@ setTimeout(function() {
                     <td style="padding:6px 4px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#0f172a; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
                     <td style="padding:6px 4px; color:#334155; font-weight:500; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${staffStr}">${staffStr}</td>
                     <td style="padding:6px 4px; font-size:11px; vertical-align:middle;">${badge(r.status)}</td>
-                    <td style="padding:6px 4px; color:#475569; font-size:11px; overflow:hidden; vertical-align:middle;">${notesCellContent}</td>
+                    
                 </tr>`;
             });
 
             if (pageRows.length === 0) {
                 html += `<tr>
-                    <td colspan="12" style="padding:40px; text-align:center; color:#94a3b8; font-size:14px; background:#ffffff;">
+                    <td colspan="11" style="padding:40px; text-align:center; color:#94a3b8; font-size:14px; background:#ffffff;">
                         <i class="fas fa-history" style="font-size:24px; display:block; margin-bottom:8px; color:#cbd5e1;"></i>
                         No readings submitted for the selected filter criteria.
                     </td>
@@ -6590,18 +6597,9 @@ setTimeout(function() {
                             </table>
                             </div>
                             <!-- Rows per page + Pagination controls -->
-                            <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-top:1px solid #e2e8f0;">
+                            <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:12px;padding:12px 16px;border-top:1px solid #e2e8f0;">
                                 <!-- Rows per page -->
-                                <div style="display:flex;align-items:center;gap:7px;">
-                                    <label style="font-size:12px;white-space:nowrap;">Rows per page:</label>
-                                    <select id="mhPerPage" onchange="mhChangePerPage()" class="pag-select">
-                                        <option value="10" selected>10</option>
-                                        <option value="20">20</option>
-                                        <option value="30">30</option>
-                                        <option value="40">40</option>
-                                        <option value="50">50</option>
-                                    </select>
-                                </div>
+                                
                                 <!-- Page indicator + arrows -->
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <button id="mhPrevBtn" onclick="mhGoPage(mhState.page - 1)" class="pag-btn">
@@ -6624,7 +6622,7 @@ setTimeout(function() {
                         var mhOpen = <?= (!empty($_GET['mh_open'])) ? 'true' : 'false' ?>;
 
                         // ── Merchandise History pagination ────────────────────
-                        var mhState = { page: 1, per_page: 10 };
+                        var mhState = { page: 1, per_page: 999999 };
 
                         function mhRender() {
                             var rows = document.querySelectorAll('#mhTableBody .mh-row');
@@ -11791,7 +11789,7 @@ setTimeout(function() {
             serviceType: '',
             search:      '',
             page:    1,
-            per_page: 10
+            per_page: 999999
         };
 
         function joApplyFilters() {
@@ -13460,17 +13458,8 @@ setTimeout(function() {
                 </table>
                 </div>
                 <!-- Rows per page + Pagination controls -->
-                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-top:1px solid #e2e8f0;">
-                    <div style="display:flex;align-items:center;gap:7px;">
-                        <label style="font-size:12px;white-space:nowrap;">Rows per page:</label>
-                        <select id="fhPerPage" onchange="fhChangePerPage()" class="pag-select">
-                            <option value="10" selected>10</option>
-                            <option value="20">20</option>
-                            <option value="30">30</option>
-                            <option value="40">40</option>
-                            <option value="50">50</option>
-                        </select>
-                    </div>
+                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:12px;padding:12px 16px;border-top:1px solid #e2e8f0;">
+                    
                     <div style="display:flex;align-items:center;gap:8px;">
                         <button id="fhPrevBtn" onclick="fhGoPage(fhState.page - 1)" class="pag-btn">
                             <i class="fas fa-chevron-left"></i>
@@ -13486,7 +13475,7 @@ setTimeout(function() {
         </div>
         <script>
         (function(){
-            var fhState = { page: 1, per_page: 10 };
+            var fhState = { page: 1, per_page: 999999 };
             function fhRender() {
                 var rows = document.querySelectorAll('#fhTableBody .fh-row');
                 var total = rows.length;

@@ -3527,7 +3527,7 @@ require_once __DIR__ . '/rbac_menu.php';
 
       // 3. Inventory: Low stock items (reference only)
       $staff_low_stock = $__badge_count(
-          "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.reorder_level, ip.min_stock, 24)",
+          "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(NULLIF(si.reorder_level, 0), NULLIF(ip.min_stock, 0), 10)",
           [$myStationId]
       );
       $badges['inventory'] = $staff_low_stock;
@@ -3561,14 +3561,14 @@ require_once __DIR__ . '/rbac_menu.php';
           [$myStationId]
       );
       $mgr_low_fuel = $__badge_count(
-          "SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ? AND current_level >= 0 AND capacity > 0 AND current_level <= COALESCE(reorder_level, capacity * 0.20)",
+          "SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ? AND current_level >= 0 AND capacity > 0 AND current_level <= COALESCE(NULLIF(reorder_level, 0), capacity * 0.15, 500)",
           [$myStationId]
       );
       $badges['fuel'] = $mgr_fuel_validation + $mgr_calibration_review + $mgr_low_fuel;
 
       // 3. Inventory: Low Stock + Critical Stock + Purchase Requests Waiting + Deliveries Waiting for Stock-In
       $mgr_low_stock = $__badge_count(
-          "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.reorder_level, ip.min_stock, 24)",
+          "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(NULLIF(si.reorder_level, 0), NULLIF(ip.min_stock, 0), 10)",
           [$myStationId]
       );
       $mgr_purchase_reqs = $__badge_count(

@@ -1136,7 +1136,7 @@ if (count($meter_readings) == 0 && $has_fuel_transactions) {
                   DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN ? AND ?
                   OR DATE(ft.created_at) BETWEEN ? AND ?
               )
-              AND LOWER(COALESCE(ft.status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+              AND LOWER(COALESCE(ft.status, '')) IN ('verified','approved','adjusted','validated','completed')
             ORDER BY COALESCE(ft.transaction_date, ft.created_at), ft.id";
         
         $stmt = $pdo->prepare($sql);
@@ -1218,7 +1218,7 @@ if ($has_fuel_transactions) {
                   DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN ? AND ?
                   OR DATE(ft.created_at) BETWEEN ? AND ?
               )
-              AND LOWER(COALESCE(ft.status, '')) NOT IN ('voided','rejected','cancelled','canceled')
+              AND LOWER(COALESCE(ft.status, '')) IN ('verified','approved','adjusted','validated','completed')
             ORDER BY COALESCE(ft.transaction_date, ft.created_at), ft.id";
         
         $stmt = $pdo->prepare($sql);
@@ -4541,7 +4541,7 @@ function autoRefreshStaffFuelSalesSummary() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshStaffFuelSalesSummary, 10000);
+setInterval(autoRefreshStaffFuelSalesSummary, 15000);
 </script>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>
 

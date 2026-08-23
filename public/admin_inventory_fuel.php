@@ -274,7 +274,7 @@ foreach ($TANK_CONFIG_17 as $tc) {
     $sales       = $same_n > 0 ? round($sales_total / $same_n, 2) : 0;
     $calibration = $same_n > 0 ? round($adj_total / $same_n, 2) : 0;
     
-    $beginning   = $same_n > 0 ? round($cur_level / $same_n, 2) : 0;
+    $beginning   = $cur_level;
     $total_avail = $beginning + $purchases;
     
     $ending      = min(max(0, $total_avail - $sales - $calibration), $capacity);

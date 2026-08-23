@@ -78,7 +78,7 @@ function exportValidatedTransactions($pdo, $station_id, $start_date, $end_date, 
             combined.reason
         FROM (
             SELECT transaction_id, status, total_amount, created_at, staff_id, manager_id, action, reason, 'fuel' as type 
-            FROM fuel_transactions WHERE station_id = ? AND status = 'Complete'
+            FROM fuel_transactions WHERE station_id = ? AND LOWER(TRIM(COALESCE(status,''))) IN ('verified','approved','adjusted','validated','completed')
             UNION ALL
             SELECT id as transaction_id, status, total as total_amount, created_at, user_id as staff_id, manager_id, action, reason, 'merchandise' as type 
             FROM sales WHERE station_id = ? AND status = 'Complete'

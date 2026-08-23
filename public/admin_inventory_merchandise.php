@@ -377,7 +377,29 @@ if (isset($_GET['print_id'])) {
                 Petron Station Management System —¢ Official Inventory Slip
             </div>
         </div>
-    </body>
+    
+<script id="merchAutoRefreshScript">
+// ── Silent Background Auto-Refresh for Merchandise Inventory (15 seconds) ──
+(function() {
+    'use strict';
+    setInterval(function() {
+        if (!document.hidden) {
+            // If any modal is currently open, skip page reload to avoid interrupting user input
+            var openModal = document.querySelector('.modal-overlay.open, .sr-modal-overlay.open, .modal.show, div[style*="display: block"][id*="Modal"]');
+            if (!openModal) {
+                if (typeof loadMerchandiseInventory === 'function') {
+                    loadMerchandiseInventory();
+                } else if (typeof fetchInventoryData === 'function') {
+                    fetchInventoryData();
+                } else {
+                    location.reload();
+                }
+            }
+        }
+    }, 15000);
+})();
+</script>
+</body>
     </html>
     <?php
     exit;
@@ -1733,7 +1755,16 @@ body, html {
                         $status_color = $has_variance ? '#fd7e14' : ($item['computed_status'] === 'available' ? '#28a745' : (in_array($item['computed_status'], ['critical', 'out']) ? '#dc3545' : '#fd7e14'));
                         $updated = $item['last_updated'] ? date('M d, Y h:i A', strtotime($item['last_updated'])) : '-';
                     ?>
-                    <tr>
+                    <tr class="merch-row"
+    data-name="<?= htmlspecialchars(strtolower($item['name'])) ?>"
+    data-sku="<?= htmlspecialchars(strtolower($item['sku'])) ?>"
+    data-category="<?= htmlspecialchars(strtolower($item['category_name'])) ?>"
+    data-brand="<?= htmlspecialchars(strtolower($item['brand'] ?? '')) ?>"
+    data-supplier="<?= htmlspecialchars(strtolower($item['supplier'] ?? 'petron corporation')) ?>"
+    data-unit="<?= htmlspecialchars(strtolower($item['unit'])) ?>"
+    data-status="<?= htmlspecialchars(strtolower($badgeLbl)) ?>"
+    data-status-key="<?= htmlspecialchars(strtolower($item['computed_status'])) ?>"
+    data-date="<?= $item['last_updated'] ? date('Y-m-d', strtotime($item['last_updated'])) : '' ?>">
                         <td><code style="font-size:11px;font-weight:700;color:#002F70;"><?= htmlspecialchars($batch_id) ?></code></td>
                         <td><code><?= htmlspecialchars($item['sku'] ?: '-') ?></code></td>
                         <td><strong><?= htmlspecialchars($item['name']) ?></strong></td>
@@ -2678,10 +2709,27 @@ document.addEventListener('DOMContentLoaded', function() {
                     var hidden = document.getElementById(inputId);
                     if (hidden) hidden.value = val;
                 }
+                if (typeof filterAdminMerchTable === 'function') filterAdminMerchTable();
             });
         });
     });
     setupDownwardFilterSelects(document.querySelectorAll('.afto-filter select'));
+    ['search_query', 'date_from', 'date_to'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', filterAdminMerchTable);
+            el.addEventListener('change', filterAdminMerchTable);
+        }
+    });
+    var merchFilterForm = document.querySelector('.afto-filter');
+    if (merchFilterForm) {
+        merchFilterForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            filterAdminMerchTable();
+            return false;
+        });
+    }
+    filterAdminMerchTable();
     setupDownwardFilterSelects(['#adminMovTypeFilter']);
 
     // Close on outside click

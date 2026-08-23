@@ -528,31 +528,32 @@ try {
                     "{$fuel_type} Pump#{$tanker_num}: Ending={$present}, Beginning={$previous}, Calib={$calibration}, Volume={$liters_sold}L, Amount=₱{$total_amount}");
             } catch (Exception $e) {}
 
-            // ── Notify all managers at this station ──
+                        // ── Notify all managers at this station (1 Consolidated Notification Per Shift) ──
             try {
                 $staff_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')) ?: ($me['name'] ?? $me['username'] ?? 'Staff');
-                $notif_msg  = "{$staff_name} submitted Fuel Reading: {$fuel_type} Pump#{$tanker_num} | Volume: " . number_format($liters_sold, 2) . "L | Amount: ₱" . number_format($total_amount, 2) . " | Ref: {$txn_id}";
-                if (function_exists('create_role_notification')) {
-                    create_role_notification($pdo, 'manager', 'info', 'New Fuel Reading — Pending Validation', $notif_msg);
-                } else {
-                    // Fallback: query users directly using station_id column
-                    $mgr_stmt = $pdo->prepare("
-                        SELECT id FROM users
-                        WHERE station_id = ?
-                          AND LOWER(TRIM(role)) IN ('manager','admin')
-                          AND (is_active = 1 OR status = 'active')
-                    ");
-                    $mgr_stmt->execute([$station_id]);
-                    $mgr_ids = $mgr_stmt->fetchAll(PDO::FETCH_COLUMN);
-                    foreach ($mgr_ids as $mgr_id) {
-                        try {
-                            $ins_notif = $pdo->prepare("
-                                INSERT INTO notifications (user_id, type, title, message, status, created_at)
-                                VALUES (?, 'info', 'New Fuel Reading — Pending Validation', ?, 'unread', NOW())
-                            ");
-                            $ins_notif->execute([$mgr_id, $notif_msg]);
-                        } catch (Exception $ne) {}
-                    }
+                $shift_lbl  = !empty($shift_period_safe) ? (ucfirst($shift_period_safe) . ' Shift') : 'First Shift';
+                $date_lbl   = date('M d, Y', strtotime($reading_date));
+                $notif_msg  = "{$staff_name} submitted Fuel Readings for {$date_lbl} ({$shift_lbl}). Ready for manager validation.";
+                $source_key = 'mgr_fuel_shift_' . $station_id . '_' . date('Ymd', strtotime($reading_date)) . '_' . strtolower($shift_period_safe);
+
+                $mgr_stmt = $pdo->prepare("
+                    SELECT id FROM users
+                    WHERE station_id = ?
+                      AND LOWER(TRIM(role)) IN ('manager','admin')
+                      AND (is_active = 1 OR status = 'active')
+                ");
+                $mgr_stmt->execute([$station_id]);
+                $mgr_ids = $mgr_stmt->fetchAll(PDO::FETCH_COLUMN);
+
+                foreach ($mgr_ids as $mgr_id) {
+                    try {
+                        $ins_notif = $pdo->prepare("
+                            INSERT INTO notifications (user_id, type, event_type, severity, title, message, source_key, redirect_url, status, created_at)
+                            VALUES (?, 'info', 'transaction', 'high', 'New Fuel Reading — Pending Validation', ?, ?, 'manager_fuel_transaction_validation.php', 'unread', NOW())
+                            ON DUPLICATE KEY UPDATE title = VALUES(title), message = VALUES(message), redirect_url = VALUES(redirect_url)
+                        ");
+                        $ins_notif->execute([$mgr_id, $notif_msg, $source_key]);
+                    } catch (Exception $ne) {}
                 }
             } catch (Exception $e) {}
 

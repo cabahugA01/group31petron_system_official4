@@ -298,6 +298,25 @@ try {
                     $params[] = $date_to;
                 }
 
+                // Auto-clear stale inventory alerts if stock levels are currently OK
+                try {
+                    $pdo->prepare("
+                        DELETE n FROM notifications n
+                        INNER JOIN station_inventory si ON (n.source_key LIKE CONCAT('mgr_inv_low_', si.product_id, '%') OR n.title LIKE '%Inventory Alert%' OR n.title LIKE '%Low Stock%')
+                        INNER JOIN inventory_products ip ON ip.id = si.product_id
+                        WHERE n.user_id = ?
+                          AND si.stock_level > COALESCE(NULLIF(si.reorder_level, 0), NULLIF(ip.min_stock, 0), 10)
+                          AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels')
+                    ")->execute([$user_id]);
+
+                    $pdo->prepare("
+                        DELETE n FROM notifications n
+                        INNER JOIN fuel_inventory fi ON (n.source_key LIKE CONCAT('mgr_fuel_low_', fi.id, '%') OR n.title LIKE '%Low Fuel%')
+                        WHERE n.user_id = ?
+                          AND fi.current_level > COALESCE(NULLIF(fi.reorder_level, 0), fi.capacity * 0.15, 500)
+                    ")->execute([$user_id]);
+                } catch (Exception $e) {}
+
                 $stmt = $pdo->prepare(
                     "SELECT n.id, n.type, n.title, n.message, n.event_type,
                             n.severity, n.redirect_url, n.reference_type, n.reference_id,
@@ -313,12 +332,16 @@ try {
                 foreach ($rows as &$n) {
                     $n['time_ago'] = time_ago($n['created_at']);
                     $n['is_unread'] = ($n['status'] === 'unread');
-                    if (empty($n['redirect_url']) && !empty($n['reference_type'])) {
-                        $n['redirect_url'] = notification_redirect_url(
-                            $n['reference_type'],
-                            (int)($n['reference_id'] ?? 0),
-                            $role
-                        );
+                    if (empty($n['redirect_url']) || $n['redirect_url'] === '#' || $n['redirect_url'] === 'null') {
+                        if (!empty($n['reference_type'])) {
+                            $n['redirect_url'] = notification_redirect_url(
+                                $n['reference_type'],
+                                (int)($n['reference_id'] ?? 0),
+                                $role
+                            );
+                        } elseif (strpos($n['title'], 'Fuel Reading') !== false || strpos($n['title'], 'Fuel Transaction') !== false) {
+                            $n['redirect_url'] = ($role === 'manager' || $role === 'admin') ? 'manager_fuel_transaction_validation.php' : 'staff_transactions_hub.php?section=fuel&fuel_tab=readings';
+                        }
                     }
                 }
                 unset($n);

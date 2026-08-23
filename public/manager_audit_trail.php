@@ -579,6 +579,6 @@ function autoRefreshManagerAuditTrail() {
         .catch(() => {});
 }
 
-setInterval(autoRefreshManagerAuditTrail, 10000);
+setInterval(autoRefreshManagerAuditTrail, 15000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

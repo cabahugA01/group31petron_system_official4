@@ -55,7 +55,7 @@ $stmt_readings = $pdo->prepare("
     WHERE station_id = ? 
       AND (DATE(transaction_date) = ? OR (transaction_date IS NULL AND DATE(created_at) = ?))
       AND (? = '' OR shift_period = ? OR shift_name = ?)
-      AND LOWER(COALESCE(status,'')) NOT IN ('rejected','voided','cancelled','canceled')
+      AND LOWER(COALESCE(status,'')) IN ('verified','approved','adjusted','validated','completed')
     ORDER BY pump_id ASC, id ASC
 ");
 $stmt_readings->execute([$station_id, $report_date, $report_date, $shift, $shift_key, $shift]);

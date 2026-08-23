@@ -1534,13 +1534,13 @@ function generateSecurePassword(int $length = 12): string {
  * @param int|null $specificUserId Optional specific user ID within the role
  * @return int Number of notifications created
  */
-function create_role_notification($pdo, $targetRole, $type, $title, $message, $specificUserId = null) {
+function create_role_notification($pdo, $targetRole, $type, $title, $message, $specificUserId = null, $redirect_url = '') {
   try {
     ensure_notifications_table($pdo);
-    $sql = "INSERT INTO notifications (user_id, type, title, message) 
-            SELECT u.id, ?, ?, ? FROM users u 
+    $sql = "INSERT INTO notifications (user_id, type, title, message, redirect_url) 
+            SELECT u.id, ?, ?, ?, ? FROM users u 
             WHERE u.role = ? AND u.status = 'Active'";
-    $params = [$type, $title, $message, $targetRole];
+    $params = [$type, $title, $message, $redirect_url, $targetRole];
     
     if ($specificUserId) {
       $sql .= " AND u.id = ?";
@@ -2833,13 +2833,18 @@ function notification_redirect_url(string $ref_type, int $ref_id, string $role):
         ],
         'fuel_transaction' => [
             'staff'    => "staff_fuel_sales_closing.php",
-            'manager'  => "staff_fuel_sales_closing.php",
-            'admin'    => "staff_fuel_sales_closing.php",
+            'manager'  => "manager_fuel_transaction_validation.php",
+            'admin'    => "manager_fuel_transaction_validation.php",
+        ],
+        'fuel_reading' => [
+            'staff'    => "staff_transactions_hub.php?section=fuel&fuel_tab=readings",
+            'manager'  => "manager_fuel_transaction_validation.php",
+            'admin'    => "manager_fuel_transaction_validation.php",
         ],
         'fuel_sales_closing' => [
             'staff'    => "staff_fuel_sales_closing.php",
-            'manager'  => "staff_fuel_sales_closing.php",
-            'admin'    => "staff_fuel_sales_closing.php",
+            'manager'  => "manager_fuel_transaction_validation.php",
+            'admin'    => "manager_fuel_transaction_validation.php",
         ],
         'job_order' => [
             'staff'    => "job_order_detail.php{$id}",

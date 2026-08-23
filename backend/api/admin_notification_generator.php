@@ -422,7 +422,7 @@ try {
     $low_inv = $pdo->prepare(
         "SELECT COUNT(*) FROM station_inventory si
          INNER JOIN inventory_products ip ON ip.id = si.product_id
-         WHERE si.station_id = ?
+         WHERE si.stock_level <= COALESCE(NULLIF(si.reorder_level, 0), NULLIF(ip.min_stock, 0), 10) AND si.station_id = ?
            AND si.stock_level >= 0
            AND si.stock_level <= COALESCE(si.reorder_level, ip.min_stock, 10)
            AND LOWER(ip.category) NOT IN ('fuel', 'fuels')"

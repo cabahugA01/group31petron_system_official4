@@ -557,14 +557,8 @@ require_login();
     </div>
 
     <!-- Pagination -->
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-top:1px solid #e2e8f0;flex-wrap:wrap">
-      <div style="display:flex;align-items:center;gap:7px">
-        <label style="font-size:12px;white-space:nowrap">Rows per page:</label>
-        <select id="histPerPage" onchange="histChangePerPage()" class="pag-select">
-          <option value="10" selected>10</option><option value="20">20</option>
-          <option value="30">30</option><option value="50">50</option>
-        </select>
-      </div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:10px 16px;border-top:1px solid #e2e8f0;flex-wrap:wrap">
+      
       <div style="display:flex;align-items:center;gap:8px">
         <button id="histPrevBtn" onclick="histGoPage(histState.page-1)" class="pag-btn"><i class="fas fa-chevron-left"></i></button>
         <span id="histPageLabel" style="font-size:13px;color:#495057;white-space:nowrap">Page 1 of 1</span>

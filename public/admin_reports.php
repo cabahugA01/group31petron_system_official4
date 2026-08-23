@@ -1678,4 +1678,31 @@ function openCustomerModal(customerId) {
 }
 </script>
 
+<script>
+// ── 15-Second Silent Background Auto-Refresh for Admin Reports & Audit Trail ──
+(function() {
+    let autoRefreshTimer = null;
+
+    function autoRefreshAdminReports() {
+        if (document.querySelector('.modal.show') || document.querySelector('.modal.in')) return;
+        if (document.activeElement && ['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName)) return;
+
+        fetch(window.location.href, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(res => res.ok ? res.text() : null)
+            .then(html => {
+                if (!html) return;
+                const parser = new DOMParser();
+                $doc = parser.parseFromString(html, 'text/html');
+                const newArea = $doc.querySelector('#adminReportPrintable, .rpt-printable-area');
+                const curArea = document.querySelector('#adminReportPrintable, .rpt-printable-area');
+                if (newArea && curArea) {
+                    curArea.innerHTML = newArea.innerHTML;
+                }
+            })
+            .catch(() => {});
+    }
+
+    autoRefreshTimer = setInterval(autoRefreshAdminReports, 15000);
+})();
+</script>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

@@ -2125,6 +2125,28 @@ function submitAdjustmentForm(e) {
 </div>
 
 </div> <!-- /stock-page -->
+
+<script id="merchAutoRefreshScript">
+// ── Silent Background Auto-Refresh for Merchandise Inventory (15 seconds) ──
+(function() {
+    'use strict';
+    setInterval(function() {
+        if (!document.hidden) {
+            // If any modal is currently open, skip page reload to avoid interrupting user input
+            var openModal = document.querySelector('.modal-overlay.open, .sr-modal-overlay.open, .modal.show, div[style*="display: block"][id*="Modal"]');
+            if (!openModal) {
+                if (typeof loadMerchandiseInventory === 'function') {
+                    loadMerchandiseInventory();
+                } else if (typeof fetchInventoryData === 'function') {
+                    fetchInventoryData();
+                } else {
+                    location.reload();
+                }
+            }
+        }
+    }, 15000);
+})();
+</script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>
 
 
