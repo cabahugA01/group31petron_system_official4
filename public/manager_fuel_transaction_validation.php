@@ -838,7 +838,69 @@ if (in_array($export, ['excel', 'pdf'])) {
     if ($export === 'excel') {
         header('Content-Type: application/vnd.ms-excel; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '.xls"');
-        echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F6C;color:#fff;font-size:11px}</style></head><body>';
+        echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:7px}th{background:#002F6C;color:#fff;font-size:11px}/* Modal styles - Main System Layout Centering (Sidebar & Header Uncovered) */
+.modal {
+    display: none;
+    position: fixed !important;
+    top: 70px !important;
+    left: 250px !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    z-index: 1000 !important;
+    background: rgba(15, 23, 42, 0.55) !important;
+    backdrop-filter: blur(3px) !important;
+    -webkit-backdrop-filter: blur(3px) !important;
+    margin: 0 !important;
+    padding: 24px !important;
+    box-sizing: border-box !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: left 0.3s ease !important;
+}
+
+body.sidebar-collapsed .modal,
+.sidebar-collapsed .modal {
+    left: 70px !important;
+}
+
+@media (max-width: 991px) {
+    .modal {
+        left: 0 !important;
+        top: 60px !important;
+    }
+}
+
+.modal.show,
+.modal[style*="display: flex"],
+.modal[style*="display: block"],
+.modal[style*="display:flex"],
+.modal[style*="display:block"] {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.modal-content {
+    background: #fff;
+    margin: auto !important;
+    padding: 24px;
+    border-radius: 16px;
+    width: 94%;
+    max-width: 1000px;
+    max-height: calc(100vh - 120px) !important;
+    box-shadow: 0 25px 60px -15px rgba(0,0,0,0.45);
+    position: relative !important;
+    box-sizing: border-box !important;
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; }
+.modal-header h3 { margin: 0; font-size: 15px; color: #00264D; font-weight: 700; text-transform: uppercase; }
+.modal-close { cursor: pointer; font-size: 20px; color: #94a3b8; font-weight: bold; }
+.modal-close:hover { color: #dc2626; }
+.modal-body { margin-bottom: 18px; }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; }
+</style></head><body>';
         echo '<h2>Fuel Transaction Validation Report</h2><p>Period: ' . $date_from . ' to ' . $date_to . ' | Records: ' . count($rows_fmt) . '</p>';
         echo '<table><thead><tr>';
         foreach ($headers as $h) echo '<th>' . htmlspecialchars($h) . '</th>';
@@ -896,7 +958,78 @@ if (in_array($export, ['excel', 'pdf'])) {
         echo 'a[href]:after{content:none !important;display:none !important;}';
         echo 'a{text-decoration:none !important;color:inherit !important;}';
         echo '}';
-        echo '</style>';
+        echo '/* Modal styles - Fully Contained Within System Content Layout (Above Footer, Right of Sidebar) */
+.modal {
+    display: none;
+    position: fixed !important;
+    top: 70px !important;
+    left: 250px !important;
+    right: 0 !important;
+    bottom: 40px !important; /* Clears fixed system footer (40px) */
+    width: calc(100vw - 250px) !important;
+    height: calc(100vh - 110px) !important; /* 70px top header + 40px footer = 110px */
+    z-index: 1000 !important;
+    background: rgba(15, 23, 42, 0.5) !important;
+    backdrop-filter: blur(2px) !important;
+    -webkit-backdrop-filter: blur(2px) !important;
+    margin: 0 !important;
+    padding: 16px 24px !important;
+    box-sizing: border-box !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow-y: auto !important;
+}
+
+body.sidebar-collapsed .modal,
+.sidebar-collapsed .modal {
+    left: 70px !important;
+    width: calc(100vw - 70px) !important;
+}
+
+@media (max-width: 991px) {
+    .modal {
+        top: 0 !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 99999 !important;
+        padding: 12px !important;
+    }
+}
+
+.modal.show,
+.modal[style*="display: flex"],
+.modal[style*="display: block"],
+.modal[style*="display:flex"],
+.modal[style*="display:block"] {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.modal-content {
+    background: #fff;
+    margin: auto !important;
+    padding: 0;
+    border-radius: 14px;
+    width: 94%;
+    max-width: 540px;
+    max-height: calc(100vh - 140px) !important;
+    box-shadow: 0 20px 50px -10px rgba(0,0,0,0.35);
+    position: relative !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; }
+.modal-header h3 { margin: 0; font-size: 15px; color: #00264D; font-weight: 700; text-transform: uppercase; }
+.modal-close { cursor: pointer; font-size: 20px; color: #94a3b8; font-weight: bold; }
+.modal-close:hover { color: #dc2626; }
+.modal-body { margin-bottom: 18px; }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; }
+</style>';
         echo '<script>';
         echo 'window.onload=function(){window.print();setTimeout(function(){window.close();},100);};';
         echo 'window.onafterprint=function(){window.close();};';
@@ -1176,6 +1309,77 @@ input[type="checkbox"]:indeterminate {
     cursor: not-allowed !important;
     background: #f8fafc !important;
 }
+/* Modal styles - Fully Contained Within System Content Layout (Above Footer, Right of Sidebar) */
+.modal {
+    display: none;
+    position: fixed !important;
+    top: 70px !important;
+    left: 250px !important;
+    right: 0 !important;
+    bottom: 40px !important; /* Clears fixed system footer (40px) */
+    width: calc(100vw - 250px) !important;
+    height: calc(100vh - 110px) !important; /* 70px top header + 40px footer = 110px */
+    z-index: 1000 !important;
+    background: rgba(15, 23, 42, 0.5) !important;
+    backdrop-filter: blur(2px) !important;
+    -webkit-backdrop-filter: blur(2px) !important;
+    margin: 0 !important;
+    padding: 16px 24px !important;
+    box-sizing: border-box !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow-y: auto !important;
+}
+
+body.sidebar-collapsed .modal,
+.sidebar-collapsed .modal {
+    left: 70px !important;
+    width: calc(100vw - 70px) !important;
+}
+
+@media (max-width: 991px) {
+    .modal {
+        top: 0 !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 99999 !important;
+        padding: 12px !important;
+    }
+}
+
+.modal.show,
+.modal[style*="display: flex"],
+.modal[style*="display: block"],
+.modal[style*="display:flex"],
+.modal[style*="display:block"] {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.modal-content {
+    background: #fff;
+    margin: auto !important;
+    padding: 0;
+    border-radius: 14px;
+    width: 94%;
+    max-width: 540px;
+    max-height: calc(100vh - 140px) !important;
+    box-shadow: 0 20px 50px -10px rgba(0,0,0,0.35);
+    position: relative !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; }
+.modal-header h3 { margin: 0; font-size: 15px; color: #00264D; font-weight: 700; text-transform: uppercase; }
+.modal-close { cursor: pointer; font-size: 20px; color: #94a3b8; font-weight: bold; }
+.modal-close:hover { color: #dc2626; }
+.modal-body { margin-bottom: 18px; }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; }
 </style>
 
 <div class="mftv-wrap">
@@ -1548,18 +1752,18 @@ input[type="checkbox"]:indeterminate {
 </div>
 
 <!-- Fuel Sales Closing Review & Approval Modal -->
-<div id="fuelClosingApprovalModal" class="modal" style="display:none; align-items:center; justify-content:center; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px);">
-    <div class="modal-content" style="max-width: 980px; width: 94%; height: 88vh; max-height: 880px; display: flex; flex-direction: column; padding: 0; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35); border: 1px solid #CBD5E1; background: #F8FAFC;">
+<div id="fuelClosingApprovalModal" class="modal" style="display:none; align-items:center; justify-content:center; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(4px);">
+    <div class="modal-content" style="max-width: 1040px; width: 95%; max-height: calc(100vh - 140px) !important; height: calc(100vh - 140px); display: flex; flex-direction: column; padding: 0; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.35); border: 1px solid #CBD5E1; background: #F1F5F9;">
         
         <!-- Header -->
-        <div class="modal-header" style="background: linear-gradient(135deg, #002F70 0%, #001F4D 100%); color: #ffffff; padding: 22px 32px !important; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid rgba(255,255,255,0.15) !important; flex-shrink: 0; margin-bottom: 0; z-index: 15;">
-            <div style="display: flex; align-items: center; gap: 14px;">
-                <div style="width: 44px; height: 44px; background: rgba(255, 255, 255, 0.15); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.25);">
-                    <i class="fas fa-file-invoice-dollar" style="color: #FBBF24; font-size: 22px;"></i>
+        <div class="modal-header" style="background: linear-gradient(135deg, #002F70 0%, #001F4D 100%); color: #ffffff; padding: 20px 28px !important; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid rgba(255,255,255,0.15) !important; flex-shrink: 0; margin-bottom: 0; z-index: 15;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 42px; height: 42px; background: rgba(255, 255, 255, 0.15); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.25);">
+                    <i class="fas fa-file-invoice-dollar" style="color: #FBBF24; font-size: 20px;"></i>
                 </div>
                 <div>
-                    <h3 style="margin: 0; color: #ffffff !important; font-size: 17px; font-weight: 800; letter-spacing: 0.3px;">FUEL SALES CLOSING REVIEW &amp; APPROVAL</h3>
-                    <div style="font-size: 12px; color: #93C5FD; margin-top: 3px; display: flex; align-items: center; gap: 8px;">
+                    <h3 style="margin: 0; color: #ffffff !important; font-size: 16px; font-weight: 800; letter-spacing: 0.3px;">FUEL SALES CLOSING REVIEW &amp; APPROVAL</h3>
+                    <div style="font-size: 11px; color: #93C5FD; margin-top: 2px; display: flex; align-items: center; gap: 8px;">
                         <span id="fsc_badge_station">Petron Carmen Station</span>
                         <span style="opacity: 0.6;">•</span>
                         <span id="fsc_badge_date" style="font-weight: 700; color: #ffffff;"></span>
@@ -1571,172 +1775,179 @@ input[type="checkbox"]:indeterminate {
             <span class="modal-close" style="color: #ffffff; opacity: 0.85; font-size: 26px; cursor: pointer; line-height: 1;" onclick="closeModal('fuelClosingApprovalModal')">&times;</span>
         </div>
 
-        <!-- Body -->
-        <div class="modal-body" style="padding: 24px 32px 36px 32px !important; overflow-y: auto; flex: 1; background: #F8FAFC; box-sizing: border-box;">
+        <!-- Body (2-Column Grid Layout) -->
+        <div class="modal-body" style="padding: 22px 28px !important; overflow-y: auto; flex: 1; background: #F1F5F9; box-sizing: border-box;">
             <!-- Loading Indicator -->
             <div id="fsc_loading" style="display: none; text-align: center; padding: 60px 20px; color: #64748B;">
                 <i class="fas fa-circle-notch fa-spin" style="font-size: 38px; color: #002F70; margin-bottom: 16px;"></i>
                 <div style="font-weight: 700; font-size: 15px; color: #002F70;">Loading Fuel Sales Closing data...</div>
             </div>
 
-            <div id="fsc_content_wrap" style="margin-top: 4px;">
-                <!-- Section 1: Pump Meter Readings Summary -->
-                <div style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 22px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
-                        <div style="font-size: 13px; font-weight: 800; color: #002F70; text-transform: uppercase; display: flex; align-items: center; gap: 8px;">
-                            <i class="fas fa-gas-pump" style="color: #DC2626;"></i> Pump Meter Readings Summary
-                        </div>
-                        <div style="font-size: 11px; color: #64748B; font-weight: 600;">
-                            Selected Transactions: <strong id="fsc_tx_count" style="color: #002F70;">0</strong>
-                        </div>
-                    </div>
-                    
-                    <div style="max-height: 150px; overflow-y: auto; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 14px;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-                            <thead style="background: #002F70; color: #ffffff; position: sticky; top: 0; z-index: 2;">
-                                <tr>
-                                    <th style="padding: 8px 10px; text-align: left;">Pump</th>
-                                    <th style="padding: 8px 10px; text-align: left;">Fuel Type</th>
-                                    <th style="padding: 8px 10px; text-align: right;">Begin</th>
-                                    <th style="padding: 8px 10px; text-align: right;">Ending</th>
-                                    <th style="padding: 8px 10px; text-align: right;">Cal</th>
-                                    <th style="padding: 8px 10px; text-align: right;">Net Liters</th>
-                                    <th style="padding: 8px 10px; text-align: right;">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody id="fsc_readings_tbody">
-                                <!-- Populated dynamically -->
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Computed KPI Cards (Streamlined) -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                        <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <div style="font-size: 10px; font-weight: 700; color: #1E40AF; text-transform: uppercase;">Total Fuel Liters Sold</div>
-                                <div id="fsc_disp_liters" style="font-size: 16px; font-weight: 800; color: #1E3A8A; margin-top: 2px;">0.00 L</div>
+            <div id="fsc_content_wrap" style="display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; align-items: start;">
+                
+                <!-- LEFT COLUMN -->
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <!-- Section 1: Pump Meter Readings Summary Card -->
+                    <div style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
+                            <div style="font-size: 12px; font-weight: 800; color: #002F70; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
+                                <i class="fas fa-gas-pump" style="color: #DC2626;"></i> Pump Meter Readings Summary
                             </div>
-                            <i class="fas fa-tint" style="font-size: 20px; color: #3B82F6; opacity: 0.7;"></i>
-                        </div>
-                        <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <div style="font-size: 10px; font-weight: 700; color: #166534; text-transform: uppercase;">Total Fuel Sales Amount</div>
-                                <div id="fsc_disp_sales" style="font-size: 16px; font-weight: 800; color: #14532D; margin-top: 2px;">₱0.00</div>
+                            <div style="font-size: 11px; color: #64748B; font-weight: 600;">
+                                Selected: <strong id="fsc_tx_count" style="color: #002F70;">0</strong> Nozzles
                             </div>
-                            <i class="fas fa-peso-sign" style="font-size: 20px; color: #22C55E; opacity: 0.7;"></i>
                         </div>
-                    </div>
-                </div>
+                        
+                        <div style="max-height: 220px; overflow-y: auto; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 12px;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                                <thead style="background: #002F70; color: #ffffff; position: sticky; top: 0; z-index: 2;">
+                                    <tr>
+                                        <th style="padding: 7px 8px; text-align: left;">Pump</th>
+                                        <th style="padding: 7px 8px; text-align: left;">Fuel Type</th>
+                                        <th style="padding: 7px 8px; text-align: right;">Begin</th>
+                                        <th style="padding: 7px 8px; text-align: right;">Ending</th>
+                                        <th style="padding: 7px 8px; text-align: right;">Cal</th>
+                                        <th style="padding: 7px 8px; text-align: right;">Net Liters</th>
+                                        <th style="padding: 7px 8px; text-align: right;">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="fsc_readings_tbody">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
 
-                <!-- Section 2: Cash & Credit Remittance Breakdown -->
-                <div style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 22px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
-                    <div style="font-size: 13px; font-weight: 800; color: #002F70; text-transform: uppercase; margin-bottom: 14px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px; display: flex; align-items: center; gap: 8px;">
-                        <i class="fas fa-wallet" style="color: #2563EB;"></i> Cash &amp; Credit Collection Summary (Staff Closing Breakdown)
-                    </div>
-                    
-                    <!-- Cash Turnover Breakdown -->
-                    <div style="font-size: 11px; font-weight: 800; color: #1E40AF; text-transform: uppercase; margin-bottom: 6px;">
-                        <i class="fas fa-money-bill-wave me-1"></i> Cash Turnover Summary
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px; background: #F8FAFC; padding: 12px; border-radius: 8px; border: 1px solid #E2E8F0;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 10px; font-weight: 700; color: #475569;">SHIFT 1 CASH (₱)</label>
-                            <input type="text" inputmode="decimal" id="fsc_cash_shift1" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 10px; font-weight: 700; color: #475569;">SHIFT 2 CASH (₱)</label>
-                            <input type="text" inputmode="decimal" id="fsc_cash_shift2" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
-                        </div>
-                        <div style="display:flex; flex-direction:column; justify-content:center;">
-                            <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">TOTAL CASH COLLECTED</div>
-                            <div id="fsc_disp_total_cash" style="font-size: 15px; font-weight: 800; color: #002F70; margin-top: 2px;">₱0.00</div>
-                        </div>
-                    </div>
-
-                    <!-- Accounts Receivable (AR) Breakdown -->
-                    <div style="font-size: 11px; font-weight: 800; color: #166534; text-transform: uppercase; margin-bottom: 6px;">
-                        <i class="fas fa-file-invoice-dollar me-1"></i> Credit &amp; Accounts Receivable (AR) Summary
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px; background: #F8FAFC; padding: 12px; border-radius: 8px; border: 1px solid #E2E8F0;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 10px; font-weight: 700; color: #475569;">SHIFT 1 CREDIT / AR (₱)</label>
-                            <input type="text" inputmode="decimal" id="fsc_ar_shift1" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 10px; font-weight: 700; color: #475569;">SHIFT 2 CREDIT / AR (₱)</label>
-                            <input type="text" inputmode="decimal" id="fsc_ar_shift2" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
-                        </div>
-                        <div style="display:flex; flex-direction:column; justify-content:center;">
-                            <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">TOTAL CREDIT / AR</div>
-                            <div id="fsc_disp_total_ar" style="font-size: 15px; font-weight: 800; color: #166534; margin-top: 2px;">₱0.00</div>
-                        </div>
-                    </div>
-
-                    <!-- Net Sales & Total Cash in Bank -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
-                        <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <div style="font-size: 10px; font-weight: 700; color: #1E40AF; text-transform: uppercase;">Net Fuel Sales (Cash + AR)</div>
-                                <div id="fsc_disp_net_sales" style="font-size: 16px; font-weight: 800; color: #1E3A8A; margin-top: 2px;">₱0.00</div>
+                        <!-- Computed KPI Cards -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="font-size: 9px; font-weight: 700; color: #1E40AF; text-transform: uppercase;">Total Liters Sold</div>
+                                    <div id="fsc_disp_liters" style="font-size: 14px; font-weight: 800; color: #1E3A8A; margin-top: 2px;">0.00 L</div>
+                                </div>
+                                <i class="fas fa-tint" style="font-size: 18px; color: #3B82F6; opacity: 0.7;"></i>
                             </div>
-                            <i class="fas fa-calculator" style="font-size: 20px; color: #3B82F6; opacity: 0.7;"></i>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 10px; font-weight: 700; color: #475569;">TOTAL CASH IN BANK / DEPOSITED (₱)</label>
-                            <input type="text" inputmode="decimal" id="fsc_total_cash_bank" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:800; color:#0f172a; box-sizing:border-box;">
+                            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="font-size: 9px; font-weight: 700; color: #166534; text-transform: uppercase;">Total Fuel Sales</div>
+                                    <div id="fsc_disp_sales" style="font-size: 14px; font-weight: 800; color: #14532D; margin-top: 2px;">₱0.00</div>
+                                </div>
+                                <i class="fas fa-peso-sign" style="font-size: 18px; color: #22C55E; opacity: 0.7;"></i>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Staff & Manager Encoder Info -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 10px; font-weight: 700; color: #64748B;">CHECKED / ENCODED BY</label>
-                            <input type="text" id="fsc_checked_by" class="fsc-calc-input" placeholder="Staff Name" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:11px; color:#334155; box-sizing:border-box;">
+                    <!-- Section 3: Overall Closing Summary & Reconciliation Card -->
+                    <div style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                        <div style="font-size: 12px; font-weight: 800; color: #002F70; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-calculator" style="color: #0284C7;"></i> Overall Closing Summary &amp; Reconciliation
                         </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 10px; font-weight: 700; color: #64748B;">VERIFIED / APPROVED BY</label>
-                            <input type="text" id="fsc_verified_by" class="fsc-calc-input" placeholder="Manager Name" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:11px; color:#334155; box-sizing:border-box;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                            <div style="background: #F8FAFC; padding: 8px 10px; border-radius: 6px; border: 1px solid #E2E8F0;">
+                                <div style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase;">Total Remittance:</div>
+                                <div id="fsc_disp_remittance" style="font-size: 13px; font-weight: 800; color: #002F70; margin-top: 2px;">₱0.00</div>
+                            </div>
+                            <div style="background: #F8FAFC; padding: 8px 10px; border-radius: 6px; border: 1px solid #E2E8F0;">
+                                <div style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase;">Expected Sales:</div>
+                                <div id="fsc_disp_expected" style="font-size: 13px; font-weight: 800; color: #0F172A; margin-top: 2px;">₱0.00</div>
+                            </div>
+                            <div style="background: #F8FAFC; padding: 8px 10px; border-radius: 6px; border: 1px solid #E2E8F0;">
+                                <div style="font-size: 9px; font-weight: 700; color: #166534; text-transform: uppercase;">Over / Short:</div>
+                                <div id="fsc_disp_over_short" style="font-size: 13px; font-weight: 800; color: #16A34A; margin-top: 2px;">₱0.00 (EXACT)</div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Section 3: Overall Closing Summary & Reconciliation -->
-                <div style="background: #ffffff; border: 1px solid #BFDBFE; border-left: 4px solid #2563EB; border-radius: 12px; padding: 18px 20px; margin-bottom: 22px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
-                    <div style="font-size: 12px; font-weight: 800; color: #002F70; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
-                        <i class="fas fa-calculator"></i> Overall Closing Summary &amp; Reconciliation
+                <!-- RIGHT COLUMN -->
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <!-- Section 2: Cash & Credit Remittance Breakdown Card -->
+                    <div style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                        <div style="font-size: 12px; font-weight: 800; color: #002F70; text-transform: uppercase; margin-bottom: 12px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-wallet" style="color: #2563EB;"></i> Cash &amp; Credit Collection (Staff Closing)
+                        </div>
+                        
+                        <!-- Cash Turnover Breakdown -->
+                        <div style="font-size: 10px; font-weight: 800; color: #1E40AF; text-transform: uppercase; margin-bottom: 6px;">
+                            <i class="fas fa-money-bill-wave me-1"></i> Cash Turnover Summary
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; background: #F8FAFC; padding: 10px; border-radius: 8px; border: 1px solid #E2E8F0;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-size: 9px; font-weight: 700; color: #475569;">SHIFT 1 CASH (₱)</label>
+                                <input type="text" inputmode="decimal" id="fsc_cash_shift1" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:11px; font-weight:700; box-sizing:border-box;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-size: 9px; font-weight: 700; color: #475569;">SHIFT 2 CASH (₱)</label>
+                                <input type="text" inputmode="decimal" id="fsc_cash_shift2" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:11px; font-weight:700; box-sizing:border-box;">
+                            </div>
+                            <div style="display:flex; flex-direction:column; justify-content:center;">
+                                <div style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase;">TOTAL CASH</div>
+                                <div id="fsc_disp_total_cash" style="font-size: 13px; font-weight: 800; color: #002F70; margin-top: 2px;">₱0.00</div>
+                            </div>
+                        </div>
+
+                        <!-- Accounts Receivable (AR) Breakdown -->
+                        <div style="font-size: 10px; font-weight: 800; color: #166534; text-transform: uppercase; margin-bottom: 6px;">
+                            <i class="fas fa-file-invoice-dollar me-1"></i> Credit &amp; AR Summary
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; background: #F8FAFC; padding: 10px; border-radius: 8px; border: 1px solid #E2E8F0;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-size: 9px; font-weight: 700; color: #475569;">SHIFT 1 AR (₱)</label>
+                                <input type="text" inputmode="decimal" id="fsc_ar_shift1" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:11px; font-weight:700; box-sizing:border-box;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-size: 9px; font-weight: 700; color: #475569;">SHIFT 2 AR (₱)</label>
+                                <input type="text" inputmode="decimal" id="fsc_ar_shift2" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:11px; font-weight:700; box-sizing:border-box;">
+                            </div>
+                            <div style="display:flex; flex-direction:column; justify-content:center;">
+                                <div style="font-size: 9px; font-weight: 700; color: #64748B; text-transform: uppercase;">TOTAL AR</div>
+                                <div id="fsc_disp_total_ar" style="font-size: 13px; font-weight: 800; color: #166534; margin-top: 2px;">₱0.00</div>
+                            </div>
+                        </div>
+
+                        <!-- Net Sales & Total Cash in Bank -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="font-size: 9px; font-weight: 700; color: #1E40AF; text-transform: uppercase;">Net Fuel Sales</div>
+                                    <div id="fsc_disp_net_sales" style="font-size: 14px; font-weight: 800; color: #1E3A8A; margin-top: 2px;">₱0.00</div>
+                                </div>
+                                <i class="fas fa-calculator" style="font-size: 18px; color: #3B82F6; opacity: 0.7;"></i>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-size: 9px; font-weight: 700; color: #475569;">CASH IN BANK / DEPOSIT (₱)</label>
+                                <input type="text" inputmode="decimal" id="fsc_total_cash_bank" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:800; color:#0f172a; box-sizing:border-box;">
+                            </div>
+                        </div>
+
+                        <!-- Staff & Manager Encoder Info -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-size: 9px; font-weight: 700; color: #64748B;">CHECKED BY</label>
+                                <input type="text" id="fsc_checked_by" class="fsc-calc-input" placeholder="Staff Name" style="width:100%; padding:5px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:11px; color:#334155; box-sizing:border-box;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-size: 9px; font-weight: 700; color: #64748B;">VERIFIED BY</label>
+                                <input type="text" id="fsc_verified_by" class="fsc-calc-input" placeholder="Manager Name" style="width:100%; padding:5px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:11px; color:#334155; box-sizing:border-box;">
+                            </div>
+                        </div>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
-                        <div>
-                            <div style="font-size: 10px; font-weight: 600; color: #475569; text-transform: uppercase;">Total Remittance (Cash + AR):</div>
-                            <div id="fsc_disp_remittance" style="font-size: 15px; font-weight: 800; color: #002F70; margin-top: 2px;">₱0.00</div>
+
+                    <!-- Section 4: Validation Remarks Card -->
+                    <div style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                        <div style="font-size: 11px; font-weight: 700; color: #002F70; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-user-check"></i> Validation Remarks &amp; Notes <span style="color:#94a3b8; font-weight:normal;">(Optional)</span>
                         </div>
-                        <div>
-                            <div style="font-size: 10px; font-weight: 600; color: #475569; text-transform: uppercase;">Expected Fuel Sales:</div>
-                            <div id="fsc_disp_expected" style="font-size: 15px; font-weight: 800; color: #0F172A; margin-top: 2px;">₱0.00</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 10px; font-weight: 600; color: #475569; text-transform: uppercase;">Over / Short Variance:</div>
-                            <div id="fsc_disp_over_short" style="font-size: 15px; font-weight: 800; color: #16A34A; margin-top: 2px;">₱0.00 (EXACT)</div>
-                        </div>
+                        <textarea id="fsc_remarks" class="closing-textarea" rows="2" placeholder="Add optional manager review notes or remarks..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 10px; font-size: 11px; box-sizing: border-box;"></textarea>
                     </div>
                 </div>
-
-                <!-- Section 4: Validation Remarks -->
-                <div style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 18px 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
-                    <div style="font-size: 11px; font-weight: 700; color: #002F70; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                        <i class="fas fa-user-check"></i> Validation Remarks &amp; Verification Notes <span style="color:#94a3b8; font-weight:normal;">(Optional)</span>
-                    </div>
-                    <textarea id="fsc_remarks" class="closing-textarea" rows="2" placeholder="Add optional manager review notes or validation remarks..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 12px; box-sizing: border-box;"></textarea>
-                </div>
-
-                <!-- Generous bottom space -->
-                <div style="height: 24px;"></div>
             </div>
+            
+            <!-- Bottom spacer for clean scrolling breathing room -->
+            <div style="height: 16px;"></div>
         </div>
 
-        <!-- Footer -->
-        <div class="modal-footer" style="padding: 16px 32px !important; background: #FFFFFF !important; border-top: 1px solid #E2E8F0 !important; box-shadow: 0 -2px 10px rgba(0,0,0,0.04); display: flex; justify-content: flex-end; gap: 12px; align-items: center; flex-shrink: 0; z-index: 15;">
+        <!-- Steady Fixed Footer Box -->
+        <div class="modal-footer" style="padding: 16px 28px !important; background: #FFFFFF !important; border-top: 1.5px solid #CBD5E1 !important; box-shadow: 0 -4px 12px rgba(0,0,0,0.05); display: flex; justify-content: flex-end; gap: 12px; align-items: center; flex-shrink: 0; z-index: 15;">
             <button type="button" class="ato-btn ato-btn-back" style="padding: 9px 22px; font-size: 13px; font-weight: 700; border-radius: 8px; border: 1px solid #CBD5E1; color: #475569; background: #FFFFFF;" onclick="closeModal('fuelClosingApprovalModal')">Close</button>
             <button type="button" id="btnConfirmFscApprove" class="ato-btn ato-btn-filter" style="background: #16a34a !important; color: #ffffff !important; border: none !important; padding: 9px 24px; font-weight: 800; font-size: 13px; border-radius: 8px !important; box-shadow: 0 3px 10px rgba(22,163,74,0.3); cursor: pointer;" onclick="approveFscClosing()">
                 <i class="fas fa-check-circle" style="margin-right: 6px;"></i> Save Closing &amp; Approve Transactions
@@ -1841,7 +2052,7 @@ input[type="checkbox"]:indeterminate {
 </div>
 <!-- Fuel Meter Reading Adjustment Modal -->
 <div id="batchAdjustModal" class="modal" style="display:none; align-items:center; justify-content:center;">
-    <div class="modal-content" style="max-width: 960px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4); border: 1.5px solid #cbd5e1; background: #F1F5F9; padding: 0;">
+    <div class="modal-content" style="max-width: 960px; width: 95%; max-height: calc(100vh - 140px) !important; height: calc(100vh - 140px); display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 50px -10px rgba(0,0,0,0.35); border: 1.5px solid #cbd5e1; background: #F1F5F9; padding: 0;">
         
         <!-- Steady Fixed Header Box with generous spacing and distinct bottom border -->
         <div class="modal-header" style="background: linear-gradient(135deg, #002F70 0%, #001F4D 100%); color: #ffffff; padding: 26px 32px !important; display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #001838 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.2); flex-shrink: 0; margin-bottom: 0; z-index: 10;">
@@ -1864,7 +2075,7 @@ input[type="checkbox"]:indeterminate {
             <p id="batchAdjustPrompt" style="font-size: 13px; color: #334155; margin: 0 0 18px; font-weight: 600; line-height: 1.5;"></p>
 
             <!-- Scrollable Meter Reading Values Table Card -->
-            <div style="max-height: 380px; overflow-y: auto; border: 1.5px solid #cbd5e1; border-top: 4px solid #002F70; border-radius: 12px; background: #ffffff; margin-bottom: 22px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
+            <div style="max-height: 340px; overflow-y: auto; border: 1px solid #E2E8F0; border-radius: 12px; background: #ffffff; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
                 <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
                     <thead style="background: #002F70; color: #ffffff; position: sticky; top: 0; z-index: 2;">
                         <tr>
@@ -1886,15 +2097,15 @@ input[type="checkbox"]:indeterminate {
             </div>
 
             <!-- Grand Totals Automatic Recalculation Cards -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; background: #ffffff; padding: 18px; border-radius: 12px; margin-bottom: 22px; border: 1.5px solid #bfdbfe; border-top: 4px solid #0284c7; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
-                <div style="display: flex; align-items: center; justify-content: space-between; background: #eff6ff; padding: 12px 16px; border-radius: 8px; border: 1px solid #bfdbfe;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; background: #ffffff; padding: 16px; border-radius: 12px; margin-bottom: 18px; border: 1px solid #E2E8F0; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                <div style="display: flex; align-items: center; justify-content: space-between; background: #F8FAFC; padding: 12px 16px; border-radius: 8px; border: 1px solid #E2E8F0;">
                     <div>
                         <div style="font-size: 11px; color: #1e40af; font-weight: 800; text-transform: uppercase;">Total Adjusted Volume</div>
                         <div id="adj_total_vol_sum" style="font-size: 18px; font-weight: 800; color: #1e3a8a; margin-top: 2px;">0.00 L</div>
                     </div>
                     <i class="fas fa-gas-pump" style="font-size: 24px; color: #3b82f6; opacity: 0.6;"></i>
                 </div>
-                <div style="display: flex; align-items: center; justify-content: space-between; background: #f0fdf4; padding: 12px 16px; border-radius: 8px; border: 1px solid #bbf7d0;">
+                <div style="display: flex; align-items: center; justify-content: space-between; background: #F8FAFC; padding: 12px 16px; border-radius: 8px; border: 1px solid #E2E8F0;">
                     <div>
                         <div style="font-size: 11px; color: #166534; font-weight: 800; text-transform: uppercase;">Total Adjusted Amount</div>
                         <div id="adj_total_amt_sum" style="font-size: 18px; font-weight: 800; color: #14532d; margin-top: 2px;">₱0.00</div>
@@ -1904,7 +2115,7 @@ input[type="checkbox"]:indeterminate {
             </div>
 
             <!-- Adjustment Reason (Required) -->
-            <div class="form-group" style="background: #ffffff; border: 1.5px solid #cbd5e1; border-top: 4px solid #64748B; border-radius: 12px; padding: 18px; margin-bottom: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
+            <div class="form-group" style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
                 <label style="font-size: 12px; font-weight: 700; color: #002F70; margin-bottom: 8px; display: block;">ADJUSTMENT REASON <span style="color:#dc2626;">*</span></label>
                 <textarea id="batchAdjustReason" rows="2" required placeholder="Explain why these meter readings are being adjusted (e.g., 'Incorrect meter reading encoded', 'Calibration correction')..." style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; color: #1e293b; resize: vertical; box-sizing: border-box;"></textarea>
             </div>
@@ -2056,7 +2267,78 @@ function printSingleTx(tx) {
         .receipt-line span{display:inline-block;}
         .receipt-line span:first-child{font-weight:bold;}
         .total-row{font-size:14px;font-weight:bold;border-top:1px dashed #000;border-bottom:1px dashed #000;padding:6px 0;margin:8px 0;}
-    </style></head><body>
+    /* Modal styles - Fully Contained Within System Content Layout (Above Footer, Right of Sidebar) */
+.modal {
+    display: none;
+    position: fixed !important;
+    top: 70px !important;
+    left: 250px !important;
+    right: 0 !important;
+    bottom: 40px !important; /* Clears fixed system footer (40px) */
+    width: calc(100vw - 250px) !important;
+    height: calc(100vh - 110px) !important; /* 70px top header + 40px footer = 110px */
+    z-index: 1000 !important;
+    background: rgba(15, 23, 42, 0.5) !important;
+    backdrop-filter: blur(2px) !important;
+    -webkit-backdrop-filter: blur(2px) !important;
+    margin: 0 !important;
+    padding: 16px 24px !important;
+    box-sizing: border-box !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow-y: auto !important;
+}
+
+body.sidebar-collapsed .modal,
+.sidebar-collapsed .modal {
+    left: 70px !important;
+    width: calc(100vw - 70px) !important;
+}
+
+@media (max-width: 991px) {
+    .modal {
+        top: 0 !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 99999 !important;
+        padding: 12px !important;
+    }
+}
+
+.modal.show,
+.modal[style*="display: flex"],
+.modal[style*="display: block"],
+.modal[style*="display:flex"],
+.modal[style*="display:block"] {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.modal-content {
+    background: #fff;
+    margin: auto !important;
+    padding: 0;
+    border-radius: 14px;
+    width: 94%;
+    max-width: 540px;
+    max-height: calc(100vh - 140px) !important;
+    box-shadow: 0 20px 50px -10px rgba(0,0,0,0.35);
+    position: relative !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; }
+.modal-header h3 { margin: 0; font-size: 15px; color: #00264D; font-weight: 700; text-transform: uppercase; }
+.modal-close { cursor: pointer; font-size: 20px; color: #94a3b8; font-weight: bold; }
+.modal-close:hover { color: #dc2626; }
+.modal-body { margin-bottom: 18px; }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; }
+</style></head><body>
         <div class="receipt-header">
             <h3>PETRON FUEL SLIP</h3>
             <p>${escapeHtml(user_station_name())}</p>
@@ -2230,6 +2512,7 @@ function showActionResultModal({ title, message, badgeText, badgeBg, badgeColor,
 
 // â”€â”€ Check for post-reload flash toast banner on page load â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 document.addEventListener('DOMContentLoaded', function() {
+
     const postReloadMsg = sessionStorage.getItem('petron_post_reload_toast_msg');
     const postReloadType = sessionStorage.getItem('petron_post_reload_toast_type') || 'success';
     if (postReloadMsg) {
@@ -2604,7 +2887,78 @@ function printSelected() {
                 th { background: #f5f5f5; font-weight: bold; }
                 .text-right { text-align: right; }
                 .summary { margin: 15px 0; padding: 10px; background: #f9f9f9; border: 1px solid #ddd; }
-            </style>
+            /* Modal styles - Fully Contained Within System Content Layout (Above Footer, Right of Sidebar) */
+.modal {
+    display: none;
+    position: fixed !important;
+    top: 70px !important;
+    left: 250px !important;
+    right: 0 !important;
+    bottom: 40px !important; /* Clears fixed system footer (40px) */
+    width: calc(100vw - 250px) !important;
+    height: calc(100vh - 110px) !important; /* 70px top header + 40px footer = 110px */
+    z-index: 1000 !important;
+    background: rgba(15, 23, 42, 0.5) !important;
+    backdrop-filter: blur(2px) !important;
+    -webkit-backdrop-filter: blur(2px) !important;
+    margin: 0 !important;
+    padding: 16px 24px !important;
+    box-sizing: border-box !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow-y: auto !important;
+}
+
+body.sidebar-collapsed .modal,
+.sidebar-collapsed .modal {
+    left: 70px !important;
+    width: calc(100vw - 70px) !important;
+}
+
+@media (max-width: 991px) {
+    .modal {
+        top: 0 !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 99999 !important;
+        padding: 12px !important;
+    }
+}
+
+.modal.show,
+.modal[style*="display: flex"],
+.modal[style*="display: block"],
+.modal[style*="display:flex"],
+.modal[style*="display:block"] {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.modal-content {
+    background: #fff;
+    margin: auto !important;
+    padding: 0;
+    border-radius: 14px;
+    width: 94%;
+    max-width: 540px;
+    max-height: calc(100vh - 140px) !important;
+    box-shadow: 0 20px 50px -10px rgba(0,0,0,0.35);
+    position: relative !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; }
+.modal-header h3 { margin: 0; font-size: 15px; color: #00264D; font-weight: 700; text-transform: uppercase; }
+.modal-close { cursor: pointer; font-size: 20px; color: #94a3b8; font-weight: bold; }
+.modal-close:hover { color: #dc2626; }
+.modal-body { margin-bottom: 18px; }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; }
+</style>
         </head>
         <body>
             <h1>Fuel Transaction Validation Report</h1>

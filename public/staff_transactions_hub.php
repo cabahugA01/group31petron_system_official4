@@ -1166,7 +1166,8 @@ if ($section === 'history' || $section === 'fuel_history') {
         echo '<td class="amount">&#8369;' . number_format($total_amount, 2) . '</td>';
         echo '<td colspan="4"></td>';
         echo '</tr>';
-        echo '</tbody></table></div></div></body></html>';
+        echo '</tbody></table></div></div>
+</body></html>';
         exit;
     }
 
@@ -1227,7 +1228,8 @@ if ($section === 'history' || $section === 'fuel_history') {
         echo '<td style="text-align:right"><strong>&#8369;' . number_format($total_amount, 2) . '</strong></td>';
         echo '<td colspan="3"></td>';
         echo '</tr>';
-        echo '</tbody></table></body></html>';
+        echo '</tbody></table>
+</body></html>';
         exit;
     }
     if ($export_type === 'pdf' && $section === 'fuel_history') {
@@ -1295,7 +1297,8 @@ if ($section === 'history' || $section === 'fuel_history') {
         echo '<td class="amount">&#8369;' . number_format($total_amount, 2) . '</td>';
         echo '<td colspan="3"></td>';
         echo '</tr>';
-        echo '</tbody></table></div></div></body></html>';
+        echo '</tbody></table></div></div>
+</body></html>';
         exit;
     }
 
@@ -2119,49 +2122,153 @@ input[type="checkbox"].jo-svc-checkbox {
 }
 </style>
 <script>
-// Early global definition of Merchandise Details & Action Request Modals
-window.openMerchView = function(btn) {
-    if (window.event) {
-        if (typeof window.event.stopPropagation === 'function') window.event.stopPropagation();
-        if (typeof window.event.preventDefault === 'function') window.event.preventDefault();
-    }
-    var txnId = '';
-    if (typeof btn === 'string') {
-        txnId = btn;
-    } else if (btn && typeof btn.getAttribute === 'function') {
-        txnId = btn.getAttribute('data-txn-id') || btn.getAttribute('data-id') || '';
-    }
-    if (typeof window.viewMerchandiseDetails === 'function') {
-        window.viewMerchandiseDetails(txnId);
-    }
-    return false;
+// ══════════════════════════════════════════════════════════════
+// GLOBAL MODAL HANDLERS (Merchandise & Job Orders)
+// ══════════════════════════════════════════════════════════════
+
+window.closeViewMerchandiseModal = function() {
+    var modal = document.getElementById('viewMerchandiseModal');
+    if (modal) modal.style.display = 'none';
 };
-window.openMerchRequest = function(btn, type) {
+
+window.closeRequestAdjustModal = function() {
+    var modal = document.getElementById('requestAdjustModal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.closeRequestVoidModal = function() {
+    var modal = document.getElementById('requestVoidModal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.closeViewJobOrderModal = function() {
+    var modal = document.getElementById('viewJobOrderModal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.closeTxnRequestModal = function() {
+    var modal = document.getElementById('txnRequestModal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.viewMerchandiseDetails = function(txnId, btn) {
     if (window.event) {
         if (typeof window.event.stopPropagation === 'function') window.event.stopPropagation();
         if (typeof window.event.preventDefault === 'function') window.event.preventDefault();
     }
-    var mtId = 0;
-    var customer = '';
-    if (btn && typeof btn.getAttribute === 'function') {
-        mtId = parseInt(btn.getAttribute('data-mt-id') || btn.getAttribute('data-id') || '0', 10);
-        customer = btn.getAttribute('data-customer') || '';
+    
+    if (!txnId && btn && typeof btn.getAttribute === 'function') {
+        txnId = btn.getAttribute('data-txn-id') || btn.getAttribute('data-id') || btn.getAttribute('data-jo-ref') || '';
     }
-    if (typeof window.openTxnRequestModal === 'function') {
-        window.openTxnRequestModal(window.event, mtId, 'merchandise_transactions', type, customer);
+    
+    if (!txnId) {
+        alert('Invalid transaction ID');
+        return false;
     }
+
+    ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal', 'requestAdjustModal', 'requestVoidModal'].forEach(function(id) {
+        var m = document.getElementById(id);
+        if (m) m.style.display = 'none';
+    });
+
+    var modal = document.getElementById('viewMerchandiseModal');
+    if (!modal) {
+        console.error('viewMerchandiseModal element not found');
+        return false;
+    }
+
+    // Reset fields to loading state
+    var setTxt = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val || '—'; };
+    var setHtml = function(id, val) { var el = document.getElementById(id); if (el) el.innerHTML = val || '—'; };
+
+    setTxt('viewMTxnRef', txnId);
+    setTxt('viewMTCustomer', 'Loading...');
+    setTxt('viewMTShift', '—');
+    setTxt('viewMTDate', '—');
+    setTxt('viewMTPayMethod', '—');
+    setHtml('viewMTPayStatus', '<span style="color:#64748b;">Loading...</span>');
+    setHtml('viewMTValStatus', '<span style="color:#64748b;">Loading...</span>');
+    setTxt('viewMTSubtotal', '₱0.00');
+    setTxt('viewMTVAT', '₱0.00');
+    setTxt('viewMTTotal', '₱0.00');
+    setTxt('viewMTPaid', '₱0.00');
+    setTxt('viewMTBalance', '₱0.00');
+    setTxt('viewMTRemarks', '—');
+    setTxt('viewMTStaff', '—');
+
+    var itemsTable = document.getElementById('viewMTItemsBody');
+    if (itemsTable) {
+        itemsTable.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading items...</td></tr>';
+    }
+
+    // Immediately show the modal
+    modal.style.display = 'flex';
+    modal.style.zIndex = '9999999';
+
+    fetch('../backend/get_merchandise_transaction_details.php?id=' + encodeURIComponent(txnId))
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data.success) {
+                var txn = data.transaction || {};
+                setTxt('viewMTxnRef', txn.transaction_id || ('#' + txn.id));
+                setTxt('viewMTCustomer', txn.customer_name || 'Walk-in Customer');
+                setTxt('viewMTShift', txn.shift_name || txn.shift_period || '—');
+                setTxt('viewMTDate', txn.transaction_date || '—');
+                setTxt('viewMTPayMethod', txn.payment_method || '—');
+                setHtml('viewMTPayStatus', txn.payment_status_badge || '—');
+                setHtml('viewMTValStatus', txn.validation_status_badge || '—');
+                setTxt('viewMTSubtotal', txn.subtotal_display || ('₱' + parseFloat(txn.subtotal_amount || 0).toFixed(2)));
+                setTxt('viewMTVAT', txn.vat_display || ('₱' + parseFloat(txn.vat_amount || 0).toFixed(2)));
+                setTxt('viewMTTotal', txn.total_display || ('₱' + parseFloat(txn.total_amount || 0).toFixed(2)));
+                setTxt('viewMTPaid', txn.paid_display || ('₱' + parseFloat(txn.amount_paid || 0).toFixed(2)));
+                setTxt('viewMTBalance', txn.balance_display || ('₱' + parseFloat(txn.balance_due || 0).toFixed(2)));
+                setTxt('viewMTRemarks', txn.remarks || '—');
+                setTxt('viewMTStaff', txn.staff_name || '—');
+
+                var itemsList = txn.items || data.items || [];
+                if (itemsTable) {
+                    if (itemsList.length > 0) {
+                        itemsTable.innerHTML = itemsList.map(function(item) {
+                            var qty = parseFloat(item.quantity || 0);
+                            var price = parseFloat(item.unit_price || 0).toFixed(2);
+                            var subtotal = parseFloat(item.subtotal || 0).toFixed(2);
+                            var name = (item.product_name || 'Item').replace(/</g, '&lt;');
+                            var cat = (item.category || '').replace(/</g, '&lt;');
+                            var size = (item.size_variant || '').replace(/</g, '&lt;');
+                            return '<tr style="border-bottom:1px solid #f1f5f9;">' +
+                                '<td style="padding:8px;"><div style="font-weight:600;color:#1e293b;">' + name + '</div>' +
+                                (cat ? '<div style="font-size:10px;color:#94a3b8;margin-top:2px;">' + cat + (size ? ' • ' + size : '') + '</div>' : '') + '</td>' +
+                                '<td style="padding:8px;text-align:center;color:#475569;">' + qty + '</td>' +
+                                '<td style="padding:8px;text-align:right;color:#475569;">₱' + price + '</td>' +
+                                '<td style="padding:8px;text-align:right;color:#003d7a;font-weight:700;">₱' + subtotal + '</td>' +
+                                '</tr>';
+                        }).join('');
+                    } else {
+                        itemsTable.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">No items found</td></tr>';
+                    }
+                }
+            } else {
+                if (itemsTable) {
+                    itemsTable.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:14px;color:#dc2626;"><i class="fas fa-exclamation-circle"></i> ' + (data.error || 'Failed to load details') + '</td></tr>';
+                }
+            }
+        })
+        .catch(function(err) {
+            console.error('Error fetching merchandise details:', err);
+            if (itemsTable) {
+                itemsTable.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:14px;color:#dc2626;"><i class="fas fa-exclamation-circle"></i> Network error: ' + err.message + '</td></tr>';
+            }
+        });
+        
     return false;
 };
 
 window.openRequestAdjustModal = function(arg1, arg2) {
-    var e = null;
-    var joData = {};
-
-    if (arg1 && typeof arg1.stopPropagation === 'function') {
-        e = arg1;
-        if (typeof e.stopPropagation === 'function') e.stopPropagation();
-        if (typeof e.preventDefault === 'function') e.preventDefault();
+    if (window.event) {
+        if (typeof window.event.stopPropagation === 'function') window.event.stopPropagation();
+        if (typeof window.event.preventDefault === 'function') window.event.preventDefault();
     }
+    var joData = {};
 
     if (arg2 && typeof arg2.getAttribute === 'function') {
         var btn = arg2;
@@ -2169,17 +2276,12 @@ window.openRequestAdjustModal = function(arg1, arg2) {
             id: btn.getAttribute('data-jo-id') || '',
             source: btn.getAttribute('data-jo-source') || 'job_orders',
             jo_ref: btn.getAttribute('data-jo-ref') || '',
-            customer: btn.getAttribute('data-jo-customer') || '—',
-            workflow_status: btn.getAttribute('data-jo-status') || '—',
-            payment_status: btn.getAttribute('data-jo-paystatus') || '—',
+            customer: btn.getAttribute('data-jo-customer') || 'Walk-in Customer',
+            workflow_status: btn.getAttribute('data-jo-status') || 'Pending',
+            payment_status: btn.getAttribute('data-jo-paystatus') || 'Paid',
             payment_method: btn.getAttribute('data-jo-paymethod') || 'Cash',
             total: btn.getAttribute('data-jo-total') || '0',
-            labor_fee: btn.getAttribute('data-jo-labor') || '0',
-            paid: btn.getAttribute('data-jo-paid') || '0',
-            service_type: btn.getAttribute('data-jo-service') || '',
-            vehicle_plate: btn.getAttribute('data-jo-plate') || '',
-            vehicle_type: btn.getAttribute('data-jo-vtype') || '',
-            mechanic: btn.getAttribute('data-jo-mech') || 'Unassigned'
+            labor_fee: btn.getAttribute('data-jo-labor') || '0'
         };
     } else if (arg1 && typeof arg1.getAttribute === 'function') {
         var btn = arg1;
@@ -2187,17 +2289,12 @@ window.openRequestAdjustModal = function(arg1, arg2) {
             id: btn.getAttribute('data-jo-id') || '',
             source: btn.getAttribute('data-jo-source') || 'job_orders',
             jo_ref: btn.getAttribute('data-jo-ref') || '',
-            customer: btn.getAttribute('data-jo-customer') || '—',
-            workflow_status: btn.getAttribute('data-jo-status') || '—',
-            payment_status: btn.getAttribute('data-jo-paystatus') || '—',
+            customer: btn.getAttribute('data-jo-customer') || 'Walk-in Customer',
+            workflow_status: btn.getAttribute('data-jo-status') || 'Pending',
+            payment_status: btn.getAttribute('data-jo-paystatus') || 'Paid',
             payment_method: btn.getAttribute('data-jo-paymethod') || 'Cash',
             total: btn.getAttribute('data-jo-total') || '0',
-            labor_fee: btn.getAttribute('data-jo-labor') || '0',
-            paid: btn.getAttribute('data-jo-paid') || '0',
-            service_type: btn.getAttribute('data-jo-service') || '',
-            vehicle_plate: btn.getAttribute('data-jo-plate') || '',
-            vehicle_type: btn.getAttribute('data-jo-vtype') || '',
-            mechanic: btn.getAttribute('data-jo-mech') || 'Unassigned'
+            labor_fee: btn.getAttribute('data-jo-labor') || '0'
         };
     } else if (arg1 && typeof arg1 === 'object' && !arg1.stopPropagation) {
         joData = arg1;
@@ -2220,18 +2317,24 @@ window.openRequestAdjustModal = function(arg1, arg2) {
     var setTxt = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val || '—'; };
 
     setVal('reqAdjTxnId', joData.id);
-    setVal('reqAdjRecordSource', joData.source);
+    setVal('reqAdjRecordSource', joData.source || 'merchandise_transactions');
     setTxt('reqAdjJoNo', joData.jo_ref || ('#' + (joData.id || '')));
-    setTxt('reqAdjCustomer', joData.customer);
-    setTxt('reqAdjStatus', joData.workflow_status);
-    setTxt('reqAdjPayStatus', joData.payment_status);
-    setTxt('reqAdjPayMethod', joData.payment_method);
+    setTxt('reqAdjCustomer', joData.customer || 'Walk-in Customer');
+    setTxt('reqAdjStatus', joData.workflow_status || 'Official');
+    setTxt('reqAdjPayStatus', joData.payment_status || 'Paid');
+    setTxt('reqAdjPayMethod', joData.payment_method || 'Cash');
 
-    setVal('reqAdjCorrectionField', 'Labor Fee');
-    if (typeof window.onReqAdjFieldChange === 'function') {
-        window.onReqAdjFieldChange();
+    var isMerch = (joData.source === 'merchandise_transactions' || joData.source === 'merchandise');
+    if (isMerch) {
+        setVal('reqAdjCorrectionField', 'Merchandise / Item');
+        setVal('reqAdjCurrentValue', '₱' + parseFloat(joData.total || 0).toFixed(2));
     } else {
-        setVal('reqAdjCurrentValue', joData.labor_fee ? ('₱' + parseFloat(joData.labor_fee).toFixed(2)) : '₱100.00');
+        setVal('reqAdjCorrectionField', 'Labor Fee');
+        if (typeof window.onReqAdjFieldChange === 'function') {
+            window.onReqAdjFieldChange();
+        } else {
+            setVal('reqAdjCurrentValue', joData.labor_fee ? ('₱' + parseFloat(joData.labor_fee).toFixed(2)) : '₱100.00');
+        }
     }
     setVal('reqAdjRequestedValue', '');
     setVal('reqAdjReason', '');
@@ -2242,46 +2345,12 @@ window.openRequestAdjustModal = function(arg1, arg2) {
     return false;
 };
 
-window.submitJOAction = function(action, id, source, confirmMsg) {
-    if (confirmMsg && !confirm(confirmMsg)) {
-        return false;
-    }
-    var form = document.createElement('form');
-    form.method = 'POST';
-    form.action = 'staff_transactions_hub.php?section=merchandise&active_tab=tracker';
-
-    var inputAction = document.createElement('input');
-    inputAction.type = 'hidden';
-    inputAction.name = 'jo_action';
-    inputAction.value = action;
-    form.appendChild(inputAction);
-
-    var inputId = document.createElement('input');
-    inputId.type = 'hidden';
-    inputId.name = 'jo_id';
-    inputId.value = id;
-    form.appendChild(inputId);
-
-    var inputSource = document.createElement('input');
-    inputSource.type = 'hidden';
-    inputSource.name = 'jo_source';
-    inputSource.value = source;
-    form.appendChild(inputSource);
-
-    document.body.appendChild(form);
-    form.submit();
-    return false;
-};
-
 window.openRequestVoidModal = function(arg1, arg2) {
-    var e = null;
-    var joData = {};
-
-    if (arg1 && typeof arg1.stopPropagation === 'function') {
-        e = arg1;
-        if (typeof e.stopPropagation === 'function') e.stopPropagation();
-        if (typeof e.preventDefault === 'function') e.preventDefault();
+    if (window.event) {
+        if (typeof window.event.stopPropagation === 'function') window.event.stopPropagation();
+        if (typeof window.event.preventDefault === 'function') window.event.preventDefault();
     }
+    var joData = {};
 
     if (arg2 && typeof arg2.getAttribute === 'function') {
         var btn = arg2;
@@ -2289,9 +2358,9 @@ window.openRequestVoidModal = function(arg1, arg2) {
             id: btn.getAttribute('data-jo-id') || '',
             source: btn.getAttribute('data-jo-source') || 'job_orders',
             jo_ref: btn.getAttribute('data-jo-ref') || '',
-            customer: btn.getAttribute('data-jo-customer') || '—',
-            workflow_status: btn.getAttribute('data-jo-status') || '—',
-            payment_status: btn.getAttribute('data-jo-paystatus') || '—'
+            customer: btn.getAttribute('data-jo-customer') || 'Walk-in Customer',
+            workflow_status: btn.getAttribute('data-jo-status') || 'Pending',
+            payment_status: btn.getAttribute('data-jo-paystatus') || 'Paid'
         };
     } else if (arg1 && typeof arg1.getAttribute === 'function') {
         var btn = arg1;
@@ -2299,9 +2368,9 @@ window.openRequestVoidModal = function(arg1, arg2) {
             id: btn.getAttribute('data-jo-id') || '',
             source: btn.getAttribute('data-jo-source') || 'job_orders',
             jo_ref: btn.getAttribute('data-jo-ref') || '',
-            customer: btn.getAttribute('data-jo-customer') || '—',
-            workflow_status: btn.getAttribute('data-jo-status') || '—',
-            payment_status: btn.getAttribute('data-jo-paystatus') || '—'
+            customer: btn.getAttribute('data-jo-customer') || 'Walk-in Customer',
+            workflow_status: btn.getAttribute('data-jo-status') || 'Pending',
+            payment_status: btn.getAttribute('data-jo-paystatus') || 'Paid'
         };
     } else if (arg1 && typeof arg1 === 'object' && !arg1.stopPropagation) {
         joData = arg1;
@@ -2322,11 +2391,11 @@ window.openRequestVoidModal = function(arg1, arg2) {
     var setTxt = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val || '—'; };
 
     setVal('reqVoidTxnId', joData.id);
-    setVal('reqVoidRecordSource', joData.source);
+    setVal('reqVoidRecordSource', joData.source || 'merchandise_transactions');
     setTxt('reqVoidJoNo', joData.jo_ref || ('#' + (joData.id || '')));
-    setTxt('reqVoidCustomer', joData.customer);
-    setTxt('reqVoidStatus', joData.workflow_status);
-    setTxt('reqVoidPayStatus', joData.payment_status);
+    setTxt('reqVoidCustomer', joData.customer || 'Walk-in Customer');
+    setTxt('reqVoidStatus', joData.workflow_status || 'Official');
+    setTxt('reqVoidPayStatus', joData.payment_status || 'Paid');
 
     setVal('reqVoidReasonSelect', 'Duplicate Transaction');
     setVal('reqVoidRemarks', '');
@@ -2335,152 +2404,26 @@ window.openRequestVoidModal = function(arg1, arg2) {
     modal.style.zIndex = '9999999';
     return false;
 };
-window.viewMerchandiseDetails = function(txnId) {
-    if (!txnId) {
-        if (typeof showTxnAlert === 'function') showTxnAlert('Invalid transaction ID', 'error');
-        else alert('Invalid transaction ID');
-        return;
-    }
-    ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal'].forEach(function(id) {
-        var m = document.getElementById(id);
-        if (m) m.style.display = 'none';
-    });
 
-    var modal = document.getElementById('viewMerchandiseModal');
-    if (!modal) {
-        console.error('viewMerchandiseModal element not found');
-        return;
-    }
-
-    var itemsTable = document.getElementById('viewMTItemsBody');
-    if (itemsTable) {
-        itemsTable.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
-    }
-
-    fetch('../backend/get_merchandise_transaction_details.php?id=' + encodeURIComponent(txnId))
-        .then(function(res) { return res.json(); })
-        .then(function(data) {
-            if (data.success) {
-                var txn = data.transaction || {};
-                var setTxt = function(id, val) {
-                    var el = document.getElementById(id);
-                    if (el) el.textContent = val || '�';
-                };
-                var setHtml = function(id, val) {
-                    var el = document.getElementById(id);
-                    if (el) el.innerHTML = val || '�';
-                };
-                setTxt('viewMTxnRef', txn.transaction_id || ('#' + txn.id));
-                setTxt('viewMTCustomer', txn.customer_name || 'Walk-in Customer');
-                setTxt('viewMTShift', txn.shift_name || txn.shift_period || '�');
-                setTxt('viewMTDate', txn.transaction_date || '�');
-                setTxt('viewMTPayMethod', txn.payment_method || '�');
-                setHtml('viewMTPayStatus', txn.payment_status_badge || '�');
-                setHtml('viewMTValStatus', txn.validation_status_badge || '�');
-                setTxt('viewMTSubtotal', txn.subtotal_display || '?0.00');
-                setTxt('viewMTVAT', txn.vat_display || '?0.00');
-                setTxt('viewMTTotal', txn.total_display || '?0.00');
-                setTxt('viewMTPaid', txn.paid_display || '?0.00');
-                setTxt('viewMTBalance', txn.balance_display || '?0.00');
-                setTxt('viewMTRemarks', txn.remarks || '�');
-                setTxt('viewMTStaff', txn.staff_name || '�');
-
-                var itemsList = txn.items || data.items || [];
-                if (itemsTable) {
-                    if (itemsList.length > 0) {
-                        itemsTable.innerHTML = itemsList.map(function(item) {
-                            var qty = parseInt(item.quantity) || 0;
-                            var price = parseFloat(item.unit_price || 0).toFixed(2);
-                            var subtotal = parseFloat(item.subtotal || 0).toFixed(2);
-                            var name = (item.product_name || 'Item').replace(/</g, '&lt;');
-                            var cat = (item.category || '').replace(/</g, '&lt;');
-                            var size = (item.size_variant || '').replace(/</g, '&lt;');
-                            return '<tr style="border-bottom:1px solid #f1f5f9;">' +
-                                '<td style="padding:8px;"><div style="font-weight:600;color:#1e293b;">' + name + '</div>' +
-                                (cat ? '<div style="font-size:10px;color:#94a3b8;margin-top:2px;">' + cat + (size ? ' � ' + size : '') + '</div>' : '') + '</td>' +
-                                '<td style="padding:8px;text-align:center;color:#475569;">' + qty + ' ' + (qty === 1 ? 'pc' : 'pcs') + '</td>' +
-                                '<td style="padding:8px;text-align:right;color:#475569;">?' + price + '</td>' +
-                                '<td style="padding:8px;text-align:right;color:#003d7a;font-weight:700;">?' + subtotal + '</td>' +
-                                '</tr>';
-                        }).join('');
-                    } else {
-                        itemsTable.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">No items found</td></tr>';
-                    }
-                }
-                modal.style.display = 'flex';
-            } else {
-                if (typeof showTxnAlert === 'function') showTxnAlert(data.error || 'Failed to load transaction details', 'error');
-                else alert(data.error || 'Failed to load transaction details');
-            }
-        })
-        .catch(function(err) {
-            console.error('Error fetching merchandise details:', err);
-            if (typeof showTxnAlert === 'function') showTxnAlert('Network error: ' + err.message, 'error');
-            else alert('Network error: ' + err.message);
-        });
+// Aliases and routers
+window.openMerchView = function(btn) { return window.viewMerchandiseDetails(btn); };
+window.openMerchRequest = function(btn, type) {
+    if (type === 'Adjustment') return window.openRequestAdjustModal(btn);
+    else return window.openRequestVoidModal(btn);
 };
-
 window.openTxnRequestModal = function(e, txnId, recordSource, requestType, customerName) {
-    if (e) {
-        if (typeof e.stopPropagation === 'function') e.stopPropagation();
-        if (typeof e.preventDefault === 'function') e.preventDefault();
-        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
-    }
-    ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal'].forEach(function(id) {
-        var m = document.getElementById(id);
-        if (m) m.style.display = 'none';
-    });
-
-    var modal = document.getElementById('txnRequestModal');
-    if (!modal) {
-        console.error('txnRequestModal element not found');
-        return;
-    }
-
-    var setVal = function(id, val) {
-        var el = document.getElementById(id);
-        if (el) el.value = val || '';
+    var joData = {
+        id: txnId,
+        source: recordSource || 'merchandise_transactions',
+        jo_ref: '#' + txnId,
+        customer: customerName || 'Walk-in Customer',
+        workflow_status: 'Official',
+        payment_status: 'Paid',
+        payment_method: 'Cash',
+        total: '0'
     };
-
-    setVal('txnRequestTxnId', txnId);
-    setVal('txnRequestRecordSource', recordSource || 'merchandise_transactions');
-    setVal('txnRequestType', requestType || 'Void');
-    setVal('txnRequestReason', '');
-    setVal('txnRequestNewAmount', '');
-
-    var isVoid = (requestType === 'Void');
-    var titleText = isVoid ? 'Request Void Transaction' : 'Request Transaction Adjustment';
-    var iconClass = isVoid ? 'fas fa-ban' : 'fas fa-sliders-h';
-
-    var elTitleText = document.getElementById('txnRequestTitleText');
-    if (elTitleText) elTitleText.textContent = titleText;
-
-    var elIcon = document.getElementById('txnRequestIcon');
-    if (elIcon) elIcon.className = iconClass;
-
-    var elNewAmountGroup = document.getElementById('txnRequestNewAmountGroup');
-    if (elNewAmountGroup) elNewAmountGroup.style.display = isVoid ? 'none' : 'block';
-
-    var targetInfo = document.getElementById('txnRequestTargetInfo');
-    if (targetInfo) {
-        var label = (recordSource === 'merchandise_transactions' || recordSource === 'merchandise')
-            ? 'Merchandise Txn #' + txnId
-            : 'Job Order #' + txnId;
-        if (customerName) label += ' (' + customerName + ')';
-        targetInfo.textContent = label;
-    }
-
-    modal.style.display = 'flex';
-};
-
-window.closeViewMerchandiseModal = function() {
-    var modal = document.getElementById('viewMerchandiseModal');
-    if (modal) modal.style.display = 'none';
-};
-
-window.closeTxnRequestModal = function() {
-    var modal = document.getElementById('txnRequestModal');
-    if (modal) modal.style.display = 'none';
+    if (requestType === 'Adjustment') return window.openRequestAdjustModal(joData);
+    else return window.openRequestVoidModal(joData);
 };
 </script>
 
@@ -3124,7 +3067,10 @@ input[list] {
     border-color: #dc2626 !important;
 }
 .txn-btn.danger:hover {
-
+    background: #fef2f2 !important;
+    color: #b91c1c !important;
+    border-color: #b91c1c !important;
+}
 .txn-btn.info {
     background: #ffffff !important;
     color: #0284c7 !important;
@@ -3144,10 +3090,6 @@ input[list] {
     background: #fffbeb !important;
     color: #b45309 !important;
     border-color: #b45309 !important;
-}
-    background: #fef2f2 !important;
-    color: #b91c1c !important;
-    border-color: #b91c1c !important;
 }
 
 .txn-btn:disabled {
@@ -6515,8 +6457,10 @@ setTimeout(function() {
 
                                              <?php if ($mh_is_voided): ?>
                                              <!-- VOIDED Status: View only + Badge -->
-                                             <button type="button" onclick="event.stopPropagation(); viewMerchandiseDetails('<?= addslashes($txn['mt_id']) ?>')"
-                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                             <button type="button"
+                                                onclick="window.viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>', this); return false;"
+                                                class="txn-btn secondary"
+                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
                                                  <i class="fas fa-eye"></i> View
                                              </button>
                                              <span style="font-size:10.5px;color:#991b1b;font-weight:700;text-align:center;padding:2px 0;">
@@ -6525,12 +6469,15 @@ setTimeout(function() {
 
                                              <?php elseif ($mh_is_adjusted): ?>
                                              <!-- ADJUSTED Status: View, Reprint + Badge -->
-                                             <button type="button" onclick="event.stopPropagation(); viewMerchandiseDetails('<?= addslashes($txn['mt_id']) ?>')"
-                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                             <button type="button"
+                                                onclick="window.viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>', this); return false;"
+                                                class="txn-btn secondary"
+                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
                                                  <i class="fas fa-eye"></i> View
                                              </button>
                                              <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank" onclick="event.stopPropagation();"
-                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;">
+                                                class="txn-btn secondary"
+                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
                                                  <i class="fas fa-receipt"></i> Reprint
                                              </a>
                                              <span style="font-size:10.5px;color:#4338ca;font-weight:700;text-align:center;padding:2px 0;">
@@ -6539,12 +6486,15 @@ setTimeout(function() {
 
                                              <?php elseif ($mh_adj_req): ?>
                                              <!-- ADJUSTMENT REQUESTED Status: View, Reprint + Badge -->
-                                             <button type="button" onclick="event.stopPropagation(); viewMerchandiseDetails('<?= addslashes($txn['mt_id']) ?>')"
-                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                             <button type="button"
+                                                onclick="window.viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>', this); return false;"
+                                                class="txn-btn secondary"
+                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
                                                  <i class="fas fa-eye"></i> View
                                              </button>
                                              <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank" onclick="event.stopPropagation();"
-                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;">
+                                                class="txn-btn secondary"
+                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
                                                  <i class="fas fa-receipt"></i> Reprint
                                              </a>
                                              <span style="font-size:10.5px;color:#d97706;font-weight:700;text-align:center;padding:2px 0;" title="Pending manager review">
@@ -6553,12 +6503,15 @@ setTimeout(function() {
 
                                              <?php elseif ($mh_void_req): ?>
                                              <!-- VOID REQUESTED Status: View, Reprint + Badge -->
-                                             <button type="button" onclick="event.stopPropagation(); viewMerchandiseDetails('<?= addslashes($txn['mt_id']) ?>')"
-                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                             <button type="button"
+                                                onclick="window.viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>', this); return false;"
+                                                class="txn-btn secondary"
+                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
                                                  <i class="fas fa-eye"></i> View
                                              </button>
                                              <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank" onclick="event.stopPropagation();"
-                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;">
+                                                class="txn-btn secondary"
+                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
                                                  <i class="fas fa-receipt"></i> Reprint
                                              </a>
                                              <span style="font-size:10.5px;color:#dc2626;font-weight:700;text-align:center;padding:2px 0;" title="Pending manager review">
@@ -6567,24 +6520,43 @@ setTimeout(function() {
 
                                              <?php else: ?>
                                              <!-- NORMAL / CORRECT: View, Reprint, Request Adjust, Request Void -->
-                                             <button type="button" onclick="event.stopPropagation(); viewMerchandiseDetails('<?= addslashes($txn['mt_id']) ?>')"
-                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                             <button type="button"
+                                                onclick="window.viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>', this); return false;"
+                                                class="txn-btn secondary"
+                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
                                                  <i class="fas fa-eye"></i> View
                                              </button>
                                              <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank" onclick="event.stopPropagation();"
-                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;">
+                                                class="txn-btn secondary"
+                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
                                                  <i class="fas fa-receipt"></i> Reprint
                                              </a>
-                                             <button type="button" class="txn-btn secondary"
-                                                onclick="event.stopPropagation(); openTxnRequestModal(event, '<?= addslashes($txn['mt_id']) ?>', 'merchandise_transactions', 'Adjustment', '<?= addslashes($txn['customer_name'] ?? '') ?>')"
+                                             <button type="button"
+                                                data-jo-id="<?= (int)$txn['mt_id'] ?>"
+                                                data-jo-source="merchandise_transactions"
+                                                data-jo-ref="<?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['mt_id'])) ?>"
+                                                data-jo-customer="<?= htmlspecialchars($txn['customer_name'] ?? 'Walk-in Customer') ?>"
+                                                data-jo-status="<?= htmlspecialchars($txn['validation_status'] ?? 'Pending') ?>"
+                                                data-jo-paystatus="<?= htmlspecialchars($txn['payment_status'] ?? 'Paid') ?>"
+                                                data-jo-paymethod="<?= htmlspecialchars($txn['payment_method'] ?? 'Cash') ?>"
+                                                data-jo-total="<?= (float)($txn['item_subtotal'] ?? $txn['total_amount'] ?? $grand_total_row ?? 0) ?>"
+                                                onclick="window.openRequestAdjustModal(event, this); return false;"
                                                 title="Request adjustment - wrong item/qty/price/customer details"
-                                                style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                                class="txn-btn secondary"
+                                                style="width:100%;padding:5px 8px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
                                                  <i class="fas fa-sliders-h"></i> Request Adjust
                                              </button>
-                                             <button type="button" class="txn-btn danger"
-                                                onclick="event.stopPropagation(); openTxnRequestModal(event, '<?= addslashes($txn['mt_id']) ?>', 'merchandise_transactions', 'Void', '<?= addslashes($txn['customer_name'] ?? '') ?>')"
+                                             <button type="button"
+                                                data-jo-id="<?= (int)$txn['mt_id'] ?>"
+                                                data-jo-source="merchandise_transactions"
+                                                data-jo-ref="<?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['mt_id'])) ?>"
+                                                data-jo-customer="<?= htmlspecialchars($txn['customer_name'] ?? 'Walk-in Customer') ?>"
+                                                data-jo-status="<?= htmlspecialchars($txn['validation_status'] ?? 'Pending') ?>"
+                                                data-jo-paystatus="<?= htmlspecialchars($txn['payment_status'] ?? 'Paid') ?>"
+                                                onclick="window.openRequestVoidModal(event, this); return false;"
                                                 title="Request void - duplicate, cancelled or wrong transaction"
-                                                style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                                class="txn-btn danger"
+                                                style="width:100%;padding:5px 8px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;background:#dc2626 !important;color:#fff !important;border:none !important;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
                                                  <i class="fas fa-ban"></i> Request Void
                                              </button>
                                              <?php endif; ?>
@@ -12292,599 +12264,12 @@ setTimeout(function() {
             }
         });
         </script>
+        </div><!-- /innerTab_tracker -->
 
         <!-- ══════════════════════════════════════════════════════════
-             JOB ORDER DETAIL MODALS (View / Update Status / Adjust)
+             GLOBAL MODALS (Available across Merchandise & Tracker tabs)
         ══════════════════════════════════════════════════════════ -->
         
-        <!-- View Job Order Details Modal -->
-        <div id="viewJobOrderModal" style="display:none;position:fixed;inset:0;z-index:9999;
-             background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
-          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
-                      width:100%;max-width:600px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
-            <div style="background:#fff;border-bottom:1px solid #e2e8f0;padding:18px 24px;
-                        display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-              <div style="display:flex;align-items:center;gap:12px;">
-                <div style="width:36px;height:36px;background:#f0f7ff;border-radius:10px;
-                            display:flex;align-items:center;justify-content:center;">
-                  <i class="fas fa-clipboard-list" style="color:#002F70;font-size:16px;"></i>
-                </div>
-                <div>
-                  <div style="color:#002F70;font-weight:700;font-size:15px;">Job Order Details</div>
-                  <div id="viewJORef" style="color:#64748b;font-size:12px;margin-top:2px;"></div>
-                </div>
-              </div>
-            </div>
-            <div style="padding:20px 24px 24px 24px;flex:1;overflow-y:auto;">
-              <!-- Transaction Information -->
-              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:8px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
-                <i class="fas fa-info-circle" style="margin-right:6px;"></i>Transaction Information
-              </div>
-              <div style="display:grid;gap:10px;">
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">JO Number:</span>
-                  <span id="viewJORef2" style="font-size:13px;color:#002F70;font-weight:700;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">OR Number:</span>
-                  <span id="viewJOOrNo" style="font-size:12px;color:#475569;font-family:monospace;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Customer:</span>
-                  <span id="viewJOCustomer" style="font-size:13px;color:#1e293b;font-weight:600;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Contact:</span>
-                  <span id="viewJOContact" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Vehicle:</span>
-                  <span id="viewJOVehicle" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Brand / Model:</span>
-                  <span id="viewJOBrandModel" style="font-size:13px;color:#475569;font-weight:600;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Year Model:</span>
-                  <span id="viewJOYearModel" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Engine No.:</span>
-                  <span id="viewJOEngineNo" style="font-size:13px;color:#475569;font-family:monospace;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Chassis No.:</span>
-                  <span id="viewJOChassisNo" style="font-size:13px;color:#475569;font-family:monospace;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Mechanic:</span>
-                  <span id="viewJOMechanic" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Date Created:</span>
-                  <span id="viewJOCreated" style="font-size:12px;color:#64748b;">—</span>
-                </div>
-              </div>
-              <!-- Services -->
-              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
-                <i class="fas fa-wrench" style="margin-right:6px;"></i>Services
-              </div>
-              <div style="display:grid;gap:10px;">
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Service Type:</span>
-                  <span id="viewJOService" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Est. Duration:</span>
-                  <span id="viewJODuration" style="font-size:13px;color:#475569;">—</span>
-                </div>
-              </div>
-              <!-- Merchandise -->
-              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
-                <i class="fas fa-box" style="margin-right:6px;"></i>Merchandise
-              </div>
-              <div style="display:grid;gap:10px;">
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Parts / Items:</span>
-                  <span id="viewJOParts" style="font-size:13px;color:#475569;">—</span>
-                </div>
-              </div>
-              <!-- Remarks -->
-              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
-                <i class="fas fa-comment-alt" style="margin-right:6px;"></i>Remarks
-              </div>
-              <div style="display:grid;gap:10px;">
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Notes:</span>
-                  <span id="viewJORemarks" style="font-size:13px;color:#475569;word-break:break-word;">—</span>
-                </div>
-              </div>
-              <!-- Payment -->
-              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
-                <i class="fas fa-credit-card" style="margin-right:6px;"></i>Payment
-              </div>
-              <div style="display:grid;gap:10px;">
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Status:</span>
-                  <span id="viewJOWorkflow" style="font-size:11px;font-weight:700;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Status:</span>
-                  <span id="viewJOPayment" style="font-size:11px;font-weight:700;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Method:</span>
-                  <span id="viewJOPayMethod" style="font-size:12px;color:#475569;font-weight:600;">—</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:4px;">
-                  <span style="font-size:12px;color:#64748b;font-weight:600;">Total Cost:</span>
-                  <span id="viewJOTotal" style="font-size:16px;font-weight:800;color:#003d7a;">₱0.00</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                  <span style="font-size:12px;color:#64748b;font-weight:600;">Amount Paid:</span>
-                  <span id="viewJOPaid" style="font-size:14px;font-weight:700;color:#166534;">₱0.00</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                  <span style="font-size:12px;color:#64748b;font-weight:600;">Balance Due:</span>
-                  <span id="viewJOBalance" style="font-size:14px;font-weight:700;color:#dc2626;">₱0.00</span>
-                </div>
-              </div>
-            </div>
-            <div style="padding:16px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-shrink:0;">
-              <button onclick="closeViewJobOrderModal()" style="padding:0 24px !important;height:40px !important;background:#003d7a !important;color:#ffffff !important;
-                      border:none !important;border-radius:8px !important;font-size:14px !important;font-weight:800 !important;cursor:pointer !important;
-                      display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all 0.15s !important;min-width:110px !important;box-shadow:0 2px 6px rgba(0,61,122,.3) !important;"
-                      onmouseover="this.style.background='#002855'"
-                      onmouseout="this.style.background='#003d7a'">
-                <i class="fas fa-times" style="margin-right:6px;color:#ffffff !important;"></i> Close
-              </button>
-            </div>
-          </div>
-        </div>
-        <!-- View Merchandise Transaction Modal -->
-        <div id="viewMerchandiseModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;
-             background:rgba(15,23,42,0.65);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
-          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
-                      width:100%;max-width:700px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
-            <div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:22px 24px;
-                        display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-              <div style="display:flex;align-items:center;gap:12px;">
-                <div style="width:38px;height:38px;background:rgba(255,255,255,.18);border-radius:10px;
-                            display:flex;align-items:center;justify-content:center;">
-                  <i class="fas fa-shopping-cart" style="color:#fff;font-size:16px;"></i>
-                </div>
-                <div>
-                  <div style="color:#fff;font-weight:700;font-size:14px;">Merchandise Transaction Details</div>
-                  <div id="viewMTxnRef" style="color:#bbf7d0;font-size:11px;margin-top:1px;"></div>
-                </div>
-              </div>
-              
-            </div>
-            <div style="padding:24px 24px 28px 24px;max-height:calc(100vh - 340px);overflow-y:auto;">
-              <div style="display:grid;gap:14px;">
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Customer:</span>
-                  <span id="viewMTCustomer" style="font-size:13px;color:#1e293b;font-weight:600;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Shift:</span>
-                  <span id="viewMTShift" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Transaction Date:</span>
-                  <span id="viewMTDate" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                
-                <!-- Items Table -->
-                <div style="border-top:1px solid #e2e8f0;padding-top:14px;">
-                  <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Items Purchased:</div>
-                  <div id="viewMTItems" style="max-height:200px;overflow-y:auto;">
-                    <table style="width:100%;font-size:12px;border-collapse:collapse;">
-                      <thead style="background:#f8fafc;position:sticky;top:0;">
-                        <tr>
-                          <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;">Item</th>
-                          <th style="text-align:center;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;width:60px;">Qty</th>
-                          <th style="text-align:right;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;width:90px;">Unit Price</th>
-                          <th style="text-align:right;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;width:100px;">Subtotal</th>
-                        </tr>
-                      </thead>
-                      <tbody id="viewMTItemsBody">
-                        <tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">Loading items...</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Method:</span>
-                  <span id="viewMTPayMethod" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Status:</span>
-                  <span id="viewMTPayStatus" style="font-size:11px;font-weight:700;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Validation Status:</span>
-                  <span id="viewMTValStatus" style="font-size:11px;font-weight:700;">—</span>
-                </div>
-                
-                <div style="border-top:1px solid #e2e8f0;padding-top:14px;display:grid;gap:8px;">
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:12px;color:#64748b;font-weight:600;">Subtotal:</span>
-                    <span id="viewMTSubtotal" style="font-size:14px;font-weight:700;color:#475569;">₱0.00</span>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:12px;color:#64748b;font-weight:600;">VAT (12%):</span>
-                    <span id="viewMTVAT" style="font-size:14px;font-weight:700;color:#475569;">₱0.00</span>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:2px solid #e2e8f0;">
-                    <span style="font-size:13px;color:#1e293b;font-weight:700;">Total Amount:</span>
-                    <span id="viewMTTotal" style="font-size:18px;font-weight:800;color:#003d7a;">₱0.00</span>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:12px;color:#64748b;font-weight:600;">Amount Paid:</span>
-                    <span id="viewMTPaid" style="font-size:14px;font-weight:700;color:#166534;">₱0.00</span>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:12px;color:#64748b;font-weight:600;">Balance Due:</span>
-                    <span id="viewMTBalance" style="font-size:14px;font-weight:700;color:#dc2626;">₱0.00</span>
-                  </div>
-                </div>
-                
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Remarks:</span>
-                  <span id="viewMTRemarks" style="font-size:12px;color:#475569;font-style:italic;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Staff:</span>
-                  <span id="viewMTStaff" style="font-size:12px;color:#64748b;">—</span>
-                </div>
-              </div>
-            </div>
-            <div style="padding:16px 24px 20px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;gap:10px;">
-              <button onclick="closeViewMerchandiseModal()" style="padding:0 22px !important;height:38px !important;background:#ffffff !important;color:#475569 !important;border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;min-width:100px !important;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#ffffff'">
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Update Status Modal -->
-        <div id="updateStatusModal" style="display:none;position:fixed;inset:0;z-index:9999;
-             background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
-          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
-                      width:100%;max-width:480px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
-            <div style="background:linear-gradient(135deg,#003d7a,#0369a1);padding:15px 20px;
-                        display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-              <div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:8px;
-                            display:flex;align-items:center;justify-content:center;">
-                  <i class="fas fa-sync-alt" style="color:#fff;font-size:15px;"></i>
-                </div>
-                <div>
-                  <div style="color:#fff;font-weight:700;font-size:14px;">Update Workflow Status</div>
-                  <div id="updateStatusJORef" style="color:#93c5fd;font-size:11px;margin-top:1px;"></div>
-                </div>
-              </div>
-            </div>
-            <form id="updateStatusForm" method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker">
-              <div style="padding:20px;">
-                <input type="hidden" name="jo_action" value="update_status">
-                <input type="hidden" name="jo_id" id="updateStatusJOId" value="">
-                <input type="hidden" name="jo_source" id="updateStatusJOSource" value="">
-                
-                <div style="margin-bottom:14px;">
-                  <label style="font-size:11px;color:#374151;font-weight:700;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:6px;">
-                    Current Status: <span id="updateStatusCurrent" style="color:#003d7a;">—</span>
-                  </label>
-                </div>
-                
-                <div style="margin-bottom:14px;">
-                  <label style="font-size:11px;color:#374151;font-weight:700;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:6px;">
-                    New Status <span style="color:#dc2626;">*</span>
-                  </label>
-                  <select name="new_status" id="updateStatusSelect" required
-                          style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
-                                 color:#1e293b;background:#fff;outline:none;cursor:pointer;">
-                    <option value="">Select new status...</option>
-                    <option value="Pending"><i class="fas fa-clock"></i> Pending</option>
-                    <option value="Waiting for Parts"><i class="fas fa-box"></i> Waiting for Parts</option>
-                    <option value="In Progress">▶ In Progress</option>
-                    <option value="Completed"><i class="fas fa-check"></i> Completed</option>
-                    <option value="Released"><i class="fas fa-car"></i> Released</option>
-                    <option value="Rejected"><i class="fas fa-times"></i> Rejected</option>
-                  </select>
-                </div>
-                
-                <div id="updateStatusRemarksDiv" style="display:none;margin-bottom:14px;">
-                  <label style="font-size:11px;color:#374151;font-weight:700;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:6px;">
-                    Reason for Rejection <span style="color:#dc2626;">*</span>
-                  </label>
-                  <textarea name="rejection_remarks" id="updateStatusRemarks" rows="3"
-                            style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
-                                   color:#1e293b;background:#fff;outline:none;resize:vertical;font-family:inherit;"
-                            placeholder="Explain why this job order is being rejected..."></textarea>
-                </div>
-              </div>
-              <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">
-                <button type="button" onclick="closeUpdateStatusModal()" class="txn-btn secondary">
-                  Cancel
-                </button>
-                <button type="submit" class="txn-btn primary">
-                  <i class="fas fa-check"></i> Update Status
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-
-        <!-- Adjust Job Order Modal -->
-        <div id="adjustJobOrderModal" style="display:none;position:fixed;inset:0;z-index:9999;
-             background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
-          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
-                      width:100%;max-width:600px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
-            <div style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:15px 20px;
-                        display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-              <div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:8px;
-                            display:flex;align-items:center;justify-content:center;">
-                  <i class="fas fa-edit" style="color:#fff;font-size:15px;"></i>
-                </div>
-                <div>
-                  <div style="color:#fff;font-weight:700;font-size:14px;">Adjust Job Order</div>
-                  <div id="adjustJORef" style="color:#fef3c7;font-size:11px;margin-top:1px;"></div>
-                </div>
-              </div>
-            </div>
-            <form id="adjustJobOrderForm" method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker">
-              <div style="padding:20px;max-height:65vh;overflow-y:auto;">
-                <input type="hidden" name="jo_action" value="adjust_job_order">
-                <input type="hidden" name="jo_id" id="adjustJOId" value="">
-                <input type="hidden" name="jo_source" id="adjustJOSource" value="">
-                
-                <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:16px;
-                            font-size:12px;color:#92400e;">
-                  <i class="fas fa-info-circle"></i> You can adjust job order details before the service begins (In Progress).
-                </div>
-                
-                <div style="display:grid;gap:12px;">
-                  <div>
-                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Customer Name</label>
-                    <input type="text" name="customer_name" id="adjustJOCustomer" required
-                           style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
-                                  color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
-                  </div>
-                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                    <div>
-                      <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Vehicle Plate</label>
-                      <input type="text" name="vehicle_plate" id="adjustJOPlate"
-                             style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
-                                    color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
-                    </div>
-                    <div>
-                      <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Vehicle Type</label>
-                      <input type="text" name="vehicle_type" id="adjustJOType"
-                             style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
-                                    color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
-                    </div>
-                  </div>
-                  <div>
-                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Service Type</label>
-                    <input type="text" name="service_type" id="adjustJOService" required
-                           style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
-                                  color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
-                  </div>
-                  <div>
-                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Service Description</label>
-                    <textarea name="service_description" id="adjustJODescription" rows="2"
-                              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
-                                     color:#1e293b;background:#fff;outline:none;resize:vertical;font-family:inherit;box-sizing:border-box;"></textarea>
-                  </div>
-                  <div>
-                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Mechanic</label>
-                    <input type="text" name="mechanic_name" id="adjustJOMechanic"
-                           style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
-                                  color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
-                  </div>
-                  <div>
-                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Estimated Cost (₱)</label>
-                    <input type="number" name="estimated_cost" id="adjustJOCost" step="0.01" min="0"
-                           style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
-                                  color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
-                  </div>
-                  <div>
-                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Estimated Duration (mins)</label>
-                    <input type="number" name="estimated_duration" id="adjustJODuration" min="1" step="1"
-                           style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
-                                  color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
-                  </div>
-                </div>
-              </div>
-              <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">
-                <button type="button" onclick="closeAdjustJobOrderModal()" class="txn-btn secondary">
-                  Cancel
-                </button>
-                <button type="submit" class="txn-btn primary">
-                  <i class="fas fa-save"></i> Save Changes
-                </button>
-              </div>
-             </form>
-          </div>
-        </div>
-
-        <!-- Request Adjustment Modal -->
-        <div id="requestAdjustModal" style="display:none;position:fixed;inset:0;z-index:999999;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
-          <div style="background:#fff;border-radius:14px;max-width:500px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);margin:auto;max-height:min(88vh, 640px);display:flex;flex-direction:column;overflow:hidden;">
-             <div style="background:#002F70;color:#ffffff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
-               <h3 style="margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
-                  <i class="fas fa-sliders-h" style="color:#ffffff !important;"></i> <span>REQUEST ADJUSTMENT</span>
-               </h3>
-               <button type="button" onclick="closeRequestAdjustModal()" style="background:transparent;border:none;color:#ffffff;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;" title="Close">&times;</button>
-             </div>
-             <form id="requestAdjustForm" onsubmit="submitRequestAdjust(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
-               <input type="hidden" id="reqAdjTxnId" name="transaction_id">
-               <input type="hidden" id="reqAdjRecordSource" name="record_source">
-               <input type="hidden" id="reqAdjType" name="request_type" value="Adjustment">
-               
-               <div style="padding:16px 20px;flex:1;overflow-y:auto;min-height:0;">
-                 <!-- Transaction Brief Details Box -->
-                 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;color:#334155;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                   <div><span style="color:#64748b;font-size:11px;">JO No.:</span> <strong id="reqAdjJoNo" style="color:#002F70;display:block;">—</strong></div>
-                   <div><span style="color:#64748b;font-size:11px;">Customer:</span> <strong id="reqAdjCustomer" style="color:#0f172a;display:block;">—</strong></div>
-                   <div><span style="color:#64748b;font-size:11px;">Current Status:</span> <strong id="reqAdjStatus" style="color:#0f172a;display:block;">—</strong></div>
-                   <div><span style="color:#64748b;font-size:11px;">Payment Status:</span> <strong id="reqAdjPayStatus" style="color:#0f172a;display:block;">—</strong></div>
-                   <div style="grid-column:span 2;"><span style="color:#64748b;font-size:11px;">Payment Method:</span> <strong id="reqAdjPayMethod" style="color:#0f172a;display:block;">—</strong></div>
-                 </div>
-
-                 <!-- What needs to be corrected? -->
-                 <div style="margin-bottom:14px;">
-                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">What needs to be corrected? <span style="color:#ef4444;">*</span></label>
-                   <select id="reqAdjCorrectionField" name="correction_field" required onchange="onReqAdjFieldChange()" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
-                     <option value="Labor Fee">Labor Fee</option>
-                     <option value="Service Fee">Service Fee</option>
-                     <option value="Service Type">Service Type</option>
-                     <option value="Merchandise / Item">Merchandise / Item</option>
-                     <option value="Quantity">Quantity</option>
-                     <option value="Customer Information">Customer Information</option>
-                     <option value="Plate Number / Vehicle Information">Plate Number / Vehicle Information</option>
-                     <option value="Mechanic Assignment">Mechanic Assignment</option>
-                     <option value="Payment Method">Payment Method</option>
-                     <option value="Payment Amount / Down Payment">Payment Amount / Down Payment</option>
-                     <option value="Other Encoding Error">Other Encoding Error</option>
-                   </select>
-                 </div>
-
-                 <!-- Current Value -->
-                 <div style="margin-bottom:14px;">
-                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Current Value</label>
-                   <input type="text" id="reqAdjCurrentValue" name="current_value" readonly style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;color:#64748b;background:#f8fafc;outline:none;box-sizing:border-box;">
-                 </div>
-
-                 <!-- Requested Value -->
-                 <div style="margin-bottom:14px;">
-                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Requested Value <span style="color:#ef4444;">*</span></label>
-                   <input type="text" id="reqAdjRequestedValue" name="requested_value" required placeholder="Enter correct value (e.g. ₱150.00)" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
-                 </div>
-
-                 <!-- Reason -->
-                 <div style="margin-bottom:14px;">
-                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Reason <span style="color:#ef4444;">*</span></label>
-                   <input type="text" id="reqAdjReason" name="request_reason" required placeholder="e.g. Incorrect labor fee" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
-                 </div>
-
-                 <!-- Remarks -->
-                 <div style="margin-bottom:10px;">
-                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Remarks</label>
-                   <textarea id="reqAdjRemarks" name="remarks" rows="2" placeholder="Additional notes for manager review..." style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
-                 </div>
-               </div>
-
-               <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
-                 <button type="button" onclick="closeRequestAdjustModal()" class="txn-btn secondary">Cancel</button>
-                 <button type="submit" id="reqAdjSubmitBtn" class="txn-btn primary" style="background:#002F70;color:#fff;border:none;">
-                   <i class="fas fa-paper-plane"></i> Submit Adjustment Request
-                 </button>
-               </div>
-             </form>
-          </div>
-        </div>
-
-        <!-- Request Void Modal -->
-        <div id="requestVoidModal" style="display:none;position:fixed;inset:0;z-index:999999;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
-          <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);margin:auto;max-height:min(88vh, 580px);display:flex;flex-direction:column;overflow:hidden;">
-             <div style="background:#dc2626;color:#ffffff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
-               <h3 style="margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
-                  <i class="fas fa-ban" style="color:#ffffff !important;"></i> <span>REQUEST VOID</span>
-               </h3>
-               <button type="button" onclick="closeRequestVoidModal()" style="background:transparent;border:none;color:#ffffff;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;" title="Close">&times;</button>
-             </div>
-             <form id="requestVoidForm" onsubmit="submitRequestVoid(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
-               <input type="hidden" id="reqVoidTxnId" name="transaction_id">
-               <input type="hidden" id="reqVoidRecordSource" name="record_source">
-               <input type="hidden" id="reqVoidType" name="request_type" value="Void">
-               
-               <div style="padding:16px 20px;flex:1;overflow-y:auto;min-height:0;">
-                 <!-- Transaction Brief Details Box -->
-                 <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;color:#991b1b;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                   <div><span style="color:#7f1d1d;font-size:11px;">JO No.:</span> <strong id="reqVoidJoNo" style="color:#991b1b;display:block;">—</strong></div>
-                   <div><span style="color:#7f1d1d;font-size:11px;">Customer:</span> <strong id="reqVoidCustomer" style="color:#0f172a;display:block;">—</strong></div>
-                   <div><span style="color:#7f1d1d;font-size:11px;">JO Status:</span> <strong id="reqVoidStatus" style="color:#0f172a;display:block;">—</strong></div>
-                   <div><span style="color:#7f1d1d;font-size:11px;">Payment Status:</span> <strong id="reqVoidPayStatus" style="color:#0f172a;display:block;">—</strong></div>
-                 </div>
-
-                 <!-- Void Reason -->
-                 <div style="margin-bottom:14px;">
-                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Void Reason <span style="color:#ef4444;">*</span></label>
-                   <select id="reqVoidReasonSelect" name="request_reason" required style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
-                     <option value="Duplicate Transaction">Duplicate Transaction</option>
-                     <option value="Wrong Customer">Wrong Customer</option>
-                     <option value="Wrong Vehicle">Wrong Vehicle</option>
-                     <option value="Wrong Transaction Encoded">Wrong Transaction Encoded</option>
-                     <option value="Duplicate Service">Duplicate Service</option>
-                     <option value="Transaction Created by Mistake">Transaction Created by Mistake</option>
-                     <option value="Customer Cancelled Entire Service">Customer Cancelled Entire Service</option>
-                     <option value="Incorrect JO Cannot Be Adjusted">Incorrect JO Cannot Be Adjusted</option>
-                     <option value="Other">Other</option>
-                   </select>
-                 </div>
-
-                 <!-- Remarks -->
-                 <div style="margin-bottom:10px;">
-                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Remarks <span style="color:#ef4444;">*</span></label>
-                   <textarea id="reqVoidRemarks" name="remarks" required rows="3" placeholder="Provide details (e.g. Duplicate of JO-0004)..." style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
-                 </div>
-               </div>
-
-               <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
-                 <button type="button" onclick="closeRequestVoidModal()" class="txn-btn secondary">Cancel</button>
-                 <button type="submit" id="reqVoidSubmitBtn" class="txn-btn primary" style="background:#dc2626;color:#fff;border:none;">
-                   <i class="fas fa-paper-plane"></i> Submit Void Request
-                 </button>
-               </div>
-             </form>
-          </div>
-        </div>
-
-        <!-- Request Void / Request Adjustment Modal (Generic Fallback) -->
-        <div id="txnRequestModal" style="display:none;position:fixed;inset:0;z-index:999999;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
-          <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);margin:auto;max-height:min(88vh, 580px);display:flex;flex-direction:column;overflow:hidden;">
-             <div id="txnRequestHeader" style="background:#002F70;color:#ffffff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
-               <h3 id="txnRequestTitle" style="margin:0;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
-                  <i id="txnRequestIcon" class="fas fa-paper-plane" style="color:#ffffff !important;"></i> <span id="txnRequestTitleText" style="color:#ffffff !important;">Request Transaction Action</span>
-               </h3>
-               <button type="button" onclick="closeTxnRequestModal()" style="background:transparent;border:none;color:#ffffff;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;" title="Close">&times;</button>
-             </div>
-             <form id="txnRequestForm" onsubmit="submitTxnRequest(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
-               <input type="hidden" id="txnRequestTxnId" name="transaction_id">
-               <input type="hidden" id="txnRequestRecordSource" name="record_source">
-               <input type="hidden" id="txnRequestType" name="request_type">
-               <div style="padding:16px 20px;flex:1;overflow-y:auto;min-height:0;">
-                 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#334155;">
-                   <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Target Transaction</div>
-                   <div style="font-weight:700;color:#0f172a;" id="txnRequestTargetInfo">Transaction #—</div>
-                 </div>
-
-                <div id="txnRequestNewAmountGroup" style="display:none;margin-bottom:16px;">
-                  <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Proposed New Amount (Optional)</label>
-                  <input type="number" id="txnRequestNewAmount" name="new_amount" step="0.01" min="0" placeholder="0.00" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
-                </div>
-
-                <div style="margin-bottom:10px;">
-                  <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Reason for Request <span style="color:#ef4444;">*</span></label>
-                  <textarea id="txnRequestReason" name="request_reason" required rows="3" placeholder="Explain clearly why this void or adjustment is needed for the manager to approve..." style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
-                </div>
-              </div>
-              <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
-                <button type="button" onclick="closeTxnRequestModal()" class="txn-btn secondary">Cancel</button>
-                <button type="submit" id="txnRequestSubmitBtn" class="txn-btn primary">
-                  <i class="fas fa-paper-plane"></i> Submit Request
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-
         <script>
         // ── Job Order Modal Functions ───────────────────────────────────────
         
@@ -13528,4 +12913,727 @@ setTimeout(function() {
 
 </div><!-- /txn-content -->
 
+
+
+<!-- View Job Order Details Modal -->
+        <div id="viewJobOrderModal" onclick="if(event.target===this) closeViewJobOrderModal();" style="display:none;position:fixed;inset:0;z-index:9999;
+             background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
+          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
+                      width:100%;max-width:600px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
+            <div style="background:#fff;border-bottom:1px solid #e2e8f0;padding:18px 24px;
+                        display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="width:36px;height:36px;background:#f0f7ff;border-radius:10px;
+                            display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-clipboard-list" style="color:#002F70;font-size:16px;"></i>
+                </div>
+                <div>
+                  <div style="color:#002F70;font-weight:700;font-size:15px;">Job Order Details</div>
+                  <div id="viewJORef" style="color:#64748b;font-size:12px;margin-top:2px;"></div>
+                </div>
+              </div>
+            </div>
+            <div style="padding:20px 24px 24px 24px;flex:1;overflow-y:auto;">
+              <!-- Transaction Information -->
+              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:8px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-info-circle" style="margin-right:6px;"></i>Transaction Information
+              </div>
+              <div style="display:grid;gap:10px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">JO Number:</span>
+                  <span id="viewJORef2" style="font-size:13px;color:#002F70;font-weight:700;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">OR Number:</span>
+                  <span id="viewJOOrNo" style="font-size:12px;color:#475569;font-family:monospace;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Customer:</span>
+                  <span id="viewJOCustomer" style="font-size:13px;color:#1e293b;font-weight:600;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Contact:</span>
+                  <span id="viewJOContact" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Vehicle:</span>
+                  <span id="viewJOVehicle" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Brand / Model:</span>
+                  <span id="viewJOBrandModel" style="font-size:13px;color:#475569;font-weight:600;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Year Model:</span>
+                  <span id="viewJOYearModel" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Engine No.:</span>
+                  <span id="viewJOEngineNo" style="font-size:13px;color:#475569;font-family:monospace;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Chassis No.:</span>
+                  <span id="viewJOChassisNo" style="font-size:13px;color:#475569;font-family:monospace;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Mechanic:</span>
+                  <span id="viewJOMechanic" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Date Created:</span>
+                  <span id="viewJOCreated" style="font-size:12px;color:#64748b;">—</span>
+                </div>
+              </div>
+              <!-- Services -->
+              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-wrench" style="margin-right:6px;"></i>Services
+              </div>
+              <div style="display:grid;gap:10px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Service Type:</span>
+                  <span id="viewJOService" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Est. Duration:</span>
+                  <span id="viewJODuration" style="font-size:13px;color:#475569;">—</span>
+                </div>
+              </div>
+              <!-- Merchandise -->
+              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-box" style="margin-right:6px;"></i>Merchandise
+              </div>
+              <div style="display:grid;gap:10px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Parts / Items:</span>
+                  <span id="viewJOParts" style="font-size:13px;color:#475569;">—</span>
+                </div>
+              </div>
+              <!-- Remarks -->
+              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-comment-alt" style="margin-right:6px;"></i>Remarks
+              </div>
+              <div style="display:grid;gap:10px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Notes:</span>
+                  <span id="viewJORemarks" style="font-size:13px;color:#475569;word-break:break-word;">—</span>
+                </div>
+              </div>
+              <!-- Payment -->
+              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
+                <i class="fas fa-credit-card" style="margin-right:6px;"></i>Payment
+              </div>
+              <div style="display:grid;gap:10px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Status:</span>
+                  <span id="viewJOWorkflow" style="font-size:11px;font-weight:700;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Status:</span>
+                  <span id="viewJOPayment" style="font-size:11px;font-weight:700;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Method:</span>
+                  <span id="viewJOPayMethod" style="font-size:12px;color:#475569;font-weight:600;">—</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:4px;">
+                  <span style="font-size:12px;color:#64748b;font-weight:600;">Total Cost:</span>
+                  <span id="viewJOTotal" style="font-size:16px;font-weight:800;color:#003d7a;">₱0.00</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:12px;color:#64748b;font-weight:600;">Amount Paid:</span>
+                  <span id="viewJOPaid" style="font-size:14px;font-weight:700;color:#166534;">₱0.00</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:12px;color:#64748b;font-weight:600;">Balance Due:</span>
+                  <span id="viewJOBalance" style="font-size:14px;font-weight:700;color:#dc2626;">₱0.00</span>
+                </div>
+              </div>
+            </div>
+            <div style="padding:16px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-shrink:0;">
+              <button onclick="closeViewJobOrderModal()" style="padding:0 24px !important;height:40px !important;background:#003d7a !important;color:#ffffff !important;
+                      border:none !important;border-radius:8px !important;font-size:14px !important;font-weight:800 !important;cursor:pointer !important;
+                      display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all 0.15s !important;min-width:110px !important;box-shadow:0 2px 6px rgba(0,61,122,.3) !important;"
+                      onmouseover="this.style.background='#002855'"
+                      onmouseout="this.style.background='#003d7a'">
+                <i class="fas fa-times" style="margin-right:6px;color:#ffffff !important;"></i> Close
+              </button>
+            </div>
+          </div>
+        </div>
+        <!-- View Merchandise Transaction Modal -->
+        <div id="viewMerchandiseModal" onclick="if(event.target===this) closeViewMerchandiseModal();" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;
+             background:rgba(15,23,42,0.65);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
+          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
+                      width:100%;max-width:700px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
+            <div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:22px 24px;
+                        display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="width:38px;height:38px;background:rgba(255,255,255,.18);border-radius:10px;
+                            display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-shopping-cart" style="color:#fff;font-size:16px;"></i>
+                </div>
+                <div>
+                  <div style="color:#fff;font-weight:700;font-size:14px;">Merchandise Transaction Details</div>
+                  <div id="viewMTxnRef" style="color:#bbf7d0;font-size:11px;margin-top:1px;"></div>
+                </div>
+              </div>
+              
+            </div>
+            <div style="padding:24px 24px 28px 24px;max-height:calc(100vh - 340px);overflow-y:auto;">
+              <div style="display:grid;gap:14px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Customer:</span>
+                  <span id="viewMTCustomer" style="font-size:13px;color:#1e293b;font-weight:600;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Shift:</span>
+                  <span id="viewMTShift" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Transaction Date:</span>
+                  <span id="viewMTDate" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                
+                <!-- Items Table -->
+                <div style="border-top:1px solid #e2e8f0;padding-top:14px;">
+                  <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Items Purchased:</div>
+                  <div id="viewMTItems" style="max-height:200px;overflow-y:auto;">
+                    <table style="width:100%;font-size:12px;border-collapse:collapse;">
+                      <thead style="background:#f8fafc;position:sticky;top:0;">
+                        <tr>
+                          <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;">Item</th>
+                          <th style="text-align:center;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;width:60px;">Qty</th>
+                          <th style="text-align:right;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;width:90px;">Unit Price</th>
+                          <th style="text-align:right;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;width:100px;">Subtotal</th>
+                        </tr>
+                      </thead>
+                      <tbody id="viewMTItemsBody">
+                        <tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">Loading items...</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Method:</span>
+                  <span id="viewMTPayMethod" style="font-size:13px;color:#475569;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Status:</span>
+                  <span id="viewMTPayStatus" style="font-size:11px;font-weight:700;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Validation Status:</span>
+                  <span id="viewMTValStatus" style="font-size:11px;font-weight:700;">—</span>
+                </div>
+                
+                <div style="border-top:1px solid #e2e8f0;padding-top:14px;display:grid;gap:8px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#64748b;font-weight:600;">Subtotal:</span>
+                    <span id="viewMTSubtotal" style="font-size:14px;font-weight:700;color:#475569;">₱0.00</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#64748b;font-weight:600;">VAT (12%):</span>
+                    <span id="viewMTVAT" style="font-size:14px;font-weight:700;color:#475569;">₱0.00</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:2px solid #e2e8f0;">
+                    <span style="font-size:13px;color:#1e293b;font-weight:700;">Total Amount:</span>
+                    <span id="viewMTTotal" style="font-size:18px;font-weight:800;color:#003d7a;">₱0.00</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#64748b;font-weight:600;">Amount Paid:</span>
+                    <span id="viewMTPaid" style="font-size:14px;font-weight:700;color:#166534;">₱0.00</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:#64748b;font-weight:600;">Balance Due:</span>
+                    <span id="viewMTBalance" style="font-size:14px;font-weight:700;color:#dc2626;">₱0.00</span>
+                  </div>
+                </div>
+                
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Remarks:</span>
+                  <span id="viewMTRemarks" style="font-size:12px;color:#475569;font-style:italic;">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
+                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Staff:</span>
+                  <span id="viewMTStaff" style="font-size:12px;color:#64748b;">—</span>
+                </div>
+              </div>
+            </div>
+            <div style="padding:16px 24px 20px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;gap:10px;">
+              <button onclick="closeViewMerchandiseModal()" style="padding:0 22px !important;height:38px !important;background:#ffffff !important;color:#475569 !important;border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;min-width:100px !important;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#ffffff'">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Update Status Modal -->
+        <div id="updateStatusModal" style="display:none;position:fixed;inset:0;z-index:9999;
+             background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
+          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
+                      width:100%;max-width:480px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
+            <div style="background:linear-gradient(135deg,#003d7a,#0369a1);padding:15px 20px;
+                        display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:8px;
+                            display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-sync-alt" style="color:#fff;font-size:15px;"></i>
+                </div>
+                <div>
+                  <div style="color:#fff;font-weight:700;font-size:14px;">Update Workflow Status</div>
+                  <div id="updateStatusJORef" style="color:#93c5fd;font-size:11px;margin-top:1px;"></div>
+                </div>
+              </div>
+            </div>
+            <form id="updateStatusForm" method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker">
+              <div style="padding:20px;">
+                <input type="hidden" name="jo_action" value="update_status">
+                <input type="hidden" name="jo_id" id="updateStatusJOId" value="">
+                <input type="hidden" name="jo_source" id="updateStatusJOSource" value="">
+                
+                <div style="margin-bottom:14px;">
+                  <label style="font-size:11px;color:#374151;font-weight:700;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:6px;">
+                    Current Status: <span id="updateStatusCurrent" style="color:#003d7a;">—</span>
+                  </label>
+                </div>
+                
+                <div style="margin-bottom:14px;">
+                  <label style="font-size:11px;color:#374151;font-weight:700;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:6px;">
+                    New Status <span style="color:#dc2626;">*</span>
+                  </label>
+                  <select name="new_status" id="updateStatusSelect" required
+                          style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                 color:#1e293b;background:#fff;outline:none;cursor:pointer;">
+                    <option value="">Select new status...</option>
+                    <option value="Pending"><i class="fas fa-clock"></i> Pending</option>
+                    <option value="Waiting for Parts"><i class="fas fa-box"></i> Waiting for Parts</option>
+                    <option value="In Progress">▶ In Progress</option>
+                    <option value="Completed"><i class="fas fa-check"></i> Completed</option>
+                    <option value="Released"><i class="fas fa-car"></i> Released</option>
+                    <option value="Rejected"><i class="fas fa-times"></i> Rejected</option>
+                  </select>
+                </div>
+                
+                <div id="updateStatusRemarksDiv" style="display:none;margin-bottom:14px;">
+                  <label style="font-size:11px;color:#374151;font-weight:700;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:6px;">
+                    Reason for Rejection <span style="color:#dc2626;">*</span>
+                  </label>
+                  <textarea name="rejection_remarks" id="updateStatusRemarks" rows="3"
+                            style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                   color:#1e293b;background:#fff;outline:none;resize:vertical;font-family:inherit;"
+                            placeholder="Explain why this job order is being rejected..."></textarea>
+                </div>
+              </div>
+              <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">
+                <button type="button" onclick="closeUpdateStatusModal()" class="txn-btn secondary">
+                  Cancel
+                </button>
+                <button type="submit" class="txn-btn primary">
+                  <i class="fas fa-check"></i> Update Status
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Adjust Job Order Modal -->
+        <div id="adjustJobOrderModal" style="display:none;position:fixed;inset:0;z-index:9999;
+             background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
+          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
+                      width:100%;max-width:600px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
+            <div style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:15px 20px;
+                        display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:8px;
+                            display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-edit" style="color:#fff;font-size:15px;"></i>
+                </div>
+                <div>
+                  <div style="color:#fff;font-weight:700;font-size:14px;">Adjust Job Order</div>
+                  <div id="adjustJORef" style="color:#fef3c7;font-size:11px;margin-top:1px;"></div>
+                </div>
+              </div>
+            </div>
+            <form id="adjustJobOrderForm" method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker">
+              <div style="padding:20px;max-height:65vh;overflow-y:auto;">
+                <input type="hidden" name="jo_action" value="adjust_job_order">
+                <input type="hidden" name="jo_id" id="adjustJOId" value="">
+                <input type="hidden" name="jo_source" id="adjustJOSource" value="">
+                
+                <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:16px;
+                            font-size:12px;color:#92400e;">
+                  <i class="fas fa-info-circle"></i> You can adjust job order details before the service begins (In Progress).
+                </div>
+                
+                <div style="display:grid;gap:12px;">
+                  <div>
+                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Customer Name</label>
+                    <input type="text" name="customer_name" id="adjustJOCustomer" required
+                           style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                  color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <div>
+                      <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Vehicle Plate</label>
+                      <input type="text" name="vehicle_plate" id="adjustJOPlate"
+                             style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                    color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                    </div>
+                    <div>
+                      <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Vehicle Type</label>
+                      <input type="text" name="vehicle_type" id="adjustJOType"
+                             style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                    color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                    </div>
+                  </div>
+                  <div>
+                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Service Type</label>
+                    <input type="text" name="service_type" id="adjustJOService" required
+                           style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                  color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Service Description</label>
+                    <textarea name="service_description" id="adjustJODescription" rows="2"
+                              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                     color:#1e293b;background:#fff;outline:none;resize:vertical;font-family:inherit;box-sizing:border-box;"></textarea>
+                  </div>
+                  <div>
+                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Mechanic</label>
+                    <input type="text" name="mechanic_name" id="adjustJOMechanic"
+                           style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                  color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Estimated Cost (₱)</label>
+                    <input type="number" name="estimated_cost" id="adjustJOCost" step="0.01" min="0"
+                           style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                  color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;color:#374151;font-weight:700;display:block;margin-bottom:4px;">Estimated Duration (mins)</label>
+                    <input type="number" name="estimated_duration" id="adjustJODuration" min="1" step="1"
+                           style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;
+                                  color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                  </div>
+                </div>
+              </div>
+              <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">
+                <button type="button" onclick="closeAdjustJobOrderModal()" class="txn-btn secondary">
+                  Cancel
+                </button>
+                <button type="submit" class="txn-btn primary">
+                  <i class="fas fa-save"></i> Save Changes
+                </button>
+              </div>
+             </form>
+          </div>
+        </div>
+
+        <!-- Request Adjustment Modal -->
+        <div id="requestAdjustModal" onclick="if(event.target===this) closeRequestAdjustModal();" style="display:none;position:fixed;inset:0;z-index:999999;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+          <div style="background:#fff;border-radius:14px;max-width:500px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);margin:auto;max-height:min(88vh, 640px);display:flex;flex-direction:column;overflow:hidden;">
+             <div style="background:#002F70;color:#ffffff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+               <h3 style="margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
+                  <i class="fas fa-sliders-h" style="color:#ffffff !important;"></i> <span>REQUEST ADJUSTMENT</span>
+               </h3>
+               <button type="button" onclick="closeRequestAdjustModal()" style="background:transparent;border:none;color:#ffffff;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;" title="Close">&times;</button>
+             </div>
+             <form id="requestAdjustForm" onsubmit="submitRequestAdjust(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
+               <input type="hidden" id="reqAdjTxnId" name="transaction_id">
+               <input type="hidden" id="reqAdjRecordSource" name="record_source">
+               <input type="hidden" id="reqAdjType" name="request_type" value="Adjustment">
+               
+               <div style="padding:16px 20px;flex:1;overflow-y:auto;min-height:0;">
+                 <!-- Transaction Brief Details Box -->
+                 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;color:#334155;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                   <div><span style="color:#64748b;font-size:11px;">JO No.:</span> <strong id="reqAdjJoNo" style="color:#002F70;display:block;">—</strong></div>
+                   <div><span style="color:#64748b;font-size:11px;">Customer:</span> <strong id="reqAdjCustomer" style="color:#0f172a;display:block;">—</strong></div>
+                   <div><span style="color:#64748b;font-size:11px;">Current Status:</span> <strong id="reqAdjStatus" style="color:#0f172a;display:block;">—</strong></div>
+                   <div><span style="color:#64748b;font-size:11px;">Payment Status:</span> <strong id="reqAdjPayStatus" style="color:#0f172a;display:block;">—</strong></div>
+                   <div style="grid-column:span 2;"><span style="color:#64748b;font-size:11px;">Payment Method:</span> <strong id="reqAdjPayMethod" style="color:#0f172a;display:block;">—</strong></div>
+                 </div>
+
+                 <!-- What needs to be corrected? -->
+                 <div style="margin-bottom:14px;">
+                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">What needs to be corrected? <span style="color:#ef4444;">*</span></label>
+                   <select id="reqAdjCorrectionField" name="correction_field" required onchange="onReqAdjFieldChange()" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                     <option value="Labor Fee">Labor Fee</option>
+                     <option value="Service Fee">Service Fee</option>
+                     <option value="Service Type">Service Type</option>
+                     <option value="Merchandise / Item">Merchandise / Item</option>
+                     <option value="Quantity">Quantity</option>
+                     <option value="Customer Information">Customer Information</option>
+                     <option value="Plate Number / Vehicle Information">Plate Number / Vehicle Information</option>
+                     <option value="Mechanic Assignment">Mechanic Assignment</option>
+                     <option value="Payment Method">Payment Method</option>
+                     <option value="Payment Amount / Down Payment">Payment Amount / Down Payment</option>
+                     <option value="Other Encoding Error">Other Encoding Error</option>
+                   </select>
+                 </div>
+
+                 <!-- Current Value -->
+                 <div style="margin-bottom:14px;">
+                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Current Value</label>
+                   <input type="text" id="reqAdjCurrentValue" name="current_value" readonly style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;color:#64748b;background:#f8fafc;outline:none;box-sizing:border-box;">
+                 </div>
+
+                 <!-- Requested Value -->
+                 <div style="margin-bottom:14px;">
+                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Requested Value <span style="color:#ef4444;">*</span></label>
+                   <input type="text" id="reqAdjRequestedValue" name="requested_value" required placeholder="Enter correct value (e.g. ₱150.00)" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                 </div>
+
+                 <!-- Reason -->
+                 <div style="margin-bottom:14px;">
+                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Reason <span style="color:#ef4444;">*</span></label>
+                   <input type="text" id="reqAdjReason" name="request_reason" required placeholder="e.g. Incorrect labor fee" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                 </div>
+
+                 <!-- Remarks -->
+                 <div style="margin-bottom:10px;">
+                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Remarks</label>
+                   <textarea id="reqAdjRemarks" name="remarks" rows="2" placeholder="Additional notes for manager review..." style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
+                 </div>
+               </div>
+
+               <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
+                 <button type="button" onclick="closeRequestAdjustModal()" class="txn-btn secondary">Cancel</button>
+                 <button type="submit" id="reqAdjSubmitBtn" class="txn-btn primary" style="background:#002F70;color:#fff;border:none;">
+                   <i class="fas fa-paper-plane"></i> Submit Adjustment Request
+                 </button>
+               </div>
+             </form>
+          </div>
+        </div>
+
+        <!-- Request Void Modal -->
+        <div id="requestVoidModal" onclick="if(event.target===this) closeRequestVoidModal();" style="display:none;position:fixed;inset:0;z-index:999999;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+          <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);margin:auto;max-height:min(88vh, 580px);display:flex;flex-direction:column;overflow:hidden;">
+             <div style="background:#dc2626;color:#ffffff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+               <h3 style="margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
+                  <i class="fas fa-ban" style="color:#ffffff !important;"></i> <span>REQUEST VOID</span>
+               </h3>
+               <button type="button" onclick="closeRequestVoidModal()" style="background:transparent;border:none;color:#ffffff;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;" title="Close">&times;</button>
+             </div>
+             <form id="requestVoidForm" onsubmit="submitRequestVoid(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
+               <input type="hidden" id="reqVoidTxnId" name="transaction_id">
+               <input type="hidden" id="reqVoidRecordSource" name="record_source">
+               <input type="hidden" id="reqVoidType" name="request_type" value="Void">
+               
+               <div style="padding:16px 20px;flex:1;overflow-y:auto;min-height:0;">
+                 <!-- Transaction Brief Details Box -->
+                 <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;color:#991b1b;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                   <div><span style="color:#7f1d1d;font-size:11px;">JO No.:</span> <strong id="reqVoidJoNo" style="color:#991b1b;display:block;">—</strong></div>
+                   <div><span style="color:#7f1d1d;font-size:11px;">Customer:</span> <strong id="reqVoidCustomer" style="color:#0f172a;display:block;">—</strong></div>
+                   <div><span style="color:#7f1d1d;font-size:11px;">JO Status:</span> <strong id="reqVoidStatus" style="color:#0f172a;display:block;">—</strong></div>
+                   <div><span style="color:#7f1d1d;font-size:11px;">Payment Status:</span> <strong id="reqVoidPayStatus" style="color:#0f172a;display:block;">—</strong></div>
+                 </div>
+
+                 <!-- Void Reason -->
+                 <div style="margin-bottom:14px;">
+                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Void Reason <span style="color:#ef4444;">*</span></label>
+                   <select id="reqVoidReasonSelect" name="request_reason" required style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                     <option value="Duplicate Transaction">Duplicate Transaction</option>
+                     <option value="Wrong Customer">Wrong Customer</option>
+                     <option value="Wrong Vehicle">Wrong Vehicle</option>
+                     <option value="Wrong Transaction Encoded">Wrong Transaction Encoded</option>
+                     <option value="Duplicate Service">Duplicate Service</option>
+                     <option value="Transaction Created by Mistake">Transaction Created by Mistake</option>
+                     <option value="Customer Cancelled Entire Service">Customer Cancelled Entire Service</option>
+                     <option value="Incorrect JO Cannot Be Adjusted">Incorrect JO Cannot Be Adjusted</option>
+                     <option value="Other">Other</option>
+                   </select>
+                 </div>
+
+                 <!-- Remarks -->
+                 <div style="margin-bottom:10px;">
+                   <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Remarks <span style="color:#ef4444;">*</span></label>
+                   <textarea id="reqVoidRemarks" name="remarks" required rows="3" placeholder="Provide details (e.g. Duplicate of JO-0004)..." style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
+                 </div>
+               </div>
+
+               <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
+                 <button type="button" onclick="closeRequestVoidModal()" class="txn-btn secondary">Cancel</button>
+                 <button type="submit" id="reqVoidSubmitBtn" class="txn-btn primary" style="background:#dc2626;color:#fff;border:none;">
+                   <i class="fas fa-paper-plane"></i> Submit Void Request
+                 </button>
+               </div>
+             </form>
+          </div>
+        </div>
+
+        <!-- Request Void / Request Adjustment Modal (Generic Fallback) -->
+        <div id="txnRequestModal" style="display:none;position:fixed;inset:0;z-index:999999;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+          <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);margin:auto;max-height:min(88vh, 580px);display:flex;flex-direction:column;overflow:hidden;">
+             <div id="txnRequestHeader" style="background:#002F70;color:#ffffff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+               <h3 id="txnRequestTitle" style="margin:0;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
+                  <i id="txnRequestIcon" class="fas fa-paper-plane" style="color:#ffffff !important;"></i> <span id="txnRequestTitleText" style="color:#ffffff !important;">Request Transaction Action</span>
+               </h3>
+               <button type="button" onclick="closeTxnRequestModal()" style="background:transparent;border:none;color:#ffffff;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;" title="Close">&times;</button>
+             </div>
+             <form id="txnRequestForm" onsubmit="submitTxnRequest(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
+               <input type="hidden" id="txnRequestTxnId" name="transaction_id">
+               <input type="hidden" id="txnRequestRecordSource" name="record_source">
+               <input type="hidden" id="txnRequestType" name="request_type">
+               <div style="padding:16px 20px;flex:1;overflow-y:auto;min-height:0;">
+                 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#334155;">
+                   <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Target Transaction</div>
+                   <div style="font-weight:700;color:#0f172a;" id="txnRequestTargetInfo">Transaction #—</div>
+                 </div>
+
+                <div id="txnRequestNewAmountGroup" style="display:none;margin-bottom:16px;">
+                  <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Proposed New Amount (Optional)</label>
+                  <input type="number" id="txnRequestNewAmount" name="new_amount" step="0.01" min="0" placeholder="0.00" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;box-sizing:border-box;">
+                </div>
+
+                <div style="margin-bottom:10px;">
+                  <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;">Reason for Request <span style="color:#ef4444;">*</span></label>
+                  <textarea id="txnRequestReason" name="request_reason" required rows="3" placeholder="Explain clearly why this void or adjustment is needed for the manager to approve..." style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;color:#1e293b;background:#fff;outline:none;resize:vertical;box-sizing:border-box;"></textarea>
+                </div>
+              </div>
+              <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
+                <button type="button" onclick="closeTxnRequestModal()" class="txn-btn secondary">Cancel</button>
+                <button type="submit" id="txnRequestSubmitBtn" class="txn-btn primary">
+                  <i class="fas fa-paper-plane"></i> Submit Request
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        
+
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>
+
+
+<script>
+// ── Unified Modal Management for Merchandise & Job Orders ──
+window.closeViewMerchandiseModal = function() {
+    var modal = document.getElementById('viewMerchandiseModal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.viewMerchandiseDetails = function(txnId, btn) {
+    if (window.event) {
+        if (typeof window.event.stopPropagation === 'function') window.event.stopPropagation();
+        if (typeof window.event.preventDefault === 'function') window.event.preventDefault();
+    }
+    
+    if (!txnId && btn && typeof btn.getAttribute === 'function') {
+        txnId = btn.getAttribute('data-txn-id') || btn.getAttribute('data-id') || btn.getAttribute('data-jo-ref') || '';
+    }
+    
+    if (!txnId) {
+        if (typeof showTxnAlert === 'function') showTxnAlert('Invalid transaction ID', 'error');
+        else alert('Invalid transaction ID');
+        return false;
+    }
+
+    ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal', 'requestAdjustModal', 'requestVoidModal'].forEach(function(id) {
+        var m = document.getElementById(id);
+        if (m) m.style.display = 'none';
+    });
+
+    var modal = document.getElementById('viewMerchandiseModal');
+    if (!modal) {
+        console.error('viewMerchandiseModal element not found');
+        return false;
+    }
+
+    var itemsTable = document.getElementById('viewMTItemsBody');
+    if (itemsTable) {
+        itemsTable.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading transaction details...</td></tr>';
+    }
+
+    modal.style.display = 'flex';
+    modal.style.zIndex = '9999999';
+
+    fetch('../backend/get_merchandise_transaction_details.php?id=' + encodeURIComponent(txnId))
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data.success) {
+                var txn = data.transaction || {};
+                var setTxt = function(id, val) {
+                    var el = document.getElementById(id);
+                    if (el) el.textContent = val || '—';
+                };
+                var setHtml = function(id, val) {
+                    var el = document.getElementById(id);
+                    if (el) el.innerHTML = val || '—';
+                };
+                setTxt('viewMTxnRef', txn.transaction_id || ('#' + txn.id));
+                setTxt('viewMTCustomer', txn.customer_name || 'Walk-in Customer');
+                setTxt('viewMTShift', txn.shift_name || txn.shift_period || '—');
+                setTxt('viewMTDate', txn.transaction_date || '—');
+                setTxt('viewMTPayMethod', txn.payment_method || '—');
+                setHtml('viewMTPayStatus', txn.payment_status_badge || '—');
+                setHtml('viewMTValStatus', txn.validation_status_badge || '—');
+                setTxt('viewMTSubtotal', txn.subtotal_display || ('₱' + parseFloat(txn.subtotal_amount || 0).toFixed(2)));
+                setTxt('viewMTVAT', txn.vat_display || ('₱' + parseFloat(txn.vat_amount || 0).toFixed(2)));
+                setTxt('viewMTTotal', txn.total_display || ('₱' + parseFloat(txn.total_amount || 0).toFixed(2)));
+                setTxt('viewMTPaid', txn.paid_display || ('₱' + parseFloat(txn.amount_paid || 0).toFixed(2)));
+                setTxt('viewMTBalance', txn.balance_display || ('₱' + parseFloat(txn.balance_due || 0).toFixed(2)));
+                setTxt('viewMTRemarks', txn.remarks || '—');
+                setTxt('viewMTStaff', txn.staff_name || '—');
+
+                var itemsList = txn.items || data.items || [];
+                if (itemsTable) {
+                    if (itemsList.length > 0) {
+                        itemsTable.innerHTML = itemsList.map(function(item) {
+                            var qty = parseFloat(item.quantity || 0);
+                            var price = parseFloat(item.unit_price || 0).toFixed(2);
+                            var subtotal = parseFloat(item.subtotal || 0).toFixed(2);
+                            var name = (item.product_name || 'Item').replace(/</g, '&lt;');
+                            var cat = (item.category || '').replace(/</g, '&lt;');
+                            var size = (item.size_variant || '').replace(/</g, '&lt;');
+                            return '<tr style="border-bottom:1px solid #f1f5f9;">' +
+                                '<td style="padding:8px;"><div style="font-weight:600;color:#1e293b;">' + name + '</div>' +
+                                (cat ? '<div style="font-size:10px;color:#94a3b8;margin-top:2px;">' + cat + (size ? ' • ' + size : '') + '</div>' : '') + '</td>' +
+                                '<td style="padding:8px;text-align:center;color:#475569;">' + qty + '</td>' +
+                                '<td style="padding:8px;text-align:right;color:#475569;">₱' + price + '</td>' +
+                                '<td style="padding:8px;text-align:right;color:#003d7a;font-weight:700;">₱' + subtotal + '</td>' +
+                                '</tr>';
+                        }).join('');
+                    } else {
+                        itemsTable.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">No items found</td></tr>';
+                    }
+                }
+            } else {
+                if (typeof showTxnAlert === 'function') showTxnAlert(data.error || 'Failed to load transaction details', 'error');
+                else alert(data.error || 'Failed to load transaction details');
+            }
+        })
+        .catch(function(err) {
+            console.error('Error fetching merchandise details:', err);
+            if (typeof showTxnAlert === 'function') showTxnAlert('Network error: ' + err.message, 'error');
+            else alert('Network error: ' + err.message);
+        });
+        
+    return false;
+};
+
+// Route generic openTxnRequestModal to dedicated modals
+window.openTxnRequestModal = function(e, txnId, recordSource, requestType, customerName) {
+    if (e) {
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+    }
+    var joData = {
+        id: txnId,
+        source: recordSource || 'merchandise_transactions',
+        jo_ref: '#' + txnId,
+        customer: customerName || 'Walk-in Customer',
+        workflow_status: 'Pending',
+        payment_status: 'Paid',
+        payment_method: 'Cash',
+        total: '0'
+    };
+    if (requestType === 'Adjustment') {
+        return window.openRequestAdjustModal(joData);
+    } else {
+        return window.openRequestVoidModal(joData);
+    }
+};
+</script>
