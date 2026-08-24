@@ -1548,48 +1548,50 @@ input[type="checkbox"]:indeterminate {
 </div>
 
 <!-- Fuel Sales Closing Review & Approval Modal -->
-<div id="fuelClosingApprovalModal" class="modal" style="display:none; align-items:center; justify-content:center;">
-    <div class="modal-content" style="max-width: 920px; width: 92%; height: 85vh; max-height: 850px; display: flex; flex-direction: column; padding: 0; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35); border: 1px solid #cbd5e1; background: #ffffff;">
+<div id="fuelClosingApprovalModal" class="modal" style="display:none; align-items:center; justify-content:center; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px);">
+    <div class="modal-content" style="max-width: 980px; width: 94%; height: 88vh; max-height: 880px; display: flex; flex-direction: column; padding: 0; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35); border: 1px solid #CBD5E1; background: #F8FAFC;">
         
-        <!-- Steady Fixed Header Box -->
-        <div class="modal-header" style="background: linear-gradient(135deg, #002F70 0%, #001F4D 100%); color: #ffffff; padding: 22px 28px !important; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid rgba(255,255,255,0.15) !important; flex-shrink: 0; margin-bottom: 0;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="width: 42px; height: 42px; background: rgba(255, 255, 255, 0.15); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                    <i class="fas fa-file-invoice-dollar" style="color: #FBBF24; font-size: 20px;"></i>
+        <!-- Header -->
+        <div class="modal-header" style="background: linear-gradient(135deg, #002F70 0%, #001F4D 100%); color: #ffffff; padding: 22px 32px !important; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid rgba(255,255,255,0.15) !important; flex-shrink: 0; margin-bottom: 0; z-index: 15;">
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <div style="width: 44px; height: 44px; background: rgba(255, 255, 255, 0.15); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.25);">
+                    <i class="fas fa-file-invoice-dollar" style="color: #FBBF24; font-size: 22px;"></i>
                 </div>
                 <div>
                     <h3 style="margin: 0; color: #ffffff !important; font-size: 17px; font-weight: 800; letter-spacing: 0.3px;">FUEL SALES CLOSING REVIEW &amp; APPROVAL</h3>
-                    <div style="font-size: 12px; color: #93C5FD; margin-top: 3px;">
-                        <span id="fsc_badge_station">Petron Carmen Station</span> • 
-                        <span id="fsc_badge_date" style="font-weight: 700; color: #ffffff;"></span> • 
+                    <div style="font-size: 12px; color: #93C5FD; margin-top: 3px; display: flex; align-items: center; gap: 8px;">
+                        <span id="fsc_badge_station">Petron Carmen Station</span>
+                        <span style="opacity: 0.6;">•</span>
+                        <span id="fsc_badge_date" style="font-weight: 700; color: #ffffff;"></span>
+                        <span style="opacity: 0.6;">•</span>
                         <span id="fsc_badge_shift" class="afto-badge bg-amber" style="font-size: 10px; padding: 2px 8px;"></span>
                     </div>
                 </div>
             </div>
-            <span class="modal-close" style="color: #ffffff; opacity: 0.85; font-size: 26px; cursor: pointer;" onclick="closeModal('fuelClosingApprovalModal')">&times;</span>
+            <span class="modal-close" style="color: #ffffff; opacity: 0.85; font-size: 26px; cursor: pointer; line-height: 1;" onclick="closeModal('fuelClosingApprovalModal')">&times;</span>
         </div>
 
-        <!-- Scrollable Middle Body Container -->
-        <div class="modal-body" style="padding: 28px !important; overflow-y: auto; flex: 1; background: #F8FAFC; box-sizing: border-box;">
+        <!-- Body -->
+        <div class="modal-body" style="padding: 24px 32px 36px 32px !important; overflow-y: auto; flex: 1; background: #F8FAFC; box-sizing: border-box;">
             <!-- Loading Indicator -->
-            <div id="fsc_loading" style="display: none; text-align: center; padding: 50px 20px; color: #64748B;">
-                <i class="fas fa-circle-notch fa-spin" style="font-size: 36px; color: #002F70; margin-bottom: 14px;"></i>
+            <div id="fsc_loading" style="display: none; text-align: center; padding: 60px 20px; color: #64748B;">
+                <i class="fas fa-circle-notch fa-spin" style="font-size: 38px; color: #002F70; margin-bottom: 16px;"></i>
                 <div style="font-weight: 700; font-size: 15px; color: #002F70;">Loading Fuel Sales Closing data...</div>
             </div>
 
-            <div id="fsc_content_wrap">
-                <!-- Section 1: Selected Meter Readings & Volume Breakdown -->
-                <div style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #F1F5F9; padding-bottom: 10px;">
-                        <div style="font-size: 13px; font-weight: 800; color: #002F70; text-transform: uppercase;">
-                            <i class="fas fa-gas-pump" style="color: #DC2626; margin-right: 6px;"></i> Pump Meter Readings Summary
+            <div id="fsc_content_wrap" style="margin-top: 4px;">
+                <!-- Section 1: Pump Meter Readings Summary -->
+                <div style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 22px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
+                        <div style="font-size: 13px; font-weight: 800; color: #002F70; text-transform: uppercase; display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-gas-pump" style="color: #DC2626;"></i> Pump Meter Readings Summary
                         </div>
-                        <div style="font-size: 11px; color: #64748B;">
-                            Selected Transactions: <strong id="fsc_tx_count" style="color: #0F172A;">0</strong>
+                        <div style="font-size: 11px; color: #64748B; font-weight: 600;">
+                            Selected Transactions: <strong id="fsc_tx_count" style="color: #002F70;">0</strong>
                         </div>
                     </div>
                     
-                    <div style="max-height: 180px; overflow-y: auto; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 14px;">
+                    <div style="max-height: 150px; overflow-y: auto; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 14px;">
                         <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
                             <thead style="background: #002F70; color: #ffffff; position: sticky; top: 0; z-index: 2;">
                                 <tr>
@@ -1608,86 +1610,86 @@ input[type="checkbox"]:indeterminate {
                         </table>
                     </div>
 
-                    <!-- Computed KPI Cards -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
-                        <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+                    <!-- Computed KPI Cards (Streamlined) -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
                             <div>
-                                <div style="font-size: 11px; font-weight: 700; color: #1E40AF; text-transform: uppercase;">Total Fuel Liters Sold</div>
-                                <div id="fsc_disp_liters" style="font-size: 18px; font-weight: 800; color: #1E3A8A; margin-top: 2px;">0.00 L</div>
+                                <div style="font-size: 10px; font-weight: 700; color: #1E40AF; text-transform: uppercase;">Total Fuel Liters Sold</div>
+                                <div id="fsc_disp_liters" style="font-size: 16px; font-weight: 800; color: #1E3A8A; margin-top: 2px;">0.00 L</div>
                             </div>
-                            <i class="fas fa-tint" style="font-size: 24px; color: #3B82F6; opacity: 0.6;"></i>
+                            <i class="fas fa-tint" style="font-size: 20px; color: #3B82F6; opacity: 0.7;"></i>
                         </div>
-                        <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+                        <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
                             <div>
-                                <div style="font-size: 11px; font-weight: 700; color: #166534; text-transform: uppercase;">Total Fuel Sales Amount</div>
-                                <div id="fsc_disp_sales" style="font-size: 18px; font-weight: 800; color: #14532D; margin-top: 2px;">₱0.00</div>
+                                <div style="font-size: 10px; font-weight: 700; color: #166534; text-transform: uppercase;">Total Fuel Sales Amount</div>
+                                <div id="fsc_disp_sales" style="font-size: 16px; font-weight: 800; color: #14532D; margin-top: 2px;">₱0.00</div>
                             </div>
-                            <i class="fas fa-peso-sign" style="font-size: 24px; color: #22C55E; opacity: 0.6;"></i>
+                            <i class="fas fa-peso-sign" style="font-size: 20px; color: #22C55E; opacity: 0.7;"></i>
                         </div>
                     </div>
                 </div>
 
-                                <!-- Section 2: Cash & Credit Remittance Breakdown (Matching Staff Closing) -->
-                <div style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                    <div style="font-size: 13px; font-weight: 800; color: #002F70; text-transform: uppercase; margin-bottom: 14px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
-                        <i class="fas fa-wallet" style="margin-right: 6px; color: #2563EB;"></i> Cash &amp; Credit Collection Summary (Staff Closing Breakdown)
+                <!-- Section 2: Cash & Credit Remittance Breakdown -->
+                <div style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 22px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                    <div style="font-size: 13px; font-weight: 800; color: #002F70; text-transform: uppercase; margin-bottom: 14px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-wallet" style="color: #2563EB;"></i> Cash &amp; Credit Collection Summary (Staff Closing Breakdown)
                     </div>
                     
                     <!-- Cash Turnover Breakdown -->
-                    <div style="font-size: 11px; font-weight: 800; color: #1E40AF; text-transform: uppercase; margin-bottom: 8px;">
+                    <div style="font-size: 11px; font-weight: 800; color: #1E40AF; text-transform: uppercase; margin-bottom: 6px;">
                         <i class="fas fa-money-bill-wave me-1"></i> Cash Turnover Summary
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 16px; background: #F8FAFC; padding: 12px; border-radius: 8px; border: 1px solid #E2E8F0;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px; background: #F8FAFC; padding: 12px; border-radius: 8px; border: 1px solid #E2E8F0;">
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 11px; font-weight: 700; color: #475569;">SHIFT 1 CASH (₱)</label>
-                            <input type="text" inputmode="decimal" id="fsc_cash_shift1" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
+                            <label style="font-size: 10px; font-weight: 700; color: #475569;">SHIFT 1 CASH (₱)</label>
+                            <input type="text" inputmode="decimal" id="fsc_cash_shift1" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 11px; font-weight: 700; color: #475569;">SHIFT 2 CASH (₱)</label>
-                            <input type="text" inputmode="decimal" id="fsc_cash_shift2" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
+                            <label style="font-size: 10px; font-weight: 700; color: #475569;">SHIFT 2 CASH (₱)</label>
+                            <input type="text" inputmode="decimal" id="fsc_cash_shift2" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
                         </div>
                         <div style="display:flex; flex-direction:column; justify-content:center;">
                             <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">TOTAL CASH COLLECTED</div>
-                            <div id="fsc_disp_total_cash" style="font-size: 16px; font-weight: 800; color: #002F70; margin-top: 2px;">₱0.00</div>
+                            <div id="fsc_disp_total_cash" style="font-size: 15px; font-weight: 800; color: #002F70; margin-top: 2px;">₱0.00</div>
                         </div>
                     </div>
 
                     <!-- Accounts Receivable (AR) Breakdown -->
-                    <div style="font-size: 11px; font-weight: 800; color: #166534; text-transform: uppercase; margin-bottom: 8px;">
+                    <div style="font-size: 11px; font-weight: 800; color: #166534; text-transform: uppercase; margin-bottom: 6px;">
                         <i class="fas fa-file-invoice-dollar me-1"></i> Credit &amp; Accounts Receivable (AR) Summary
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 16px; background: #F8FAFC; padding: 12px; border-radius: 8px; border: 1px solid #E2E8F0;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px; background: #F8FAFC; padding: 12px; border-radius: 8px; border: 1px solid #E2E8F0;">
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 11px; font-weight: 700; color: #475569;">SHIFT 1 CREDIT / AR (₱)</label>
-                            <input type="text" inputmode="decimal" id="fsc_ar_shift1" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
+                            <label style="font-size: 10px; font-weight: 700; color: #475569;">SHIFT 1 CREDIT / AR (₱)</label>
+                            <input type="text" inputmode="decimal" id="fsc_ar_shift1" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 11px; font-weight: 700; color: #475569;">SHIFT 2 CREDIT / AR (₱)</label>
-                            <input type="text" inputmode="decimal" id="fsc_ar_shift2" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
+                            <label style="font-size: 10px; font-weight: 700; color: #475569;">SHIFT 2 CREDIT / AR (₱)</label>
+                            <input type="text" inputmode="decimal" id="fsc_ar_shift2" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; box-sizing:border-box;">
                         </div>
                         <div style="display:flex; flex-direction:column; justify-content:center;">
                             <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">TOTAL CREDIT / AR</div>
-                            <div id="fsc_disp_total_ar" style="font-size: 16px; font-weight: 800; color: #166534; margin-top: 2px;">₱0.00</div>
+                            <div id="fsc_disp_total_ar" style="font-size: 15px; font-weight: 800; color: #166534; margin-top: 2px;">₱0.00</div>
                         </div>
                     </div>
 
                     <!-- Net Sales & Total Cash in Bank -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
-                        <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+                        <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
                             <div>
                                 <div style="font-size: 10px; font-weight: 700; color: #1E40AF; text-transform: uppercase;">Net Fuel Sales (Cash + AR)</div>
-                                <div id="fsc_disp_net_sales" style="font-size: 18px; font-weight: 800; color: #1E3A8A; margin-top: 2px;">₱0.00</div>
+                                <div id="fsc_disp_net_sales" style="font-size: 16px; font-weight: 800; color: #1E3A8A; margin-top: 2px;">₱0.00</div>
                             </div>
-                            <i class="fas fa-calculator" style="font-size: 22px; color: #3B82F6; opacity: 0.6;"></i>
+                            <i class="fas fa-calculator" style="font-size: 20px; color: #3B82F6; opacity: 0.7;"></i>
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 11px; font-weight: 700; color: #475569;">TOTAL CASH IN BANK / DEPOSITED (₱)</label>
-                            <input type="text" inputmode="decimal" id="fsc_total_cash_bank" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:800; color:#0f172a; box-sizing:border-box;">
+                            <label style="font-size: 10px; font-weight: 700; color: #475569;">TOTAL CASH IN BANK / DEPOSITED (₱)</label>
+                            <input type="text" inputmode="decimal" id="fsc_total_cash_bank" class="fsc-calc-input" oninput="formatAutoCommaDot(this); fscRecalcTotals();" onblur="formatAutoCommaDotOnBlur(this); fscRecalcTotals();" placeholder="0.00" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:800; color:#0f172a; box-sizing:border-box;">
                         </div>
                     </div>
 
                     <!-- Staff & Manager Encoder Info -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                         <div class="form-group" style="margin-bottom: 0;">
                             <label style="font-size: 10px; font-weight: 700; color: #64748B;">CHECKED / ENCODED BY</label>
                             <input type="text" id="fsc_checked_by" class="fsc-calc-input" placeholder="Staff Name" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:11px; color:#334155; box-sizing:border-box;">
@@ -1700,40 +1702,49 @@ input[type="checkbox"]:indeterminate {
                 </div>
 
                 <!-- Section 3: Overall Closing Summary & Reconciliation -->
-                <div style="background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-                    <div style="font-size: 13px; font-weight: 800; color: #002F70; margin-bottom: 12px;"><i class="fas fa-calculator me-1"></i> Overall Closing Summary &amp; Reconciliation</div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px;">
+                <div style="background: #ffffff; border: 1px solid #BFDBFE; border-left: 4px solid #2563EB; border-radius: 12px; padding: 18px 20px; margin-bottom: 22px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                    <div style="font-size: 12px; font-weight: 800; color: #002F70; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-calculator"></i> Overall Closing Summary &amp; Reconciliation
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
                         <div>
-                            <div style="font-size: 11px; font-weight: 600; color: #475569;">Total Remittance (Cash + AR):</div>
-                            <div id="fsc_disp_remittance" style="font-size: 16px; font-weight: 800; color: #002F70; margin-top: 2px;">₱0.00</div>
+                            <div style="font-size: 10px; font-weight: 600; color: #475569; text-transform: uppercase;">Total Remittance (Cash + AR):</div>
+                            <div id="fsc_disp_remittance" style="font-size: 15px; font-weight: 800; color: #002F70; margin-top: 2px;">₱0.00</div>
                         </div>
                         <div>
-                            <div style="font-size: 11px; font-weight: 600; color: #475569;">Expected Fuel Sales:</div>
-                            <div id="fsc_disp_expected" style="font-size: 16px; font-weight: 800; color: #0F172A; margin-top: 2px;">₱0.00</div>
+                            <div style="font-size: 10px; font-weight: 600; color: #475569; text-transform: uppercase;">Expected Fuel Sales:</div>
+                            <div id="fsc_disp_expected" style="font-size: 15px; font-weight: 800; color: #0F172A; margin-top: 2px;">₱0.00</div>
                         </div>
                         <div>
-                            <div style="font-size: 11px; font-weight: 600; color: #475569;">Over / Short Variance:</div>
-                            <div id="fsc_disp_over_short" style="font-size: 16px; font-weight: 800; color: #16A34A; margin-top: 2px;">₱0.00 (EXACT)</div>
+                            <div style="font-size: 10px; font-weight: 600; color: #475569; text-transform: uppercase;">Over / Short Variance:</div>
+                            <div id="fsc_disp_over_short" style="font-size: 15px; font-weight: 800; color: #16A34A; margin-top: 2px;">₱0.00 (EXACT)</div>
                         </div>
                     </div>
                 </div>
-<!-- Section 4: Validation Remarks -->
-                <div style="background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 20px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                    <div style="font-size: 12px; font-weight: 700; color: #002F70; margin-bottom: 8px;"><i class="fas fa-user-check me-1"></i> Validation Remarks &amp; Verification Notes <span style="color:#94a3b8; font-weight:normal;">(Optional)</span></div>
-                    <textarea id="fsc_remarks" class="closing-textarea" rows="2" placeholder="Add optional manager review notes or validation remarks..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; font-size: 12px; box-sizing: border-box;"></textarea>
+
+                <!-- Section 4: Validation Remarks -->
+                <div style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 18px 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                    <div style="font-size: 11px; font-weight: 700; color: #002F70; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-user-check"></i> Validation Remarks &amp; Verification Notes <span style="color:#94a3b8; font-weight:normal;">(Optional)</span>
+                    </div>
+                    <textarea id="fsc_remarks" class="closing-textarea" rows="2" placeholder="Add optional manager review notes or validation remarks..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 12px; box-sizing: border-box;"></textarea>
                 </div>
+
+                <!-- Generous bottom space -->
+                <div style="height: 24px;"></div>
             </div>
         </div>
 
-        <!-- Steady Fixed Footer Box -->
-        <div class="modal-footer" style="padding: 16px 24px; background: #F1F5F9; border-top: 1px solid #E2E8F0; display: flex; justify-content: flex-end; gap: 12px; align-items: center; flex-shrink: 0;">
-            <button type="button" class="ato-btn ato-btn-back" style="padding: 10px 22px; font-size: 13px; font-weight: 700; border-radius: 8px;" onclick="closeModal('fuelClosingApprovalModal')">Close</button>
-            <button type="button" id="btnConfirmFscApprove" class="ato-btn ato-btn-filter" style="background: #16a34a !important; color: #ffffff !important; border-color: #16a34a !important; padding: 10px 24px; font-weight: 800; font-size: 13px; border-radius: 8px !important; box-shadow: 0 4px 12px rgba(22,163,74,0.3);" onclick="approveFscClosing()">
+        <!-- Footer -->
+        <div class="modal-footer" style="padding: 16px 32px !important; background: #FFFFFF !important; border-top: 1px solid #E2E8F0 !important; box-shadow: 0 -2px 10px rgba(0,0,0,0.04); display: flex; justify-content: flex-end; gap: 12px; align-items: center; flex-shrink: 0; z-index: 15;">
+            <button type="button" class="ato-btn ato-btn-back" style="padding: 9px 22px; font-size: 13px; font-weight: 700; border-radius: 8px; border: 1px solid #CBD5E1; color: #475569; background: #FFFFFF;" onclick="closeModal('fuelClosingApprovalModal')">Close</button>
+            <button type="button" id="btnConfirmFscApprove" class="ato-btn ato-btn-filter" style="background: #16a34a !important; color: #ffffff !important; border: none !important; padding: 9px 24px; font-weight: 800; font-size: 13px; border-radius: 8px !important; box-shadow: 0 3px 10px rgba(22,163,74,0.3); cursor: pointer;" onclick="approveFscClosing()">
                 <i class="fas fa-check-circle" style="margin-right: 6px;"></i> Save Closing &amp; Approve Transactions
             </button>
         </div>
     </div>
-</div><!-- Review Selected Modal (Batch Summary) -->
+</div>
+<!-- Review Selected Modal (Batch Summary) -->
 <div id="reviewModal" class="modal">
     <div class="modal-content" style="max-width: 700px;">
         <div class="modal-header">
@@ -1798,8 +1809,8 @@ input[type="checkbox"]:indeterminate {
 <!-- Batch Reject Modal -->
 <div id="batchRejectModal" class="modal" style="display:none; align-items:center; justify-content:center;">
     <div class="modal-content" style="max-width: 520px; width: 94%; border-radius: 14px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.3); border: 1px solid #fecaca; background: #ffffff; padding: 0; display: flex; flex-direction: column;">
-        <!-- Header -->
-        <div class="modal-header" style="background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%); color: #ffffff; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid rgba(255,255,255,0.15); flex-shrink: 0;">
+        <!-- Header with generous spacing -->
+        <div class="modal-header" style="background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%); color: #ffffff; padding: 24px 30px; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #450A0A; box-shadow: 0 2px 6px rgba(0,0,0,0.15); flex-shrink: 0; z-index: 10;">
             <div style="display: flex; align-items: center; gap: 12px;">
                 <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.15); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                     <i class="fas fa-ban" style="color: #fca5a5; font-size: 18px;"></i>
@@ -1812,15 +1823,15 @@ input[type="checkbox"]:indeterminate {
             <span class="modal-close" style="color: #ffffff; opacity: 0.85; font-size: 26px; cursor: pointer; line-height: 1;" onclick="closeModal('batchRejectModal')">&times;</span>
         </div>
         <!-- Body -->
-        <div class="modal-body" style="padding: 22px 24px; background: #fff7f7; flex: 1; box-sizing: border-box;">
+        <div class="modal-body" style="padding: 26px 28px 26px 28px; background: #fff7f7; flex: 1; box-sizing: border-box;">
             <p id="batchRejPrompt" style="font-size: 13px; color: #475569; margin: 0 0 16px; font-weight: 600; line-height: 1.6; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 14px;"></p>
-            <div class="form-group" style="margin-bottom: 0;">
+            <div class="form-group" style="margin-bottom: 24px;">
                 <label style="font-size: 12px; font-weight: 700; color: #991b1b; margin-bottom: 6px; display: block;">REJECTION REASON <span style="color:#dc2626;">*</span></label>
                 <textarea id="batchRejectReason" rows="3" required placeholder="Enter reason for rejecting these transactions (e.g., 'Wrong meter reading', 'Incomplete entry')..." style="width: 100%; padding: 10px 12px; border: 1px solid #fca5a5; border-radius: 6px; font-size: 13px; color: #1e293b; resize: vertical; box-sizing: border-box; outline: none;"></textarea>
             </div>
         </div>
-        <!-- Footer -->
-        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 12px; align-items: center; padding: 16px 24px; background: #fef2f2; border-top: 1px solid #fecaca; flex-shrink: 0;">
+        <!-- Footer with generous spacing -->
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 14px; align-items: center; padding: 20px 30px; background: #FEF2F2; border-top: 1.5px solid #FCA5A5; box-shadow: 0 -2px 6px rgba(0,0,0,0.04); flex-shrink: 0; z-index: 10;">
             <button type="button" class="ato-btn ato-btn-back" style="padding: 10px 22px; font-size: 13px; font-weight: 700; border-radius: 8px;" onclick="closeModal('batchRejectModal')">Cancel</button>
             <button type="button" id="btnConfirmReject" style="padding: 10px 24px; font-size: 13px; font-weight: 800; border-radius: 8px; cursor: pointer; border: none; background: #dc2626; color: #ffffff; box-shadow: 0 4px 12px rgba(220,38,38,0.35); display: inline-flex; align-items: center; gap: 8px;" onclick="confirmBatchReject()">
                 <i class="fas fa-ban"></i> Reject Transactions
@@ -1830,13 +1841,13 @@ input[type="checkbox"]:indeterminate {
 </div>
 <!-- Fuel Meter Reading Adjustment Modal -->
 <div id="batchAdjustModal" class="modal" style="display:none; align-items:center; justify-content:center;">
-    <div class="modal-content" style="max-width: 960px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.35); border: 1px solid #cbd5e1; background: #ffffff; padding: 0;">
+    <div class="modal-content" style="max-width: 960px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4); border: 1.5px solid #cbd5e1; background: #F1F5F9; padding: 0;">
         
-        <!-- Steady Fixed Header Box -->
-        <div class="modal-header" style="background: linear-gradient(135deg, #002F70 0%, #001F4D 100%); color: #ffffff; padding: 22px 28px !important; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid rgba(255,255,255,0.15) !important; flex-shrink: 0; margin-bottom: 0;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="width: 42px; height: 42px; background: rgba(56, 189, 248, 0.2); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                    <i class="fas fa-sliders-h" style="color: #38BDF8; font-size: 20px;"></i>
+        <!-- Steady Fixed Header Box with generous spacing and distinct bottom border -->
+        <div class="modal-header" style="background: linear-gradient(135deg, #002F70 0%, #001F4D 100%); color: #ffffff; padding: 26px 32px !important; display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #001838 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.2); flex-shrink: 0; margin-bottom: 0; z-index: 10;">
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <div style="width: 44px; height: 44px; background: rgba(56, 189, 248, 0.2); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(56, 189, 248, 0.3);">
+                    <i class="fas fa-sliders-h" style="color: #38BDF8; font-size: 22px;"></i>
                 </div>
                 <div>
                     <h3 style="margin: 0; color: #ffffff !important; font-size: 17px; font-weight: 800; letter-spacing: 0.3px;">FUEL METER READING ADJUSTMENT</h3>
@@ -1845,15 +1856,15 @@ input[type="checkbox"]:indeterminate {
                     </div>
                 </div>
             </div>
-            <span class="modal-close" style="color: #ffffff; opacity: 0.85; font-size: 26px; cursor: pointer;" onclick="closeModal('batchAdjustModal')">&times;</span>
+            <span class="modal-close" style="color: #ffffff; opacity: 0.85; font-size: 26px; cursor: pointer; line-height: 1;" onclick="closeModal('batchAdjustModal')">&times;</span>
         </div>
 
-        <!-- Scrollable Middle Body Container -->
-        <div class="modal-body" style="padding: 28px !important; overflow-y: auto; flex: 1; background: #F8FAFC; box-sizing: border-box;">
-            <p id="batchAdjustPrompt" style="font-size: 13px; color: #334155; margin: 0 0 16px; font-weight: 600; line-height: 1.5;"></p>
+        <!-- Scrollable Middle Body Container (with generous top and bottom breathing room) -->
+        <div class="modal-body" style="padding: 28px 32px 28px 32px !important; overflow-y: auto; flex: 1; background: #F1F5F9; box-sizing: border-box;">
+            <p id="batchAdjustPrompt" style="font-size: 13px; color: #334155; margin: 0 0 18px; font-weight: 600; line-height: 1.5;"></p>
 
-            <!-- Scrollable Meter Reading Values Table -->
-            <div style="max-height: 380px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 10px; background: #ffffff; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <!-- Scrollable Meter Reading Values Table Card -->
+            <div style="max-height: 380px; overflow-y: auto; border: 1.5px solid #cbd5e1; border-top: 4px solid #002F70; border-radius: 12px; background: #ffffff; margin-bottom: 22px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
                 <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
                     <thead style="background: #002F70; color: #ffffff; position: sticky; top: 0; z-index: 2;">
                         <tr>
@@ -1875,15 +1886,15 @@ input[type="checkbox"]:indeterminate {
             </div>
 
             <!-- Grand Totals Automatic Recalculation Cards -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; background: #eff6ff; padding: 16px; border-radius: 10px; margin-bottom: 18px; border: 1px solid #bfdbfe;">
-                <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; background: #ffffff; padding: 18px; border-radius: 12px; margin-bottom: 22px; border: 1.5px solid #bfdbfe; border-top: 4px solid #0284c7; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
+                <div style="display: flex; align-items: center; justify-content: space-between; background: #eff6ff; padding: 12px 16px; border-radius: 8px; border: 1px solid #bfdbfe;">
                     <div>
                         <div style="font-size: 11px; color: #1e40af; font-weight: 800; text-transform: uppercase;">Total Adjusted Volume</div>
                         <div id="adj_total_vol_sum" style="font-size: 18px; font-weight: 800; color: #1e3a8a; margin-top: 2px;">0.00 L</div>
                     </div>
                     <i class="fas fa-gas-pump" style="font-size: 24px; color: #3b82f6; opacity: 0.6;"></i>
                 </div>
-                <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; justify-content: space-between; background: #f0fdf4; padding: 12px 16px; border-radius: 8px; border: 1px solid #bbf7d0;">
                     <div>
                         <div style="font-size: 11px; color: #166534; font-weight: 800; text-transform: uppercase;">Total Adjusted Amount</div>
                         <div id="adj_total_amt_sum" style="font-size: 18px; font-weight: 800; color: #14532d; margin-top: 2px;">₱0.00</div>
@@ -1893,14 +1904,16 @@ input[type="checkbox"]:indeterminate {
             </div>
 
             <!-- Adjustment Reason (Required) -->
-            <div class="form-group" style="margin-bottom: 0;">
-                <label style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px; display: block;">ADJUSTMENT REASON <span style="color:#dc2626;">*</span></label>
+            <div class="form-group" style="background: #ffffff; border: 1.5px solid #cbd5e1; border-top: 4px solid #64748B; border-radius: 12px; padding: 18px; margin-bottom: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
+                <label style="font-size: 12px; font-weight: 700; color: #002F70; margin-bottom: 8px; display: block;">ADJUSTMENT REASON <span style="color:#dc2626;">*</span></label>
                 <textarea id="batchAdjustReason" rows="2" required placeholder="Explain why these meter readings are being adjusted (e.g., 'Incorrect meter reading encoded', 'Calibration correction')..." style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; color: #1e293b; resize: vertical; box-sizing: border-box;"></textarea>
             </div>
+            <!-- Bottom spacer for clean scrolling breathing room -->
+            <div style="height: 16px;"></div>
         </div>
 
-        <!-- Steady Fixed Footer Box -->
-        <div class="modal-footer" style="padding: 16px 24px; background: #F1F5F9; border-top: 1px solid #E2E8F0; display: flex; justify-content: flex-end; gap: 12px; align-items: center; flex-shrink: 0;">
+        <!-- Steady Fixed Footer Box with generous padding, clean background and distinct border -->
+        <div class="modal-footer" style="padding: 20px 32px !important; background: #F8FAFC !important; border-top: 1.5px solid #CBD5E1 !important; box-shadow: 0 -4px 12px rgba(0,0,0,0.06); display: flex; justify-content: flex-end; gap: 14px; align-items: center; flex-shrink: 0; z-index: 10;">
             <button type="button" class="ato-btn ato-btn-back" style="padding: 10px 22px; font-size: 13px; font-weight: 700; border-radius: 8px;" onclick="closeModal('batchAdjustModal')">Cancel</button>
             <button type="button" id="btnConfirmBatchAdjust" class="ato-btn-adjust" style="padding: 10px 24px; font-size: 13px; font-weight: 800; border-radius: 8px; cursor: pointer; border: none; background:#0ea5e9 !important; color:#ffffff !important; box-shadow: 0 4px 12px rgba(14,165,233,0.4); display: inline-flex; align-items: center; gap: 8px;" onclick="confirmBatchAdjust()">
                 <i class="fas fa-save" style="color:#ffffff !important;"></i> <span style="color:#ffffff !important;">Submit Adjustment</span>
