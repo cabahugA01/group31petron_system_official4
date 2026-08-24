@@ -413,11 +413,11 @@ require_login();
           else { $psc='#ea580c'; }
 
           if ($ht_type==='combined') { 
-            $tc='#7c3aed'; $tb='#f3e8ff'; $tborder='#d8b4fe'; $tl='Job Order + Merchandise'; 
+            $tc='#002F70'; $tb='#e0f2fe'; $tborder='#93c5fd'; $tl='Job Order + Merchandise'; 
           } elseif ($ht_type==='job_order') { 
-            $tc='#b45309'; $tb='#fffbeb'; $tborder='#fde68a'; $tl='Job Order Only'; 
+            $tc='#991b1b'; $tb='#fee2e2'; $tborder='#fca5a5'; $tl='Job Order Only'; 
           } else { 
-            $tc='#15803d'; $tb='#f0fdf4'; $tborder='#bbf7d0'; $tl='Merchandise Only'; 
+            $tc='#166534'; $tb='#dcfce7'; $tborder='#86efac'; $tl='Merchandise Only'; 
           }
 
           $ht_date = '';
@@ -464,16 +464,19 @@ require_login();
               $unit_col_val = ($ht_type === 'job_order') ? 'Svc' : 'Pc';
           }
 
-          // Validation Status Badge (Completed / Adjusted / Voided)
+          // Validation Status Badge (Completed / Released / Adjusted / Voided)
           $val_status = strtolower(trim($ht['validation_status'] ?? 'official'));
-          if (in_array($val_status, ['completed', 'approved', 'official', 'verified'])) {
-              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:12px;font-size:10.5px;font-weight:700;color:#166534;background:#d1fae5;border:1px solid #86efac;"><i class="fas fa-circle" style="font-size:7px;"></i> Completed</span>';
+          $wf_status  = strtolower(trim($ht['workflow_status'] ?? ''));
+          if (in_array($val_status, ['released']) || in_array($wf_status, ['released'])) {
+              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10.5px;font-weight:700;color:#166534;background:#dcfce7;border:1px solid #86efac;"><i class="fas fa-check" style="font-size:8px;"></i> Released</span>';
+          } elseif (in_array($val_status, ['completed', 'approved', 'official', 'verified']) || in_array($wf_status, ['completed'])) {
+              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10.5px;font-weight:700;color:#166534;background:#dcfce7;border:1px solid #86efac;"><i class="fas fa-check-circle" style="font-size:8px;"></i> Completed</span>';
           } elseif ($val_status === 'adjusted') {
-              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:12px;font-size:10.5px;font-weight:700;color:#854d0e;background:#fef08a;border:1px solid #fde047;"><i class="fas fa-circle" style="font-size:7px;"></i> Adjusted</span>';
-          } elseif (in_array($val_status, ['voided', 'cancelled', 'canceled'])) {
-              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:12px;font-size:10.5px;font-weight:700;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;"><i class="fas fa-circle" style="font-size:7px;"></i> Voided</span>';
+              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10.5px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;"><i class="fas fa-sliders-h" style="font-size:8px;"></i> Adjusted</span>';
+          } elseif (in_array($val_status, ['voided', 'cancelled', 'canceled', 'void'])) {
+              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10.5px;font-weight:700;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;"><i class="fas fa-ban" style="font-size:8px;"></i> Voided</span>';
           } else {
-              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:12px;font-size:10.5px;font-weight:700;color:#166534;background:#d1fae5;border:1px solid #86efac;"><i class="fas fa-circle" style="font-size:7px;"></i> Completed</span>';
+              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10.5px;font-weight:700;color:#166534;background:#dcfce7;border:1px solid #86efac;"><i class="fas fa-check-circle" style="font-size:8px;"></i> Completed</span>';
           }
 
           // Service Fee & Labor Fee resolution
@@ -556,13 +559,34 @@ require_login();
     </table>
     </div>
 
-    <!-- Pagination -->
-    <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:10px 16px;border-top:1px solid #e2e8f0;flex-wrap:wrap">
-      
-      <div style="display:flex;align-items:center;gap:8px">
-        <button id="histPrevBtn" onclick="histGoPage(histState.page-1)" class="pag-btn"><i class="fas fa-chevron-left"></i></button>
-        <span id="histPageLabel" style="font-size:13px;color:#495057;white-space:nowrap">Page 1 of 1</span>
-        <button id="histNextBtn" onclick="histGoPage(histState.page+1)" class="pag-btn"><i class="fas fa-chevron-right"></i></button>
+    <!-- Pagination Footer -->
+    <div id="histPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+      <div style="display:flex; align-items:center;">
+        <span id="histShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing <?= empty($recent_merch) ? '0' : '1–'.min(10, count($recent_merch)) ?> of <?= count($recent_merch) ?> entries</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+          <select id="histPerPage" onchange="histChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+            <option value="10" selected>10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <button id="histPrevBtn" onclick="histGoPage(histState.page - 1)" 
+                  style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                  onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+            <i class="fas fa-chevron-left"></i>
+          </button>
+          <span id="histPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of <?= max(1, ceil(count($recent_merch) / 10)) ?></span>
+          <button id="histNextBtn" onclick="histGoPage(histState.page + 1)" 
+                  style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:<?= count($recent_merch) > 10 ? 'pointer' : 'not-allowed' ?>; color:<?= count($recent_merch) > 10 ? '#475569' : '#cbd5e1' ?>; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                  onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+            <i class="fas fa-chevron-right"></i>
+          </button>
+        </div>
       </div>
     </div>
 <?php endif; ?>
@@ -584,24 +608,64 @@ require_login();
 
 <script>
 (function(){
-var histState={page:1,per_page:10};
-function histRender(){
-  var rows=Array.from(document.querySelectorAll('#histTbody tr.hist-row-main'));
-  var pp=histState.per_page,p=histState.page,tot=rows.length;
-  var tp=Math.max(1,Math.ceil(tot/pp));
-  if(p>tp)histState.page=p=tp;
-  rows.forEach(function(r, i){
-    r.style.display=(i >= (p-1)*pp && i < p*pp) ? '' : 'none';
+var histState = { page: 1, per_page: 10 };
+
+function histRender() {
+  var rows = Array.from(document.querySelectorAll('#histTbody tr.hist-row-main'));
+  var pp = histState.per_page || 10;
+  var tot = rows.length;
+  var tp = Math.max(1, Math.ceil(tot / pp));
+  if (histState.page > tp) histState.page = tp;
+  if (histState.page < 1) histState.page = 1;
+  var p = histState.page;
+
+  var start = (p - 1) * pp;
+  var end   = p * pp;
+
+  rows.forEach(function(r, i) {
+    r.style.display = (i >= start && i < end) ? '' : 'none';
   });
-  var lbl=document.getElementById('histPageLabel');
-  if(lbl)lbl.textContent='Page '+p+' of '+tp;
-  var prev=document.getElementById('histPrevBtn'),next=document.getElementById('histNextBtn');
-  if(prev){prev.disabled=(p<=1);prev.style.opacity=(p<=1)?'0.4':'1';}
-  if(next){next.disabled=(p>=tp);next.style.opacity=(p>=tp)?'0.4':'1';}
+
+  // Update entries counter
+  var showingStart = tot === 0 ? 0 : start + 1;
+  var showingEnd   = Math.min(end, tot);
+  var entriesLbl   = document.getElementById('histShowingEntriesText');
+  if (entriesLbl) {
+    entriesLbl.textContent = 'Showing ' + (tot === 0 ? '0' : showingStart + '–' + showingEnd) + ' of ' + tot + ' entries';
+  }
+
+  var lbl = document.getElementById('histPageLabel');
+  if (lbl) lbl.textContent = 'Page ' + p + ' of ' + tp;
+
+  var prev = document.getElementById('histPrevBtn');
+  var next = document.getElementById('histNextBtn');
+  if (prev) {
+    prev.disabled = (p <= 1);
+    prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+    prev.style.color = prev.disabled ? '#cbd5e1' : '#475569';
+  }
+  if (next) {
+    next.disabled = (p >= tp);
+    next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+    next.style.color = next.disabled ? '#cbd5e1' : '#475569';
+  }
 }
-window.histState=histState;
-window.histGoPage=function(p){var rows=document.querySelectorAll('#histTbody tr.hist-row-main');var tp=Math.max(1,Math.ceil(rows.length/histState.per_page));if(p<1||p>tp)return;histState.page=p;histRender();};
-window.histChangePerPage=function(){var s=document.getElementById('histPerPage');if(s)histState.per_page=parseInt(s.value);histState.page=1;histRender();};
+
+window.histState = histState;
+window.histGoPage = function(p) {
+  var rows = document.querySelectorAll('#histTbody tr.hist-row-main');
+  var tp = Math.max(1, Math.ceil(rows.length / (histState.per_page || 10)));
+  if (p < 1 || p > tp) return;
+  histState.page = p;
+  histRender();
+};
+window.histChangePerPage = function() {
+  var s = document.getElementById('histPerPage');
+  if (s) histState.per_page = parseInt(s.value, 10);
+  histState.page = 1;
+  histRender();
+};
+
 histRender();
 })();
 

@@ -1589,6 +1589,36 @@ body .main,
             </table>
         </div>
         <?php endif; ?>
+        <!-- Merchandise PR Pagination Footer -->
+        <div id="msrMerchPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 14px 14px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center;">
+                <span id="msrMerchShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing <?= empty($merch_groups) ? '0' : '1–'.min(10, count($merch_groups)) ?> of <?= count($merch_groups) ?> entries</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                    <select id="msrMerchPerPage" onchange="msrChangePerPage('merch')" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button id="msrMerchPrevBtn" onclick="msrGoPage('merch', msrState.merch.page - 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span id="msrMerchPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of <?= max(1, ceil(count($merch_groups) / 10)) ?></span>
+                    <button id="msrMerchNextBtn" onclick="msrGoPage('merch', msrState.merch.page + 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:<?= count($merch_groups) > 10 ? 'pointer' : 'not-allowed' ?>; color:<?= count($merch_groups) > 10 ? '#475569' : '#cbd5e1' ?>; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Fuel Section -->
@@ -1835,6 +1865,36 @@ body .main,
             </table>
         </div>
         <?php endif; ?>
+        <!-- Fuel PR Pagination Footer -->
+        <div id="msrFuelPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 14px 14px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center;">
+                <span id="msrFuelShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing <?= empty($fuel_groups) ? '0' : '1–'.min(10, count($fuel_groups)) ?> of <?= count($fuel_groups) ?> entries</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                    <select id="msrFuelPerPage" onchange="msrChangePerPage('fuel')" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button id="msrFuelPrevBtn" onclick="msrGoPage('fuel', msrState.fuel.page - 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span id="msrFuelPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of <?= max(1, ceil(count($fuel_groups) / 10)) ?></span>
+                    <button id="msrFuelNextBtn" onclick="msrGoPage('fuel', msrState.fuel.page + 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:<?= count($fuel_groups) > 10 ? 'pointer' : 'not-allowed' ?>; color:<?= count($fuel_groups) > 10 ? '#475569' : '#cbd5e1' ?>; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     
@@ -1965,6 +2025,36 @@ body .main,
                     <?php endif; ?>
                 </tbody>
             </table>
+        </div>
+        <!-- Purchase History Pagination Footer -->
+        <div id="msrHistPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 14px 14px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px; margin-top:10px;">
+            <div style="display:flex; align-items:center;">
+                <span id="msrHistShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing <?= empty($purchase_history_list) ? '0' : '1–'.min(10, count($purchase_history_list)) ?> of <?= count($purchase_history_list) ?> entries</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                    <select id="msrHistPerPage" onchange="msrChangePerPage('hist')" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button id="msrHistPrevBtn" onclick="msrGoPage('hist', msrState.hist.page - 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span id="msrHistPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of <?= max(1, ceil(count($purchase_history_list) / 10)) ?></span>
+                    <button id="msrHistNextBtn" onclick="msrGoPage('hist', msrState.hist.page + 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:<?= count($purchase_history_list) > 10 ? 'pointer' : 'not-allowed' ?>; color:<?= count($purchase_history_list) > 10 ? '#475569' : '#cbd5e1' ?>; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -2273,43 +2363,7 @@ document.addEventListener('DOMContentLoaded', function() {
     fkeys.forEach(function(k) { updateFuelSummary(k); });
 });
 
-function filterPurchaseHistory() {
-    var search = (document.getElementById('histSearchPo')?.value || '').toLowerCase().trim();
-    var cat = (document.getElementById('histCategoryFilter')?.value || '').toLowerCase();
-    var supp = (document.getElementById('histSupplierFilter')?.value || '').toLowerCase();
-    var start = document.getElementById('histStartDate')?.value || '';
-    var end = document.getElementById('histEndDate')?.value || '';
-    var status = (document.getElementById('histStatusFilter')?.value || '').toLowerCase();
 
-    var rows = document.querySelectorAll('#purchaseHistoryTbody tr');
-    rows.forEach(function(r) {
-        if (!r.getAttribute('data-po')) return;
-        var po = (r.getAttribute('data-po') || '').toLowerCase();
-        var rCat = (r.getAttribute('data-category') || '').toLowerCase();
-        var rSupp = (r.getAttribute('data-supplier') || '').toLowerCase();
-        var rStatus = (r.getAttribute('data-status') || '').toLowerCase();
-        var rDate = r.getAttribute('data-date') || '';
-        var text = r.innerText.toLowerCase();
-
-        var show = true;
-        if (search && !text.includes(search)) show = false;
-        if (cat && rCat !== cat) show = false;
-        if (supp && !rSupp.includes(supp)) show = false;
-        if (status && !rStatus.includes(status)) show = false;
-        if (start && rDate < start) show = false;
-        if (end && rDate > end) show = false;
-
-        r.style.display = show ? '' : 'none';
-    });
-}
-
-function resetHistoryFilter() {
-    ['histSearchPo', 'histCategoryFilter', 'histSupplierFilter', 'histStartDate', 'histEndDate', 'histStatusFilter'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) el.value = '';
-    });
-    filterPurchaseHistory();
-}
 
 function openPurchaseHistoryModal(item) {
     currentPoItemForModal = item;
@@ -2406,6 +2460,174 @@ function printModalInvoice() {
     if (!currentPoItemForModal) return;
     window.open('print_supplier_invoice.php?po_id=' + encodeURIComponent(currentPoItemForModal.po_number) + '&type=' + encodeURIComponent(currentPoItemForModal.category_type), '_blank');
 }
+
+// ── Purchase Management Pagination Engine ──
+var msrState = {
+    merch: { page: 1, per_page: 10 },
+    fuel:  { page: 1, per_page: 10 },
+    hist:  { page: 1, per_page: 10 }
+};
+
+function msrRender(type) {
+    if (type === 'merch' || type === 'fuel') {
+        const secId = type === 'fuel' ? 'pendingFuelSection' : 'pendingMerchSection';
+        const prefix = type === 'fuel' ? 'msrFuel' : 'msrMerch';
+        const sec = document.getElementById(secId);
+        if (!sec) return;
+
+        const headerRows = Array.from(sec.querySelectorAll('.pr-clickable-row'));
+        const tot = headerRows.length;
+        const pp = msrState[type].per_page || 10;
+        const tp = Math.max(1, Math.ceil(tot / pp));
+
+        if (msrState[type].page > tp) msrState[type].page = tp;
+        if (msrState[type].page < 1) msrState[type].page = 1;
+        const p = msrState[type].page;
+
+        const start = (p - 1) * pp;
+        const end   = p * pp;
+
+        headerRows.forEach(function(r, i) {
+            const isVis = (i >= start && i < end);
+            r.style.display = isVis ? '' : 'none';
+            const detailId = r.id.replace('row_', 'detail_');
+            const detailRow = document.getElementById(detailId);
+            if (!isVis && detailRow) {
+                detailRow.classList.remove('open');
+                r.classList.remove('expanded');
+            }
+        });
+
+        // Update counter
+        const showingStart = tot === 0 ? 0 : start + 1;
+        const showingEnd   = Math.min(end, tot);
+        const entriesLbl   = document.getElementById(prefix + 'ShowingEntriesText');
+        if (entriesLbl) {
+            entriesLbl.textContent = 'Showing ' + (tot === 0 ? '0' : showingStart + '–' + showingEnd) + ' of ' + tot + ' entries';
+        }
+
+        const lbl = document.getElementById(prefix + 'PageLabel');
+        if (lbl) lbl.textContent = 'Page ' + p + ' of ' + tp;
+
+        const prev = document.getElementById(prefix + 'PrevBtn');
+        const next = document.getElementById(prefix + 'NextBtn');
+        if (prev) {
+            prev.disabled = (p <= 1);
+            prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+            prev.style.color = prev.disabled ? '#cbd5e1' : '#475569';
+        }
+        if (next) {
+            next.disabled = (p >= tp);
+            next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+            next.style.color = next.disabled ? '#cbd5e1' : '#475569';
+        }
+    } else if (type === 'hist') {
+        const search = (document.getElementById('histSearchPo')?.value || '').toLowerCase().trim();
+        const cat = (document.getElementById('histCategoryFilter')?.value || '').toLowerCase();
+        const supp = (document.getElementById('histSupplierFilter')?.value || '').toLowerCase();
+        const startDt = document.getElementById('histStartDate')?.value || '';
+        const endDt = document.getElementById('histEndDate')?.value || '';
+        const status = (document.getElementById('histStatusFilter')?.value || '').toLowerCase();
+
+        const allRows = Array.from(document.querySelectorAll('#purchaseHistoryTbody tr')).filter(r => r.hasAttribute('data-po'));
+        
+        // Filter rows
+        const matched = allRows.filter(function(r) {
+            const po = (r.getAttribute('data-po') || '').toLowerCase();
+            const rCat = (r.getAttribute('data-category') || '').toLowerCase();
+            const rSupp = (r.getAttribute('data-supplier') || '').toLowerCase();
+            const rStatus = (r.getAttribute('data-status') || '').toLowerCase();
+            const rDate = r.getAttribute('data-date') || '';
+
+            const mSearch = !search || po.includes(search);
+            const mCat = !cat || rCat === cat;
+            const mSupp = !supp || rSupp.includes(supp);
+            const mStatus = !status || rStatus.includes(status);
+            const mStart = !startDt || rDate >= startDt;
+            const mEnd = !endDt || rDate <= endDt;
+
+            return mSearch && mCat && mSupp && mStatus && mStart && mEnd;
+        });
+
+        const tot = matched.length;
+        const pp = msrState.hist.per_page || 10;
+        const tp = Math.max(1, Math.ceil(tot / pp));
+
+        if (msrState.hist.page > tp) msrState.hist.page = tp;
+        if (msrState.hist.page < 1) msrState.hist.page = 1;
+        const p = msrState.hist.page;
+
+        const start = (p - 1) * pp;
+        const end   = p * pp;
+
+        allRows.forEach(function(r) {
+            const isMatched = matched.includes(r);
+            const matchIndex = matched.indexOf(r);
+            r.style.display = (isMatched && matchIndex >= start && matchIndex < end) ? '' : 'none';
+        });
+
+        // Update counter
+        const showingStart = tot === 0 ? 0 : start + 1;
+        const showingEnd   = Math.min(end, tot);
+        const entriesLbl   = document.getElementById('msrHistShowingEntriesText');
+        if (entriesLbl) {
+            entriesLbl.textContent = 'Showing ' + (tot === 0 ? '0' : showingStart + '–' + showingEnd) + ' of ' + tot + ' entries';
+        }
+
+        const lbl = document.getElementById('msrHistPageLabel');
+        if (lbl) lbl.textContent = 'Page ' + p + ' of ' + tp;
+
+        const prev = document.getElementById('msrHistPrevBtn');
+        const next = document.getElementById('msrHistNextBtn');
+        if (prev) {
+            prev.disabled = (p <= 1);
+            prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+            prev.style.color = prev.disabled ? '#cbd5e1' : '#475569';
+        }
+        if (next) {
+            next.disabled = (p >= tp);
+            next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+            next.style.color = next.disabled ? '#cbd5e1' : '#475569';
+        }
+    }
+}
+
+window.msrState = msrState;
+window.msrGoPage = function(type, p) {
+    if (!msrState[type]) return;
+    msrState[type].page = p;
+    msrRender(type);
+};
+
+window.msrChangePerPage = function(type) {
+    const selId = type === 'merch' ? 'msrMerchPerPage' : (type === 'fuel' ? 'msrFuelPerPage' : 'msrHistPerPage');
+    const s = document.getElementById(selId);
+    if (s && msrState[type]) {
+        msrState[type].per_page = parseInt(s.value, 10);
+        msrState[type].page = 1;
+        msrRender(type);
+    }
+};
+
+function filterPurchaseHistory() {
+    msrState.hist.page = 1;
+    msrRender('hist');
+}
+
+function resetHistoryFilter() {
+    ['histSearchPo', 'histCategoryFilter', 'histSupplierFilter', 'histStartDate', 'histEndDate', 'histStatusFilter'].forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    msrState.hist.page = 1;
+    msrRender('hist');
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    msrRender('merch');
+    msrRender('fuel');
+    msrRender('hist');
+});
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>
 

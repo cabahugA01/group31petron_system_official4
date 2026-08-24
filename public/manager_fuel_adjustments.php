@@ -640,6 +640,36 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                 <?php endif; ?>
             </table>
         </div>
+        <!-- Pagination Footer -->
+        <div id="mfaPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center;">
+                <span id="mfaShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing <?= empty($adjustments) ? '0' : '1–'.min(10, count($adjustments)) ?> of <?= count($adjustments) ?> entries</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                    <select id="mfaPerPage" onchange="mfaChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button id="mfaPrevBtn" onclick="mfaGoPage(mfaState.page - 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span id="mfaPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of <?= max(1, ceil(count($adjustments) / 10)) ?></span>
+                    <button id="mfaNextBtn" onclick="mfaGoPage(mfaState.page + 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:<?= count($adjustments) > 10 ? 'pointer' : 'not-allowed' ?>; color:<?= count($adjustments) > 10 ? '#475569' : '#cbd5e1' ?>; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -868,6 +898,79 @@ function autoRefreshFuelAdjustments() {
         .catch(() => {});
 }
 setInterval(autoRefreshFuelAdjustments, 10000);
+
+// ── Fuel Adjustments Pagination ──
+var mfaState = { page: 1, per_page: 10 };
+
+function mfaRender() {
+    const tableBody = document.querySelector('.afto-tbl tbody');
+    if (!tableBody) return;
+
+    const allRows = Array.from(tableBody.querySelectorAll('tr'));
+    const validRows = allRows.filter(r => !r.querySelector('.fa-inbox'));
+    const tot = validRows.length;
+    const pp = mfaState.per_page || 10;
+    const tp = Math.max(1, Math.ceil(tot / pp));
+
+    if (mfaState.page > tp) mfaState.page = tp;
+    if (mfaState.page < 1) mfaState.page = 1;
+    const p = mfaState.page;
+
+    const start = (p - 1) * pp;
+    const end   = p * pp;
+
+    validRows.forEach(function(r, i) {
+        r.style.display = (i >= start && i < end) ? '' : 'none';
+    });
+
+    // Update text counter
+    const showingStart = tot === 0 ? 0 : start + 1;
+    const showingEnd   = Math.min(end, tot);
+    const entriesLbl   = document.getElementById('mfaShowingEntriesText');
+    if (entriesLbl) {
+        entriesLbl.textContent = 'Showing ' + (tot === 0 ? '0' : showingStart + '–' + showingEnd) + ' of ' + tot + ' entries';
+    }
+
+    const lbl = document.getElementById('mfaPageLabel');
+    if (lbl) lbl.textContent = 'Page ' + p + ' of ' + tp;
+
+    const prev = document.getElementById('mfaPrevBtn');
+    const next = document.getElementById('mfaNextBtn');
+    if (prev) {
+        prev.disabled = (p <= 1);
+        prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+        prev.style.color = prev.disabled ? '#cbd5e1' : '#475569';
+    }
+    if (next) {
+        next.disabled = (p >= tp);
+        next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+        next.style.color = next.disabled ? '#cbd5e1' : '#475569';
+    }
+}
+
+window.mfaState = mfaState;
+window.mfaGoPage = function(p) {
+    const tableBody = document.querySelector('.afto-tbl tbody');
+    if (!tableBody) return;
+    const validRows = Array.from(tableBody.querySelectorAll('tr')).filter(r => !r.querySelector('.fa-inbox'));
+    const tp = Math.max(1, Math.ceil(validRows.length / (mfaState.per_page || 10)));
+    if (p < 1 || p > tp) return;
+    mfaState.page = p;
+    mfaRender();
+};
+
+window.mfaChangePerPage = function() {
+    const s = document.getElementById('mfaPerPage');
+    if (s) mfaState.per_page = parseInt(s.value, 10);
+    mfaState.page = 1;
+    mfaRender();
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mfaRender);
+} else {
+    mfaRender();
+}
 </script>
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

@@ -7,6 +7,9 @@ $page_id = 'inv_merch';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
 
 $me         = current_user();
 $role       = role_key($me['role'] ?? 'staff');
@@ -2127,24 +2130,47 @@ function submitAdjustmentForm(e) {
 </div> <!-- /stock-page -->
 
 <script id="merchAutoRefreshScript">
-// ── Silent Background Auto-Refresh for Merchandise Inventory (15 seconds) ──
+// ── Seamless Silent Background Auto-Fetch for Merchandise Inventory (15 seconds) ──
 (function() {
     'use strict';
-    setInterval(function() {
-        if (!document.hidden) {
-            // If any modal is currently open, skip page reload to avoid interrupting user input
-            var openModal = document.querySelector('.modal-overlay.open, .sr-modal-overlay.open, .modal.show, div[style*="display: block"][id*="Modal"]');
-            if (!openModal) {
-                if (typeof loadMerchandiseInventory === 'function') {
-                    loadMerchandiseInventory();
-                } else if (typeof fetchInventoryData === 'function') {
-                    fetchInventoryData();
-                } else {
-                    location.reload();
+    function autoRefreshMerchandiseInventory() {
+        if (document.hidden) return;
+        var openModal = document.querySelector('.modal-overlay.open, .sr-modal-overlay.open, .modal.show, div[style*="display: block"][id*="Modal"], div[style*="display: flex"][id*="Modal"]');
+        if (openModal) return;
+        var searchInput = document.getElementById('searchMerchandise') || document.querySelector('input[type="search"]');
+        if (searchInput && searchInput === document.activeElement && searchInput.value.trim() !== '') return;
+
+        fetch(window.location.href, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            cache: 'no-store'
+        })
+        .then(function(res) { return res.text(); })
+        .then(function(html) {
+            var parser = new DOMParser();
+            var doc = parser.parseFromString(html, 'text/html');
+            
+            // Update table body
+            var newTbody = doc.querySelector('#merchandiseTable tbody') || doc.querySelector('table tbody');
+            var curTbody = document.querySelector('#merchandiseTable tbody') || document.querySelector('table tbody');
+            if (newTbody && curTbody) {
+                curTbody.innerHTML = newTbody.innerHTML;
+                if (typeof filterMerchandiseTable === 'function') filterMerchandiseTable();
+            }
+            
+            // Update top KPI cards if present
+            var newCards = doc.querySelectorAll('.kpi-card, .metric-card, [class*="summary-card"]');
+            var curCards = document.querySelectorAll('.kpi-card, .metric-card, [class*="summary-card"]');
+            if (newCards.length > 0 && curCards.length === newCards.length) {
+                for (var j = 0; j < newCards.length; j++) {
+                    curCards[j].innerHTML = newCards[j].innerHTML;
                 }
             }
-        }
-    }, 15000);
+        })
+        .catch(function(e) {
+            console.warn('Merchandise inventory auto-fetch notice:', e);
+        });
+    }
+    setInterval(autoRefreshMerchandiseInventory, 15000);
 })();
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

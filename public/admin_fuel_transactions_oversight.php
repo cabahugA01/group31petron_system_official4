@@ -457,7 +457,7 @@ if (in_array($export, ['csv','excel','pdf'])) {
         tr:nth-child(even) td{background:#f8fafc}
         </style></head><body>';
         echo '<div class="pbtn"><button onclick="window.print()" style="background:#002F6C;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer">Print</button>
-        <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none">â† Back</a></div>';
+        <a href="javascript:history.back()" style="margin-left:8px;background:#6c757d;color:#fff;border:none;padding:8px 18px;border-radius:5px;cursor:pointer;text-decoration:none">&larr; Back</a></div>';
         echo '<div class="hdr"><h1>Fuel Transaction Oversight</h1><p>Period: '.htmlspecialchars($date_from).' — '.htmlspecialchars($date_to).' | Station: '.htmlspecialchars($station_name).' | Records: '.count($transactions).'</p></div>';
         echo '<table><thead><tr>
             <th>Txn ID</th><th>Date</th><th>Shift</th><th>Fuel Type</th><th>Beg</th><th>End</th><th>Calib</th><th>Volume</th><th>Price/L</th><th>Amount</th><th>Encoder</th><th>Validator</th><th>Status</th><th>Val Date</th><th>Remarks</th>
@@ -933,7 +933,7 @@ require_once __DIR__ . '/../partials/header.php';
                     <td title="<?= htmlspecialchars($tx['manager_name']) ?>"><?= htmlspecialchars($tx['manager_name']) ?></td>
                     <td><span class="afto-badge <?= $badge ?>"><?= $st_label ?></span></td>
                     <td title="<?= $tx['validated_at'] ? date('M d, Y H:i', strtotime($tx['validated_at'])) : '—' ?>"><?= $tx['validated_at'] ? date('M d Y', strtotime($tx['validated_at'])) : '—' ?></td>
-                    <td title="<?= htmlspecialchars($remarks) ?>"><?= htmlspecialchars(mb_strimwidth($remarks, 0, 20, '—¦')) ?></td>
+                    <td title="<?= htmlspecialchars($remarks) ?>"><?= htmlspecialchars(mb_strimwidth($remarks, 0, 20, '...')) ?></td>
                 </tr>
                 <?php endforeach; ?>
                 <?php endif; ?>
@@ -941,7 +941,36 @@ require_once __DIR__ . '/../partials/header.php';
         </table>
     </div>
 
-    
+    <!-- Meter Readings History Style Standard Pagination Footer -->
+    <div id="aftoPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center;">
+            <span id="aftoShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing 1–10 of 0 entries</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:16px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                <select id="aftoPerPage" onchange="aftoChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                    <option value="10" selected>10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <button id="aftoPrevBtn" onclick="aftoGoPage(aftoState.page - 1)" 
+                        style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                        onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <span id="aftoPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+                <button id="aftoNextBtn" onclick="aftoGoPage(aftoState.page + 1)" 
+                        style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; color:#475569; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                        onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Reopen Transaction Form -->
@@ -1149,6 +1178,80 @@ function aftoExport(format) {
     window.location.href = '?' + params.toString();
 }
 
+
+
+// ── Fuel Transaction Oversight Pagination ──
+var aftoState = { page: 1, per_page: 10 };
+
+function aftoRender() {
+    const tableBody = document.querySelector('.afto-tbl tbody');
+    if (!tableBody) return;
+
+    const allRows = Array.from(tableBody.querySelectorAll('tr'));
+    const validRows = allRows.filter(r => !r.querySelector('.fa-inbox'));
+    const tot = validRows.length;
+    const pp = aftoState.per_page || 10;
+    const tp = Math.max(1, Math.ceil(tot / pp));
+
+    if (aftoState.page > tp) aftoState.page = tp;
+    if (aftoState.page < 1) aftoState.page = 1;
+    const p = aftoState.page;
+
+    const start = (p - 1) * pp;
+    const end   = p * pp;
+
+    validRows.forEach(function(r, i) {
+        r.style.display = (i >= start && i < end) ? '' : 'none';
+    });
+
+    // Update text counter
+    const showingStart = tot === 0 ? 0 : start + 1;
+    const showingEnd   = Math.min(end, tot);
+    const entriesLbl   = document.getElementById('aftoShowingEntriesText');
+    if (entriesLbl) {
+        entriesLbl.textContent = 'Showing ' + (tot === 0 ? '0' : showingStart + '–' + showingEnd) + ' of ' + tot + ' entries';
+    }
+
+    const lbl = document.getElementById('aftoPageLabel');
+    if (lbl) lbl.textContent = 'Page ' + p + ' of ' + tp;
+
+    const prev = document.getElementById('aftoPrevBtn');
+    const next = document.getElementById('aftoNextBtn');
+    if (prev) {
+        prev.disabled = (p <= 1);
+        prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+        prev.style.color = prev.disabled ? '#cbd5e1' : '#475569';
+    }
+    if (next) {
+        next.disabled = (p >= tp);
+        next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+        next.style.color = next.disabled ? '#cbd5e1' : '#475569';
+    }
+}
+
+window.aftoState = aftoState;
+window.aftoGoPage = function(p) {
+    const tableBody = document.querySelector('.afto-tbl tbody');
+    if (!tableBody) return;
+    const validRows = Array.from(tableBody.querySelectorAll('tr')).filter(r => !r.querySelector('.fa-inbox'));
+    const tp = Math.max(1, Math.ceil(validRows.length / (aftoState.per_page || 10)));
+    if (p < 1 || p > tp) return;
+    aftoState.page = p;
+    aftoRender();
+};
+
+window.aftoChangePerPage = function() {
+    const s = document.getElementById('aftoPerPage');
+    if (s) aftoState.per_page = parseInt(s.value, 10);
+    aftoState.page = 1;
+    aftoRender();
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', aftoRender);
+} else {
+    aftoRender();
+}
 
 </script>
 </div> <!-- /.main-content -->

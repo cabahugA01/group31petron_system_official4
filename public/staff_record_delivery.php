@@ -1923,6 +1923,36 @@ body[data-page="staff_record_delivery"] .main {
                 </tbody>
             </table>
         </div>
+        <!-- Merchandise Pagination Footer -->
+        <div id="merchDeliveryPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 10px 10px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center;">
+                <span id="merchShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing 0 of 0 entries</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                    <select id="merchPerPage" onchange="changeDeliveryPerPage('merchandise')" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button id="merchPrevBtn" onclick="goDeliveryPage('merchandise', rdState.merchandise.page - 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span id="merchPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+                    <button id="merchNextBtn" onclick="goDeliveryPage('merchandise', rdState.merchandise.page + 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -2292,6 +2322,36 @@ body[data-page="staff_record_delivery"] .main {
                 </tbody>
             </table>
         </div>
+        <!-- Fuel Pagination Footer -->
+        <div id="fuelDeliveryPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 10px 10px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center;">
+                <span id="fuelShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing 0 of 0 entries</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                    <select id="fuelPerPage" onchange="changeDeliveryPerPage('fuel')" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button id="fuelPrevBtn" onclick="goDeliveryPage('fuel', rdState.fuel.page - 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span id="fuelPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+                    <button id="fuelNextBtn" onclick="goDeliveryPage('fuel', rdState.fuel.page + 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -2359,26 +2419,50 @@ function toggleInlineDelivery(key) {
     }
 }
 
-function filterDeliveryTable(tab) {
+var rdState = {
+    merchandise: { page: 1, per_page: 10 },
+    fuel:        { page: 1, per_page: 10 }
+};
+
+function renderDeliveryPagination(tab) {
     const prefix = tab === 'fuel' ? 'fuel' : 'merch';
+    const tabId  = tab === 'fuel' ? 'fuel-tab' : 'merchandise-tab';
+    const state  = rdState[tab] || { page: 1, per_page: 10 };
+    
     const searchValue = (document.getElementById(prefix + 'DeliverySearch')?.value || '').toLowerCase().trim();
     const supplierValue = (document.getElementById(prefix + 'DeliverySupplier')?.value || '').toLowerCase().trim();
     const statusValue = (document.getElementById(prefix + 'DeliveryStatus')?.value || '').toLowerCase().trim();
     const dateValue = document.getElementById(prefix + 'DeliveryDate')?.value || '';
-    const rows = document.querySelectorAll('#' + tab + '-tab .delivery-main-row');
-    let visibleCount = 0;
-
-    rows.forEach(function(row) {
-        const matchesSearch = !searchValue || (row.dataset.search || '').includes(searchValue);
+    
+    const allRows = Array.from(document.querySelectorAll('#' + tabId + ' .delivery-main-row'));
+    
+    // Filter matched rows
+    const matchedRows = allRows.filter(function(row) {
+        const matchesSearch   = !searchValue || (row.dataset.search || '').includes(searchValue);
         const matchesSupplier = !supplierValue || (row.dataset.supplier || '') === supplierValue;
-        const matchesStatus = !statusValue || (row.dataset.status || '') === statusValue;
-        const matchesDate = !dateValue || (row.dataset.date || '') === dateValue;
-        const shouldShow = matchesSearch && matchesSupplier && matchesStatus && matchesDate;
+        const matchesStatus   = !statusValue || (row.dataset.status || '') === statusValue;
+        const matchesDate     = !dateValue || (row.dataset.date || '') === dateValue;
+        return matchesSearch && matchesSupplier && matchesStatus && matchesDate;
+    });
 
-        row.style.display = shouldShow ? '' : 'none';
-        if (shouldShow) {
-            visibleCount++;
-        } else if (row.dataset.detailRow) {
+    const total = matchedRows.length;
+    const perPage = state.per_page || 10;
+    const totalPages = Math.max(1, Math.ceil(total / perPage));
+    if (state.page > totalPages) state.page = totalPages;
+    if (state.page < 1) state.page = 1;
+    const p = state.page;
+
+    const start = (p - 1) * perPage;
+    const end   = p * perPage;
+
+    // Paginate matched rows, hide non-matched
+    allRows.forEach(function(row) {
+        const isMatched = matchedRows.includes(row);
+        const matchIndex = matchedRows.indexOf(row);
+        const isVisible = isMatched && (matchIndex >= start && matchIndex < end);
+        
+        row.style.display = isVisible ? '' : 'none';
+        if (!isVisible && row.dataset.detailRow) {
             const detailRow = document.getElementById(row.dataset.detailRow);
             if (detailRow) detailRow.style.display = 'none';
         }
@@ -2386,8 +2470,53 @@ function filterDeliveryTable(tab) {
 
     const noResults = document.getElementById(prefix + 'DeliveryNoResults');
     if (noResults) {
-        noResults.style.display = rows.length > 0 && visibleCount === 0 ? 'table-row' : 'none';
+        noResults.style.display = allRows.length > 0 && total === 0 ? 'table-row' : 'none';
     }
+
+    // Update text counter
+    const showingStart = total === 0 ? 0 : start + 1;
+    const showingEnd   = Math.min(end, total);
+    const entriesLbl   = document.getElementById(prefix + 'ShowingEntriesText');
+    if (entriesLbl) {
+        entriesLbl.textContent = 'Showing ' + (total === 0 ? '0' : showingStart + '–' + showingEnd) + ' of ' + total + ' entries';
+    }
+
+    const lbl = document.getElementById(prefix + 'PageLabel');
+    if (lbl) lbl.textContent = 'Page ' + p + ' of ' + totalPages;
+
+    const prev = document.getElementById(prefix + 'PrevBtn');
+    const next = document.getElementById(prefix + 'NextBtn');
+    if (prev) {
+        prev.disabled = (p <= 1);
+        prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+        prev.style.color = prev.disabled ? '#cbd5e1' : '#475569';
+    }
+    if (next) {
+        next.disabled = (p >= totalPages);
+        next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+        next.style.color = next.disabled ? '#cbd5e1' : '#475569';
+    }
+}
+
+function goDeliveryPage(tab, p) {
+    if (!rdState[tab]) return;
+    rdState[tab].page = p;
+    renderDeliveryPagination(tab);
+}
+
+function changeDeliveryPerPage(tab) {
+    const prefix = tab === 'fuel' ? 'fuel' : 'merch';
+    const sel = document.getElementById(prefix + 'PerPage');
+    if (sel && rdState[tab]) {
+        rdState[tab].per_page = parseInt(sel.value, 10);
+        rdState[tab].page = 1;
+        renderDeliveryPagination(tab);
+    }
+}
+
+function filterDeliveryTable(tab) {
+    if (rdState[tab]) rdState[tab].page = 1;
+    renderDeliveryPagination(tab);
 }
 
 function resetDeliveryFilters(tab) {
@@ -2398,6 +2527,11 @@ function resetDeliveryFilters(tab) {
     });
     filterDeliveryTable(tab);
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    renderDeliveryPagination('merchandise');
+    renderDeliveryPagination('fuel');
+});
 
 // Flash messages from PHP session
 <?php if ($msg): ?>

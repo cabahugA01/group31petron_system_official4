@@ -1059,14 +1059,16 @@ include __DIR__ . '/../partials/header.php';
 .flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; } .flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; } .flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 /* â”€â”€ Transaction Type Badges (mirrors admin_all_transactions) â”€â”€ */
-.badge{display:inline-block;padding:2px 6px;border-radius:999px;font-size:9.5px;font-weight:700;line-height:1.4;white-space:nowrap;}
-.badge-green{background:#dcfce7;color:#166534;border:none;}
-.badge-blue{background:#dbeafe;color:#1e40af;border:none;}
-.badge-orange{background:#fff7ed;color:#9a3412;border:none;}
-.badge-gray{background:#f1f5f9;color:#475569;border:none;}
-.badge-red{background:#fee2e2;color:#991b1b;border:none;}
-.badge-purple{background:#f3e8ff;color:#6b21a8;border:none;}
-.badge i {margin-right:3px;}
+.badge{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10.5px;font-weight:700;line-height:1.3;white-space:nowrap;}
+.badge-green{background:#16a34a !important;color:#fff !important;border:none !important;}
+.badge-amber{background:#d97706 !important;color:#fff !important;border:none !important;}
+.badge-blue{background:#2563eb !important;color:#fff !important;border:none !important;}
+.badge-darkblue{background:#1e3a8a !important;color:#fff !important;border:none !important;}
+.badge-orange{background:#ea580c !important;color:#fff !important;border:none !important;}
+.badge-gray{background:#64748b !important;color:#fff !important;border:none !important;}
+.badge-red{background:#dc2626 !important;color:#fff !important;border:none !important;}
+.badge-purple{background:#7c3aed !important;color:#fff !important;border:none !important;}
+.badge i {margin-right:2px;}
 
 /* â”€â”€ Optimized Table Layout (No scrollbar, no text clipping) â”€â”€ */
 .vt-table {
@@ -1434,13 +1436,13 @@ try {
                     $has_service = !empty(trim($r['service_type'] ?? $r['job_order_service'] ?? ''));
 
                     if ($has_items && $has_service) {
-                        $tLabel = 'JO + Merchandise'; $tIcon = 'fa-wrench'; $tBadge = 'badge-purple';
+                        $tLabel = 'JO + Merchandise'; $tIcon = 'fa-tools'; $tBadge = 'badge-darkblue';
                     } elseif ($t === 'combined') {
-                        $tLabel = 'JO + Merchandise'; $tIcon = 'fa-wrench'; $tBadge = 'badge-purple';
+                        $tLabel = 'JO + Merchandise'; $tIcon = 'fa-tools'; $tBadge = 'badge-darkblue';
                     } elseif ($t === 'job_order' || $t === 'job order' || $has_service) {
-                        $tLabel = 'Job Order'; $tIcon = 'fa-wrench'; $tBadge = 'badge-orange';
+                        $tLabel = 'Job Order'; $tIcon = 'fa-wrench'; $tBadge = 'badge-red';
                     } else {
-                        $tLabel = 'Merchandise'; $tIcon = 'fa-shopping-cart'; $tBadge = 'badge-blue';
+                        $tLabel = 'Merchandise'; $tIcon = 'fa-shopping-cart'; $tBadge = 'badge-green';
                     }
 
                     // Generate OR No. from transaction date + numeric DB id
@@ -1449,7 +1451,7 @@ try {
                         ? 'OR-' . $or_year . '-' . str_pad((int)$r['row_id'], 6, '0', STR_PAD_LEFT)
                         : 'JO-'  . $or_year . '-' . str_pad((int)$r['row_id'], 6, '0', STR_PAD_LEFT);
                 ?>
-                <tr>
+                <tr class="mvt-row">
                     <td style="white-space:nowrap;font-weight:700;font-size:12.5px;color:#0f172a;">
                         <?php echo htmlspecialchars($or_no); ?>
                     </td>
@@ -1539,20 +1541,20 @@ try {
                         $has_adj_req  = ($pending_req && ($pending_req['request_type'] ?? '') === 'Adjustment' && $vst !== 'adjusted' && $vst !== 'voided');
                         $has_void_req = ($pending_req && ($pending_req['request_type'] ?? '') === 'Void' && $vst !== 'voided');
                         
-                        if ($vst === 'voided') {
-                            echo '<span class="badge badge-red" style="white-space:nowrap;font-size:10.5px;padding:3px 6px;display:inline-block;vertical-align:middle;"><i class="fas fa-ban"></i> Voided</span>';
+                        if ($vst === 'voided' || $vst === 'void' || $vst === 'cancelled') {
+                            echo '<span class="badge badge-red"><i class="fas fa-ban"></i> Voided</span>';
                         } elseif ($vst === 'adjusted') {
-                            echo '<span class="badge badge-purple" style="white-space:nowrap;font-size:10.5px;padding:3px 6px;display:inline-block;vertical-align:middle;"><i class="fas fa-check-circle"></i> Adjusted</span>';
+                            echo '<span class="badge badge-amber"><i class="fas fa-sliders-h"></i> Adjusted</span>';
                         } elseif ($has_void_req) {
-                            echo '<span class="badge badge-red" style="white-space:nowrap;font-size:10.5px;padding:3px 5px;display:inline-block;max-width:100%;text-overflow:ellipsis;overflow:hidden;vertical-align:middle;" title="Void Requested"><i class="fas fa-clock"></i> Void Requested</span>';
+                            echo '<span class="badge badge-red" title="Void Requested"><i class="fas fa-clock"></i> Void Requested</span>';
                         } elseif ($has_adj_req) {
-                            echo '<span class="badge badge-orange" style="white-space:nowrap;font-size:10.5px;padding:3px 5px;display:inline-block;max-width:100%;text-overflow:ellipsis;overflow:hidden;vertical-align:middle;" title="Adjustment Requested"><i class="fas fa-clock"></i> Adjustment Requested</span>';
+                            echo '<span class="badge badge-orange" title="Adjustment Requested"><i class="fas fa-clock"></i> Adjustment Requested</span>';
                         } elseif ($wst === 'in_progress' || $wst === 'in progress') {
-                            echo '<span class="badge badge-blue" style="white-space:nowrap;"><i class="fas fa-spinner"></i> In Progress</span>';
-                        } elseif ($wst === 'released') {
-                            echo '<span class="badge badge-green" style="white-space:nowrap;"><i class="fas fa-check"></i> Released</span>';
+                            echo '<span class="badge badge-blue"><i class="fas fa-spinner fa-spin"></i> In Progress</span>';
+                        } elseif ($wst === 'released' || $vst === 'released') {
+                            echo '<span class="badge badge-green"><i class="fas fa-check"></i> Released</span>';
                         } else {
-                            echo '<span class="badge badge-green" style="white-space:nowrap;"><i class="fas fa-check-circle"></i> Completed</span>';
+                            echo '<span class="badge badge-green"><i class="fas fa-check-circle"></i> Completed</span>';
                         }
                         ?>
                     </td>
@@ -1606,6 +1608,36 @@ try {
             <?php endif; ?>
         </tbody>
     </table>
+    </div>
+    <!-- Pagination Footer -->
+    <div id="mvtPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 10px 10px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center;">
+            <span id="mvtShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing <?= empty($rows) ? '0' : '1–'.min(10, count($rows)) ?> of <?= count($rows) ?> entries</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:16px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                <select id="mvtPerPage" onchange="mvtChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                    <option value="10" selected>10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <button id="mvtPrevBtn" onclick="mvtGoPage(mvtState.page - 1)" 
+                        style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                        onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <span id="mvtPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of <?= max(1, ceil(count($rows) / 10)) ?></span>
+                <button id="mvtNextBtn" onclick="mvtGoPage(mvtState.page + 1)" 
+                        style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:<?= count($rows) > 10 ? 'pointer' : 'not-allowed' ?>; color:<?= count($rows) > 10 ? '#475569' : '#cbd5e1' ?>; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                        onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -3438,4 +3470,69 @@ function rcToggleExpand(id) {
   row.style.display = open ? 'none' : '';
   if (icon) icon.style.transform = open ? '' : 'rotate(180deg)';
 }
+</script>
+<script>
+// ── Manager Validated Transactions Pagination ──
+var mvtState = { page: 1, per_page: 10 };
+
+function mvtRender() {
+    var rows = Array.from(document.querySelectorAll('table.vt-table tbody tr.mvt-row'));
+    var pp = mvtState.per_page || 10;
+    var tot = rows.length;
+    var tp = Math.max(1, Math.ceil(tot / pp));
+    if (mvtState.page > tp) mvtState.page = tp;
+    if (mvtState.page < 1) mvtState.page = 1;
+    var p = mvtState.page;
+
+    var start = (p - 1) * pp;
+    var end   = p * pp;
+
+    rows.forEach(function(r, i) {
+        r.style.display = (i >= start && i < end) ? '' : 'none';
+    });
+
+    // Update entries counter
+    var showingStart = tot === 0 ? 0 : start + 1;
+    var showingEnd   = Math.min(end, tot);
+    var entriesLbl   = document.getElementById('mvtShowingEntriesText');
+    if (entriesLbl) {
+        entriesLbl.textContent = 'Showing ' + (tot === 0 ? '0' : showingStart + '–' + showingEnd) + ' of ' + tot + ' entries';
+    }
+
+    var lbl = document.getElementById('mvtPageLabel');
+    if (lbl) lbl.textContent = 'Page ' + p + ' of ' + tp;
+
+    var prev = document.getElementById('mvtPrevBtn');
+    var next = document.getElementById('mvtNextBtn');
+    if (prev) {
+        prev.disabled = (p <= 1);
+        prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+        prev.style.color = prev.disabled ? '#cbd5e1' : '#475569';
+    }
+    if (next) {
+        next.disabled = (p >= tp);
+        next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+        next.style.color = next.disabled ? '#cbd5e1' : '#475569';
+    }
+}
+
+window.mvtState = mvtState;
+window.mvtGoPage = function(p) {
+    var rows = document.querySelectorAll('table.vt-table tbody tr.mvt-row');
+    var tp = Math.max(1, Math.ceil(rows.length / (mvtState.per_page || 10)));
+    if (p < 1 || p > tp) return;
+    mvtState.page = p;
+    mvtRender();
+};
+
+window.mvtChangePerPage = function() {
+    var s = document.getElementById('mvtPerPage');
+    if (s) mvtState.per_page = parseInt(s.value, 10);
+    mvtState.page = 1;
+    mvtRender();
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    mvtRender();
+});
 </script>

@@ -1092,8 +1092,17 @@ setTimeout(function() {
                 <tbody>
                     <?php foreach($display_list as $u): 
                         $isArchived  = is_user_archived_status($u['status'] ?? '');
-                        $statusClass = $isArchived ? 'secondary' : 'success';
-                        $statusLabel = $isArchived ? 'Archived' : 'Active';
+                        $rawStatus   = strtolower(trim($u['status'] ?? 'active'));
+                        $statusLabel = ucfirst($rawStatus);
+                        if ($rawStatus === 'active') {
+                            $statusStyle = 'background:#16a34a!important;color:#fff;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;display:inline-block;';
+                        } elseif ($rawStatus === 'inactive') {
+                            $statusStyle = 'background:#dc2626!important;color:#fff;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;display:inline-block;';
+                        } elseif (in_array($rawStatus, ['archived','disabled','locked'], true)) {
+                            $statusStyle = 'background:#dc2626!important;color:#fff;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;display:inline-block;';
+                        } else {
+                            $statusStyle = 'background:#64748b!important;color:#fff;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;display:inline-block;';
+                        }
                         $roleKey     = role_key($u['role'] ?? 'staff');
                         $roleLabel   = normalize_role($u['role'] ?? $roleKey);
                         if ($roleLabel === '') { $roleLabel = ucfirst($roleKey); }
@@ -1109,24 +1118,23 @@ setTimeout(function() {
                             <div class="muted" style="font-size:0.85em; color:#64748b;"><?php echo htmlspecialchars($u['email'] ?? ''); ?></div>
                         </td>
                         <td style="font-weight: 500; color: #475569;">@<?php echo htmlspecialchars($u['username'] ?? '—'); ?></td>
-                        <td><span class="badge bg-<?php echo $roleClass; ?>"><?php echo htmlspecialchars($roleLabel); ?></span></td>
+                        <td style="font-weight:600; color:#334155;"><?php echo htmlspecialchars($roleLabel); ?></td>
                         <td>
                             <?php if ($roleKey === 'staff'): ?>
-                                <span class="badge" style="background-color: #f1f5f9; color: #1e293b; border: 1px solid #cbd5e1; font-weight: 600;">
-                                    <?php echo htmlspecialchars($u['assigned_shift'] ?? 'Unassigned'); ?>
-                                </span>
+                                <span style="font-weight:600; color:#334155; font-size:13px;"><?php echo htmlspecialchars($u['assigned_shift'] ?? 'Unassigned'); ?></span>
                             <?php else: ?>
-                                <span class="muted" style="font-size: 0.85em; color: #94a3b8;">—</span>
+                                <span style="color:#94a3b8;">—</span>
                             <?php endif; ?>
                         </td>
                         <?php if($my_role === 'superadmin'): ?>
                             <td><?php echo htmlspecialchars($u['station_name'] ?? 'Unassigned'); ?></td>
                         <?php endif; ?>
                         <td>
-                            <span class="badge bg-<?php echo $statusClass; ?>" style="<?php echo $isArchived ? 'background:#64748b!important;color:#fff;' : ''; ?>">
+                            <span style="<?php echo $statusStyle; ?>">
                                 <?php echo htmlspecialchars($statusLabel); ?>
                             </span>
                         </td>
+
                         <td>
                             <div style="display:flex; flex-direction:column; gap:5px; align-items:center;">
 
@@ -1784,10 +1792,17 @@ function openViewModal(user) {
     var roleStr = (user.role || 'staff').toUpperCase();
     document.getElementById('view_role_badge').innerHTML = '<span class="badge bg-primary">' + roleStr + '</span>';
     
-    var isArchived = (user.status || '').toLowerCase() === 'archived' || (user.status || '').toLowerCase() === 'disabled';
-    document.getElementById('view_status').innerHTML = isArchived 
-        ? '<span class="badge bg-secondary" style="background:#64748b!important;color:#fff;">Archived</span>'
-        : '<span class="badge bg-success">Active</span>';
+    var rawStatus = (user.status || 'active').toLowerCase().trim();
+    var statusLabel = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
+    var statusStyle;
+    if (rawStatus === 'active') {
+        statusStyle = 'background:#16a34a;color:#fff;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;display:inline-block;';
+    } else if (['inactive','archived','disabled','locked'].indexOf(rawStatus) !== -1) {
+        statusStyle = 'background:#dc2626;color:#fff;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;display:inline-block;';
+    } else {
+        statusStyle = 'background:#64748b;color:#fff;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;display:inline-block;';
+    }
+    document.getElementById('view_status').innerHTML = '<span style="' + statusStyle + '">' + statusLabel + '</span>';
 
     var initial = fullName.charAt(0).toUpperCase();
     document.getElementById('view_avatar').innerText = initial || 'U';

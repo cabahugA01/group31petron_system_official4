@@ -1087,10 +1087,10 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
                     $qtyAfter = $qtyBefore - $qty;
                     $logStmt = $pdo->prepare("
                         INSERT INTO inventory_logs (
-                            station_id, product_id, user_id, action, 
+                            station_id, product_id, user_id, action, movement_type,
                             quantity_before, quantity_after, quantity_change, 
-                            reference_type, reference_id, notes, created_at
-                        ) VALUES (?, ?, ?, 'sale', ?, ?, ?, 'transaction', ?, ?, NOW())
+                            reference_type, reference_id, reference_no, notes, created_at
+                        ) VALUES (?, ?, ?, 'sale', 'OUT', ?, ?, ?, 'merchandise_transaction', NULL, ?, ?, NOW())
                     ");
                     $logStmt->execute([
                         $station_id,
@@ -1099,7 +1099,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
                         $qtyBefore,
                         $qtyAfter,
                         -$qty,
-                        $merch_transaction_id,
+                        $transaction_id,
                         "POS Merchandise Sale - Ref: " . $transaction_id
                     ]);
                 } catch (Exception $logErr) {

@@ -65,6 +65,9 @@ function merge_clean_fuel_summary_rows(array $rows, bool $with_amount): array {
 // Clean any stray output
 while (ob_get_level()) ob_end_clean();
 header('Content-Type: application/json');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 $me         = null;
@@ -1007,6 +1010,9 @@ try {
     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
     while (ob_get_level()) ob_end_clean();
     header('Content-Type: application/json');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
     echo json_encode(['success' => false, 'message' => 'Server error: ' . $e->getMessage()]);
     exit;
 }
@@ -1014,6 +1020,9 @@ try {
 function respond(bool $ok, string $msg = '', array $data = []): void {
     while (ob_get_level()) ob_end_clean();
     header('Content-Type: application/json');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
     echo json_encode(array_merge(['success' => $ok, 'message' => $msg], $data));
     exit;
 }

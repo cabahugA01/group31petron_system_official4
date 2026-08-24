@@ -630,6 +630,36 @@ body .main,
                 </tbody>
             </table>
         <?php endif; ?>
+        <!-- Stock-In Pagination Footer -->
+        <div id="siPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center;">
+                <span id="siShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing <?= empty($active_groups) ? '0' : '1–'.min(10, count($active_groups)) ?> of <?= count($active_groups) ?> entries</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                    <select id="siPerPage" onchange="siChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button id="siPrevBtn" onclick="siGoPage(siState.page - 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span id="siPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of <?= max(1, ceil(count($active_groups) / 10)) ?></span>
+                    <button id="siNextBtn" onclick="siGoPage(siState.page + 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:<?= count($active_groups) > 10 ? 'pointer' : 'not-allowed' ?>; color:<?= count($active_groups) > 10 ? '#475569' : '#cbd5e1' ?>; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -817,6 +847,84 @@ function showStockToast(message, type) {
         }, 240);
     }, type === 'ok' ? 3000 : 4500);
 }
+
+// ── Stock-In Pagination Engine ──
+var siState = { page: 1, per_page: 10 };
+
+function siRender() {
+    const tableBody = document.querySelector('.stock-table tbody');
+    if (!tableBody) return;
+
+    const clickRows = Array.from(tableBody.querySelectorAll('tr.click-row'));
+    const tot = clickRows.length;
+    const pp = siState.per_page || 10;
+    const tp = Math.max(1, Math.ceil(tot / pp));
+
+    if (siState.page > tp) siState.page = tp;
+    if (siState.page < 1) siState.page = 1;
+    const p = siState.page;
+
+    const start = (p - 1) * pp;
+    const end   = p * pp;
+
+    clickRows.forEach(function(r, i) {
+        const isVis = (i >= start && i < end);
+        r.style.display = isVis ? '' : 'none';
+        const nextRow = r.nextElementSibling;
+        if (nextRow && nextRow.classList.contains('detail-row') && !isVis) {
+            nextRow.style.display = 'none';
+            r.classList.remove('is-active');
+        }
+    });
+
+    // Update counter
+    const showingStart = tot === 0 ? 0 : start + 1;
+    const showingEnd   = Math.min(end, tot);
+    const entriesLbl   = document.getElementById('siShowingEntriesText');
+    if (entriesLbl) {
+        entriesLbl.textContent = 'Showing ' + (tot === 0 ? '0' : showingStart + '–' + showingEnd) + ' of ' + tot + ' entries';
+    }
+
+    const lbl = document.getElementById('siPageLabel');
+    if (lbl) lbl.textContent = 'Page ' + p + ' of ' + tp;
+
+    const prev = document.getElementById('siPrevBtn');
+    const next = document.getElementById('siNextBtn');
+    if (prev) {
+        prev.disabled = (p <= 1);
+        prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+        prev.style.color = prev.disabled ? '#cbd5e1' : '#475569';
+    }
+    if (next) {
+        next.disabled = (p >= tp);
+        next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+        next.style.color = next.disabled ? '#cbd5e1' : '#475569';
+    }
+}
+
+window.siState = siState;
+window.siGoPage = function(p) {
+    const tableBody = document.querySelector('.stock-table tbody');
+    if (!tableBody) return;
+    const clickRows = Array.from(tableBody.querySelectorAll('tr.click-row'));
+    const tp = Math.max(1, Math.ceil(clickRows.length / (siState.per_page || 10)));
+    if (p < 1 || p > tp) return;
+    siState.page = p;
+    siRender();
+};
+
+window.siChangePerPage = function() {
+    const s = document.getElementById('siPerPage');
+    if (s && siState) {
+        siState.per_page = parseInt(s.value, 10);
+        siState.page = 1;
+        siRender();
+    }
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    siRender();
+});
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

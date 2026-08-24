@@ -2709,27 +2709,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     var hidden = document.getElementById(inputId);
                     if (hidden) hidden.value = val;
                 }
-                if (typeof filterAdminMerchTable === 'function') filterAdminMerchTable();
             });
         });
     });
     setupDownwardFilterSelects(document.querySelectorAll('.afto-filter select'));
-    ['search_query', 'date_from', 'date_to'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) {
-            el.addEventListener('input', filterAdminMerchTable);
-            el.addEventListener('change', filterAdminMerchTable);
-        }
-    });
-    var merchFilterForm = document.querySelector('.afto-filter');
-    if (merchFilterForm) {
-        merchFilterForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            filterAdminMerchTable();
-            return false;
-        });
-    }
-    filterAdminMerchTable();
     setupDownwardFilterSelects(['#adminMovTypeFilter']);
 
     // Close on outside click

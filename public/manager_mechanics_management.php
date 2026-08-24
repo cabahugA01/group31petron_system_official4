@@ -573,9 +573,9 @@ button.tbl-btn.wkld { color:#475569!important; }
 
 /* Status Badges */
 .badge { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:20px; font-size:10.5px; font-weight:700; }
-.badge-active   { background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; }
-.badge-inactive { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
-.badge-archived { background:#fef9c3; color:#713f12; border:1px solid #fde68a; }
+.badge-active   { background:#16a34a !important; color:#fff !important; border:none; }
+.badge-inactive { background:#dc2626 !important; color:#fff !important; border:none; }
+.badge-archived { background:#64748b !important; color:#fff !important; border:none; }
 
 /* Modals */
 .modal-backdrop { display:none; position:fixed; inset:0; z-index:10000; background:rgba(15,23,42,.6); backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:16px; }

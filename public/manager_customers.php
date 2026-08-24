@@ -356,7 +356,37 @@ button.remove-v-btn i {
                 <tr><td colspan="11" class="empty">Loading customers...</td></tr>
             </tbody>
         </table>
+        <div id="custListPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center;">
+                <span id="custListShowingText" style="font-size:13px; color:#64748b; font-weight:600;">Showing 0 of 0 entries</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                    <select id="custListPerPage" onchange="custListChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button id="custListPrevBtn" onclick="custListGoPage(custListState.page - 1)"
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span id="custListPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+                    <button id="custListNextBtn" onclick="custListGoPage(custListState.page + 1)"
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; color:#475569; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
+
 
     <!-- TAB 2: PENDING CUSTOMER REQUESTS -->
     <div class="cust-section" id="section-pending" style="display:none;">
@@ -387,7 +417,37 @@ button.remove-v-btn i {
                 <tr><td colspan="6" class="empty">Loading pending requests...</td></tr>
             </tbody>
         </table>
+        <div id="custPendPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center;">
+                <span id="custPendShowingText" style="font-size:13px; color:#64748b; font-weight:600;">Showing 0 of 0 entries</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                    <select id="custPendPerPage" onchange="custPendChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button id="custPendPrevBtn" onclick="custPendGoPage(custPendState.page - 1)"
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span id="custPendPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+                    <button id="custPendNextBtn" onclick="custPendGoPage(custPendState.page + 1)"
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; color:#475569; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
+
 
     <!-- TAB 3: ARCHIVED CUSTOMERS -->
     <div class="cust-section" id="section-archived" style="display:none;">
@@ -418,8 +478,38 @@ button.remove-v-btn i {
                 <tr><td colspan="6" class="empty">Loading archived customers...</td></tr>
             </tbody>
         </table>
+        <div id="custArchPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center;">
+                <span id="custArchShowingText" style="font-size:13px; color:#64748b; font-weight:600;">Showing 0 of 0 entries</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                    <select id="custArchPerPage" onchange="custArchChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button id="custArchPrevBtn" onclick="custArchGoPage(custArchState.page - 1)"
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span id="custArchPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+                    <button id="custArchNextBtn" onclick="custArchGoPage(custArchState.page + 1)"
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; color:#475569; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
+
 
 <div class="toast-stack" id="toastStack"></div>
 
@@ -1137,16 +1227,41 @@ function formatDateCell(dtStr) {
     return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function renderCustomerListTable(customers) {
-    const tbody = document.getElementById('customersBody');
-    document.getElementById('customerCount').innerText = customers.length + ' records';
+// ── CUSTOMER LIST pagination ──────────────────────────────────────────────
+var custListState = { data: [], page: 1, perPage: 10 };
 
-    if (!customers.length) {
+function renderCustomerListTable(customers) {
+    custListState.data = customers || [];
+    custListState.page = 1;
+    custListRender();
+}
+
+function custListRender() {
+    const { data, page, perPage } = custListState;
+    const tbody = document.getElementById('customersBody');
+    const total = data.length;
+    const totalPages = Math.max(1, Math.ceil(total / perPage));
+    const safePage = Math.min(Math.max(1, page), totalPages);
+    custListState.page = safePage;
+
+    document.getElementById('customerCount').innerText = total + ' records';
+
+    if (!total) {
         tbody.innerHTML = `<tr><td colspan="11" class="empty">No customers found matching filters.</td></tr>`;
+        document.getElementById('custListShowingText').innerText = 'Showing 0 of 0 entries';
+        document.getElementById('custListPageLabel').innerText = 'Page 1 of 1';
+        const p = document.getElementById('custListPrevBtn');
+        const n = document.getElementById('custListNextBtn');
+        p.disabled = true; p.style.cursor = 'not-allowed'; p.style.color = '#cbd5e1';
+        n.disabled = true; n.style.cursor = 'not-allowed'; n.style.color = '#cbd5e1';
         return;
     }
 
-    tbody.innerHTML = customers.map(c => {
+    const start = (safePage - 1) * perPage;
+    const end = Math.min(start + perPage, total);
+    const slice = data.slice(start, end);
+
+    tbody.innerHTML = slice.map(c => {
         const isReg = (c.customer_type !== 'walk-in');
         const typeLabel = isReg ? 'REGISTERED' : 'WALK-IN';
         const typeClass = isReg ? 'credit' : 'walk-in';
@@ -1171,18 +1286,64 @@ function renderCustomerListTable(customers) {
             </td>
         </tr>
     `;}).join('');
+
+    const fromEntry = start + 1;
+    const toEntry = end;
+    document.getElementById('custListShowingText').innerText = `Showing ${fromEntry}–${toEntry} of ${total} entries`;
+    document.getElementById('custListPageLabel').innerText = `Page ${safePage} of ${totalPages}`;
+
+    const p = document.getElementById('custListPrevBtn');
+    const n = document.getElementById('custListNextBtn');
+    const hasPrev = safePage > 1;
+    const hasNext = safePage < totalPages;
+    p.disabled = !hasPrev; p.style.cursor = hasPrev ? 'pointer' : 'not-allowed'; p.style.color = hasPrev ? '#475569' : '#cbd5e1';
+    n.disabled = !hasNext; n.style.cursor = hasNext ? 'pointer' : 'not-allowed'; n.style.color = hasNext ? '#475569' : '#cbd5e1';
 }
 
-function renderArchivedTable(customers) {
-    const tbody = document.getElementById('archivedBody');
-    document.getElementById('archivedCount').innerText = customers.length + ' records';
+function custListGoPage(p) { custListState.page = p; custListRender(); }
+function custListChangePerPage() {
+    custListState.perPage = parseInt(document.getElementById('custListPerPage').value);
+    custListState.page = 1;
+    custListRender();
+}
 
-    if (!customers.length) {
+
+
+// ── ARCHIVED CUSTOMERS pagination ─────────────────────────────────────────
+var custArchState = { data: [], page: 1, perPage: 10 };
+
+function renderArchivedTable(customers) {
+    custArchState.data = customers || [];
+    custArchState.page = 1;
+    custArchRender();
+}
+
+function custArchRender() {
+    const { data, page, perPage } = custArchState;
+    const tbody = document.getElementById('archivedBody');
+    const total = data.length;
+    const totalPages = Math.max(1, Math.ceil(total / perPage));
+    const safePage = Math.min(Math.max(1, page), totalPages);
+    custArchState.page = safePage;
+
+    document.getElementById('archivedCount').innerText = total + ' records';
+
+    if (!total) {
         tbody.innerHTML = `<tr><td colspan="6" class="empty">No archived customers found.</td></tr>`;
+        document.getElementById('custArchShowingText').innerText = 'Showing 0 of 0 entries';
+        document.getElementById('custArchPageLabel').innerText = 'Page 1 of 1';
+        const p = document.getElementById('custArchPrevBtn');
+        const n = document.getElementById('custArchNextBtn');
+        p.disabled = true; p.style.cursor = 'not-allowed'; p.style.color = '#cbd5e1';
+        n.disabled = true; n.style.cursor = 'not-allowed'; n.style.color = '#cbd5e1';
         return;
     }
 
-    tbody.innerHTML = customers.map(c => `
+    const start = (safePage - 1) * perPage;
+    const end = Math.min(start + perPage, total);
+    const slice = data.slice(start, end);
+
+    tbody.innerHTML = slice.map(c => `
         <tr>
             <td><strong>${h(c.customer_id)}</strong></td>
             <td><strong>${h(c.customer_name)}</strong></td>
@@ -1197,7 +1358,29 @@ function renderArchivedTable(customers) {
             </td>
         </tr>
     `).join('');
+
+    const fromEntry = start + 1;
+    const toEntry = end;
+    document.getElementById('custArchShowingText').innerText = `Showing ${fromEntry}–${toEntry} of ${total} entries`;
+    document.getElementById('custArchPageLabel').innerText = `Page ${safePage} of ${totalPages}`;
+
+    const p = document.getElementById('custArchPrevBtn');
+    const n = document.getElementById('custArchNextBtn');
+    const hasPrev = safePage > 1;
+    const hasNext = safePage < totalPages;
+    p.disabled = !hasPrev; p.style.cursor = hasPrev ? 'pointer' : 'not-allowed'; p.style.color = hasPrev ? '#475569' : '#cbd5e1';
+    n.disabled = !hasNext; n.style.cursor = hasNext ? 'pointer' : 'not-allowed'; n.style.color = hasNext ? '#475569' : '#cbd5e1';
 }
+
+function custArchGoPage(p) { custArchState.page = p; custArchRender(); }
+function custArchChangePerPage() {
+    custArchState.perPage = parseInt(document.getElementById('custArchPerPage').value);
+    custArchState.page = 1;
+    custArchRender();
+}
+
+// ── PENDING CUSTOMER REQUESTS pagination ──────────────────────────────────
+var custPendState = { data: [], page: 1, perPage: 10 };
 
 function loadCustomerRequests() {
     document.getElementById('requestsBody').innerHTML = `<tr><td colspan="6" class="empty">Loading pending requests...</td></tr>`;
@@ -1222,32 +1405,74 @@ function loadCustomerRequests() {
             document.getElementById('requestCount').innerText = currentRequests.length + ' pending';
             document.getElementById('statRequests').innerText = currentRequests.length;
             document.getElementById('tabBadgePending').innerText = currentRequests.length;
-            const tbody = document.getElementById('requestsBody');
-
-            if (!currentRequests.length) {
-                tbody.innerHTML = `<tr><td colspan="6" class="empty">No pending customer requests.</td></tr>`;
-                return;
-            }
-
-            tbody.innerHTML = currentRequests.map(r => `
-                <tr>
-                    <td><strong>${h(r.first_name + ' ' + (r.middle_name ? r.middle_name + ' ' : '') + r.last_name)}</strong></td>
-                    <td>${h(r.contact_number)}</td>
-                    <td><span class="pill regular">${h(r.vehicle_plate || 'N/A')}</span></td>
-                    <td>${h(r.requested_by_name || 'Staff')}</td>
-                    <td>${h(r.created_at)}</td>
-                    <td style="text-align:right;">
-                        <div class="cust-actions">
-                            <button type="button" class="btn-plain primary" style="height:30px; padding:0 8px; font-size:11px;" onclick="openReviewModal(${r.id})"><i class="fas fa-tasks"></i> Review</button>
-                        </div>
-                    </td>
-                </tr>
-            `).join('');
+            custPendState.data = currentRequests;
+            custPendState.page = 1;
+            custPendRender();
         })
         .catch(err => {
             document.getElementById('requestsBody').innerHTML = `<tr><td colspan="6" class="empty">Network error loading requests.</td></tr>`;
         });
 }
+
+function custPendRender() {
+    const { data, page, perPage } = custPendState;
+    const tbody = document.getElementById('requestsBody');
+    const total = data.length;
+    const totalPages = Math.max(1, Math.ceil(total / perPage));
+    const safePage = Math.min(Math.max(1, page), totalPages);
+    custPendState.page = safePage;
+
+    if (!total) {
+        tbody.innerHTML = `<tr><td colspan="6" class="empty">No pending customer requests.</td></tr>`;
+        document.getElementById('custPendShowingText').innerText = 'Showing 0 of 0 entries';
+        document.getElementById('custPendPageLabel').innerText = 'Page 1 of 1';
+        const p = document.getElementById('custPendPrevBtn');
+        const n = document.getElementById('custPendNextBtn');
+        p.disabled = true; p.style.cursor = 'not-allowed'; p.style.color = '#cbd5e1';
+        n.disabled = true; n.style.cursor = 'not-allowed'; n.style.color = '#cbd5e1';
+        return;
+    }
+
+    const start = (safePage - 1) * perPage;
+    const end = Math.min(start + perPage, total);
+    const slice = data.slice(start, end);
+
+    tbody.innerHTML = slice.map(r => `
+        <tr>
+            <td><strong>${h(r.first_name + ' ' + (r.middle_name ? r.middle_name + ' ' : '') + r.last_name)}</strong></td>
+            <td>${h(r.contact_number)}</td>
+            <td><span class="pill regular">${h(r.vehicle_plate || 'N/A')}</span></td>
+            <td>${h(r.requested_by_name || 'Staff')}</td>
+            <td>${h(r.created_at)}</td>
+            <td style="text-align:right;">
+                <div class="cust-actions">
+                    <button type="button" class="btn-plain primary" style="height:30px; padding:0 8px; font-size:11px;" onclick="openReviewModal(${r.id})"><i class="fas fa-tasks"></i> Review</button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+
+    const fromEntry = start + 1;
+    const toEntry = end;
+    document.getElementById('custPendShowingText').innerText = `Showing ${fromEntry}–${toEntry} of ${total} entries`;
+    document.getElementById('custPendPageLabel').innerText = `Page ${safePage} of ${totalPages}`;
+
+    const p = document.getElementById('custPendPrevBtn');
+    const n = document.getElementById('custPendNextBtn');
+    const hasPrev = safePage > 1;
+    const hasNext = safePage < totalPages;
+    p.disabled = !hasPrev; p.style.cursor = hasPrev ? 'pointer' : 'not-allowed'; p.style.color = hasPrev ? '#475569' : '#cbd5e1';
+    n.disabled = !hasNext; n.style.cursor = hasNext ? 'pointer' : 'not-allowed'; n.style.color = hasNext ? '#475569' : '#cbd5e1';
+}
+
+function custPendGoPage(p) { custPendState.page = p; custPendRender(); }
+function custPendChangePerPage() {
+    custPendState.perPage = parseInt(document.getElementById('custPendPerPage').value);
+    custPendState.page = 1;
+    custPendRender();
+}
+
+
 
 let currentRawOutstanding = 0;
 

@@ -89,6 +89,51 @@ function get_preceding_shift_validated_ending($pdo, $station_id, $pump_id, $curr
     return $val_fallback !== false ? (float)$val_fallback : 0.0;
 }
 
+function resolve_fuel_inventory_tank_id($pdo, $station_id, $fuel_type_str) {
+    $raw = strtoupper(trim((string)$fuel_type_str));
+    // Strip pump suffix (e.g. "DIESEL 1 - 1" -> "DIESEL 1")
+    $base = preg_replace('/\s*-\s*\d+$/i', '', $raw);
+    
+    // 1. Direct query matching exact base name or with UGT in fuel_inventory
+    $stmt = $pdo->prepare("
+        SELECT id FROM fuel_inventory 
+        WHERE station_id = ? 
+          AND (
+              UPPER(TRIM(fuel_type)) = ?
+           OR UPPER(TRIM(fuel_type)) LIKE ?
+           OR ? LIKE CONCAT('%', UPPER(TRIM(fuel_type)), '%')
+          )
+        ORDER BY id ASC LIMIT 1
+    ");
+    $stmt->execute([$station_id, $base, $base . ' %', $base]);
+    $tank_id = $stmt->fetchColumn();
+    if ($tank_id) return (int)$tank_id;
+    
+    // 2. Mapping by common fuel keywords
+    if (strpos($base, 'TURBO DIESEL') !== false) {
+        $q = "Turbo Diesel";
+    } elseif (strpos($base, 'DIESEL 2') !== false) {
+        $q = "Diesel 2";
+    } elseif (strpos($base, 'DIESEL 1') !== false || strpos($base, 'DIESEL') !== false) {
+        $q = "Diesel";
+    } elseif (strpos($base, 'XCS') !== false) {
+        $q = "XCS Plus";
+    } elseif (strpos($base, 'XTRA UNL 2') !== false || strpos($base, 'UNL 2') !== false) {
+        $q = "Xtra UNL 2";
+    } elseif (strpos($base, 'XTRA UNL') !== false || strpos($base, 'UNL 1') !== false) {
+        $q = "Xtra UNL 1";
+    } elseif (strpos($base, 'KEROSENE') !== false) {
+        $q = "Kerosene";
+    } else {
+        $q = $base;
+    }
+    
+    $stmt2 = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND fuel_type LIKE ? LIMIT 1");
+    $stmt2->execute([$station_id, '%' . $q . '%']);
+    $tid = $stmt2->fetchColumn();
+    return $tid ? (int)$tid : null;
+}
+
 function is_pending_validation_status($status_str) {
     $s = strtolower(trim($status_str ?? ''));
     if ($s === 'readings_submitted' || $s === 'draft' || empty($s)) {
@@ -428,14 +473,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (empty($remarks)) {
                 throw new Exception("Rejection remarks/reason is required.");
             }
-            // Guard: must be pending validation
-            if (!is_pending_validation_status($tx['status'])) {
-                throw new Exception("Transaction has already been processed.");
-            }
+
+            $was_verified = in_array(strtolower(trim($tx['status'] ?? '')), ['verified', 'approved', 'adjusted']);
 
             // Update status to Rejected
             $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Rejected', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
             $up->execute([$me['id'], $remarks, $tx_id]);
+
+            // If it was already verified/adjusted, revert the deducted liters back to the tank!
+            if ($was_verified && (float)$tx['liters_sold'] > 0) {
+                $matched_tank_id = resolve_fuel_inventory_tank_id($pdo, $station_id, $tx['fuel_type']);
+                if ($matched_tank_id) {
+                    $up_stock = $pdo->prepare("
+                        UPDATE fuel_inventory 
+                        SET current_level = LEAST(capacity, COALESCE(current_level, 0) + ?),
+                            current_stock  = LEAST(capacity, COALESCE(current_stock, 0) + ?),
+                            last_updated   = NOW()
+                        WHERE id = ? AND station_id = ?
+                    ");
+                    $up_stock->execute([(float)$tx['liters_sold'], (float)$tx['liters_sold'], $matched_tank_id, $station_id]);
+                }
+            }
 
             // Log activity
             log_activity($pdo, $me['id'], 'Fuel Reading Rejected', "TXN {$tx['transaction_id']} | Reason: {$remarks}");
@@ -512,13 +570,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ");
                 $up->execute([$beginning, $ending, $calibration, $liters_sold, $total_amount, $me['id'], $remarks, $tx_id]);
 
-                // Deduct stock from fuel_inventory using the new liters_sold
-                $up_stock = $pdo->prepare("UPDATE fuel_inventory 
-                                           SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
-                                               current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
-                                               last_updated   = NOW()
-                                           WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
-                $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type']]);
+                // Apply delta deduction/reversal to fuel_inventory matching exact tank
+                $matched_tank_id = resolve_fuel_inventory_tank_id($pdo, $station_id, $tx['fuel_type']);
+                if ($matched_tank_id) {
+                    $was_verified = in_array(strtolower(trim($tx['status'] ?? '')), ['verified', 'approved', 'adjusted']);
+                    $old_liters = (float)($tx['liters_sold'] ?? 0);
+                    $liters_diff = $was_verified ? ($liters_sold - $old_liters) : $liters_sold;
+
+                    if (abs($liters_diff) > 0.0001) {
+                        $up_stock = $pdo->prepare("
+                            UPDATE fuel_inventory 
+                            SET current_level = GREATEST(0, LEAST(capacity, COALESCE(current_level, 0) - ?)),
+                                current_stock  = GREATEST(0, LEAST(capacity, COALESCE(current_stock, 0) - ?)),
+                                last_updated   = NOW()
+                            WHERE id = ? AND station_id = ?
+                        ");
+                        $up_stock->execute([$liters_diff, $liters_diff, $matched_tank_id, $station_id]);
+                    }
+                }
 
                 // Fetch fuel_type_id for the adjustment record
                 $fuel_type_id = null;
@@ -1603,7 +1672,36 @@ body.sidebar-collapsed .modal,
                 </table>
             </div>
 
-            
+            <!-- Pagination Footer -->
+            <div id="mftvPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center;">
+                    <span id="mftvShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing <?= empty($transactions) ? '0' : '1–'.min(10, count($transactions)) ?> of <?= count($transactions) ?> entries</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:16px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                        <select id="mftvPerPage" onchange="mftvChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <button id="mftvPrevBtn" onclick="mftvGoPage(mftvState.page - 1)" 
+                                style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                                onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <span id="mftvPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of <?= max(1, ceil(count($transactions) / 10)) ?></span>
+                        <button id="mftvNextBtn" onclick="mftvGoPage(mftvState.page + 1)" 
+                                style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:<?= count($transactions) > 10 ? 'pointer' : 'not-allowed' ?>; color:<?= count($transactions) > 10 ? '#475569' : '#cbd5e1' ?>; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                                onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
     </div>
 </div>
 
@@ -2198,26 +2296,80 @@ window.onclick = function(event) {
 }
 
 // Client-side pagination logic
-function initManagerPagination() {
+var mftvState = { page: 1, per_page: 10 };
+
+function mftvRender() {
     const tableBody = document.querySelector('.afto-tbl tbody');
     if (!tableBody) return;
 
     const allRows = Array.from(tableBody.querySelectorAll('tr'));
     const validRows = allRows.filter(r => !r.querySelector('.afto-empty'));
-    const totalRows = validRows.length;
+    const tot = validRows.length;
+    const pp = mftvState.per_page || 10;
+    const tp = Math.max(1, Math.ceil(tot / pp));
 
-    // Show all valid rows directly without page slicing
-    validRows.forEach(row => row.style.display = '');
+    if (mftvState.page > tp) mftvState.page = tp;
+    if (mftvState.page < 1) mftvState.page = 1;
+    const p = mftvState.page;
 
-    const pageInfo = document.getElementById('pageInfo');
-    if (pageInfo) {
-        pageInfo.textContent = `Showing ${totalRows} entries`;
+    const start = (p - 1) * pp;
+    const end   = p * pp;
+
+    validRows.forEach(function(r, i) {
+        r.style.display = (i >= start && i < end) ? '' : 'none';
+    });
+
+    // Update text counter
+    const showingStart = tot === 0 ? 0 : start + 1;
+    const showingEnd   = Math.min(end, tot);
+    const entriesLbl   = document.getElementById('mftvShowingEntriesText');
+    if (entriesLbl) {
+        entriesLbl.textContent = 'Showing ' + (tot === 0 ? '0' : showingStart + '–' + showingEnd) + ' of ' + tot + ' entries';
+    }
+
+    const lbl = document.getElementById('mftvPageLabel');
+    if (lbl) lbl.textContent = 'Page ' + p + ' of ' + tp;
+
+    const prev = document.getElementById('mftvPrevBtn');
+    const next = document.getElementById('mftvNextBtn');
+    if (prev) {
+        prev.disabled = (p <= 1);
+        prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+        prev.style.color = prev.disabled ? '#cbd5e1' : '#475569';
+    }
+    if (next) {
+        next.disabled = (p >= tp);
+        next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+        next.style.color = next.disabled ? '#cbd5e1' : '#475569';
     }
 }
+
+window.mftvState = mftvState;
+window.mftvGoPage = function(p) {
+    const tableBody = document.querySelector('.afto-tbl tbody');
+    if (!tableBody) return;
+    const validRows = Array.from(tableBody.querySelectorAll('tr')).filter(r => !r.querySelector('.afto-empty'));
+    const tp = Math.max(1, Math.ceil(validRows.length / (mftvState.per_page || 10)));
+    if (p < 1 || p > tp) return;
+    mftvState.page = p;
+    mftvRender();
+};
+
+window.mftvChangePerPage = function() {
+    const s = document.getElementById('mftvPerPage');
+    if (s) mftvState.per_page = parseInt(s.value, 10);
+    mftvState.page = 1;
+    mftvRender();
+};
+
+function initManagerPagination() {
+    mftvRender();
+}
+
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initManagerPagination);
+    document.addEventListener('DOMContentLoaded', mftvRender);
 } else {
-    initManagerPagination();
+    mftvRender();
 }
 
 // Export Helper

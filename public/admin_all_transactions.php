@@ -458,8 +458,8 @@ a, a:hover, a:focus, a:visited,
 }
 .vt-table { 
     width: 100% !important; 
-    min-width: 100% !important;
-    max-width: 100% !important;
+    min-width: 100% !important; 
+    max-width: 100% !important; 
     border-collapse: collapse !important; 
     table-layout: fixed !important; 
 }
@@ -478,13 +478,16 @@ a, a:hover, a:focus, a:visited,
 }
 .vt-table tbody tr:hover td { background: #f8fafc !important; }
 
-.badge { display: inline-block; padding: 2px 6px; border-radius: 999px; font-size: 10px; font-weight: 700; white-space: nowrap; line-height: 1.2; }
-.badge-green { background: #dcfce7; color: #166534; }
-.badge-blue { background: #dbeafe; color: #1e40af; }
-.badge-orange { background: #fff7ed; color: #9a3412; }
-.badge-gray { background: #f1f5f9; color: #475569; }
-.badge-red { background: #fee2e2; color: #991b1b; }
-.badge-purple { background: #f3e8ff; color: #6b21a8; }
+/* Badge Badges */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700; white-space: nowrap; line-height: 1.2; }
+.badge-green    { background: #16a34a !important; color: #fff !important; }
+.badge-red      { background: #dc2626 !important; color: #fff !important; }
+.badge-darkblue { background: #1e3a8a !important; color: #fff !important; }
+.badge-amber    { background: #d97706 !important; color: #fff !important; }
+.badge-orange   { background: #ea580c !important; color: #fff !important; }
+.badge-blue     { background: #2563eb !important; color: #fff !important; }
+.badge-gray     { background: #64748b !important; color: #fff !important; }
+.badge-purple   { background: #7c3aed !important; color: #fff !important; }
 
 .vt-btn-act-sm {
     display: inline-flex !important; align-items: center !important; justify-content: center !important;
@@ -549,8 +552,6 @@ a, a:hover, a:focus, a:visited,
         </div>
     </div>
 
-    </div>
-
     <!-- Filters Form -->
     <form method="get" class="filters">
         <div><label>From</label><input type="date" name="date_from" value="<?=htmlspecialchars($date_from)?>" class="inp"></div>
@@ -571,8 +572,7 @@ a, a:hover, a:focus, a:visited,
                 <option value="<?=(int)$st['id']?>" <?=$f_staff==(int)$st['id']?'selected':''?>><?=htmlspecialchars($st['name'])?></option>
                 <?php endforeach; ?>
             </select>
-        </div>
-        <div>
+        </div>        <div>
             <label>Type</label>
             <select name="type" class="inp">
                 <option value="">All Types</option>
@@ -660,28 +660,57 @@ a, a:hover, a:focus, a:visited,
             <?php if(empty($rows)): ?>
             <tr><td colspan="16" style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:8px;"></i>No transactions found</td></tr>
             <?php else: ?>
-            <?php foreach($rows as $r): ?>
+                        <?php foreach($rows as $r): ?>
             <?php
-                $t=strtolower($r['txn_type']??'');
+                $t = strtolower($r['txn_type'] ?? '');
                 $has_items   = !empty(trim($r['items'] ?? ''));
                 $has_service = !empty(trim($r['service_type'] ?? ''));
-                if ($has_items && $has_service) {
-                    $tLabel = 'Job Order + Merchandise'; $tIcon = 'fa-wrench'; $tBadge = 'badge-purple';
-                } elseif ($t === 'combined') {
-                    $tLabel = 'Job Order + Merchandise'; $tIcon = 'fa-wrench'; $tBadge = 'badge-purple';
+                if (($has_items && $has_service) || $t === 'combined') {
+                    $tLabel = 'Job Order + Merchandise';
+                    $tIcon  = 'fa-tools';
+                    $tBadge = 'badge-darkblue';
                 } elseif ($t === 'job_order' || $has_service) {
-                    $tLabel = 'Job Order'; $tIcon = 'fa-wrench'; $tBadge = 'badge-orange';
+                    $tLabel = 'Job Order';
+                    $tIcon  = 'fa-wrench';
+                    $tBadge = 'badge-red';
                 } else {
-                    $tLabel = 'Merchandise'; $tIcon = 'fa-shopping-cart'; $tBadge = 'badge-blue';
+                    $tLabel = 'Merchandise';
+                    $tIcon  = 'fa-shopping-cart';
+                    $tBadge = 'badge-green';
                 }
-                $vs=strtolower($r['validation_status']??'');
-                if ($vs === 'voided') {
-                    $statusLabel = 'Voided'; $statusBadge = 'badge-red';
-                } elseif ($vs === 'adjusted') {
-                    $statusLabel = 'Adjusted'; $statusBadge = 'badge-purple';
+
+                $vs = strtolower(trim($r['validation_status'] ?? ''));
+                $js = strtolower(trim($r['status'] ?? ''));
+                if ($vs === 'voided' || $js === 'voided') {
+                    $statusLabel = 'Voided';
+                    $statusIcon  = 'fa-ban';
+                    $statusBadge = 'badge-red';
+                } elseif ($vs === 'void_requested' || $vs === 'void requested' || $js === 'void_requested') {
+                    $statusLabel = 'Void Requested';
+                    $statusIcon  = 'fa-clock';
+                    $statusBadge = 'badge-red';
+                } elseif ($vs === 'adjusted' || $js === 'adjusted') {
+                    $statusLabel = 'Adjusted';
+                    $statusIcon  = 'fa-sliders-h';
+                    $statusBadge = 'badge-amber';
+                } elseif ($vs === 'adjustment_requested' || $vs === 'adjustment requested' || $js === 'adjustment_requested') {
+                    $statusLabel = 'Adjustment Requested';
+                    $statusIcon  = 'fa-clock';
+                    $statusBadge = 'badge-orange';
+                } elseif ($vs === 'released' || $js === 'released') {
+                    $statusLabel = 'Released';
+                    $statusIcon  = 'fa-check';
+                    $statusBadge = 'badge-green';
+                } elseif ($js === 'in_progress' || $js === 'in progress' || $js === 'processing') {
+                    $statusLabel = 'In Progress';
+                    $statusIcon  = 'fa-spinner fa-spin';
+                    $statusBadge = 'badge-blue';
                 } else {
-                    $statusLabel = 'Completed'; $statusBadge = 'badge-green';
+                    $statusLabel = 'Completed';
+                    $statusIcon  = 'fa-check-circle';
+                    $statusBadge = 'badge-green';
                 }
+
                 $or_no = 'OR-' . date('Y', strtotime($r['txn_date'])) . '-' . str_pad($r['txn_db_id'], 6, '0', STR_PAD_LEFT);
             ?>
             <tr>
@@ -713,7 +742,7 @@ a, a:hover, a:focus, a:visited,
                 <td style="font-size:11px;color:#475569;white-space:nowrap;"><?=htmlspecialchars($r['shift'])?></td>
                 <td style="font-size:11px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<?=htmlspecialchars($r['staff_name'])?>"><?=htmlspecialchars($r['staff_name'])?></td>
                 <td style="text-align:center;white-space:nowrap;">
-                    <span class="badge <?=$statusBadge?>"><i class="fas fa-circle" style="font-size:6px;vertical-align:middle;margin-right:2px;"></i><?=$statusLabel?></span>
+                    <span class="badge <?=$statusBadge?>"><i class="fas <?=$statusIcon?>"></i> <?=$statusLabel?></span>
                 </td>
                 <td style="line-height:1.2;white-space:nowrap;">
                     <div style="font-size:11px;font-weight:600;color:#334155;"><?=date('M d, Y',strtotime($r['txn_date']))?></div>

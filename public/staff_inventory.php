@@ -3,6 +3,9 @@ $page_id = 'inventory';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
 
 $me         = current_user();
 $role       = role_key($me['role'] ?? 'staff');

@@ -330,7 +330,7 @@ foreach ($rows as $r) {
 }
 
 $active_tab = $_GET['tab'] ?? 'overview';
-if (!in_array($active_tab, ['overview', 'deliveries', 'readings', 'alerts'])) {
+if (!in_array($active_tab, ['overview', 'movement', 'movements', 'deliveries', 'readings', 'alerts'])) {
     $active_tab = 'overview';
 }
 
@@ -1317,7 +1317,36 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
       </tbody>
     </table>
   </div>
-  <div id="mgrFuelMovementPagination" style="padding:8px 16px;"></div>
+    <!-- Fuel Movement Pagination Footer -->
+  <div id="mfmPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 11px 11px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+      <div style="display:flex; align-items:center;">
+          <span id="mfmShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing <?= empty($fuel_movement_history) ? '0' : '1–'.min(10, count($fuel_movement_history)) ?> of <?= count($fuel_movement_history) ?> entries</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:16px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+              <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+              <select id="mfmPerPage" onchange="mfmChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                  <option value="10" selected>10</option>
+                  <option value="20">20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+              </select>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+              <button id="mfmPrevBtn" onclick="mfmGoPage(mfmState.page - 1)" 
+                      style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                      onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                  <i class="fas fa-chevron-left"></i>
+              </button>
+              <span id="mfmPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of <?= max(1, ceil(count($fuel_movement_history) / 10)) ?></span>
+              <button id="mfmNextBtn" onclick="mfmGoPage(mfmState.page + 1)" 
+                      style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:<?= count($fuel_movement_history) > 10 ? 'pointer' : 'not-allowed' ?>; color:<?= count($fuel_movement_history) > 10 ? '#475569' : '#cbd5e1' ?>; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                      onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                  <i class="fas fa-chevron-right"></i>
+              </button>
+          </div>
+      </div>
+  </div>
 </div>
 <?php endif; ?>
 
@@ -1338,9 +1367,6 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                 <option value="xcs plus">XCS Plus</option>
                 <option value="xtra unl">XTRA UNL</option>
             </select>
-            <button type="button" onclick="openAdjustReadingModal()" style="background:#5b21b6;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
-                <i class="fas fa-plus-circle"></i> Record Dip Reading
-            </button>
         </div>
     </div>
     <div class="table-wrap">
@@ -2503,40 +2529,97 @@ function printMovRecord(m) {
     pw.print();
 }
 
-function filterMgrFuelMovementTable() {
+// ── Fuel Movement Pagination & Filter Engine ──
+var mfmState = { page: 1, per_page: 10 };
+
+function mfmRender() {
     var sq = (document.getElementById('mgrFmovSearch') ? document.getElementById('mgrFmovSearch').value : '').toLowerCase().trim();
     var ft = (document.getElementById('mgrFmovTypeFilter') ? document.getElementById('mgrFmovTypeFilter').value : '').toLowerCase().trim();
     var mv = (document.getElementById('mgrFmovMoveFilter') ? document.getElementById('mgrFmovMoveFilter').value : '').toLowerCase().trim();
 
-    var rows = document.querySelectorAll('#mgrFuelMovementTbody tr.mgr-fmov-row');
-    rows.forEach(function(row) {
-        var sText = row.getAttribute('data-search') || '';
-        var fType = row.getAttribute('data-fuel-type') || '';
-        var mType = row.getAttribute('data-move-type') || '';
+    var allRows = Array.from(document.querySelectorAll('#mgrFuelMovementTbody tr.mgr-fmov-row'));
+    var matched = allRows.filter(function(row) {
+        var sText = (row.getAttribute('data-search') || '').toLowerCase();
+        var fType = (row.getAttribute('data-fuel-type') || '').toLowerCase();
+        var mType = (row.getAttribute('data-move-type') || '').toLowerCase();
 
         var matchS = !sq || sText.indexOf(sq) !== -1;
         var matchF = !ft || fType.indexOf(ft) !== -1;
         var matchM = !mv || mType.indexOf(mv) !== -1;
 
-        if (matchS && matchF && matchM) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
-        }
+        return matchS && matchF && matchM;
     });
+
+    var tot = matched.length;
+    var pp = mfmState.per_page || 10;
+    var tp = Math.max(1, Math.ceil(tot / pp));
+
+    if (mfmState.page > tp) mfmState.page = tp;
+    if (mfmState.page < 1) mfmState.page = 1;
+    var p = mfmState.page;
+
+    var start = (p - 1) * pp;
+    var end   = p * pp;
+
+    allRows.forEach(function(r) {
+        var isMatched = matched.includes(r);
+        var matchIndex = matched.indexOf(r);
+        r.style.display = (isMatched && matchIndex >= start && matchIndex < end) ? '' : 'none';
+    });
+
+    // Update counter
+    var showingStart = tot === 0 ? 0 : start + 1;
+    var showingEnd   = Math.min(end, tot);
+    var entriesLbl   = document.getElementById('mfmShowingEntriesText');
+    if (entriesLbl) {
+        entriesLbl.textContent = 'Showing ' + (tot === 0 ? '0' : showingStart + '–' + showingEnd) + ' of ' + tot + ' entries';
+    }
+
+    var lbl = document.getElementById('mfmPageLabel');
+    if (lbl) lbl.textContent = 'Page ' + p + ' of ' + tp;
+
+    var prev = document.getElementById('mfmPrevBtn');
+    var next = document.getElementById('mfmNextBtn');
+    if (prev) {
+        prev.disabled = (p <= 1);
+        prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+        prev.style.color = prev.disabled ? '#cbd5e1' : '#475569';
+    }
+    if (next) {
+        next.disabled = (p >= tp);
+        next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+        next.style.color = next.disabled ? '#cbd5e1' : '#475569';
+    }
+}
+
+window.mfmState = mfmState;
+window.mfmGoPage = function(p) {
+    mfmState.page = p;
+    mfmRender();
+};
+
+window.mfmChangePerPage = function() {
+    var s = document.getElementById('mfmPerPage');
+    if (s) mfmState.per_page = parseInt(s.value, 10);
+    mfmState.page = 1;
+    mfmRender();
+};
+
+function filterMgrFuelMovementTable() {
+    mfmState.page = 1;
+    mfmRender();
 }
 
 function resetMgrFuelMovementFilters() {
     if (document.getElementById('mgrFmovSearch')) document.getElementById('mgrFmovSearch').value = '';
     if (document.getElementById('mgrFmovTypeFilter')) document.getElementById('mgrFmovTypeFilter').value = '';
     if (document.getElementById('mgrFmovMoveFilter')) document.getElementById('mgrFmovMoveFilter').value = '';
-    filterMgrFuelMovementTable();
+    mfmState.page = 1;
+    mfmRender();
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    if (typeof setupTablePagination === 'function') {
-        setupTablePagination('mgrFuelMovementTable', null, 'mgrFuelMovementPagination', 20);
-    }
+    mfmRender();
 });
 
 // ── Movement Export Functions ──

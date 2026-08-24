@@ -2325,9 +2325,13 @@ window.openRequestAdjustModal = function(arg1, arg2) {
     setTxt('reqAdjPayMethod', joData.payment_method || 'Cash');
 
     var isMerch = (joData.source === 'merchandise_transactions' || joData.source === 'merchandise');
+    var elRefLbl = document.getElementById('reqAdjRefLabel');
+    if (elRefLbl) elRefLbl.textContent = isMerch ? 'Transaction ID:' : 'JO No.:';
+
     if (isMerch) {
         setVal('reqAdjCorrectionField', 'Merchandise / Item');
-        setVal('reqAdjCurrentValue', '₱' + parseFloat(joData.total || 0).toFixed(2));
+        var tot = parseFloat(joData.total || 0);
+        setVal('reqAdjCurrentValue', tot > 0 ? ('₱' + tot.toFixed(2)) : '₱0.00');
     } else {
         setVal('reqAdjCorrectionField', 'Labor Fee');
         if (typeof window.onReqAdjFieldChange === 'function') {
@@ -2397,6 +2401,9 @@ window.openRequestVoidModal = function(arg1, arg2) {
     setTxt('reqVoidStatus', joData.workflow_status || 'Official');
     setTxt('reqVoidPayStatus', joData.payment_status || 'Paid');
 
+        var isMerchVoid = (joData.source === 'merchandise_transactions' || joData.source === 'merchandise');
+    var elVoidLbl = document.getElementById('reqVoidRefLabel');
+    if (elVoidLbl) elVoidLbl.textContent = isMerchVoid ? 'Transaction ID:' : 'JO No.:';
     setVal('reqVoidReasonSelect', 'Duplicate Transaction');
     setVal('reqVoidRemarks', '');
 
@@ -4270,7 +4277,7 @@ setTimeout(function() {
                             <div class="modal-subtitle">Add notes for this fuel shift (applies to all fuel types)</div>
                         </div>
                     </div>
-                    <button class="modal-close" onclick="closeGlobalRemarksModal()" style="background:transparent !important; border:none !important; color:#64748b !important; font-size:22px !important; cursor:pointer !important; padding:4px 8px !important; line-height:1 !important; border-radius:4px !important;" title="Close">&times;</button>
+                    
                 </div>
                 <div class="modal-body">
                     <label>REMARKS / NOTES</label>
@@ -4330,7 +4337,7 @@ setTimeout(function() {
             </div>
 
             <!-- Filters & Export Control Bar -->
-            <div style="background:#ffffff; padding:20px; display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:16px; border-bottom:1px solid #f1f5f9;">
+            <div style="background:#ffffff; padding:16px 20px; display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:16px; border-bottom:1px solid #e2e8f0;">
                 <!-- Local Filter Inputs -->
                 <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:center;">
                     <!-- From Date Filter -->
@@ -4367,9 +4374,10 @@ setTimeout(function() {
                         </select>
                     </div>
                 </div>
+            </div><!-- /Filters Control Bar -->
 
-            <!-- Table Body Container -->
-            <div id="todayEntriesBody" style="padding:0;">
+            <!-- Table Body Container (Full Width) -->
+            <div id="todayEntriesBody" style="padding:0; width:100%; min-height:200px;">
                 <div style="text-align:center; padding:40px; color:#94a3b8; font-size:14px;">
                     <i class="fas fa-spinner fa-spin" style="font-size:24px; display:block; margin-bottom:12px; color:var(--petron-blue);"></i>
                     Loading today's entries…
@@ -4984,10 +4992,18 @@ setTimeout(function() {
         window.todayEntriesPage     = 1;
         window.todayEntriesData     = [];
 
-        async function loadTodayEntries(keepPage = false) {
+        async function loadTodayEntries(keepPage = false, isBackground = false) {
             const body = document.getElementById('todayEntriesBody');
             const icon = document.getElementById('refreshIcon');
-            if (icon) icon.className = 'fas fa-spinner fa-spin';
+            if (icon && !isBackground) icon.className = 'fas fa-spinner fa-spin';
+
+            // Only show full loading spinner on first load or explicit filter change when table is empty
+            if (!isBackground && body && (!window.todayEntriesData || window.todayEntriesData.length === 0)) {
+                body.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8; font-size:14px; background:#ffffff;">
+                    <i class="fas fa-spinner fa-spin" style="font-size:24px; display:block; margin-bottom:12px; color:var(--petron-blue);"></i>
+                    Loading today's entries…
+                </div>`;
+            }
 
             try {
                 // Read local sub-tab date range and shift filter values
@@ -5022,7 +5038,7 @@ setTimeout(function() {
                 if (elPending) elPending.textContent = pendingCount;
 
                 if (!json.success) {
-                    if (body) {
+                    if (body && (!window.todayEntriesData || window.todayEntriesData.length === 0)) {
                         body.innerHTML = `<div style="text-align:center;padding:40px;color:#ef4444;font-size:14px;background:#ffffff;">
                             <i class="fas fa-exclamation-circle" style="font-size:28px;display:block;margin-bottom:10px;color:#f87171;"></i>
                             Failed to load history entries.
@@ -5047,7 +5063,7 @@ setTimeout(function() {
             if (icon) icon.className = 'fas fa-sync';
         }
 
-        // ── 10-SECOND REAL-TIME AUTO REFRESH FOR METER READING HISTORY ──────────
+        // ── REAL-TIME BACKGROUND REFRESH FOR METER READING HISTORY (SMOOTH & SILENT) ──
         async function autoRefreshMeterReadingHistory() {
             // Only refresh if Meter Reading History card is visible
             const todayCard = document.getElementById('todayEntriesCard');
@@ -5062,15 +5078,15 @@ setTimeout(function() {
 
             try {
                 if (typeof loadTodayEntries === 'function') {
-                    await loadTodayEntries();
+                    await loadTodayEntries(true, true); // keepPage = true, isBackground = true (no flicker)
                 }
             } catch (e) {
-                console.warn('Meter Reading History refresh notice:', e);
+                console.warn('Meter Reading History background refresh notice:', e);
             }
         }
 
-        // Run auto-refresh every 10 seconds
-        setInterval(autoRefreshMeterReadingHistory, 10000);
+        // Run silent background refresh every 15 seconds
+        setInterval(autoRefreshMeterReadingHistory, 15000);
         
         function renderTodayEntriesTable() {
             const body = document.getElementById('todayEntriesBody');
@@ -6539,7 +6555,7 @@ setTimeout(function() {
                                                 data-jo-status="<?= htmlspecialchars($txn['validation_status'] ?? 'Pending') ?>"
                                                 data-jo-paystatus="<?= htmlspecialchars($txn['payment_status'] ?? 'Paid') ?>"
                                                 data-jo-paymethod="<?= htmlspecialchars($txn['payment_method'] ?? 'Cash') ?>"
-                                                data-jo-total="<?= (float)($txn['item_subtotal'] ?? $txn['total_amount'] ?? $grand_total_row ?? 0) ?>"
+                                                data-jo-total="<?= (float)($txn['total_amount'] ?? $txn['item_subtotal'] ?? 0) ?>"
                                                 onclick="window.openRequestAdjustModal(event, this); return false;"
                                                 title="Request adjustment - wrong item/qty/price/customer details"
                                                 class="txn-btn secondary"
@@ -6569,18 +6585,33 @@ setTimeout(function() {
                             </table>
                             </div>
                             <!-- Rows per page + Pagination controls -->
-                            <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:12px;padding:12px 16px;border-top:1px solid #e2e8f0;">
-                                <!-- Rows per page -->
-                                
-                                <!-- Page indicator + arrows -->
-                                <div style="display:flex;align-items:center;gap:8px;">
-                                    <button id="mhPrevBtn" onclick="mhGoPage(mhState.page - 1)" class="pag-btn">
-                                        <i class="fas fa-chevron-left"></i>
-                                    </button>
-                                    <span id="mhPageLabel" style="font-size:13px;color:#495057;white-space:nowrap;">Page 1 of 1</span>
-                                    <button id="mhNextBtn" onclick="mhGoPage(mhState.page + 1)" class="pag-btn">
-                                        <i class="fas fa-chevron-right"></i>
-                                    </button>
+                            <div id="mhPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+                                <div style="display:flex; align-items:center;">
+                                    <span id="mhShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing 1–10 of 10 entries</span>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:16px;">
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                                        <select id="mhPerPage" onchange="mhChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                                            <option value="10" selected>10</option>
+                                            <option value="20">20</option>
+                                            <option value="50">50</option>
+                                            <option value="100">100</option>
+                                        </select>
+                                    </div>
+                                    <div style="display:flex; align-items:center; gap:6px;">
+                                        <button id="mhPrevBtn" onclick="mhGoPage(mhState.page - 1)" 
+                                                style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                                                onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                                            <i class="fas fa-chevron-left"></i>
+                                        </button>
+                                        <span id="mhPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+                                        <button id="mhNextBtn" onclick="mhGoPage(mhState.page + 1)" 
+                                                style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                                                onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                                            <i class="fas fa-chevron-right"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                             <?php endif; ?>
@@ -6594,25 +6625,17 @@ setTimeout(function() {
                         var mhOpen = <?= (!empty($_GET['mh_open'])) ? 'true' : 'false' ?>;
 
                         // ── Merchandise History pagination ────────────────────
-                        var mhState = { page: 1, per_page: 999999 };
+                        var mhState = { page: 1, per_page: 10 };
 
                         function mhRender() {
                             var rows = document.querySelectorAll('#mhTableBody .mh-row');
                             var total = rows.length;
-                            var perPage = mhState.per_page;
+                            var perPage = mhState.per_page || 10;
                             var page = mhState.page;
-
-                            var foot = document.getElementById('mhPerPage') ? document.getElementById('mhPerPage').closest('div[style*="display:flex"]') : null;
-                            if (foot) {
-                                foot.style.display = total <= 10 ? 'none' : 'flex';
-                            }
-                            if (total <= 10) {
-                                rows.forEach(function(row) { row.style.display = ''; });
-                                return;
-                            }
 
                             var totalPages = Math.max(1, Math.ceil(total / perPage));
                             if (page > totalPages) { mhState.page = page = totalPages; }
+                            if (page < 1) { mhState.page = page = 1; }
 
                             var start = (page - 1) * perPage;
                             var end   = start + perPage;
@@ -6620,28 +6643,42 @@ setTimeout(function() {
                                 row.style.display = (i >= start && i < end) ? '' : 'none';
                             });
 
+                            // Update entries counter
+                            var showingStart = total === 0 ? 0 : start + 1;
+                            var showingEnd   = Math.min(end, total);
+                            var entriesLbl   = document.getElementById('mhShowingEntriesText');
+                            if (entriesLbl) {
+                                entriesLbl.textContent = 'Showing ' + (total === 0 ? '0' : showingStart + '–' + showingEnd) + ' of ' + total + ' entries';
+                            }
+
                             var lbl = document.getElementById('mhPageLabel');
                             if (lbl) lbl.textContent = 'Page ' + page + ' of ' + totalPages;
 
                             var prev = document.getElementById('mhPrevBtn');
                             var next = document.getElementById('mhNextBtn');
-                            if (prev) prev.disabled = (page <= 1);
-                            if (next) next.disabled = (page >= totalPages);
-                            if (prev) prev.style.opacity = (page <= 1) ? '0.4' : '1';
-                            if (next) next.style.opacity = (page >= totalPages) ? '0.4' : '1';
+                            if (prev) {
+                                prev.disabled = (page <= 1);
+                                prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+                                prev.style.color = prev.disabled ? '#cbd5e1' : '#475569';
+                            }
+                            if (next) {
+                                next.disabled = (page >= totalPages);
+                                next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+                                next.style.color = next.disabled ? '#cbd5e1' : '#475569';
+                            }
                         }
 
                         window.mhState = mhState;
                         window.mhGoPage = function(p) {
                             var rows = document.querySelectorAll('#mhTableBody .mh-row');
-                            var totalPages = Math.max(1, Math.ceil(rows.length / mhState.per_page));
+                            var totalPages = Math.max(1, Math.ceil(rows.length / (mhState.per_page || 10)));
                             if (p < 1 || p > totalPages) return;
                             mhState.page = p;
                             mhRender();
                         };
                         window.mhChangePerPage = function() {
                             var sel = document.getElementById('mhPerPage');
-                            if (sel) mhState.per_page = parseInt(sel.value);
+                            if (sel) mhState.per_page = parseInt(sel.value, 10);
                             mhState.page = 1;
                             mhRender();
                         };
@@ -8600,7 +8637,7 @@ setTimeout(function() {
                                 <div style="font-size:16px;font-weight:800;color:#00264D;">Request New Customer</div>
                                 <div style="font-size:12px;color:#64748b;">Submitted to the Manager for approval.</div>
                             </div>
-                            <button type="button" onclick="closeCustomerRequestModal()" style="border:none;background:transparent;color:#64748b;font-size:22px;line-height:1;cursor:pointer;">&times;</button>
+                            
                         </div>
                         <div style="padding:20px 22px;max-height:70vh;overflow:auto;">
                             <div class="txn-form-grid" style="margin-bottom:14px;">
@@ -8660,7 +8697,12 @@ setTimeout(function() {
                             </div>
                             <div id="customerRequestError" style="display:none;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:12px;padding:10px 12px;margin-bottom:14px;"></div>
                             <div style="display:flex;gap:10px;justify-content:flex-end;">
-                                <button type="button" onclick="closeCustomerRequestModal()" class="txn-btn secondary">Cancel</button>
+                                <button type="button" onclick="closeCustomerRequestModal()"
+                         style="height:38px !important;padding:0 22px !important;background:#ffffff !important;background-color:#ffffff !important;color:#1e293b !important;border:1.5px solid #94a3b8 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 1px 2px rgba(0,0,0,0.05) !important;"
+                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('color','#0f172a','important');"
+                         onmouseout="this.style.setProperty('background-color','#ffffff','important');this.style.setProperty('color','#1e293b','important');">
+                   <span style="color:#1e293b !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
+                 </button>
                                 <button type="button" id="customerRequestSubmitBtn" onclick="submitCustomerRequest()" class="txn-btn primary">
                                     <i class="fas fa-paper-plane"></i> Submit Request
                                 </button>
@@ -11111,14 +11153,7 @@ setTimeout(function() {
                 <h3 style="color:#003d7a;">All Job Orders</h3>
             </div>
             <div class="txn-card-body" style="padding:0;">
-
                 
-                <?php if (empty($job_orders)): ?>
-                <div style="text-align:center;padding:40px;color:#94a3b8;">
-                    <i class="fas fa-clipboard" style="font-size:28px;display:block;margin-bottom:8px;"></i>
-                    No job orders found.
-                </div>
-                <?php else: ?>
                 <div style="width:100%;overflow-x:hidden !important;padding-bottom:12px;">
                 <table class="txn-table" id="joUnifiedTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse;">
                     <colgroup>
@@ -11158,6 +11193,7 @@ setTimeout(function() {
                         </tr>
                     </thead>
                     <tbody>
+                    <?php if (!empty($job_orders)): ?>
                     <?php foreach ($job_orders as $job):
                         $val_status  = $job['validation_status'] ?? 'Pending Validation';
                         $wf_status   = $job['status'] ?? 'Pending';
@@ -11722,34 +11758,49 @@ setTimeout(function() {
                         </td>
                     </tr>
                     <?php endforeach; ?>
+                    <?php else: ?>
+                    <tr id="joEmptyRow">
+                        <td colspan="15" style="text-align:center;padding:40px;color:#94a3b8;background:#fff;">
+                            <i class="fas fa-clipboard" style="font-size:28px;display:block;margin-bottom:8px;"></i>
+                            No job orders found.
+                        </td>
+                    </tr>
+                    <?php endif; ?>
                     </tbody>
                 </table>
                 </div>
                 <!-- Pagination Footer -->
-                <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-top:1px solid #e2e8f0; background:#fff; font-size:13px; color:#475569; border-radius:0 0 12px 12px;">
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <label style="margin:0; font-weight:400;">Rows per page:</label>
-                        <select id="joPerPage" onchange="joChangePerPage()" class="pag-select">
-                            <option value="10" selected>10</option>
-                            <option value="20">20</option>
-                            <option value="30">30</option>
-                            <option value="40">40</option>
-                            <option value="50">50</option>
-                        </select>
+                <div id="joPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+                    <div style="display:flex; align-items:center;">
+                        <span id="joShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing <?= empty($job_orders) ? '0' : '1–'.min(10, count($job_orders)) ?> of <?= count($job_orders) ?> entries</span>
                     </div>
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <button id="joPrevBtn" onclick="joGoPage(joState.page - 1)" class="pag-btn">
-                            <i class="fas fa-chevron-left"></i>
-                        </button>
-                        <span id="joPageLabel" style="color:#475569; font-size:13px; padding:0 4px;">Page 1 of 1</span>
-                        <button id="joNextBtn" onclick="joGoPage(joState.page + 1)" class="pag-btn">
-                            <i class="fas fa-chevron-right"></i>
-                        </button>
+                    <div style="display:flex; align-items:center; gap:16px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                            <select id="joPerPage" onchange="joChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                                <option value="10" selected>10</option>
+                                <option value="20">20</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <button id="joPrevBtn" onclick="joGoPage(joState.page - 1)" 
+                                    style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                                    onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <span id="joPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of <?= max(1, ceil(count($job_orders) / 10)) ?></span>
+                            <button id="joNextBtn" onclick="joGoPage(joState.page + 1)" 
+                                    style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:<?= count($job_orders) > 10 ? 'pointer' : 'not-allowed' ?>; color:<?= count($job_orders) > 10 ? '#475569' : '#cbd5e1' ?>; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                                    onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-        <?php endif; ?>
 
         <script>
         var joState = {
@@ -11760,8 +11811,8 @@ setTimeout(function() {
             mechanic:    '',
             serviceType: '',
             search:      '',
-            page:    1,
-            per_page: 999999
+            page:        1,
+            per_page:    10
         };
 
         function joApplyFilters() {
@@ -11849,20 +11900,10 @@ setTimeout(function() {
 
             // Pagination
             var total      = visibleRows.length;
-            var perPage    = joState.per_page;
-
-            var foot = document.getElementById('joPerPage') ? document.getElementById('joPerPage').closest('div[style*="display:flex"]') : null;
-            if (foot) {
-                foot.style.display = total <= 10 ? 'none' : 'flex';
-            }
-            if (total <= 10) {
-                visibleRows.forEach(function(row) { row.style.display = ''; });
-                return;
-            }
-
+            var perPage    = joState.per_page || 10;
             var totalPages = Math.max(1, Math.ceil(total / perPage));
             if (joState.page > totalPages) { joState.page = totalPages; }
-
+            if (joState.page < 1) { joState.page = 1; }
 
             var start = (joState.page - 1) * perPage;
             var end   = start + perPage;
@@ -11871,16 +11912,40 @@ setTimeout(function() {
                 row.style.display = (index >= start && index < end) ? '' : 'none';
             });
 
+            // Update entries counter
+            var showingStart = total === 0 ? 0 : start + 1;
+            var showingEnd   = Math.min(end, total);
+            var entriesLbl   = document.getElementById('joShowingEntriesText');
+            if (entriesLbl) {
+                entriesLbl.textContent = 'Showing ' + (total === 0 ? '0' : showingStart + '–' + showingEnd) + ' of ' + total + ' entries';
+            }
+
             var lbl = document.getElementById('joPageLabel');
             if (lbl) lbl.textContent = 'Page ' + joState.page + ' of ' + totalPages;
 
             var prev = document.getElementById('joPrevBtn');
             var next = document.getElementById('joNextBtn');
-            if (prev) { prev.disabled = (joState.page <= 1); prev.style.opacity = prev.disabled ? '0.5' : '1'; }
-            if (next) { next.disabled = (joState.page >= totalPages); next.style.opacity = next.disabled ? '0.5' : '1'; }
+            if (prev) {
+                prev.disabled = (joState.page <= 1);
+                prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+                prev.style.color = prev.disabled ? '#cbd5e1' : '#475569';
+            }
+            if (next) {
+                next.disabled = (joState.page >= totalPages);
+                next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+                next.style.color = next.disabled ? '#cbd5e1' : '#475569';
+            }
         }
 
-        function joGoPage(p) { joState.page = p; joRenderTable(); }
+        function joGoPage(p) {
+            var rows = document.querySelectorAll('#joUnifiedTable tbody tr');
+            var visibleCount = 0;
+            rows.forEach(function(r){ if(r.style.display !== 'none' || r.getAttribute('data-jo-filter')) visibleCount++; });
+            var totalPages = Math.max(1, Math.ceil(visibleCount / (joState.per_page || 10)));
+            if (p < 1 || p > totalPages) return;
+            joState.page = p;
+            joRenderTable();
+        }
 
         function joChangePerPage() {
             var sel = document.getElementById('joPerPage');
@@ -11964,11 +12029,7 @@ setTimeout(function() {
                   <div id="pmModalCustomer" style="color:#93c5fd;font-size:11px;margin-top:1px;"></div>
                 </div>
               </div>
-              <button onclick="closePaymentModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;
-                      width:28px;height:28px;border-radius:6px;font-size:17px;cursor:pointer;
-                      display:flex;align-items:center;justify-content:center;"
-                      onmouseover="this.style.background='rgba(255,255,255,.28)'"
-                      onmouseout="this.style.background='rgba(255,255,255,.15)'">&times;</button>
+              
             </div>
 
             <!-- Balance Strip -->
@@ -13161,8 +13222,10 @@ setTimeout(function() {
               </div>
             </div>
             <div style="padding:16px 24px 20px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;gap:10px;">
-              <button onclick="closeViewMerchandiseModal()" style="padding:0 22px !important;height:38px !important;background:#ffffff !important;color:#475569 !important;border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;min-width:100px !important;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#ffffff'">
-                Close
+              <button type="button" onclick="closeViewMerchandiseModal()"
+                      style="height:38px !important;padding:0 26px !important;background:#002F70 !important;color:#ffffff !important;border:none !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;min-width:110px !important;box-shadow:0 2px 6px rgba(0,47,112,0.25) !important;"
+                      onmouseover="this.style.background='#001f4d'" onmouseout="this.style.background='#002F70'">
+                <i class="fas fa-times" style="margin-right:6px;color:#ffffff !important;"></i> Close
               </button>
             </div>
           </div>
@@ -13226,9 +13289,12 @@ setTimeout(function() {
                 </div>
               </div>
               <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">
-                <button type="button" onclick="closeUpdateStatusModal()" class="txn-btn secondary">
-                  Cancel
-                </button>
+                <button type="button" onclick="closeUpdateStatusModal()"
+                         style="height:38px !important;padding:0 22px !important;background:#ffffff !important;background-color:#ffffff !important;color:#1e293b !important;border:1.5px solid #94a3b8 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 1px 2px rgba(0,0,0,0.05) !important;"
+                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('color','#0f172a','important');"
+                         onmouseout="this.style.setProperty('background-color','#ffffff','important');this.style.setProperty('color','#1e293b','important');">
+                   <span style="color:#1e293b !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
+                 </button>
                 <button type="submit" class="txn-btn primary">
                   <i class="fas fa-check"></i> Update Status
                 </button>
@@ -13320,9 +13386,12 @@ setTimeout(function() {
                 </div>
               </div>
               <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">
-                <button type="button" onclick="closeAdjustJobOrderModal()" class="txn-btn secondary">
-                  Cancel
-                </button>
+                <button type="button" onclick="closeAdjustJobOrderModal()"
+                         style="height:38px !important;padding:0 22px !important;background:#ffffff !important;background-color:#ffffff !important;color:#1e293b !important;border:1.5px solid #94a3b8 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 1px 2px rgba(0,0,0,0.05) !important;"
+                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('color','#0f172a','important');"
+                         onmouseout="this.style.setProperty('background-color','#ffffff','important');this.style.setProperty('color','#1e293b','important');">
+                   <span style="color:#1e293b !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
+                 </button>
                 <button type="submit" class="txn-btn primary">
                   <i class="fas fa-save"></i> Save Changes
                 </button>
@@ -13338,7 +13407,7 @@ setTimeout(function() {
                <h3 style="margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
                   <i class="fas fa-sliders-h" style="color:#ffffff !important;"></i> <span>REQUEST ADJUSTMENT</span>
                </h3>
-               <button type="button" onclick="closeRequestAdjustModal()" style="background:transparent;border:none;color:#ffffff;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;" title="Close">&times;</button>
+               
              </div>
              <form id="requestAdjustForm" onsubmit="submitRequestAdjust(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
                <input type="hidden" id="reqAdjTxnId" name="transaction_id">
@@ -13348,7 +13417,7 @@ setTimeout(function() {
                <div style="padding:16px 20px;flex:1;overflow-y:auto;min-height:0;">
                  <!-- Transaction Brief Details Box -->
                  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;color:#334155;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                   <div><span style="color:#64748b;font-size:11px;">JO No.:</span> <strong id="reqAdjJoNo" style="color:#002F70;display:block;">—</strong></div>
+                   <div><span id="reqAdjRefLabel" style="color:#64748b;font-size:11px;">JO No.:</span> <strong id="reqAdjJoNo" style="color:#002F70;display:block;">—</strong></div>
                    <div><span style="color:#64748b;font-size:11px;">Customer:</span> <strong id="reqAdjCustomer" style="color:#0f172a;display:block;">—</strong></div>
                    <div><span style="color:#64748b;font-size:11px;">Current Status:</span> <strong id="reqAdjStatus" style="color:#0f172a;display:block;">—</strong></div>
                    <div><span style="color:#64748b;font-size:11px;">Payment Status:</span> <strong id="reqAdjPayStatus" style="color:#0f172a;display:block;">—</strong></div>
@@ -13398,10 +13467,16 @@ setTimeout(function() {
                  </div>
                </div>
 
-               <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
-                 <button type="button" onclick="closeRequestAdjustModal()" class="txn-btn secondary">Cancel</button>
-                 <button type="submit" id="reqAdjSubmitBtn" class="txn-btn primary" style="background:#002F70;color:#fff;border:none;">
-                   <i class="fas fa-paper-plane"></i> Submit Adjustment Request
+               <div style="padding:14px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
+                 <button type="button" onclick="closeRequestAdjustModal()"
+                         style="height:38px !important;padding:0 22px !important;background:#ffffff !important;background-color:#ffffff !important;color:#1e293b !important;border:1.5px solid #94a3b8 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 1px 2px rgba(0,0,0,0.05) !important;"
+                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('color','#0f172a','important');"
+                         onmouseout="this.style.setProperty('background-color','#ffffff','important');this.style.setProperty('color','#1e293b','important');">
+                   <span style="color:#1e293b !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
+                 </button>
+                 <button type="submit" id="reqAdjSubmitBtn"
+                         style="height:38px !important;padding:0 22px !important;background:#002F70 !important;color:#ffffff !important;border:none !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 2px 6px rgba(0,47,112,0.25) !important;">
+                   <i class="fas fa-paper-plane" style="margin-right:6px;color:#ffffff !important;"></i> Submit Adjustment Request
                  </button>
                </div>
              </form>
@@ -13415,7 +13490,7 @@ setTimeout(function() {
                <h3 style="margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
                   <i class="fas fa-ban" style="color:#ffffff !important;"></i> <span>REQUEST VOID</span>
                </h3>
-               <button type="button" onclick="closeRequestVoidModal()" style="background:transparent;border:none;color:#ffffff;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;" title="Close">&times;</button>
+               
              </div>
              <form id="requestVoidForm" onsubmit="submitRequestVoid(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
                <input type="hidden" id="reqVoidTxnId" name="transaction_id">
@@ -13425,7 +13500,7 @@ setTimeout(function() {
                <div style="padding:16px 20px;flex:1;overflow-y:auto;min-height:0;">
                  <!-- Transaction Brief Details Box -->
                  <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;color:#991b1b;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                   <div><span style="color:#7f1d1d;font-size:11px;">JO No.:</span> <strong id="reqVoidJoNo" style="color:#991b1b;display:block;">—</strong></div>
+                   <div><span id="reqVoidRefLabel" style="color:#7f1d1d;font-size:11px;">JO No.:</span> <strong id="reqVoidJoNo" style="color:#991b1b;display:block;">—</strong></div>
                    <div><span style="color:#7f1d1d;font-size:11px;">Customer:</span> <strong id="reqVoidCustomer" style="color:#0f172a;display:block;">—</strong></div>
                    <div><span style="color:#7f1d1d;font-size:11px;">JO Status:</span> <strong id="reqVoidStatus" style="color:#0f172a;display:block;">—</strong></div>
                    <div><span style="color:#7f1d1d;font-size:11px;">Payment Status:</span> <strong id="reqVoidPayStatus" style="color:#0f172a;display:block;">—</strong></div>
@@ -13454,10 +13529,16 @@ setTimeout(function() {
                  </div>
                </div>
 
-               <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
-                 <button type="button" onclick="closeRequestVoidModal()" class="txn-btn secondary">Cancel</button>
-                 <button type="submit" id="reqVoidSubmitBtn" class="txn-btn primary" style="background:#dc2626;color:#fff;border:none;">
-                   <i class="fas fa-paper-plane"></i> Submit Void Request
+               <div style="padding:14px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
+                 <button type="button" onclick="closeRequestVoidModal()"
+                         style="height:38px !important;padding:0 22px !important;background:#ffffff !important;background-color:#ffffff !important;color:#1e293b !important;border:1.5px solid #94a3b8 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 1px 2px rgba(0,0,0,0.05) !important;"
+                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('color','#0f172a','important');"
+                         onmouseout="this.style.setProperty('background-color','#ffffff','important');this.style.setProperty('color','#1e293b','important');">
+                   <span style="color:#1e293b !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
+                 </button>
+                 <button type="submit" id="reqVoidSubmitBtn"
+                         style="height:38px !important;padding:0 22px !important;background:#dc2626 !important;color:#ffffff !important;border:none !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 2px 6px rgba(220,38,38,0.25) !important;">
+                   <i class="fas fa-paper-plane" style="margin-right:6px;color:#ffffff !important;"></i> Submit Void Request
                  </button>
                </div>
              </form>
@@ -13471,7 +13552,7 @@ setTimeout(function() {
                <h3 id="txnRequestTitle" style="margin:0;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
                   <i id="txnRequestIcon" class="fas fa-paper-plane" style="color:#ffffff !important;"></i> <span id="txnRequestTitleText" style="color:#ffffff !important;">Request Transaction Action</span>
                </h3>
-               <button type="button" onclick="closeTxnRequestModal()" style="background:transparent;border:none;color:#ffffff;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;" title="Close">&times;</button>
+               
              </div>
              <form id="txnRequestForm" onsubmit="submitTxnRequest(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
                <input type="hidden" id="txnRequestTxnId" name="transaction_id">
@@ -13494,7 +13575,12 @@ setTimeout(function() {
                 </div>
               </div>
               <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
-                <button type="button" onclick="closeTxnRequestModal()" class="txn-btn secondary">Cancel</button>
+                <button type="button" onclick="closeTxnRequestModal()"
+                         style="height:38px !important;padding:0 22px !important;background:#ffffff !important;background-color:#ffffff !important;color:#1e293b !important;border:1.5px solid #94a3b8 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 1px 2px rgba(0,0,0,0.05) !important;"
+                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('color','#0f172a','important');"
+                         onmouseout="this.style.setProperty('background-color','#ffffff','important');this.style.setProperty('color','#1e293b','important');">
+                   <span style="color:#1e293b !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
+                 </button>
                 <button type="submit" id="txnRequestSubmitBtn" class="txn-btn primary">
                   <i class="fas fa-paper-plane"></i> Submit Request
                 </button>

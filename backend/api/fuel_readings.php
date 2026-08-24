@@ -48,7 +48,52 @@ try {
 } catch (Exception $e) { /* non-fatal */ }
 
 try {
-    switch ($action) {
+    function resolve_fuel_inventory_tank_id($pdo, $station_id, $fuel_type_str) {
+    $raw = strtoupper(trim((string)$fuel_type_str));
+    // Strip pump suffix (e.g. "DIESEL 1 - 1" -> "DIESEL 1")
+    $base = preg_replace('/\s*-\s*\d+$/i', '', $raw);
+    
+    // 1. Direct query matching exact base name or with UGT in fuel_inventory
+    $stmt = $pdo->prepare("
+        SELECT id FROM fuel_inventory 
+        WHERE station_id = ? 
+          AND (
+              UPPER(TRIM(fuel_type)) = ?
+           OR UPPER(TRIM(fuel_type)) LIKE ?
+           OR ? LIKE CONCAT('%', UPPER(TRIM(fuel_type)), '%')
+          )
+        ORDER BY id ASC LIMIT 1
+    ");
+    $stmt->execute([$station_id, $base, $base . ' %', $base]);
+    $tank_id = $stmt->fetchColumn();
+    if ($tank_id) return (int)$tank_id;
+    
+    // 2. Mapping by common fuel keywords
+    if (strpos($base, 'TURBO DIESEL') !== false) {
+        $q = "Turbo Diesel";
+    } elseif (strpos($base, 'DIESEL 2') !== false) {
+        $q = "Diesel 2";
+    } elseif (strpos($base, 'DIESEL 1') !== false || strpos($base, 'DIESEL') !== false) {
+        $q = "Diesel";
+    } elseif (strpos($base, 'XCS') !== false) {
+        $q = "XCS Plus";
+    } elseif (strpos($base, 'XTRA UNL 2') !== false || strpos($base, 'UNL 2') !== false) {
+        $q = "Xtra UNL 2";
+    } elseif (strpos($base, 'XTRA UNL') !== false || strpos($base, 'UNL 1') !== false) {
+        $q = "Xtra UNL 1";
+    } elseif (strpos($base, 'KEROSENE') !== false) {
+        $q = "Kerosene";
+    } else {
+        $q = $base;
+    }
+    
+    $stmt2 = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND fuel_type LIKE ? LIMIT 1");
+    $stmt2->execute([$station_id, '%' . $q . '%']);
+    $tid = $stmt2->fetchColumn();
+    return $tid ? (int)$tid : null;
+}
+
+switch ($action) {
 
         // ══════════════════════════════════════════════════════════════════════
         // STAFF: encode a pump reading for the current shift

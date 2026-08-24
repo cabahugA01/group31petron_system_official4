@@ -3,6 +3,9 @@ $page_id = 'inv_fuel';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
 
 $me         = current_user();
 $role       = role_key($me['role'] ?? 'staff');
@@ -1534,6 +1537,50 @@ function filterFuelTable() {
 function applyFuelInventoryFilters(e) {
     if (e) e.preventDefault();
     filterFuelTable();
+
+    // ── 15-SECOND SILENT BACKGROUND AUTO-FETCH FOR FUEL INVENTORY ──────────
+    function autoRefreshFuelInventory() {
+        // Do not refresh if user has any modal open or is typing
+        var modals = ['tankModal', 'movementModal', 'fuelSrModal', 'fsrSuccessOverlay', 'fsrSuccessPopup'];
+        for (var i = 0; i < modals.length; i++) {
+            var el = document.getElementById(modals[i]);
+            if (el && (el.classList.contains('open') || el.style.display === 'flex' || el.style.display === 'block')) return;
+        }
+        var searchInput = document.getElementById('sq');
+        if (searchInput && searchInput === document.activeElement && searchInput.value.trim() !== '') return;
+
+        // Fetch fresh HTML in background and update table & KPI cards seamlessly
+        fetch(window.location.href, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            cache: 'no-store'
+        })
+        .then(function(res) { return res.text(); })
+        .then(function(html) {
+            var parser = new DOMParser();
+            var doc = parser.parseFromString(html, 'text/html');
+            
+            // Update table body
+            var newTbody = doc.querySelector('#fuelTable tbody') || doc.querySelector('table tbody');
+            var curTbody = document.querySelector('#fuelTable tbody') || document.querySelector('table tbody');
+            if (newTbody && curTbody) {
+                curTbody.innerHTML = newTbody.innerHTML;
+                if (typeof filterFuelTable === 'function') filterFuelTable();
+            }
+            
+            // Update top KPI cards if present
+            var newCards = doc.querySelectorAll('.kpi-card, .metric-card, [class*="summary-card"]');
+            var curCards = document.querySelectorAll('.kpi-card, .metric-card, [class*="summary-card"]');
+            if (newCards.length > 0 && curCards.length === newCards.length) {
+                for (var j = 0; j < newCards.length; j++) {
+                    curCards[j].innerHTML = newCards[j].innerHTML;
+                }
+            }
+        })
+        .catch(function(e) {
+            console.warn('Fuel inventory auto-fetch notice:', e);
+        });
+    }
+    setInterval(autoRefreshFuelInventory, 15000);
     return false;
 }
 function resetFuelInventoryFilters() {
@@ -1542,6 +1589,50 @@ function resetFuelInventoryFilters() {
         if (el) el.value = '';
     });
     filterFuelTable();
+
+    // ── 15-SECOND SILENT BACKGROUND AUTO-FETCH FOR FUEL INVENTORY ──────────
+    function autoRefreshFuelInventory() {
+        // Do not refresh if user has any modal open or is typing
+        var modals = ['tankModal', 'movementModal', 'fuelSrModal', 'fsrSuccessOverlay', 'fsrSuccessPopup'];
+        for (var i = 0; i < modals.length; i++) {
+            var el = document.getElementById(modals[i]);
+            if (el && (el.classList.contains('open') || el.style.display === 'flex' || el.style.display === 'block')) return;
+        }
+        var searchInput = document.getElementById('sq');
+        if (searchInput && searchInput === document.activeElement && searchInput.value.trim() !== '') return;
+
+        // Fetch fresh HTML in background and update table & KPI cards seamlessly
+        fetch(window.location.href, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            cache: 'no-store'
+        })
+        .then(function(res) { return res.text(); })
+        .then(function(html) {
+            var parser = new DOMParser();
+            var doc = parser.parseFromString(html, 'text/html');
+            
+            // Update table body
+            var newTbody = doc.querySelector('#fuelTable tbody') || doc.querySelector('table tbody');
+            var curTbody = document.querySelector('#fuelTable tbody') || document.querySelector('table tbody');
+            if (newTbody && curTbody) {
+                curTbody.innerHTML = newTbody.innerHTML;
+                if (typeof filterFuelTable === 'function') filterFuelTable();
+            }
+            
+            // Update top KPI cards if present
+            var newCards = doc.querySelectorAll('.kpi-card, .metric-card, [class*="summary-card"]');
+            var curCards = document.querySelectorAll('.kpi-card, .metric-card, [class*="summary-card"]');
+            if (newCards.length > 0 && curCards.length === newCards.length) {
+                for (var j = 0; j < newCards.length; j++) {
+                    curCards[j].innerHTML = newCards[j].innerHTML;
+                }
+            }
+        })
+        .catch(function(e) {
+            console.warn('Fuel inventory auto-fetch notice:', e);
+        });
+    }
+    setInterval(autoRefreshFuelInventory, 15000);
 }
 
 // ── Sub Tab Switcher ─────────────────────────────────────────────────────────────────────────────────────────
@@ -1824,6 +1915,50 @@ document.addEventListener('DOMContentLoaded', function() {
         setupTablePagination('fuelTable', 'fuelRowsLimit', 'fuelPagination', 20);
     }
     filterFuelTable();
+
+    // ── 15-SECOND SILENT BACKGROUND AUTO-FETCH FOR FUEL INVENTORY ──────────
+    function autoRefreshFuelInventory() {
+        // Do not refresh if user has any modal open or is typing
+        var modals = ['tankModal', 'movementModal', 'fuelSrModal', 'fsrSuccessOverlay', 'fsrSuccessPopup'];
+        for (var i = 0; i < modals.length; i++) {
+            var el = document.getElementById(modals[i]);
+            if (el && (el.classList.contains('open') || el.style.display === 'flex' || el.style.display === 'block')) return;
+        }
+        var searchInput = document.getElementById('sq');
+        if (searchInput && searchInput === document.activeElement && searchInput.value.trim() !== '') return;
+
+        // Fetch fresh HTML in background and update table & KPI cards seamlessly
+        fetch(window.location.href, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            cache: 'no-store'
+        })
+        .then(function(res) { return res.text(); })
+        .then(function(html) {
+            var parser = new DOMParser();
+            var doc = parser.parseFromString(html, 'text/html');
+            
+            // Update table body
+            var newTbody = doc.querySelector('#fuelTable tbody') || doc.querySelector('table tbody');
+            var curTbody = document.querySelector('#fuelTable tbody') || document.querySelector('table tbody');
+            if (newTbody && curTbody) {
+                curTbody.innerHTML = newTbody.innerHTML;
+                if (typeof filterFuelTable === 'function') filterFuelTable();
+            }
+            
+            // Update top KPI cards if present
+            var newCards = doc.querySelectorAll('.kpi-card, .metric-card, [class*="summary-card"]');
+            var curCards = document.querySelectorAll('.kpi-card, .metric-card, [class*="summary-card"]');
+            if (newCards.length > 0 && curCards.length === newCards.length) {
+                for (var j = 0; j < newCards.length; j++) {
+                    curCards[j].innerHTML = newCards[j].innerHTML;
+                }
+            }
+        })
+        .catch(function(e) {
+            console.warn('Fuel inventory auto-fetch notice:', e);
+        });
+    }
+    setInterval(autoRefreshFuelInventory, 15000);
 
     // Auto-open fuel stock request modal if triggered from URL
     var urlParams = new URLSearchParams(window.location.search);
