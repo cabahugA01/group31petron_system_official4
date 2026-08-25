@@ -178,22 +178,6 @@ if ($action === 'seed') {
         ]);
     }
 
-    // ── 2. Official Transactions Today ───────────────────────
-    $admin_tx = adm_count($pdo,
-        "SELECT COUNT(*) FROM merchandise_transactions WHERE station_id=? AND validation_status IN ('Official','Completed','Approved','Adjusted') AND DATE(COALESCE(transaction_date,created_at))=CURDATE()",
-        [$station_id]);
-    if ($admin_tx > 0) {
-        upsert_notif($pdo, $user_id, [
-            'type'        => 'info',
-            'title'       => 'Official Transactions Today',
-            'message'     => "{$admin_tx} official transaction(s) are available for oversight review.",
-            'event_type'  => 'transaction',
-            'severity'    => 'low',
-            'source_key'  => "admin_tx_today_{$station_id}_".date('Y-m-d'),
-            'redirect_url'=> 'admin_all_transactions.php',
-        ]);
-    }
-
     // ── 3. Pending Purchase Orders ────────────────────────────
     $pending_po = adm_count($pdo,
         "SELECT COUNT(*) FROM purchase_orders WHERE station_id=? AND status IN ('Pending','Pending Approval','Pending Admin Validation')",
@@ -207,22 +191,6 @@ if ($action === 'seed') {
             'severity'    => 'medium',
             'source_key'  => "pending_po_{$station_id}",
             'redirect_url'=> 'admin_procurement_reports.php?section=po',
-        ]);
-    }
-
-    // ── 4. Official Job Orders Today ─────────────────────────
-    $admin_jo = adm_count($pdo,
-        "SELECT COUNT(*) FROM job_orders WHERE station_id=? AND validation_status IN ('Official','Completed','Approved','Adjusted') AND DATE(created_at)=CURDATE()",
-        [$station_id]);
-    if ($admin_jo > 0) {
-        upsert_notif($pdo, $user_id, [
-            'type'        => 'info',
-            'title'       => 'Official Job Orders Today',
-            'message'     => "{$admin_jo} job order(s) are available for oversight review.",
-            'event_type'  => 'joborder',
-            'severity'    => 'low',
-            'source_key'  => "admin_jo_today_{$station_id}_".date('Y-m-d'),
-            'redirect_url'=> 'admin_all_transactions.php',
         ]);
     }
 

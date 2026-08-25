@@ -140,7 +140,17 @@ try {
     $job_order_id = $pdo->lastInsertId();
     
     // Commit transaction
-    $pdo->commit();
+        $pdo->commit();
+
+    notify_transaction_submission($pdo, (int)$station_id, [
+        'transaction_id'    => $job_order_number,
+        'transaction_db_id' => (int)$job_order_id,
+        'transaction_type'  => 'job_order',
+        'total_amount'      => (float)$service_fee,
+        'customer_name'     => $customer_name,
+        'staff_name'        => $me['name'] ?? $me['username'] ?? 'Staff',
+        'shift_period'      => $shift_period ?? $shift_name ?? ''
+    ]);
     
     echo json_encode([
         'success' => true,

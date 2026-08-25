@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'manager_mechanics_management';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -1291,6 +1291,6 @@ async function autoRefreshMechanicsManagement() {
 }
 
 // Run auto-refresh every 10 seconds
-setInterval(autoRefreshMechanicsManagement, 10000);
+setInterval(autoRefreshMechanicsManagement, 2000);
 </script>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

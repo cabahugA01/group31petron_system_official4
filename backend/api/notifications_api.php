@@ -170,7 +170,7 @@ function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', i
         );
 
         $counts['customers']     = $safe_count(
-            "SELECT COUNT(*) FROM customers WHERE station_id = ? AND LOWER(COALESCE(NULLIF(verification_status,''), NULLIF(mgr_status,''), 'verified')) IN ('pending','pending verification','for review')",
+            "SELECT COUNT(*) FROM customer_requests WHERE station_id = ? AND LOWER(status) = 'pending'",
             [$station_id]
         );
         $counts['mgr_customers'] = $counts['customers'];
@@ -431,9 +431,9 @@ try {
                         "SELECT COUNT(*) FROM station_inventory si INNER JOIN inventory_products ip ON ip.id=si.product_id WHERE {$low_merch_where}COALESCE(si.stock_level,0) <= COALESCE(si.reorder_level, ip.min_stock, 24) AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels')",
                         $low_merch_params
                     );
-                    // Pending customers
+                    // Pending customers (from staff requests)
                     $action_count += $safe_count(
-                        "SELECT COUNT(*) FROM customers WHERE {$station_where}LOWER(COALESCE(NULLIF(verification_status,''), NULLIF(mgr_status,''), 'verified')) IN ('pending','pending verification','pending_validation','for review')",
+                        "SELECT COUNT(*) FROM customer_requests WHERE {$station_where}LOWER(status) = 'pending'",
                         $station_param
                     );
                     // Pending price approvals
@@ -473,9 +473,9 @@ try {
                         "SELECT COUNT(*) FROM inventory WHERE {$station_where}stock_level <= 20",
                         $station_param
                     );
-                    // Pending customers
+                    // Pending customers (from staff requests)
                     $action_count += $safe_count(
-                        "SELECT COUNT(*) FROM customers WHERE {$station_where}LOWER(COALESCE(NULLIF(verification_status,''), NULLIF(mgr_status,''), 'verified')) IN ('pending','pending verification','pending_validation','for review')",
+                        "SELECT COUNT(*) FROM customer_requests WHERE {$station_where}LOWER(status) = 'pending'",
                         $station_param
                     );
 

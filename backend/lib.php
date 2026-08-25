@@ -2713,6 +2713,61 @@ function notify(
 // ─────────────────────────────────────────────────────────────────────────
 // notify_manager() — find station's manager user(s) and notify them all
 // ─────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// notify_transaction_submission() — single notification for any transaction type
+// (Merchandise only, Job Order only, or Combined Job Order + Merchandise)
+// ─────────────────────────────────────────────────────────────────────────
+if (!function_exists('notify_transaction_submission')) {
+function notify_transaction_submission(
+    PDO $pdo,
+    int $station_id,
+    array $data
+): void {
+    try {
+        $txn_id = trim((string)($data['transaction_id'] ?? ''));
+        $db_id = (int)($data['transaction_db_id'] ?? $data['id'] ?? 0);
+        $raw_type = strtolower(trim((string)($data['transaction_type'] ?? 'merchandise')));
+        
+        if ($raw_type === 'combined' || (strpos($raw_type, 'job') !== false && strpos($raw_type, 'merch') !== false)) {
+            $type_label = 'Job Order + Merchandise';
+        } elseif ($raw_type === 'job_order' || strpos($raw_type, 'job') !== false) {
+            $type_label = 'Job Order';
+        } else {
+            $type_label = 'Merchandise';
+        }
+
+        $total_amount = (float)($data['total_amount'] ?? $data['amount'] ?? 0);
+        $customer = trim((string)($data['customer_name'] ?? $data['customer'] ?? 'Walk-in Customer'));
+        if ($customer === '' || $customer === '—') $customer = 'Walk-in Customer';
+        $staff = trim((string)($data['staff_name'] ?? $data['staff'] ?? 'Staff'));
+        $shift = trim((string)($data['shift_period'] ?? $data['shift_name'] ?? ''));
+
+        $or_no = 'OR-' . date('Y') . '-' . str_pad($db_id > 0 ? $db_id : mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
+        $title = "New {$type_label} Transaction — {$or_no}";
+        $message = "Staff {$staff} submitted a {$type_label} transaction ({$txn_id}) for {$customer} totaling ₱" . number_format($total_amount, 2) . ".";
+
+        $source_key = "txn_sub_{$station_id}_" . ($db_id > 0 ? $db_id : preg_replace('/[^a-zA-Z0-9_]/', '_', $txn_id));
+
+        notify_manager(
+            $pdo,
+            $station_id,
+            'info',
+            'transaction',
+            'medium',
+            $title,
+            $message,
+            $source_key,
+            'manager_validated_transactions.php',
+            'transaction',
+            $db_id,
+            $shift
+        );
+    } catch (Throwable $e) {
+        error_log("notify_transaction_submission error: " . $e->getMessage());
+    }
+}
+}
+
 if (!function_exists('notify_manager')) {
 function notify_manager(
     PDO    $pdo,
@@ -2820,6 +2875,16 @@ function notification_redirect_url(string $ref_type, int $ref_id, string $role):
             'staff'    => "staff_requests.php{$id}",
             'manager'  => "manager_review_stock_requests.php{$id}",
             'admin'    => "admin_stock_requests_monitor.php{$id}",
+        ],
+                'transaction' => [
+            'staff'    => "staff_transactions_hub.php",
+            'manager'  => "manager_validated_transactions.php",
+            'admin'    => "admin_all_transactions.php",
+        ],
+        'merchandise_transaction' => [
+            'staff'    => "staff_transactions_hub.php",
+            'manager'  => "manager_validated_transactions.php",
+            'admin'    => "admin_all_transactions.php",
         ],
         'void_request' => [
             'staff'    => "voided_transactions.php{$id}",

@@ -385,6 +385,17 @@ try {
         ]);
     } catch (Exception $ate) { error_log('Audit trail error: ' . $ate->getMessage()); }
 
+        // ── Single notification to manager for this transaction ──
+    notify_transaction_submission($pdo, (int)$station_id, [
+        'transaction_id'    => $txn_id_str ?? $jo_id_str ?? '',
+        'transaction_db_id' => (int)($transaction_id ?? $job_order_id ?? 0),
+        'transaction_type'  => $transaction_type,
+        'total_amount'      => (float)($total_amount ?? $service_total ?? 0),
+        'customer_name'     => $customer_name,
+        'staff_name'        => $me['name'] ?? $me['username'] ?? 'Staff',
+        'shift_period'      => $shift_period ?? $shift_name ?? ''
+    ]);
+
     // ── 5. PREPARE RECEIPT DATA ──────────────────────────────────────────────
 
     $receipt_data = [

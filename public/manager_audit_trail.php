@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Manager Audit Trail — Full Branch Audit Trail
  * 12 data sources, station-scoped, no redundancy.
@@ -579,6 +579,6 @@ function autoRefreshManagerAuditTrail() {
         .catch(() => {});
 }
 
-setInterval(autoRefreshManagerAuditTrail, 15000);
+setInterval(autoRefreshManagerAuditTrail, 2000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

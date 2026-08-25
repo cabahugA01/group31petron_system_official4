@@ -2436,7 +2436,7 @@ function handleEventTypeChange() {
 <!-- Auto-Refresh for Calendar Module (Shift 1 & Shift 2 Real-Time Sync) -->
 <script>
 (function() {
-    const REFRESH_INTERVAL_MS = 15000; // 15 seconds auto refresh
+    const REFRESH_INTERVAL_MS = 2000; // 2 seconds auto refresh
 
     function isUserEditingOrModalOpen() {
         // 1. Check if any modal is currently visible

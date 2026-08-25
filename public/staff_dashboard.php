@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ==============================================================================
 // STAFF DASHBOARD — FINAL COMPLETE (Shift 1 & Shift 2 Unified)
 // public/staff_dashboard.php
@@ -2616,7 +2616,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Auto-refresh interval every 10 seconds
-    setInterval(refreshStaffDashboard, 10000);
+    setInterval(refreshStaffDashboard, 2000);
 });
 </script>
 

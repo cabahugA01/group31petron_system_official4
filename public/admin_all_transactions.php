@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'admin_all_transactions';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -1222,6 +1222,6 @@ async function autoRefreshAdminAllTransactions() {
     }
 }
 
-setInterval(autoRefreshAdminAllTransactions, 10000);
+setInterval(autoRefreshAdminAllTransactions, 2000);
 </script>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

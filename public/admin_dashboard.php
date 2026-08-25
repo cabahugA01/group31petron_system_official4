@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * ADMIN / OWNER — Admin Dashboard
  * Complete branch-wide monitoring of Fuel, Merchandise, and Job Order operations,
@@ -2670,7 +2670,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    setInterval(autoRefreshAdminDashboard, 10000);
+    setInterval(autoRefreshAdminDashboard, 2000);
 });
 </script>
 

@@ -196,24 +196,6 @@ if ($flagged_del > 0) {
 }
 
 // ════════════════════════════════════════════════════════════
-// 4. OFFICIAL TRANSACTIONS
-// ════════════════════════════════════════════════════════════
-$admin_tx = adm_count($pdo,
-    "SELECT COUNT(*) FROM merchandise_transactions WHERE {$stn_sql}validation_status IN ('Official','Completed','Approved','Adjusted') AND DATE(COALESCE(transaction_date,created_at)) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)",
-    $stn_p);
-if ($admin_tx > 0) {
-    $generated += upsert_notif($pdo, $user_id, [
-        'type'        => 'info',
-        'title'       => 'Official Transactions',
-        'message'     => "{$admin_tx} official transaction(s) are available for oversight review.",
-        'event_type'  => 'transaction',
-        'severity'    => 'low',
-        'source_key'  => "admin_tx_today_{$station_id}_".date('Y-m-d'),
-        'redirect_url'=> 'admin_all_transactions.php',
-    ]);
-}
-
-// ════════════════════════════════════════════════════════════
 // 5. PENDING PURCHASE ORDERS
 // ════════════════════════════════════════════════════════════
 $pending_po = adm_count($pdo,
@@ -228,24 +210,6 @@ if ($pending_po > 0) {
         'severity'    => 'medium',
         'source_key'  => "pending_po_{$station_id}",
         'redirect_url'=> 'admin_procurement_reports.php?section=po',
-    ]);
-}
-
-// ════════════════════════════════════════════════════════════
-// 6. OFFICIAL JOB ORDERS
-// ════════════════════════════════════════════════════════════
-$admin_jo = adm_count($pdo,
-    "SELECT COUNT(*) FROM job_orders WHERE {$stn_sql}validation_status IN ('Official','Completed','Approved','Adjusted') AND DATE(created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)",
-    $stn_p);
-if ($admin_jo > 0) {
-    $generated += upsert_notif($pdo, $user_id, [
-        'type'        => 'info',
-        'title'       => 'Official Job Orders',
-        'message'     => "{$admin_jo} job order(s) are available for oversight review.",
-        'event_type'  => 'job_order',
-        'severity'    => 'low',
-        'source_key'  => "admin_jo_today_{$station_id}_".date('Y-m-d'),
-        'redirect_url'=> 'admin_all_transactions.php',
     ]);
 }
 

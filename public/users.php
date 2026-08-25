@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'users';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -1869,7 +1869,7 @@ function autoRefreshUserManagement() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshUserManagement, 10000);
+setInterval(autoRefreshUserManagement, 2000);
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

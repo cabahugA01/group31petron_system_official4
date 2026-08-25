@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // Manager Fuel Adjustments Oversight – manager_fuel_adjustments.php
 // Purpose: Consolidated history of Fuel Transaction Adjustments
@@ -897,7 +897,7 @@ function autoRefreshFuelAdjustments() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshFuelAdjustments, 10000);
+setInterval(autoRefreshFuelAdjustments, 2000);
 
 // ── Fuel Adjustments Pagination ──
 var mfaState = { page: 1, per_page: 10 };

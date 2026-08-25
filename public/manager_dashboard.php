@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Manager Dashboard — Complete Final Implementation
  * Operational Monitoring + Approval Management + Fuel Verification + Inventory Performance
@@ -2736,7 +2736,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    setInterval(refreshManagerDashboard, 10000);
+    setInterval(refreshManagerDashboard, 2000);
 });
 </script>
 

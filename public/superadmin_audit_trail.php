@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * FINAL DEVELOPER AUDIT TRAIL
  * Purely System-Level Logs for Superadmin / Developer
@@ -1221,6 +1221,6 @@ function autoRefreshSuperadminAuditTrail() {
 }
 
 // Start 10-second background auto-refresh for all Audit Trail operations
-setInterval(autoRefreshSuperadminAuditTrail, 15000);
+setInterval(autoRefreshSuperadminAuditTrail, 2000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

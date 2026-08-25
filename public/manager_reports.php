@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Master Manager Reports System
  * Navigation and layout 100% aligned with Admin Reports.
@@ -1551,7 +1551,7 @@ function openCustomerModal(customerId) {
             .catch(() => {});
     }
 
-    autoRefreshTimer = setInterval(autoRefreshManagerReports, 15000);
+    autoRefreshTimer = setInterval(autoRefreshManagerReports, 2000);
 })();
 </script>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

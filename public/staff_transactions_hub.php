@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Staff Transactions Hub
  * Sidebar navigation for Fuel (internal) and Merchandise (customer-facing) transactions.
@@ -5086,7 +5086,7 @@ setTimeout(function() {
         }
 
         // Run silent background refresh every 15 seconds
-        setInterval(autoRefreshMeterReadingHistory, 15000);
+        setInterval(autoRefreshMeterReadingHistory, 2000);
         
         function renderTodayEntriesTable() {
             const body = document.getElementById('todayEntriesBody');
@@ -11989,7 +11989,7 @@ setTimeout(function() {
         }
 
         // Run auto-refresh every 10 seconds
-        setInterval(autoRefreshJobOrderTracker, 10000);
+        setInterval(autoRefreshJobOrderTracker, 2000);
         </script>
 
         </div><!-- /innerTab_tracker -->

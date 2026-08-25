@@ -49,7 +49,7 @@ include __DIR__ . '/../partials/header.php';
 .cust-card.blue .value { color:#2563eb; }
 
 /* Filter Toolbar */
-.cust-toolbar { background:#fff; border:1px solid #cbd5e1; border-radius:8px; padding:14px 18px; display:grid; grid-template-columns:2fr 1.2fr 1fr 1fr 1fr auto; gap:12px; align-items:end; margin-bottom:18px; box-shadow:0 2px 6px rgba(15,23,42,.04); }
+.cust-toolbar { background:#fff; border:1px solid #cbd5e1; border-radius:8px; padding:14px 18px; display:grid; grid-template-columns:2fr 1fr 1fr 1fr auto; gap:12px; align-items:end; margin-bottom:18px; box-shadow:0 2px 6px rgba(15,23,42,.04); }
 .cust-field label { display:block; font-size:11px; font-weight:800; color:#475569; text-transform:uppercase; margin-bottom:4px; }
 .cust-field input, .cust-field select, .cust-field textarea { width:100%; height:38px; border:1px solid #cbd5e1; border-radius:6px; padding:6px 10px; font-size:13px; color:#0f172a; background:#fff; font-family:inherit; }
 .cust-field textarea { height:70px; resize:vertical; }
@@ -263,14 +263,6 @@ button.remove-v-btn i {
             <input type="search" id="filterSearch" placeholder="Customer Name / ID / Contact / Plate" oninput="queueLoad()">
         </div>
         <div class="cust-field">
-            <label>Customer Type</label>
-            <select id="filterType" onchange="loadManagerCustomers()">
-                <option value="">All Types</option>
-                <option value="walk-in">Walk in</option>
-                <option value="registered">Registered</option>
-            </select>
-        </div>
-        <div class="cust-field">
             <label>Status</label>
             <select id="filterStatus" onchange="loadManagerCustomers()">
                 <option value="">All Status</option>
@@ -297,15 +289,12 @@ button.remove-v-btn i {
         <div class="cust-tabs">
             <button class="cust-tab active" id="tab-list" onclick="switchCustTab('list')">
                 <i class="fas fa-list"></i> Customer List
-                <span class="cust-tab-badge" id="tabBadgeList">0</span>
             </button>
             <button class="cust-tab" id="tab-pending" onclick="switchCustTab('pending')">
                 <i class="fas fa-inbox"></i> Pending Customer Requests
-                <span class="cust-tab-badge" id="tabBadgePending">0</span>
             </button>
             <button class="cust-tab" id="tab-archived" onclick="switchCustTab('archived')">
                 <i class="fas fa-archive"></i> Archived Customers
-                <span class="cust-tab-badge" id="tabBadgeArchived">0</span>
             </button>
         </div>
     </div>
@@ -326,22 +315,20 @@ button.remove-v-btn i {
         <table class="cust-table">
             <colgroup>
                 <col style="width:10%">
+                <col style="width:16%">
+                <col style="width:10%">
                 <col style="width:14%">
-                <col style="width:7%">
-                <col style="width:9%">
-                <col style="width:13%">
                 <col style="width:8%">
                 <col style="width:8%">
-                <col style="width:9%">
-                <col style="width:9%">
+                <col style="width:10%">
+                <col style="width:10%">
                 <col style="width:6%">
-                <col style="width:7%">
+                <col style="width:8%">
             </colgroup>
             <thead>
                 <tr>
                     <th>Customer ID</th>
                     <th>Customer Name</th>
-                    <th>Type</th>
                     <th>Contact No.</th>
                     <th>Vehicles</th>
                     <th>Credit Limit</th>
@@ -353,7 +340,7 @@ button.remove-v-btn i {
                 </tr>
             </thead>
             <tbody id="customersBody">
-                <tr><td colspan="11" class="empty">Loading customers...</td></tr>
+                <tr><td colspan="10" class="empty">Loading customers...</td></tr>
             </tbody>
         </table>
         <div id="custListPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
@@ -457,25 +444,23 @@ button.remove-v-btn i {
         </div>
         <table class="cust-table">
             <colgroup>
-                <col style="width:14%">
-                <col style="width:22%">
-                <col style="width:12%">
                 <col style="width:16%">
-                <col style="width:21%">
+                <col style="width:26%">
+                <col style="width:18%">
+                <col style="width:25%">
                 <col style="width:15%">
             </colgroup>
             <thead>
                 <tr>
                     <th>Customer ID</th>
                     <th>Customer Name</th>
-                    <th>Type</th>
                     <th>Archived Date</th>
                     <th>Reason</th>
                     <th style="text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody id="archivedBody">
-                <tr><td colspan="6" class="empty">Loading archived customers...</td></tr>
+                <tr><td colspan="5" class="empty">Loading archived customers...</td></tr>
             </tbody>
         </table>
         <div id="custArchPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
@@ -527,20 +512,7 @@ button.remove-v-btn i {
                 <div class="form-grid">
                     <!-- Basic Information -->
                     <div class="form-title">Basic Information</div>
-                    <div class="cust-field">
-                        <label>Customer Type <span style="color:red;">*</span></label>
-                        <select id="customerType" name="customer_type" required onchange="toggleCreditSection()">
-                            <option value="walk-in">Walk-in</option>
-                            <option value="registered">Registered</option>
-                        </select>
-                    </div>
-                    <div class="cust-field">
-                        <label>Status <span style="color:red;">*</span></label>
-                        <select id="custStatus" name="status" required>
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
-                        </select>
-                    </div>
+                    <input type="hidden" id="customerType" name="customer_type" value="registered">
                     <div class="cust-field">
                         <label>First Name / Name <span style="color:red;">*</span></label>
                         <input type="text" id="firstName" name="first_name" required placeholder="e.g. Juan">
@@ -554,16 +526,23 @@ button.remove-v-btn i {
                         <input type="text" id="lastName" name="last_name" placeholder="e.g. Dela Cruz">
                     </div>
                     <div class="cust-field">
+                        <label>Status <span style="color:red;">*</span></label>
+                        <select id="custStatus" name="status" required>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                    <div class="cust-field">
                         <label>Contact Number</label>
                         <input type="text" id="contactNumber" name="contact_number" placeholder="0917xxxxxxx">
                     </div>
                     <div class="cust-field">
-                        <label>Address</label>
-                        <input type="text" id="address" name="address" placeholder="Complete Address">
-                    </div>
-                    <div class="cust-field">
                         <label>Email (Optional)</label>
                         <input type="email" id="email" name="email" placeholder="customer@example.com">
+                    </div>
+                    <div class="cust-field" style="grid-column:1 / -1;">
+                        <label>Address</label>
+                        <input type="text" id="address" name="address" placeholder="Complete Address">
                     </div>
 
                     <!-- Registered Vehicles -->
@@ -608,8 +587,11 @@ button.remove-v-btn i {
                     <!-- Financial Information -->
                     <div class="form-title credit-only">Credit Information</div>
                     <div class="cust-field credit-only">
-                        <label>Credit Limit (₱) <span style="color:red;">*</span></label>
-                        <input type="number" id="creditLimit" name="credit_limit" step="0.01" min="0" value="0.00" placeholder="e.g. 50000" oninput="calcAvailableCredit()">
+                        <label>Credit Limit (&#8369;) <span style="color:red;">*</span></label>
+                        <input type="text" id="creditLimit" name="credit_limit" inputmode="decimal" autocomplete="off"
+                               value="0.00" placeholder="e.g. 50,000.00"
+                               oninput="formatCreditLimit(this)"
+                               style="text-align:right; font-weight:700; letter-spacing:0.5px;">
                     </div>
                     <div class="cust-field credit-only">
                         <label>Payment Terms</label>
@@ -688,7 +670,6 @@ button.remove-v-btn i {
                         <h4>Customer Summary</h4>
                         <div class="info-row"><span>Customer ID</span><span id="vCustId">-</span></div>
                         <div class="info-row"><span>Customer Since</span><span id="vCustSince">-</span></div>
-                        <div class="info-row"><span>Customer Type</span><span id="vType">-</span></div>
                         <div class="info-row"><span>Status</span><span id="vStatus">-</span></div>
                         <div class="info-row"><span>Contact No.</span><span id="vContact">-</span></div>
                         <div class="info-row"><span>Email</span><span id="vEmail">-</span></div>
@@ -1139,7 +1120,6 @@ function switchCustTab(tab) {
 
 function resetFilters() {
     document.getElementById('filterSearch').value = '';
-    document.getElementById('filterType').value = '';
     document.getElementById('filterStatus').value = '';
     document.getElementById('filterDateFrom').value = '';
     document.getElementById('filterDateTo').value = '';
@@ -1148,7 +1128,6 @@ function resetFilters() {
 
 function loadManagerCustomers() {
     const search = document.getElementById('filterSearch').value;
-    const type = document.getElementById('filterType').value;
     const status = document.getElementById('filterStatus').value;
     const dateFrom = document.getElementById('filterDateFrom').value;
     const dateTo = document.getElementById('filterDateTo').value;
@@ -1156,7 +1135,7 @@ function loadManagerCustomers() {
     const params = new URLSearchParams({
         action: 'list',
         tab: activeTab,
-        search, type, status, date_from: dateFrom, date_to: dateTo
+        search, status, date_from: dateFrom, date_to: dateTo
     });
 
     const bodyId = activeTab === 'archived' ? 'archivedBody' : 'customersBody';
@@ -1198,10 +1177,6 @@ function updateDashboardCards(stats) {
     document.getElementById('statCredit').innerText = stats.credit || 0;
     document.getElementById('statRequests').innerText = stats.pending_requests || 0;
     document.getElementById('statNewMonth').innerText = stats.new_this_month || 0;
-
-    document.getElementById('tabBadgePending').innerText = stats.pending_requests || 0;
-    document.getElementById('tabBadgeArchived').innerText = stats.archived || 0;
-    document.getElementById('tabBadgeList').innerText = stats.total || 0;
 }
 
 function formatVehicleCell(c) {
@@ -1261,19 +1236,14 @@ function custListRender() {
     const end = Math.min(start + perPage, total);
     const slice = data.slice(start, end);
 
-    tbody.innerHTML = slice.map(c => {
-        const isReg = (c.customer_type !== 'walk-in');
-        const typeLabel = isReg ? 'REGISTERED' : 'WALK-IN';
-        const typeClass = isReg ? 'credit' : 'walk-in';
-        return `
+    tbody.innerHTML = slice.map(c => `
         <tr>
             <td><strong>${h(c.customer_id)}</strong></td>
             <td><strong>${h(c.customer_name)}</strong></td>
-            <td><span class="pill ${typeClass}">${typeLabel}</span></td>
             <td>${h(c.contact_number)}</td>
             <td>${formatVehicleCell(c)}</td>
-            <td>${isReg ? money(c.credit_limit) : '-'}</td>
-            <td>${isReg ? money(c.outstanding_balance) : '-'}</td>
+            <td>${money(c.credit_limit)}</td>
+            <td>${money(c.outstanding_balance)}</td>
             <td>${c.last_transaction ? h(c.last_transaction) : 'No transactions'}</td>
             <td><small style="color:#475569; font-weight:600;">${formatDateCell(c.registered_at)}</small></td>
             <td><span class="pill ${h(c.status)}">${h(c.status)}</span></td>
@@ -1285,7 +1255,7 @@ function custListRender() {
                 </div>
             </td>
         </tr>
-    `;}).join('');
+    `).join('');
 
     const fromEntry = start + 1;
     const toEntry = end;
@@ -1347,7 +1317,6 @@ function custArchRender() {
         <tr>
             <td><strong>${h(c.customer_id)}</strong></td>
             <td><strong>${h(c.customer_name)}</strong></td>
-            <td><span class="pill ${(c.customer_type !== 'walk-in') ? 'credit' : 'walk-in'}">${(c.customer_type !== 'walk-in') ? 'REGISTERED' : 'WALK-IN'}</span></td>
             <td>${c.archived_at ? h(c.archived_at) : '-'}</td>
             <td>${h(c.archive_reason || 'Inactive')}</td>
             <td style="text-align:center;">
@@ -1404,7 +1373,6 @@ function loadCustomerRequests() {
             currentRequests = res.requests || [];
             document.getElementById('requestCount').innerText = currentRequests.length + ' pending';
             document.getElementById('statRequests').innerText = currentRequests.length;
-            document.getElementById('tabBadgePending').innerText = currentRequests.length;
             custPendState.data = currentRequests;
             custPendState.page = 1;
             custPendRender();
@@ -1476,11 +1444,49 @@ function custPendChangePerPage() {
 
 let currentRawOutstanding = 0;
 
+function parseCreditRaw(val) {
+    // Strip commas and parse to float
+    return parseFloat(String(val).replace(/,/g, '')) || 0;
+}
+
+function formatCreditLimit(el) {
+    // Remember cursor position
+    const selStart = el.selectionStart;
+    const selEnd   = el.selectionEnd;
+    const oldLen   = el.value.length;
+
+    // Strip everything except digits and one dot
+    let raw = el.value.replace(/[^0-9.]/g, '');
+
+    // Allow only one decimal point
+    const parts = raw.split('.');
+    if (parts.length > 2) raw = parts[0] + '.' + parts.slice(1).join('');
+
+    // Split integer and decimal
+    let intPart  = parts[0] || '0';
+    let decPart  = parts[1];
+
+    // Add commas to integer part
+    intPart = intPart.replace(/^0+(?=\d)/, '') || '0'; // Remove leading zeros
+    intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+    // Reconstruct
+    let formatted = decPart !== undefined ? intPart + '.' + decPart : intPart;
+    el.value = formatted;
+
+    // Restore cursor
+    const newLen = el.value.length;
+    const diff   = newLen - oldLen;
+    el.setSelectionRange(selStart + diff, selEnd + diff);
+
+    calcAvailableCredit();
+}
+
 function calcAvailableCredit() {
     const limitEl = document.getElementById('creditLimit');
     const availEl = document.getElementById('availableCredit');
     if (!limitEl || !availEl) return;
-    const limit = parseFloat(limitEl.value) || 0;
+    const limit = parseCreditRaw(limitEl.value);
     const available = Math.max(0, limit - currentRawOutstanding);
     availEl.value = money(available);
 }
@@ -1495,6 +1501,16 @@ function toggleCreditSection() {
 function safeSetVal(id, val) {
     const el = document.getElementById(id);
     if (el) el.value = val;
+}
+
+// Format a numeric credit value as "1,000.00" and set it on the input
+function setCreditFormatted(id, val) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const num = parseFloat(String(val).replace(/,/g, '')) || 0;
+    // Format with commas and 2 decimal places
+    const formatted = num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    el.value = formatted;
 }
 
 function addVehicleRow(v = {}) {
@@ -1565,7 +1581,8 @@ function openCustomerForm(mode = 'add', id = 0) {
 
     if (mode === 'add') {
         currentRawOutstanding = 0;
-        safeSetVal('creditLimit', '0.00');
+        safeSetVal('customerType', 'registered');
+        setCreditFormatted('creditLimit', 0);
         safeSetVal('creditTerms', '30 Days');
         safeSetVal('outstandingBalance', '₱0.00');
         safeSetVal('availableCredit', '₱0.00');
@@ -1581,7 +1598,7 @@ function openCustomerForm(mode = 'add', id = 0) {
                 if (!res.success) { toast(res.error, 'error'); return; }
                 const c = res.customer;
                 safeSetVal('recordId', c.id);
-                safeSetVal('customerType', (c.customer_type === 'walk-in') ? 'walk-in' : 'registered');
+                safeSetVal('customerType', 'registered');
                 safeSetVal('custStatus', c.status || 'active');
                 safeSetVal('firstName', c.first_name || '');
                 safeSetVal('middleName', c.middle_name || '');
@@ -1590,7 +1607,7 @@ function openCustomerForm(mode = 'add', id = 0) {
                 safeSetVal('address', c.address || '');
                 safeSetVal('email', c.email || '');
                 safeSetVal('govIdType', c.gov_id_type || '');
-                safeSetVal('creditLimit', c.credit_limit || 0);
+                setCreditFormatted('creditLimit', c.credit_limit || 0);
                 safeSetVal('creditTerms', c.credit_terms || '30 Days');
                 safeSetVal('loyaltyCardNo', c.loyalty_card_no || c.customer_id || '');
                 safeSetVal('custPointsBalance', c.points || 0);
@@ -1619,6 +1636,10 @@ document.getElementById('customerForm').onsubmit = function(e) {
     const mode = document.getElementById('formMode').value;
     const formData = new FormData(this);
     formData.append('action', mode === 'add' ? 'add' : 'update');
+
+    // Strip commas from credit_limit so backend receives a plain float e.g. 50000.00
+    const rawCreditLimit = parseCreditRaw(document.getElementById('creditLimit').value);
+    formData.set('credit_limit', rawCreditLimit.toFixed(2));
 
     // Collect vehicle details
     const vehicles = [];
@@ -1662,7 +1683,6 @@ document.getElementById('customerForm').onsubmit = function(e) {
             toast(res.message || 'Customer saved successfully!', 'success');
             closeModal('customerFormModal');
             document.getElementById('filterSearch').value = '';
-            document.getElementById('filterType').value = '';
             document.getElementById('filterStatus').value = '';
             document.getElementById('filterDateFrom').value = '';
             document.getElementById('filterDateTo').value = '';
@@ -1683,7 +1703,6 @@ function viewCustomer(id) {
 
             document.getElementById('vCustId').innerText = c.customer_id || '-';
             document.getElementById('vCustSince').innerText = c.registered_at ? c.registered_at.split(' ')[0] : '-';
-            document.getElementById('vType').innerHTML = `<span class="pill ${h(c.customer_type)}">${h(c.customer_type)}</span>`;
             document.getElementById('vStatus').innerHTML = `<span class="pill ${h(c.status)}">${h(c.status)}</span>`;
             document.getElementById('vContact').innerText = c.contact_number || '-';
             document.getElementById('vEmail').innerText = c.email || '-';
@@ -2244,17 +2263,9 @@ function submitReviewAction(type) {
         });
 }
 
-// Initial Load & Silent 15s Auto-Refresh
+// Initial Load (No auto-refresh)
 document.addEventListener('DOMContentLoaded', function() {
     loadManagerCustomers();
-    setInterval(function() {
-        if (!document.hidden) {
-            loadManagerCustomers();
-            if (typeof loadCustomerRequests === 'function') {
-                loadCustomerRequests();
-            }
-        }
-    }, 15000);
 });
 </script>
 

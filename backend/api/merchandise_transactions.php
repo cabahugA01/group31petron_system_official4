@@ -1229,8 +1229,18 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             $pdo->commit();
         }
 
-        // ── Post-commit: audit logging (outside transaction so DDL won't corrupt it) ──
+        // ── Post-commit: audit logging and manager notification (outside transaction so DDL won't corrupt it) ──
         try {
+            notify_transaction_submission($pdo, (int)$station_id, [
+                'transaction_id'    => $transaction_id,
+                'transaction_db_id' => (int)$merch_transaction_id,
+                'transaction_type'  => $resolved_transaction_type,
+                'total_amount'      => (float)$total_amount,
+                'customer_name'     => $data['customer_name'] ?? 'Walk-in',
+                'staff_name'        => $me['name'] ?? $me['username'] ?? 'Staff',
+                'shift_period'      => $shift_key ?? $shift_name ?? ''
+            ]);
+
             if (function_exists('log_activity')) {
                 log_activity($pdo, $me['id'], 'Merchandise Transaction Saved',
                     "Official transaction ID: $transaction_id, Amount: $total_amount, Items: " . count($data['items']));

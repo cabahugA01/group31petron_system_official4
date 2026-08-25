@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'module_config';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -2597,6 +2597,6 @@ function autoRefreshModuleConfiguration() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshModuleConfiguration, 10000);
+setInterval(autoRefreshModuleConfiguration, 2000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

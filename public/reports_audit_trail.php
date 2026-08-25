@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Audit Trail Reports - Standalone Page
  * Complete Report Access Audit Trail
@@ -578,6 +578,6 @@ function autoRefreshReportAuditTrail() {
         .catch(() => {});
 }
 
-setInterval(autoRefreshReportAuditTrail, 10000);
+setInterval(autoRefreshReportAuditTrail, 2000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

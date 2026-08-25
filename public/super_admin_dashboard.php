@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Developer / Super Admin Dashboard
  * Summary Cards, System Health, Resource Usage, DB Summary,
@@ -806,6 +806,6 @@ function autoRefreshSuperadminDashboard() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshSuperadminDashboard, 10000);
+setInterval(autoRefreshSuperadminDashboard, 2000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

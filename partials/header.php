@@ -3581,9 +3581,9 @@ require_once __DIR__ . '/rbac_menu.php';
       );
       $badges['inventory'] = $mgr_low_stock + $mgr_purchase_reqs + $mgr_deliv_waiting;
 
-      // 4. Customers: Master Data Requests + Customer Requests
+      // 4. Customers: Pending Customer Requests (from staff)
       $mgr_cust_reqs = $__badge_count(
-          "SELECT COUNT(*) FROM customers WHERE station_id = ? AND LOWER(COALESCE(NULLIF(verification_status,''), NULLIF(mgr_status,''), 'verified')) IN ('pending','pending verification','for review')",
+          "SELECT COUNT(*) FROM customer_requests WHERE station_id = ? AND LOWER(status) = 'pending'",
           [$myStationId]
       );
       $badges['customers']     = $mgr_cust_reqs;
@@ -5652,7 +5652,7 @@ require_once __DIR__ . '/rbac_menu.php';
             generateAndRefresh();
 
             // Poll every 60 seconds for new alerts
-            setInterval(generateAndRefresh, 15000);
+            setInterval(generateAndRefresh, 2000);
         })();
 
         <?php else: ?>
@@ -5685,17 +5685,21 @@ require_once __DIR__ . '/rbac_menu.php';
                 document.head.appendChild(style);
             }
 
-            // Event type â†’ icon mapping
+            // Event type → icon mapping
             const EVT_ICON = {
-                transaction     : 'fas fa-shopping-cart',
-                job_order       : 'fas fa-wrench',
-                fuel_management : 'fas fa-gas-pump',
-                inventory       : 'fas fa-warehouse',
-                customer        : 'fas fa-user',
-                delivery        : 'fas fa-truck',
-                calendar        : 'fas fa-calendar-alt',
-                report          : 'fas fa-chart-bar',
-                general         : 'fas fa-bell'
+                transaction             : 'fas fa-shopping-cart',
+                merchandise             : 'fas fa-shopping-cart',
+                merchandise_transaction : 'fas fa-shopping-cart',
+                job_order               : 'fas fa-wrench',
+                combined                : 'fas fa-tools',
+                fuel_management         : 'fas fa-gas-pump',
+                fuel_transaction        : 'fas fa-gas-pump',
+                inventory               : 'fas fa-warehouse',
+                customer                : 'fas fa-user',
+                delivery                : 'fas fa-truck',
+                calendar                : 'fas fa-calendar-alt',
+                report                  : 'fas fa-chart-bar',
+                general                 : 'fas fa-bell'
             };
 
             const TYPE_COLOR = {
@@ -5987,8 +5991,8 @@ require_once __DIR__ . '/rbac_menu.php';
             setTimeout(runGeneratorBackground, 800);
 
             // â”€â”€ Poll: count every 60s, generator every 5 min â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            setInterval(fetchUnreadCount, 15000);
-            setInterval(runGeneratorBackground, 30000);
+            setInterval(fetchUnreadCount, 2000);
+            setInterval(runGeneratorBackground, 2000);
 
         })();
         <?php endif; ?>

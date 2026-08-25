@@ -3959,7 +3959,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </div> <!-- /.mim-wrap -->
 
 <script id="merchAutoRefreshScript">
-// ── Silent Background Auto-Refresh for Merchandise Inventory (15 seconds) ──
+// ── Silent Background Auto-Refresh for Merchandise Inventory (2 seconds) ──
 (function() {
     'use strict';
     setInterval(function() {
@@ -3976,7 +3976,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         }
-    }, 15000);
+    }, 2000);
 })();
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

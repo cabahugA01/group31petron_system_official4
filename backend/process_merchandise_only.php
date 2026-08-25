@@ -101,7 +101,17 @@ try {
         ]);
     }
     
-    $pdo->commit();
+        $pdo->commit();
+
+    notify_transaction_submission($pdo, (int)$station_id, [
+        'transaction_id'    => $transaction_id,
+        'transaction_db_id' => (int)$merch_txn_id,
+        'transaction_type'  => 'merchandise',
+        'total_amount'      => (float)$total_amount,
+        'customer_name'     => $customer_name,
+        'staff_name'        => $me['name'] ?? $me['username'] ?? 'Staff',
+        'shift_period'      => $shift_period ?? $shift_name ?? ''
+    ]);
     
     echo json_encode([
         'success' => true,

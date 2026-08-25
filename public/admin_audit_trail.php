@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Admin Audit Trail — Full Compliance Log (All Roles: Staff + Manager + Admin)
  * Shows every action at this station with timestamps, user IDs, roles, modules, IP.
@@ -686,6 +686,6 @@ function autoRefreshAdminAuditTrail() {
         .catch(() => {});
 }
 
-setInterval(autoRefreshAdminAuditTrail, 10000);
+setInterval(autoRefreshAdminAuditTrail, 2000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'database_management';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -2191,7 +2191,7 @@ function downloadSecLogs() {
   }
 
   // Start 10s timer for real-time operation auto-refresh
-  setInterval(autoRefreshDatabaseManagement, 10000);
+  setInterval(autoRefreshDatabaseManagement, 2000);
 
   // ── Fire PHP-generated toasts on DOM ready & clean polluted URL ───────
   document.addEventListener('DOMContentLoaded', function() {

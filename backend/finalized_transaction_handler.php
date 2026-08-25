@@ -263,7 +263,16 @@ try {
             error_log("Calendar log error: " . $e->getMessage());
         }
         
-        // ── STEP 11: SEND NOTIFICATIONS ──────────────────────────────
+                // ── STEP 11: SEND NOTIFICATIONS ──────────────────────────────
+        notify_transaction_submission($pdo, (int)$station_id, [
+            'transaction_id'    => $txn_id,
+            'transaction_db_id' => (int)$transaction_db_id,
+            'transaction_type'  => $transaction_type,
+            'total_amount'      => (float)$total_amount,
+            'customer_name'     => $customer_name,
+            'staff_name'        => $me['name'] ?? $me['username'] ?? 'Staff',
+            'shift_period'      => $shift['shift_name'] ?? ''
+        ]);
         try {
             $notif_message = "Transaction {$txn_id} saved successfully. Amount: ₱" . number_format($total_amount, 2);
             

@@ -266,7 +266,18 @@ try {
     
     // ========== COMMIT TRANSACTION ==========
     
-    $pdo->commit();
+        $pdo->commit();
+
+    // ── Single notification to manager for any transaction type ──
+    notify_transaction_submission($pdo, (int)$station_id, [
+        'transaction_id'    => $transaction_id,
+        'transaction_db_id' => (int)$transaction_db_id,
+        'transaction_type'  => $transaction_type,
+        'total_amount'      => (float)$grand_total,
+        'customer_name'     => $customer_name,
+        'staff_name'        => $me['name'] ?? $me['username'] ?? 'Staff',
+        'shift_period'      => $shift_period ?? $shift_name ?? ''
+    ]);
     
     echo json_encode([
         'success' => true,

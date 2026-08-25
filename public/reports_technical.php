@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * SYSTEM REPORTS (Developer & Super Admin)
  * Fully dynamic implementation for System Health, Database, Backup, Error, and Security reports.
@@ -1323,6 +1323,6 @@ function autoRefreshTechnicalReports() {
 }
 
 // Start 10-second background auto-refresh for all System Reports metrics
-setInterval(autoRefreshTechnicalReports, 10000);
+setInterval(autoRefreshTechnicalReports, 2000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

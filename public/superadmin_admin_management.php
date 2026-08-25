@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 // ============================================================
 // SuperAdmin – Admin Management
@@ -1583,6 +1583,6 @@ function autoRefreshSuperadminAdminManagement() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshSuperadminAdminManagement, 10000);
+setInterval(autoRefreshSuperadminAdminManagement, 2000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

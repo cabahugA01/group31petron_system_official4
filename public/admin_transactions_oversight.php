@@ -1810,6 +1810,17 @@ include __DIR__ . '/../partials/header.php';
             <input type="hidden" name="_status" id="ato_adj_status" value="">
             <input type="hidden" name="_search" id="ato_adj_search" value="">
             <label>New Total Amount () <span style="color:#dc3545;">*</span></label>
+<div class="ato-modal-overlay" id="atoAdjustModal">
+    <div class="ato-modal">
+        <h3><i class="fas fa-sliders" style="color:#6f42c1;margin-right:8px;"></i>Adjust Transaction Amount</h3>
+        <form method="POST" id="atoAdjustForm">
+            <input type="hidden" name="action" value="adjust_transaction">
+            <input type="hidden" name="transaction_id" id="ato_adj_txn_id" value="">
+            <input type="hidden" name="_start" id="ato_adj_start" value="">
+            <input type="hidden" name="_end" id="ato_adj_end" value="">
+            <input type="hidden" name="_status" id="ato_adj_status" value="">
+            <input type="hidden" name="_search" id="ato_adj_search" value="">
+            <label>New Total Amount () <span style="color:#dc3545;">*</span></label>
             <input type="number" name="adj_total" id="ato_adj_total" step="0.01" min="0" required>
             <label>Adjustment Note <span style="color:#dc3545;">*</span></label>
             <textarea name="adj_note" id="ato_adj_note" placeholder="Reason for adjustment..." required></textarea>
@@ -1863,9 +1874,7 @@ document.querySelectorAll('.ato-modal-overlay').forEach(function(overlay) {
 });
 
 // 
-// AUTO-REFRESH: Admin Transactions Oversight (60-second polling for compliance)
-// No manual refresh button needed - system automatically reflects manager-validated
-// transactions and compliance alerts for admin oversight monitoring.
+// AUTO-REFRESH: Admin Transactions Oversight (2-second polling for compliance)
 // 
 let refreshAdminOversightTimer = null;
 let isAdminModalOpen = false;
@@ -1906,8 +1915,8 @@ function autoRefreshAdminOversight() {
     };
 })();
 
-// Start auto-refresh timer (60 seconds - appropriate for admin oversight)
-setInterval(autoRefreshAdminOversight, 60000);
+// Start auto-refresh timer (2 seconds)
+setInterval(autoRefreshAdminOversight, 2000);
 
 function atoExport(format) {
     const table = document.querySelector('.ato-table');
@@ -1967,4 +1976,3 @@ function atoExport(format) {
 <script src="../assets/vendor/xlsx/xlsx.full.min.js"></script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
-

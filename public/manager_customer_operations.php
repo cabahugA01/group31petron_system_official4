@@ -662,7 +662,7 @@ function manager_validate_customer_payload(): array {
     $contact     = trim($_POST['contact_number'] ?? '');
     $email       = trim($_POST['email'] ?? '');
     $address     = trim($_POST['address'] ?? '');
-    $type        = trim($_POST['customer_type'] ?? 'walk-in');
+    $type        = trim($_POST['customer_type'] ?? 'registered');
     $status      = trim($_POST['status'] ?? 'active');
     $creditLimit = (float)($_POST['credit_limit'] ?? 0);
     $creditTerms = trim($_POST['credit_terms'] ?? '30 Days');
@@ -678,8 +678,8 @@ function manager_validate_customer_payload(): array {
         $contact = 'N/A';
     }
 
-    if (!in_array($type, ['walk-in', 'registered', 'regular', 'credit', 'fleet', 'corporate'], true)) {
-        $type = 'walk-in';
+    if (!in_array($type, ['registered', 'credit', 'fleet', 'corporate', 'regular', 'walk-in'], true) || $type === 'walk-in') {
+        $type = 'registered';
     }
     if (!in_array($status, ['active', 'inactive', 'archived'], true)) {
         $status = 'active';
@@ -788,6 +788,8 @@ function manager_add_customer(): void {
         'current_balance'     => 0,
         'balance'             => 0,
         'registered_by'       => $me['id'] ?? null,
+        'verification_status' => 'verified',
+        'mgr_status'          => 'approved',
     ];
 
     if ($data['gov_id_file']) $insertValues['gov_id_file'] = $data['gov_id_file'];

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ============================================================
 // SuperAdmin – Admin Management Map View
 // public/superadmin_admin_map.php
@@ -1383,6 +1383,6 @@ function autoRefreshSuperadminAdminMap() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshSuperadminAdminMap, 10000);
+setInterval(autoRefreshSuperadminAdminMap, 2000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

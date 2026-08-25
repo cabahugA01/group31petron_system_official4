@@ -379,7 +379,7 @@ if (isset($_GET['print_id'])) {
         </div>
     
 <script id="merchAutoRefreshScript">
-// ── Silent Background Auto-Refresh for Merchandise Inventory (15 seconds) ──
+// ── Silent Background Auto-Refresh for Merchandise Inventory (2 seconds) ──
 (function() {
     'use strict';
     setInterval(function() {
@@ -396,7 +396,7 @@ if (isset($_GET['print_id'])) {
                 }
             }
         }
-    }, 15000);
+    }, 2000);
 })();
 </script>
 </body>

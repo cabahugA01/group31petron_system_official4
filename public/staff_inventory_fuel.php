@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'inv_fuel';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -1580,7 +1580,7 @@ function applyFuelInventoryFilters(e) {
             console.warn('Fuel inventory auto-fetch notice:', e);
         });
     }
-    setInterval(autoRefreshFuelInventory, 15000);
+    setInterval(autoRefreshFuelInventory, 2000);
     return false;
 }
 function resetFuelInventoryFilters() {
@@ -1632,7 +1632,7 @@ function resetFuelInventoryFilters() {
             console.warn('Fuel inventory auto-fetch notice:', e);
         });
     }
-    setInterval(autoRefreshFuelInventory, 15000);
+    setInterval(autoRefreshFuelInventory, 2000);
 }
 
 // ── Sub Tab Switcher ─────────────────────────────────────────────────────────────────────────────────────────
@@ -1958,7 +1958,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.warn('Fuel inventory auto-fetch notice:', e);
         });
     }
-    setInterval(autoRefreshFuelInventory, 15000);
+    setInterval(autoRefreshFuelInventory, 2000);
 
     // Auto-open fuel stock request modal if triggered from URL
     var urlParams = new URLSearchParams(window.location.search);
