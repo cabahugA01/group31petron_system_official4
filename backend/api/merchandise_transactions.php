@@ -439,11 +439,25 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             return;
         }
     } else {
-        // Walk-in transaction — no customer account required
+        // Walk-in / non-registered customer transaction — no registered customer account required
         $data['customer_id'] = null;
-        $data['customer_name'] = 'Walk-in Customer';
-        $data['customer_first_name'] = null;
-        $data['customer_last_name'] = null;
+        $fn = trim((string)($data['customer_first_name'] ?? ''));
+        $ln = trim((string)($data['customer_last_name'] ?? ''));
+        $cn = trim((string)($data['customer_name'] ?? ''));
+        if ($fn !== '' || $ln !== '') {
+            $data['customer_first_name'] = $fn ?: null;
+            $data['customer_last_name']  = $ln ?: null;
+            $data['customer_name']       = trim($fn . ' ' . $ln);
+        } elseif ($cn !== '' && $cn !== 'Walk-in Customer' && $cn !== 'No Customer') {
+            $data['customer_name'] = $cn;
+            $parts = explode(' ', $cn, 2);
+            $data['customer_first_name'] = $parts[0] ?? null;
+            $data['customer_last_name']  = $parts[1] ?? null;
+        } else {
+            $data['customer_name'] = 'Walk-in Customer';
+            $data['customer_first_name'] = null;
+            $data['customer_last_name'] = null;
+        }
     }
 
 
@@ -459,6 +473,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         'customer_id'           => 'INT NULL',
         'customer_first_name'   => "VARCHAR(100) NULL",
         'customer_last_name'    => "VARCHAR(100) NULL",
+        'customer_contact'      => "VARCHAR(50) NULL",
         'credit_customer_id'    => 'INT NULL',
         'payment_method'        => "VARCHAR(50) NOT NULL DEFAULT 'Cash'",
         'subtotal_amount'       => 'DECIMAL(10,2) NULL',
@@ -804,6 +819,46 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
     $resolved_transaction_type = ($has_service_item && $has_merchandise_item) ? 'combined'
         : ($has_service_item ? 'job_order' : 'merchandise');
 
+    // ── Server-Side Idempotency Guard (Prevent double submissions) ─────────────
+    try {
+        $recentStmt = $pdo->prepare("
+            SELECT id, transaction_id
+            FROM merchandise_transactions 
+            WHERE station_id = ? 
+              AND staff_id = ? 
+              AND total_amount = ? 
+              AND payment_method = ? 
+              AND (
+                  (customer_name = ? OR (customer_name IS NULL AND ? = 'Walk-in Customer'))
+              )
+              AND created_at >= (NOW() - INTERVAL 4 SECOND)
+            ORDER BY id DESC 
+            LIMIT 1
+        ");
+        $custNameParam = $data['customer_name'] ?? 'Walk-in Customer';
+        $recentStmt->execute([
+            $station_id, 
+            $me['id'], 
+            $total_amount, 
+            $data['payment_method'],
+            $custNameParam,
+            $custNameParam
+        ]);
+        $recentTxn = $recentStmt->fetch(PDO::FETCH_ASSOC);
+        if ($recentTxn) {
+            // Already inserted a few seconds ago — return success with existing ID to prevent duplication
+            echo json_encode([
+                'success' => true,
+                'transaction_id' => (int)$recentTxn['id'],
+                'message' => 'Transaction already processed.',
+                'duplicate_prevented' => true
+            ]);
+            return;
+        }
+    } catch (Exception $dupErr) {
+        error_log("Duplicate check notice: " . $dupErr->getMessage());
+    }
+
     // Generate unique transaction ID
     $transaction_id = '';
     for ($try = 0; $try < 8; $try++) {
@@ -869,6 +924,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             'customer_name'         => $data['customer_name'],
             'customer_first_name'   => $data['customer_first_name'] ?? null,
             'customer_last_name'    => $data['customer_last_name']  ?? null,
+            'customer_contact'      => $data['customer_contact'] ?? $data['job_order_contact'] ?? null,
             'credit_customer_id'    => $data['credit_customer_id'] ?? null,
             'payment_method'        => $data['payment_method'],
             'subtotal_amount'       => $subtotal_amount,

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'staff_record_delivery';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -2398,7 +2398,7 @@ document.addEventListener('input', function(e) {
 
 document.addEventListener('DOMContentLoaded', function() {
     updateRealTimeDeliveryInputs();
-    setInterval(updateRealTimeDeliveryInputs, 2000);
+    setInterval(updateRealTimeDeliveryInputs, 10000);
 });
 
 // Inline accordion toggle

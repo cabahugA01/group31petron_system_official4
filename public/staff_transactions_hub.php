@@ -230,7 +230,11 @@ try {
     $customerIdNumberExpr = customer_expr_col($pdo, 'c', 'id_number', "''");
     $customerLoyaltyCardExpr = customer_expr_col($pdo, 'c', 'loyalty_card_no', "''");
 
-    // Fetch customers with vehicle information for the search feature
+    $customerYearExpr = customer_expr_col($pdo, 'c', 'year_model', "''");
+    $customerEngineExpr = customer_expr_col($pdo, 'c', 'engine_number', "''");
+    $customerChassisExpr = customer_expr_col($pdo, 'c', 'chassis_number', "''");
+
+    // Fetch customers with complete vehicle information (including engine & chassis numbers) for auto-fill
     $stmt = $pdo->prepare("
         SELECT 
             c.id, 
@@ -244,12 +248,24 @@ try {
             {$customerIdExpr} AS customer_id,
             {$customerIdNumberExpr} AS id_number,
             {$customerLoyaltyCardExpr} AS loyalty_card_no,
-            {$customerVehicleTypeExpr} AS vehicle_type,
-            {$customerMakeExpr} AS vehicle_brand,
-            {$customerModelExpr} AS vehicle_model,
-            {$customerPlateExpr} AS plate_number,
+            COALESCE(NULLIF(cv.vehicle_type,''), {$customerVehicleTypeExpr}) AS vehicle_type,
+            COALESCE(NULLIF(cv.brand,''), {$customerMakeExpr}) AS vehicle_brand,
+            COALESCE(NULLIF(cv.model,''), {$customerModelExpr}) AS vehicle_model,
+            COALESCE(NULLIF(cv.plate_number,''), {$customerPlateExpr}) AS plate_number,
+            COALESCE(NULLIF(cv.year_model,''), {$customerYearExpr}) AS year_model,
+            COALESCE(NULLIF(cv.engine_no,''), {$customerEngineExpr}) AS engine_number,
+            COALESCE(NULLIF(cv.chassis_no,''), {$customerChassisExpr}) AS chassis_number,
             {$customerTypeExpr} AS customer_type
         FROM customers c
+        LEFT JOIN (
+            SELECT cv1.* FROM customer_vehicles cv1
+            INNER JOIN (
+                SELECT customer_id, MAX(id) as max_id
+                FROM customer_vehicles
+                WHERE status = 'active'
+                GROUP BY customer_id
+            ) cv2 ON cv1.id = cv2.max_id
+        ) cv ON cv.customer_id = c.id
         WHERE c.station_id = ? AND LOWER({$customerStatusExpr}) = 'active'
         ORDER BY {$customerNameExpr}
     ");
@@ -342,72 +358,115 @@ try {
     };
 } catch (Exception $e) {}
 
-// ── Detect current shift period — use active labor session first (matches dashboard) ──
+// ── Detect current shift period ─────────────────────────────────────────────
+// Priority order:
+//   1. Admin-assigned shift from users.assigned_shift (highest authority)
+//   2. Active labor session shift_period
+//   3. Time-based from shift_periods table
+//   4. First active shift in DB (last resort)
+// Overtime rule: if staff is still working past their assigned shift end time,
+//   their shift label STAYS the same (not re-assigned) — it counts as overtime.
 $merch_shift_key  = '';
 $merch_shift_name = '';
-$active_shift = []; // Array to hold full shift details including sort_order
-try {
-    // Priority 1: use the shift from the staff's active clock-in session (same as dashboard)
-    $active_sess = $pdo->prepare(
-        "SELECT ls.shift_period, ls.shift_name, sp.sort_order 
-         FROM labor_sessions ls
-         LEFT JOIN shift_periods sp ON ls.shift_period = sp.shift_key
-         WHERE ls.user_id = ? AND ls.end_time IS NULL
-         ORDER BY ls.start_time DESC LIMIT 1"
-    );
-    $active_sess->execute([$me['id']]);
-    $active_row = $active_sess->fetch(PDO::FETCH_ASSOC);
+$active_shift     = [];
 
-    if ($active_row && !empty($active_row['shift_period'])) {
-        $merch_shift_key  = $active_row['shift_period'];
-        $merch_shift_name = $active_row['shift_name'] ?: '';
-        $active_shift = [
-            'shift_key' => $active_row['shift_period'],
-            'shift_name' => $active_row['shift_name'],
-            'shift_order' => (int)($active_row['sort_order'] ?? 1)
-        ];
-    } else {
-        // Priority 2: fall back to time-based detection from DB
-        $ct = date('H:i:s');
-        $sp = $pdo->prepare("SELECT shift_key, shift_name, sort_order FROM shift_periods WHERE is_active = 1 AND start_time <= ? AND end_time >= ? ORDER BY sort_order ASC LIMIT 1");
-        $sp->execute([$ct, $ct]);
-        $sf = $sp->fetch(PDO::FETCH_ASSOC);
-        if ($sf) {
-            $merch_shift_key  = $sf['shift_key'];
-            $merch_shift_name = $sf['shift_name'];
-            $active_shift = [
-                'shift_key' => $sf['shift_key'],
-                'shift_name' => $sf['shift_name'],
-                'shift_order' => (int)($sf['sort_order'] ?? 1)
+// Helper: map users.assigned_shift enum → shift_periods.shift_key
+function mapAssignedShiftToKey(string $assigned): string {
+    $a = strtolower(trim($assigned));
+    if (strpos($a, '1') !== false || strpos($a, 'first') !== false)  return 'first';
+    if (strpos($a, '2') !== false || strpos($a, 'second') !== false) return 'second';
+    if (strpos($a, '3') !== false || strpos($a, 'third') !== false)  return 'third';
+    return '';
+}
+
+try {
+    // ── Priority 1: Admin-assigned shift from users table ──────────────────────
+    $assigned_raw = trim($me['assigned_shift'] ?? $me['shift_assignment'] ?? '');
+    $assigned_key = $assigned_raw !== '' ? mapAssignedShiftToKey($assigned_raw) : '';
+
+    if ($assigned_key !== '') {
+        // Fetch full shift details from shift_periods
+        $sp_admin = $pdo->prepare("SELECT shift_key, shift_name, sort_order FROM shift_periods WHERE shift_key = ? AND is_active = 1 LIMIT 1");
+        $sp_admin->execute([$assigned_key]);
+        $sf_admin = $sp_admin->fetch(PDO::FETCH_ASSOC);
+
+        if ($sf_admin) {
+            $merch_shift_key  = $sf_admin['shift_key'];
+            $merch_shift_name = $sf_admin['shift_name'];
+            $active_shift     = [
+                'shift_key'   => $sf_admin['shift_key'],
+                'shift_name'  => $sf_admin['shift_name'],
+                'shift_order' => (int)($sf_admin['sort_order'] ?? 1),
             ];
-        } else {
-            // Priority 3: first active shift from DB
-            $sp2 = $pdo->query("SELECT shift_key, shift_name, sort_order FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC LIMIT 1");
-            $sf2 = $sp2 ? $sp2->fetch(PDO::FETCH_ASSOC) : null;
-            if ($sf2) { 
-                $merch_shift_key = $sf2['shift_key']; 
-                $merch_shift_name = $sf2['shift_name']; 
-                $active_shift = [
-                    'shift_key' => $sf2['shift_key'],
-                    'shift_name' => $sf2['shift_name'],
-                    'shift_order' => (int)($sf2['sort_order'] ?? 1)
-                ];
-            }
         }
     }
-    // If still empty, last resort: any shift from DB
+
+    // ── Priority 2: Active labor session (if admin-assigned not resolved) ──────
     if (empty($merch_shift_key)) {
-        $sp3 = $pdo->query("SELECT shift_key, shift_name, sort_order FROM shift_periods ORDER BY sort_order ASC LIMIT 1");
-        $sf3 = $sp3 ? $sp3->fetch(PDO::FETCH_ASSOC) : null;
-        if ($sf3) { 
-            $merch_shift_key = $sf3['shift_key']; 
-            $merch_shift_name = $sf3['shift_name']; 
-            $active_shift = [
-                'shift_key' => $sf3['shift_key'],
-                'shift_name' => $sf3['shift_name'],
-                'shift_order' => (int)($sf3['sort_order'] ?? 1)
+        $active_sess = $pdo->prepare(
+            "SELECT ls.id, ls.shift_period, ls.shift_name, sp.sort_order
+             FROM labor_sessions ls
+             LEFT JOIN shift_periods sp ON ls.shift_period = sp.shift_key
+             WHERE ls.user_id = ? AND ls.end_time IS NULL
+             ORDER BY ls.start_time DESC LIMIT 1"
+        );
+        $active_sess->execute([$me['id']]);
+        $active_row = $active_sess->fetch(PDO::FETCH_ASSOC);
+
+        if ($active_row && !empty($active_row['shift_period'])) {
+            $merch_shift_key  = $active_row['shift_period'];
+            $merch_shift_name = $active_row['shift_name'] ?: '';
+            $active_shift     = [
+                'shift_key'   => $active_row['shift_period'],
+                'shift_name'  => $active_row['shift_name'],
+                'shift_order' => (int)($active_row['sort_order'] ?? 1),
             ];
         }
+    }
+
+    // ── Priority 3: Time-based detection ──────────────────────────────────────
+    if (empty($merch_shift_key)) {
+        $ct      = date('H:i:s');
+        $sp_time = $pdo->prepare("SELECT shift_key, shift_name, sort_order FROM shift_periods WHERE is_active = 1 AND start_time <= ? AND end_time >= ? ORDER BY sort_order ASC LIMIT 1");
+        $sp_time->execute([$ct, $ct]);
+        $sf_time = $sp_time->fetch(PDO::FETCH_ASSOC);
+
+        if ($sf_time) {
+            $merch_shift_key  = $sf_time['shift_key'];
+            $merch_shift_name = $sf_time['shift_name'];
+            $active_shift     = [
+                'shift_key'   => $sf_time['shift_key'],
+                'shift_name'  => $sf_time['shift_name'],
+                'shift_order' => (int)($sf_time['sort_order'] ?? 1),
+            ];
+        }
+    }
+
+    // ── Priority 4: First active shift in DB ──────────────────────────────────
+    if (empty($merch_shift_key)) {
+        $sp_fb = $pdo->query("SELECT shift_key, shift_name, sort_order FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC LIMIT 1");
+        $sf_fb = $sp_fb ? $sp_fb->fetch(PDO::FETCH_ASSOC) : null;
+        if ($sf_fb) {
+            $merch_shift_key  = $sf_fb['shift_key'];
+            $merch_shift_name = $sf_fb['shift_name'];
+            $active_shift     = [
+                'shift_key'   => $sf_fb['shift_key'],
+                'shift_name'  => $sf_fb['shift_name'],
+                'shift_order' => (int)($sf_fb['sort_order'] ?? 1),
+            ];
+        }
+    }
+
+    // ── Sync active labor session with admin-assigned shift (self-healing) ─────
+    // If there is an active session whose shift_period differs from the admin-assigned shift,
+    // update it so future queries see the correct shift.
+    if (!empty($merch_shift_key) && !empty($assigned_key) && $merch_shift_key === $assigned_key) {
+        try {
+            $pdo->prepare(
+                "UPDATE labor_sessions SET shift_period = ?, shift_name = ?
+                 WHERE user_id = ? AND end_time IS NULL AND shift_period != ?"
+            )->execute([$merch_shift_key, $merch_shift_name, $me['id'], $merch_shift_key]);
+        } catch (Exception $e) {}
     }
 } catch (Exception $e) {}
 // Fuel form uses the same shift
@@ -5063,8 +5122,12 @@ setTimeout(function() {
             if (icon) icon.className = 'fas fa-sync';
         }
 
-        // ── REAL-TIME BACKGROUND REFRESH FOR METER READING HISTORY (SMOOTH & SILENT) ──
+        // ── REAL-TIME BACKGROUND REFRESH FOR METER READING HISTORY (SMOOTH & SILENT, 10s) ──
+        let _isRefreshingMeter = false;
         async function autoRefreshMeterReadingHistory() {
+            if (_isRefreshingMeter) return;
+            if (document.hidden) return; // Skip if browser tab is not visible
+
             // Only refresh if Meter Reading History card is visible
             const todayCard = document.getElementById('todayEntriesCard');
             if (!todayCard || todayCard.style.display === 'none') return;
@@ -5077,16 +5140,19 @@ setTimeout(function() {
             }
 
             try {
+                _isRefreshingMeter = true;
                 if (typeof loadTodayEntries === 'function') {
                     await loadTodayEntries(true, true); // keepPage = true, isBackground = true (no flicker)
                 }
             } catch (e) {
                 console.warn('Meter Reading History background refresh notice:', e);
+            } finally {
+                _isRefreshingMeter = false;
             }
         }
 
-        // Run silent background refresh every 15 seconds
-        setInterval(autoRefreshMeterReadingHistory, 2000);
+        // Run silent background refresh every 10 seconds
+        setInterval(autoRefreshMeterReadingHistory, 10000);
         
         function renderTodayEntriesTable() {
             const body = document.getElementById('todayEntriesBody');
@@ -5899,9 +5965,6 @@ setTimeout(function() {
                             <button type="button" class="txn-btn secondary" onclick="resetJobOrderForm()" title="Reset all job order fields">
                                 <i class="fas fa-undo"></i> Reset
                             </button>
-                            <button type="button" class="txn-btn success" onclick="submitJobOrder()" id="joSubmitBtn">
-                                <i class="fas fa-paper-plane"></i> Submit Job Order
-                            </button>
                         </div>
 
                         <!-- Mechanic busy warning banner -->
@@ -6048,9 +6111,16 @@ setTimeout(function() {
                                             <input type="text" id="productSearch" class="txn-input"
                                                    placeholder="Search by name, SKU, or category…"
                                                    oninput="filterProductDropdown()"
-                                                   onfocus="openProductDropdown()"
+                                                   onfocus="this.select(); openProductDropdown(); filterProductDropdown(true);"
                                                    autocomplete="off"
-                                                   style="padding-right:34px;">
+                                                   style="padding-right:58px;">
+                                            <span id="productClearBtn"
+                                                  onclick="clearProductSearch()"
+                                                  style="display:none;position:absolute;right:28px;top:50%;transform:translateY(-50%);
+                                                         cursor:pointer;color:#94a3b8;font-size:12px;padding:4px;"
+                                                  title="Clear search">
+                                                <i class="fas fa-times-circle"></i>
+                                            </span>
                                             <span id="productDropdownArrow"
                                                   onclick="toggleProductDropdown()"
                                                   style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
@@ -6194,9 +6264,6 @@ setTimeout(function() {
                         <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
                             <button type="button" class="txn-btn secondary" onclick="fullResetMerchandiseForm()" title="Reset merchandise fields">
                                 <i class="fas fa-undo"></i> Reset Form
-                            </button>
-                            <button type="button" class="txn-btn success" onclick="addProductFromFormToCart()" id="addItemBtn">
-                                <i class="fas fa-plus"></i> Add Item
                             </button>
                         </div>
 
@@ -6547,6 +6614,21 @@ setTimeout(function() {
                                                 style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
                                                  <i class="fas fa-receipt"></i> Reprint
                                              </a>
+                                              <?php
+                                                $mh_needs_settle  = in_array($mh_pstat_lc, ['partial','account receivable','credit','ar','unpaid','pending','pending payment']);
+                                                $mh_total_amt     = (float)($txn['total_amount'] ?? $txn['item_subtotal'] ?? $item_total ?? 0);
+                                                $mh_paid_amt      = (float)($txn['amount_paid'] ?? 0);
+                                                $mh_balance_amt   = (float)($txn['balance_due'] ?? max(0, $mh_total_amt - $mh_paid_amt));
+                                                $mh_settle_label  = ($mh_pstat_lc === 'partial') ? 'Settle Balance' : 'Settle / Pay';
+                                              ?>
+                                              <?php if ($mh_needs_settle && $mh_balance_amt > 0.009): ?>
+                                              <button type="button"
+                                                 onclick="openPaymentModal(<?= (int)$txn['mt_id'] ?>,'merchandise_transactions',<?= $mh_total_amt ?>,<?= $mh_paid_amt ?>,<?= $mh_balance_amt ?>,'<?= addslashes($txn['customer_name'] ?? '') ?>',false,'merchandise'); return false;"
+                                                 class="txn-btn success"
+                                                 style="width:100%;padding:5px 8px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
+                                                 <i class="fas fa-money-bill-wave"></i> <?= $mh_settle_label ?>
+                                              </button>
+                                              <?php endif; ?>
                                              <button type="button"
                                                 data-jo-id="<?= (int)$txn['mt_id'] ?>"
                                                 data-jo-source="merchandise_transactions"
@@ -7644,24 +7726,60 @@ setTimeout(function() {
             list.style.display = list.style.display === 'none' ? 'block' : 'none';
         }
 
+        function clearProductSearch() {
+            const searchInput = document.getElementById('productSearch');
+            if (searchInput) {
+                searchInput.value = '';
+                searchInput.focus();
+                filterProductDropdown(true);
+            }
+        }
+
         function filterProductDropdown(shouldOpen = true) {
             const searchInput = document.getElementById('productSearch');
-            const q = (searchInput?.value || '').toLowerCase();
+            const rawQ = (searchInput?.value || '').trim().toLowerCase();
             const list = document.getElementById('productDropdownList');
+            const clearBtn = document.getElementById('productClearBtn');
+            if (clearBtn) {
+                clearBtn.style.display = rawQ ? 'inline-block' : 'none';
+            }
             if (!list) return;
-            if (shouldOpen && document.activeElement === searchInput) {
+            if (shouldOpen) {
                 list.style.display = 'block';
             }
+            
+            // Smart multi-token keyword search (matches all words regardless of order)
+            const terms = rawQ ? rawQ.split(/\s+/).filter(Boolean) : [];
+            let totalVisible = 0;
+
             list.querySelectorAll('.prod-option').forEach(opt => {
                 const search = (opt.dataset.search || '').toLowerCase();
-                opt.style.display = (!q || search.includes(q)) ? '' : 'none';
+                const matches = terms.length === 0 || terms.every(t => search.includes(t));
+                opt.style.display = matches ? '' : 'none';
+                if (matches) totalVisible++;
             });
+
             list.querySelectorAll('.prod-group-header').forEach(hdr => {
                 const group = hdr.dataset.group || '';
                 const hasVisible = [...list.querySelectorAll(`.prod-option[data-cat="${group}"]`)]
                     .some(o => o.style.display !== 'none');
                 hdr.style.display = hasVisible ? '' : 'none';
             });
+
+            // No products match feedback message
+            let noMatch = document.getElementById('prodNoMatchMessage');
+            if (!noMatch) {
+                noMatch = document.createElement('div');
+                noMatch.id = 'prodNoMatchMessage';
+                noMatch.style.cssText = 'padding:16px;text-align:center;color:#64748b;font-size:12.5px;';
+                list.appendChild(noMatch);
+            }
+            if (totalVisible === 0 && terms.length > 0) {
+                noMatch.innerHTML = '<i class="fas fa-search" style="margin-right:6px;color:#94a3b8;"></i>No products found matching "<strong>' + escapeHtml(rawQ) + '</strong>"';
+                noMatch.style.display = 'block';
+            } else {
+                noMatch.style.display = 'none';
+            }
         }
 
         // ── Called when a product checkbox is toggled — auto-adds/removes cart item ──
@@ -7788,6 +7906,31 @@ setTimeout(function() {
         document.addEventListener('click', function(e) {
             const wrap = document.getElementById('productDropdownWrap');
             if (wrap && !wrap.contains(e.target)) closeProductDropdown();
+        });
+
+        // Keyboard navigation for product search
+        document.addEventListener('DOMContentLoaded', function() {
+            const pSearch = document.getElementById('productSearch');
+            if (pSearch) {
+                pSearch.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const list = document.getElementById('productDropdownList');
+                        if (!list) return;
+                        // Find first visible in-stock option
+                        const visibleOptions = Array.from(list.querySelectorAll('.prod-option')).filter(o => o.style.display !== 'none');
+                        if (visibleOptions.length > 0) {
+                            const cb = visibleOptions[0].querySelector('.merch-prod-checkbox:not(:disabled)');
+                            if (cb) {
+                                cb.checked = !cb.checked;
+                                onProductCheckboxChange(cb);
+                            }
+                        }
+                    } else if (e.key === 'Escape') {
+                        closeProductDropdown();
+                    }
+                });
+            }
         });
 
         // ── Mechanic busy-status check ────────────────────────────────────────
@@ -8608,7 +8751,10 @@ setTimeout(function() {
                 'vehicle_type' => $customer['vehicle_type'] ?? '',
                 'vehicle_brand' => $customer['vehicle_brand'] ?? '',
                 'vehicle_model' => $customer['vehicle_model'] ?? '',
+                'year_model' => $customer['year_model'] ?? '',
                 'plate_number' => $customer['plate_number'] ?? '',
+                'engine_number' => $customer['engine_number'] ?? '',
+                'chassis_number' => $customer['chassis_number'] ?? '',
                 'points' => (int)($customer['points'] ?? 0),
                 'customer_id' => $customer['customer_id'] ?? '',
                 'id_number' => $customer['id_number'] ?? '',
@@ -9087,12 +9233,15 @@ setTimeout(function() {
 
             // Fill in all customer fields
             const firstNameInput = document.getElementById(prefix + 'FirstName');
-            const lastNameInput = document.getElementById(prefix + 'LastName');
-            const contactInput = document.getElementById(prefix + 'ContactNumber');
-            const vehicleType = document.getElementById(prefix + 'VehicleType');
-            const vehicleBrand = document.getElementById(prefix + 'VehicleBrand');
-            const vehicleModel = document.getElementById(prefix + 'VehicleModel');
-            const vehiclePlate = document.getElementById(prefix + 'VehiclePlate');
+            const lastNameInput  = document.getElementById(prefix + 'LastName');
+            const contactInput   = document.getElementById(prefix + 'ContactNumber');
+            const vehicleType    = document.getElementById(prefix + 'VehicleType');
+            const vehicleBrand   = document.getElementById(prefix + 'VehicleBrand');
+            const vehicleModel   = document.getElementById(prefix + 'VehicleModel');
+            const vehiclePlate   = document.getElementById(prefix + 'VehiclePlate');
+            const yearModel      = document.getElementById(prefix + 'YearModel');
+            const engineNumber   = document.getElementById(prefix + 'EngineNumber');
+            const chassisNumber  = document.getElementById(prefix + 'ChassisNumber');
             
             if (firstNameInput) firstNameInput.value = customer.first_name || '';
             if (lastNameInput) lastNameInput.value = customer.last_name || '';
@@ -9101,6 +9250,9 @@ setTimeout(function() {
             if (vehicleBrand) vehicleBrand.value = customer.vehicle_brand || '';
             if (vehicleModel) vehicleModel.value = customer.vehicle_model || '';
             if (vehiclePlate) vehiclePlate.value = customer.plate_number || '';
+            if (yearModel) yearModel.value = customer.year_model || '';
+            if (engineNumber) engineNumber.value = customer.engine_number || '';
+            if (chassisNumber) chassisNumber.value = customer.chassis_number || '';
             
             // Auto-switch loyalty dropdown based on Customer Master Data
             const loyaltyDropdown = document.getElementById('loyaltyProgram');
@@ -9187,12 +9339,17 @@ setTimeout(function() {
             
             // Build results HTML
             let html = '';
+            const isJobOrder = (prefix === 'jo');
             filtered.forEach(customer => {
                 const displayName = (customer.first_name + ' ' + customer.last_name).trim();
                 const displayContact = customer.contact_number || 'No contact';
                 const displayVehicle = [customer.vehicle_brand, customer.vehicle_model].filter(Boolean).join(' ') || 'No vehicle';
                 const displayPlate = customer.plate_number || 'No plate';
-                
+
+                const vehicleHtml = isJobOrder ? `
+                            <span><i class="fas fa-car" style="width:14px;"></i> ${escapeHtml(displayVehicle)}</span>
+                            <span><i class="fas fa-id-card" style="width:14px;"></i> ${escapeHtml(displayPlate)}</span>` : '';
+
                 html += `
                     <div onclick="selectCustomerFromName('${prefix}', ${customer.id})" 
                          style="padding:12px 16px;cursor:pointer;border-bottom:1px solid #f1f5f9;transition:background .15s;"
@@ -9203,8 +9360,7 @@ setTimeout(function() {
                         </div>
                         <div style="font-size:12px;color:#64748b;display:flex;gap:12px;flex-wrap:wrap;">
                             <span><i class="fas fa-phone" style="width:14px;"></i> ${escapeHtml(displayContact)}</span>
-                            <span><i class="fas fa-car" style="width:14px;"></i> ${escapeHtml(displayVehicle)}</span>
-                            <span><i class="fas fa-id-card" style="width:14px;"></i> ${escapeHtml(displayPlate)}</span>
+                            ${vehicleHtml}
                         </div>
                     </div>
                 `;
@@ -9229,12 +9385,15 @@ setTimeout(function() {
 
             // Fill in all customer fields
             const firstNameInput = document.getElementById(prefix + 'FirstName');
-            const lastNameInput = document.getElementById(prefix + 'LastName');
-            const contactInput = document.getElementById(prefix + 'ContactNumber');
-            const vehicleType = document.getElementById(prefix + 'VehicleType');
-            const vehicleBrand = document.getElementById(prefix + 'VehicleBrand');
-            const vehicleModel = document.getElementById(prefix + 'VehicleModel');
-            const vehiclePlate = document.getElementById(prefix + 'VehiclePlate');
+            const lastNameInput  = document.getElementById(prefix + 'LastName');
+            const contactInput   = document.getElementById(prefix + 'ContactNumber');
+            const vehicleType    = document.getElementById(prefix + 'VehicleType');
+            const vehicleBrand   = document.getElementById(prefix + 'VehicleBrand');
+            const vehicleModel   = document.getElementById(prefix + 'VehicleModel');
+            const vehiclePlate   = document.getElementById(prefix + 'VehiclePlate');
+            const yearModel      = document.getElementById(prefix + 'YearModel');
+            const engineNumber   = document.getElementById(prefix + 'EngineNumber');
+            const chassisNumber  = document.getElementById(prefix + 'ChassisNumber');
             
             if (firstNameInput) firstNameInput.value = customer.first_name || '';
             if (lastNameInput) lastNameInput.value = customer.last_name || '';
@@ -9243,6 +9402,9 @@ setTimeout(function() {
             if (vehicleBrand) vehicleBrand.value = customer.vehicle_brand || '';
             if (vehicleModel) vehicleModel.value = customer.vehicle_model || '';
             if (vehiclePlate) vehiclePlate.value = customer.plate_number || '';
+            if (yearModel) yearModel.value = customer.year_model || '';
+            if (engineNumber) engineNumber.value = customer.engine_number || '';
+            if (chassisNumber) chassisNumber.value = customer.chassis_number || '';
 
             // Lock customer fields (jo and merch prefixes)
             const lockFields = [firstNameInput, lastNameInput, contactInput];
@@ -10421,7 +10583,7 @@ setTimeout(function() {
 
             // ── Merchandise fields ────────────────────────────────────────────
             resetMerchandiseForm();
-            const mFields = ['merchFirstName','merchLastName'];
+            const mFields = ['merchFirstName','merchLastName','merchContactNumber'];
             mFields.forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.value = '';
@@ -10721,38 +10883,53 @@ setTimeout(function() {
             btn.disabled = disabled;
         }
         // ── Submit transaction ────────────────────────────────────────────────
+        // Helper: release the atomic submission lock and restore the button
+        function _resetSubmitBtn() {
+            _isSubmittingTxn = false;
+            const b = document.getElementById('checkoutBtn');
+            if (b) { b.disabled = false; b.innerHTML = '<i class="fas fa-receipt"></i> Process & Print Receipt'; }
+            updateCheckoutBtn();
+        }
+        var _isSubmittingTxn = false; // atomic lock — prevents double submission
         async function submitMerchTxn() {
-            if (cart.length === 0) { showTxnAlert('Cart is empty.', 'warning'); return; }
+            // ── Front-end atomic lock: reject if already in flight ────────────
+            if (_isSubmittingTxn) return;
+            _isSubmittingTxn = true;
+            // Immediately disable button to block UI re-trigger
+            const btn = document.getElementById('checkoutBtn');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing…'; }
+
+            if (cart.length === 0) { showTxnAlert('Cart is empty.', 'warning'); _isSubmittingTxn = false; if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-receipt"></i> Process & Print Receipt'; } updateCheckoutBtn(); return; }
 
             const method = document.getElementById('paymentMethod')?.value || '';
-            if (!method) { showTxnAlert('Please select a payment method.', 'warning'); return; }
+            if (!method) { showTxnAlert('Please select a payment method.', 'warning'); _resetSubmitBtn(); return; }
 
             const grand = getGrandTotal();
 
             // ── Customer name ─────────────────────────────────────────────────
+            // ── Customer name ─────────────────────────────────────────────────
             const hasService = cart.some(i => i.item_type === 'service');
             const activeCustomerPrefix = hasService ? 'jo' : 'merch';
-            let firstName, lastName;
+            let firstName = '', lastName = '', contactNumber = '';
             if (hasService) {
-                firstName = (document.getElementById('joFirstName')?.value || '').trim();
-                lastName  = (document.getElementById('joLastName')?.value  || '').trim();
-                if (!firstName) { showTxnAlert('Please enter the customer\'s first name in the Job Order section.', 'warning'); return; }
+                firstName     = (document.getElementById('joFirstName')?.value || '').trim();
+                lastName      = (document.getElementById('joLastName')?.value  || '').trim();
+                contactNumber = (document.getElementById('joContactNumber')?.value || '').trim();
+                if (!firstName) { showTxnAlert('Please enter the customer\'s first name in the Job Order section.', 'warning'); _resetSubmitBtn(); return; }
             } else {
-                firstName = (document.getElementById('merchFirstName')?.value || '').trim();
-                lastName  = (document.getElementById('merchLastName')?.value  || '').trim();
-                if (!firstName) { showTxnAlert('Please enter the customer\'s first name.', 'warning'); return; }
+                firstName     = (document.getElementById('merchFirstName')?.value || '').trim();
+                lastName      = (document.getElementById('merchLastName')?.value  || '').trim();
+                contactNumber = (document.getElementById('merchContactNumber')?.value || '').trim();
+                if (!firstName) { showTxnAlert('Please enter the customer\'s first name.', 'warning'); _resetSubmitBtn(); return; }
             }
             let selectedCustomerId = selectedCustomerIds[activeCustomerPrefix] || null;
-            const mode = document.getElementById(activeCustomerPrefix + 'CustomerModeType')?.value || 'walkin';
 
-            // 100% Flexible: Allow Walk-in transactions without requiring registered customer selection!
-            if (!firstName) firstName = 'Walk-In';
-            if (!lastName)  lastName  = 'Customer';
+            const fullName = [firstName, lastName].filter(Boolean).join(' ') || firstName || 'Walk-in Customer';
 
             // ── Payment validation ────────────────────────────────────────────
             if (method === 'Credit Account') {
                 if (!document.getElementById('creditCustomer')?.value) {
-                    showTxnAlert('Please select a credit account.', 'warning'); return;
+                    showTxnAlert('Please select a credit account.', 'warning'); _resetSubmitBtn(); return;
                 }
             }
 
@@ -10767,7 +10944,7 @@ setTimeout(function() {
             if (loyaltyProgram !== 'No Loyalty' && loyaltyPointsRedeemed > loyaltyPointsBalance) {
                 showTxnAlert(`Cannot redeem more points than current balance (${loyaltyPointsBalance} pts).`, 'warning');
                 document.getElementById('loyaltyPointsRedeemed')?.focus();
-                return;
+                _resetSubmitBtn(); return;
             }
 
             // ── JO data ───────────────────────────────────────────────────────
@@ -10778,7 +10955,7 @@ setTimeout(function() {
                     showTxnAlert('Please select a valid assigned mechanic from the dropdown list.', 'warning');
                     const mechInput = document.getElementById('joMechanic');
                     if (mechInput) mechInput.focus();
-                    return;
+                    _resetSubmitBtn(); return;
                 }
                 joData = {
                     job_order_service:            (document.getElementById('joServiceTypeValue')?.value || '').trim(),
@@ -10792,7 +10969,7 @@ setTimeout(function() {
                     job_order_chassis_number:     (document.getElementById('joChassisNumber')?.value || '').trim(),
                     job_order_mechanic_id:        parseInt(mechanicId) || null,
                     job_order_mechanic_name:      (document.getElementById('joMechanicName')?.value || '').trim(),
-                    job_order_contact:            (document.getElementById('joContactNumber')?.value || '').trim(),
+                    job_order_contact:            contactNumber,
                     job_order_estimated_duration: parseInt(document.getElementById('joEstimatedDuration')?.value || 0) || null,
                 };
             }
@@ -10823,7 +11000,8 @@ setTimeout(function() {
                 customer_id:         selectedCustomerId,
                 customer_first_name: firstName || null,
                 customer_last_name:  lastName  || null,
-                customer_name:       [firstName, lastName].filter(Boolean).join(' ') || 'No Customer',
+                customer_contact:    contactNumber || null,
+                customer_name:       fullName,
                 payment_method:      method,
                 amount_paid:         amountPaid > 0 ? amountPaid : null,
                 amount_tendered:     method === 'Cash' ? (amountPaid > 0 ? amountPaid : null) : null,
@@ -10870,9 +11048,6 @@ setTimeout(function() {
                 })),
                 ...joData,
             };
-
-            const btn = document.getElementById('checkoutBtn');
-            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing…'; }
 
             try {
                 const res  = await fetch('../backend/api/merchandise_transactions.php', {
@@ -10946,7 +11121,7 @@ setTimeout(function() {
                     if (mechBusyWarn) mechBusyWarn.style.display = 'none';
                     clearSuggestedParts();
                     // Reset merch customer fields
-                    ['merchFirstName','merchLastName'].forEach(id => {
+                    ['merchFirstName','merchLastName','merchContactNumber'].forEach(id => {
                         const el = document.getElementById(id);
                         if (el) el.value = '';
                     });
@@ -10963,6 +11138,7 @@ setTimeout(function() {
             } catch (err) {
                 showTxnAlert('Network error: ' + err.message, 'error');
             } finally {
+                _isSubmittingTxn = false; // always release the lock
                 if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-receipt"></i> Process & Print Receipt'; }
                 updateCheckoutBtn();
             }
@@ -11955,7 +12131,15 @@ setTimeout(function() {
                 document.addEventListener('DOMContentLoaded', function() { joRenderTable(); });
 
         // ── 10-SECOND REAL-TIME AUTO REFRESH FOR JOB ORDER TRACKER ───────────
+        let _isRefreshingJO = false;
         async function autoRefreshJobOrderTracker() {
+            if (_isRefreshingJO) return;
+            if (document.hidden) return; // Skip if browser tab is in background
+
+            // Only refresh if Tracker tab is currently visible
+            const trackerTab = document.getElementById('innerTab_tracker');
+            if (trackerTab && trackerTab.style.display === 'none') return;
+
             // Do not refresh if user has any modal open
             const modals = ['paymentSettleModal', 'viewJobOrderModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal', 'requestAdjustModal', 'requestVoidModal'];
             for (let mId of modals) {
@@ -11964,6 +12148,7 @@ setTimeout(function() {
             }
 
             try {
+                _isRefreshingJO = true;
                 const resp = await fetch('staff_transactions_hub.php?section=merchandise&active_tab=tracker&ajax_tracker=1');
                 if (!resp.ok) return;
                 const data = await resp.json();
@@ -11985,11 +12170,13 @@ setTimeout(function() {
                 }
             } catch (e) {
                 console.warn('Job Order Tracker refresh notice:', e);
+            } finally {
+                _isRefreshingJO = false;
             }
         }
 
         // Run auto-refresh every 10 seconds
-        setInterval(autoRefreshJobOrderTracker, 2000);
+        setInterval(autoRefreshJobOrderTracker, 10000);
         </script>
 
         </div><!-- /innerTab_tracker -->
@@ -12010,6 +12197,8 @@ setTimeout(function() {
             color:#1e293b;background:#fff;outline:none;box-sizing:border-box;transition:border-color .15s;}
         .pm-input:focus{border-color:#003d7a;}
         .pm-row{margin-bottom:13px;}
+        .pm-cancel-btn{padding:12px 20px !important;background:#ffffff !important;color:#334155 !important;border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;min-height:44px !important;white-space:nowrap !important;box-shadow:0 1px 2px rgba(0,0,0,0.05) !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all .15s ease !important;}
+        .pm-cancel-btn:hover{background:#f1f5f9 !important;color:#0f172a !important;border-color:#94a3b8 !important;}
         </style>
         <div id="paymentSettleModal" style="display:none;position:fixed;inset:0;z-index:9999;
              background:rgba(0,0,0,.5);align-items:center;justify-content:center;">
@@ -12090,29 +12279,23 @@ setTimeout(function() {
                 </div>
               </div>
 
-              <!-- Payment Method buttons -->
+              <!-- Payment Method dropdown -->
               <div class="pm-row">
                 <label class="pm-label">Payment Method</label>
-                <div style="display:flex;gap:5px;flex-wrap:wrap;">
-                  <button type="button" class="pm-method-btn active" data-method="Cash"        onclick="pmSelectMethod('Cash')">
-                    <i class="fas fa-money-bill-wave" style="display:block;font-size:13px;margin-bottom:2px;color:#16a34a;"></i>Cash
-                  </button>
-                  <button type="button" class="pm-method-btn"        data-method="Card"        onclick="pmSelectMethod('Card')">
-                    <i class="fas fa-credit-card"     style="display:block;font-size:13px;margin-bottom:2px;color:#003d7a;"></i>Card
-                  </button>
-                  <button type="button" class="pm-method-btn"        data-method="E-Wallet"    onclick="pmSelectMethod('E-Wallet')">
-                    <i class="fas fa-mobile-alt"      style="display:block;font-size:13px;margin-bottom:2px;color:#7c3aed;"></i>E-Wallet
-                  </button>
-                  <button type="button" class="pm-method-btn"        data-method="Petron E-Fuel" onclick="pmSelectMethod('Petron E-Fuel')">
-                    <i class="fas fa-gas-pump"        style="display:block;font-size:13px;margin-bottom:2px;color:#dc2626;"></i>E-Fuel
-                  </button>
-                  <button type="button" class="pm-method-btn"        data-method="Fleet Card"  onclick="pmSelectMethod('Fleet Card')">
-                    <i class="fas fa-truck"           style="display:block;font-size:13px;margin-bottom:2px;color:#0284c7;"></i>Fleet
-                  </button>
-                  <button type="button" class="pm-method-btn"        data-method="Credit"      onclick="pmSelectMethod('Credit')">
-                    <i class="fas fa-file-invoice-dollar" style="display:block;font-size:13px;margin-bottom:2px;color:#92400e;"></i>Credit
-                  </button>
-                </div>
+                <select id="pmMethodSelect"
+                        name="settle_method_ui"
+                        onchange="pmSelectMethod(this.value)"
+                        style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;
+                               font-size:13px;font-weight:600;color:#1e293b;background:#fff;cursor:pointer;
+                               outline:none;appearance:auto;">
+                  <option value="Cash">Cash</option>
+                  <option value="Credit Card">Credit Card</option>
+                  <option value="Debit Card">Debit Card</option>
+                  <option value="GCash">GCash</option>
+                  <option value="Maya">Maya</option>
+                  <option value="Petron Fleet Card">Petron Fleet Card</option>
+                  <option value="Credit Account">Credit Account</option>
+                </select>
               </div>
 
               <!-- Cash: tendered + change -->
@@ -12120,13 +12303,13 @@ setTimeout(function() {
                 <label class="pm-label">Amount Tendered <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#94a3b8;">(optional)</span></label>
                 <div style="display:flex;align-items:center;border:1.5px solid #d1d5db;border-radius:8px;overflow:hidden;max-width:200px;">
                   <span style="background:#f3f4f6;padding:9px 11px;font-weight:700;color:#374151;border-right:1px solid #d1d5db;font-size:13px;">₱</span>
-                  <input type="number" id="pmTendered" step="0.01" min="0" placeholder="0.00"
+                  <input type="number" id="pmTendered" step="0.01" min="0" placeholder="e.g. 500.00"
                          oninput="pmCalcChange()"
                          style="flex:1;border:none;padding:9px 10px;font-size:14px;color:#1e293b;outline:none;background:#fff;">
                 </div>
                 <div id="pmChangeRow" style="display:none;margin-top:7px;padding:8px 12px;
                      background:#dcfce7;border:1px solid #86efac;border-radius:7px;
-                     font-size:13px;color:#166534;font-weight:700;display:none;">
+                     font-size:13px;color:#166534;font-weight:700;">
                   <i class="fas fa-coins" style="margin-right:6px;"></i>Change (Sukli): ₱<span id="pmChangeAmt">0.00</span>
                 </div>
               </div>
@@ -12171,20 +12354,41 @@ setTimeout(function() {
               <!-- Buttons -->
               <div style="display:flex;gap:8px;">
                 <button type="submit" id="pmSubmitBtn"
-                        style="flex:1;padding:11px;background:#003d7a;color:#fff;border:none;border-radius:8px;
+                        style="flex:1;padding:12px 16px;background:#003d7a;color:#fff;border:none;border-radius:8px;
                                font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;
-                               justify-content:center;gap:7px;">
-                  <i class="fas fa-check-circle"></i><span id="pmSubmitLabel">Confirm Payment</span>
+                               justify-content:center;gap:7px;min-height:44px;white-space:nowrap;">
+                  <i class="fas fa-check-circle"></i><span id="pmSubmitLabel">Record Payment</span>
                 </button>
-                <button type="button" onclick="closePaymentModal()"
-                        style="padding:11px 16px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;
-                               border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
-                  Cancel
-                </button>
+                <button type="button" onclick="closePaymentModal()" class="pm-cancel-btn">Cancel</button>
               </div>
             </form>
+
+            <!-- Already-Paid: just confirm-complete, no payment needed -->
+            <div id="pmAlreadyPaidSection" style="display:none;padding:16px 20px 20px;">
+              <div style="padding:14px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;
+                          font-size:13px;color:#166534;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-check-circle" style="font-size:18px;"></i>
+                <div><strong>Already fully paid.</strong><br>
+                <span style="font-size:12px;">No additional payment required. Click below to mark this Job Order as Completed.</span></div>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <form method="POST" action="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="flex:1;">
+                  <input type="hidden" name="jo_action" value="set_completed">
+                  <input type="hidden" name="jo_id" id="pmAlreadyPaidJoId" value="">
+                  <input type="hidden" name="jo_source" id="pmAlreadyPaidJoSource" value="">
+                  <button type="submit"
+                          style="width:100%;padding:12px 16px;background:#16a34a;color:#fff;border:none;
+                                 border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;
+                                 display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;">
+                    <i class="fas fa-check-circle"></i> Mark as Completed
+                  </button>
+                </form>
+                <button type="button" onclick="closePaymentModal()" class="pm-cancel-btn">Cancel</button>
+              </div>
+            </div>
           </div>
         </div>
+
 
         <script>
         // ── Payment Settlement Modal JS ───────────────────────────────────────
@@ -12213,35 +12417,62 @@ setTimeout(function() {
                 cell.style.background = '#dcfce7'; lbl.style.color = '#166534'; val.style.color = '#166534';
             }
 
-            // Auto-fill amount = balance due; tendered = balance due (staff just edits if different)
-            document.getElementById('pmAmountInput').value = _pmBalance > 0.009 ? _pmBalance.toFixed(2) : '';
-            document.getElementById('pmTendered').value    = _pmBalance > 0.009 ? _pmBalance.toFixed(2) : '';
-            document.getElementById('pmRefInput').value    = '';
-            document.getElementById('pmRemarks').value     = '';
-            document.getElementById('pmChangeRow').style.display = 'none';
-            document.getElementById('pmPreview').style.display   = 'none';
+            // Already-paid + markComplete → skip payment form, show confirm-complete panel
+            var alreadyPaidMode = markComplete && _pmBalance <= 0.009;
+
+            var payForm        = document.getElementById('paymentSettleForm');
+            var alreadyPaidSec = document.getElementById('pmAlreadyPaidSection');
+            if (payForm)        payForm.style.display        = alreadyPaidMode ? 'none' : 'block';
+            if (alreadyPaidSec) alreadyPaidSec.style.display = alreadyPaidMode ? 'block' : 'none';
+
+            if (alreadyPaidMode) {
+                // Populate the already-paid confirm form
+                document.getElementById('pmAlreadyPaidJoId').value     = joId;
+                document.getElementById('pmAlreadyPaidJoSource').value = joSource;
+            } else {
+                // Normal payment form — pre-fill amount only, NOT tendered (manual input)
+                document.getElementById('pmAmountInput').value = _pmBalance > 0.009 ? _pmBalance.toFixed(2) : '';
+                document.getElementById('pmTendered').value    = ''; // staff types this manually
+                document.getElementById('pmRefInput').value    = '';
+                document.getElementById('pmRemarks').value     = '';
+                document.getElementById('pmChangeRow').style.display = 'none';
+                document.getElementById('pmPreview').style.display   = 'none';
+
+                // Reset dropdown to Cash
+                var sel = document.getElementById('pmMethodSelect');
+                if (sel) sel.value = 'Cash';
+                pmSelectMethod('Cash');
+            }
 
             // Complete notice
             var notice = document.getElementById('pmCompleteNotice');
-            notice.style.display = markComplete ? 'flex' : 'none';
+            notice.style.display = (markComplete && !alreadyPaidMode) ? 'flex' : 'none';
 
             // Title / icon / submit label
-            var title = markComplete ? 'Complete & Settle Payment'
-                      : (_pmBalance > 0.009 ? 'Settle Balance' : 'Record Payment');
+            var title, submitLabel;
+            if (alreadyPaidMode) {
+                title = 'Mark Job Order Complete';
+                submitLabel = 'Mark as Completed';
+            } else if (markComplete) {
+                title = 'Complete & Settle Payment';
+                submitLabel = 'Complete & Confirm';
+            } else {
+                title = _pmBalance > 0.009 ? 'Settle Balance' : 'Record Payment';
+                submitLabel = 'Record Payment';
+            }
             document.getElementById('pmModalTitle').textContent    = title;
             document.getElementById('pmModalCustomer').textContent = customerName ? 'Customer: ' + customerName : '';
             document.getElementById('pmHeaderIcon').className      = markComplete ? 'fas fa-check-circle' : 'fas fa-receipt';
-            document.getElementById('pmSubmitLabel').textContent   = markComplete ? 'Complete & Confirm' : 'Confirm Payment';
+            if (document.getElementById('pmSubmitLabel'))
+                document.getElementById('pmSubmitLabel').textContent = submitLabel;
 
-            pmSelectMethod('Cash');
             document.getElementById('paymentSettleModal').style.display = 'flex';
-            // Focus tendered for Cash (staff just types what customer hands over)
-            setTimeout(function(){
-                var focus = _pmMethod === 'Cash'
-                    ? document.getElementById('pmTendered')
-                    : document.getElementById('pmAmountInput');
-                if (focus) focus.select();
-            }, 80);
+            if (!alreadyPaidMode) {
+                setTimeout(function(){
+                    var focus = document.getElementById('pmAmountInput');
+                    if (focus) focus.select();
+                }, 80);
+            }
         }
 
         function closePaymentModal() {
@@ -12251,20 +12482,22 @@ setTimeout(function() {
         function pmSelectMethod(method) {
             _pmMethod = method;
             document.getElementById('pmMethodHidden').value = method;
-            document.querySelectorAll('.pm-method-btn').forEach(function(b){
-                b.classList.toggle('active', b.dataset.method === method);
-            });
-            document.getElementById('pmCashFields').style.display   = method === 'Cash'     ? 'block' : 'none';
-            document.getElementById('pmRefFields').style.display    = ['Card','E-Wallet','E-Fuel Card','Petron E-Fuel','Fleet Card'].includes(method) ? 'block' : 'none';
-            document.getElementById('pmCreditFields').style.display = method === 'Credit'   ? 'block' : 'none';
+            // Sync dropdown if it exists
+            var sel = document.getElementById('pmMethodSelect');
+            if (sel && sel.value !== method) sel.value = method;
+            // Show/hide contextual fields
+            document.getElementById('pmCashFields').style.display   = (method === 'Cash') ? 'block' : 'none';
+            document.getElementById('pmRefFields').style.display    = ['Credit Card','Debit Card','GCash','Maya','Petron Fleet Card'].includes(method) ? 'block' : 'none';
+            document.getElementById('pmCreditFields').style.display = (method === 'Credit Account') ? 'block' : 'none';
             var labels = {
-                'Card': 'Card Reference No.',
-                'E-Wallet': 'E-Wallet Ref No. (GCash/Maya)',
-                'E-Fuel Card': 'E-Fuel Card ID',
-                'Petron E-Fuel': 'E-Fuel Card ID',
-                'Fleet Card': 'Fleet Card No.'
+                'Credit Card':       'Card Reference No.',
+                'Debit Card':        'Card Reference No.',
+                'GCash':             'GCash Reference No.',
+                'Maya':              'Maya Reference No.',
+                'Petron Fleet Card': 'Fleet Card No.'
             };
-            if (labels[method]) document.getElementById('pmRefLabel').textContent = labels[method];
+            var lbl = document.getElementById('pmRefLabel');
+            if (lbl) lbl.textContent = labels[method] || 'Reference No.';
             pmRecalc();
         }
 

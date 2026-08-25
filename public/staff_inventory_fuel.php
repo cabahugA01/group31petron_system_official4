@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'inv_fuel';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -1420,6 +1420,196 @@ function submitFuelStockRequest() {
         btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Stock Request';
         closeFuelSrModal();
 
+                        <label for="fsrSelectAll" style="cursor:pointer;margin:0;margin-left:8px;">Select All</label>
+                        <span id="fsrSelectedCount" style="margin-left:auto;color:#002F70;"></span>
+                    </div>
+
+                    <!-- Fuel list with checkboxes -->
+                    <div id="fsrCheckList"></div>
+                </div>
+            </div>
+
+            <div id="fsrError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;margin-top:12px;font-size:13px;"></div>
+        </div>
+
+        <div class="sr-modal-footer" style="display:flex !important; justify-content:flex-end !important; align-items:center !important; gap:12px !important; padding:16px 24px !important; background:#f8fafc !important; border-top:1px solid #cbd5e1 !important; box-sizing:border-box !important;">
+            <button type="button" id="fsrCancelBtn" onclick="closeFuelSrModal()" style="padding:9px 20px !important; border:1.5px solid #00264D !important; background:#ffffff !important; background-color:#ffffff !important; color:#00264D !important; -webkit-text-fill-color:#00264D !important; border-radius:6px !important; font-size:13px !important; font-weight:700 !important; cursor:pointer !important; display:inline-flex !important; align-items:center !important; gap:6px !important; opacity:1 !important; visibility:visible !important;">
+                <i class="fas fa-times"></i> Cancel
+            </button>
+            <button type="button" id="fsrSubmitBtn" onclick="fsrHandleSubmit(this)" style="padding:9px 22px !important; background:#002F70 !important; background-color:#002F70 !important; color:#ffffff !important; -webkit-text-fill-color:#ffffff !important; border:none !important; border-radius:6px !important; font-size:13px !important; font-weight:700 !important; cursor:pointer !important; display:inline-flex !important; align-items:center !important; gap:6px !important; opacity:1 !important; visibility:visible !important;">
+                <i class="fas fa-paper-plane"></i> Submit Stock Request
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Success popup ── -->
+<div id="fsrSuccessOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10998;"></div>
+<div id="fsrSuccessPopup" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10999;background:#fff;padding:28px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);text-align:center;">
+    <div style="width:56px;height:56px;background:linear-gradient(135deg,#28a745,#20c997);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+        <i class="fas fa-check" style="color:#fff;font-size:28px;"></i>
+    </div>
+    <h3 style="margin:0 0 8px;color:#28a745;">Request Submitted!</h3>
+    <p style="margin:0 0 18px;color:#333;font-size:14px;line-height:1.5;" id="fsrSuccessMsg">
+        Your fuel stock request is now <strong>Pending</strong> Manager review.
+    </p>
+    <button onclick="closeFsrSuccess()" class="txn-btn primary">OK</button>
+</div>
+
+<script>
+var allFuelData = <?php echo json_encode($js_fuel); ?>;
+
+// ── Open stock request modal ────────────────────────────────────────────────────────────────────────────────
+function openFuelSrModal() {
+    renderFsrCheckList();
+    syncFsrSelectAll();
+    document.getElementById('fsrError').style.display = 'none';
+    var rem = document.getElementById('fsrRemarks');
+    if (rem) rem.value = '';
+    var sb = document.getElementById('fsrSubmitBtn');
+    if (sb) { sb.disabled = false; sb.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Stock Request'; }
+    document.getElementById('fuelSrModal').classList.add('open');
+}
+
+function renderFsrCheckList() {
+    var needsRestock = allFuelData.filter(function(it) {
+        var s = (it.status || '').toUpperCase();
+        return s === 'CRITICAL' || s === 'LOW' || s === 'LOW STOCK' || s === 'OUT OF STOCK';
+    });
+
+    if (needsRestock.length === 0) {
+        document.getElementById('fsrCheckList').innerHTML =
+            '<div style="text-align:center;padding:28px 16px;color:#6c757d;">' +
+            '<strong>All fuel tanks are at sufficient levels.</strong><br>' +
+            '<small>Stock requests are only needed for Critical, Low, or Out-of-Stock fuels.</small></div>';
+        document.getElementById('fsrSubmitBtn').disabled = true;
+        return;
+    }
+
+    document.getElementById('fsrSubmitBtn').disabled = false;
+
+    var rows = needsRestock.map(function(it) {
+        var idx = allFuelData.indexOf(it);
+        var badge = '<span style="background:' + it.color + '20;color:' + it.color + ';border:1px solid ' + it.color + '40;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;">' + esc(it.status) + '</span>';
+        var ugtNo = it.tanker_num ? it.tanker_num : (it.tanker_label || '');
+        return '<tr class="fsr-cb-row ' + it.statusCls + '" data-idx="' + idx + '" style="cursor:pointer;">' +
+            '<td style="text-align:center;"><input type="checkbox" class="fsr-cb fsr-item-cb" data-idx="' + idx + '"></td>' +
+            '<td style="font-weight:700;color:#002F70;">' + esc(it.name) + '</td>' +
+            '<td style="font-family:monospace;font-weight:700;">' + esc(ugtNo) + '</td>' +
+            '<td style="text-align:right;font-weight:700;">' + it.level.toLocaleString('en-PH',{minimumFractionDigits:2}) + ' L</td>' +
+            '<td style="text-align:right;color:#dc2626;font-weight:700;">' + Number(it.reorder_level || 0).toLocaleString('en-PH',{minimumFractionDigits:0}) + ' L</td>' +
+            '<td style="text-align:center;">' + badge + '</td>' +
+        '</tr>';
+    }).join('');
+    var html = '<div style="max-height:360px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;">' +
+        '<table class="sr-table" style="width:100%;border-collapse:collapse;font-size:12px;">' +
+            '<thead><tr style="background:#002F70;color:#fff;position:sticky;top:0;z-index:5;">' +
+                '<th style="width:7%;text-align:center;">Select</th>' +
+                '<th style="width:24%;text-align:left;">Fuel Type</th>' +
+                '<th style="width:16%;text-align:left;">UGT No.</th>' +
+                '<th style="width:19%;text-align:right;">Current Liters</th>' +
+                '<th style="width:18%;text-align:right;">Reorder Level</th>' +
+                '<th style="width:16%;text-align:center;">Status</th>' +
+            '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    document.getElementById('fsrCheckList').innerHTML = html;
+
+    document.querySelectorAll('.fsr-item-cb').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            var row = this.closest('.fsr-cb-row');
+            if (row) {
+                row.classList.toggle('checked', this.checked);
+            }
+            syncFsrSelectAll();
+        });
+    });
+
+    document.querySelectorAll('.fsr-cb-row').forEach(function(row) {
+        row.addEventListener('click', function(e) {
+            if (e.target && e.target.matches('input')) return;
+            var cb = this.querySelector('.fsr-item-cb');
+            if (!cb) return;
+            cb.checked = !cb.checked;
+            this.classList.toggle('checked', cb.checked);
+            syncFsrSelectAll();
+        });
+    });
+}
+
+function syncFsrSelectAll() {
+    var all     = document.querySelectorAll('.fsr-item-cb');
+    var checked = document.querySelectorAll('.fsr-item-cb:checked');
+    var sa = document.getElementById('fsrSelectAll');
+    if (sa) {
+        sa.indeterminate = checked.length > 0 && checked.length < all.length;
+        sa.checked       = all.length > 0 && checked.length === all.length;
+    }
+    var countLabel = document.getElementById('fsrSelectedCount');
+    if (countLabel) {
+        countLabel.textContent = checked.length > 0 ? checked.length + ' selected' : '';
+    }
+}
+
+var selectAllEl = document.getElementById('fsrSelectAll');
+if (selectAllEl) {
+    selectAllEl.addEventListener('change', function() {
+        var c = this.checked;
+        document.querySelectorAll('.fsr-item-cb').forEach(function(cb) { cb.checked = c; });
+        document.querySelectorAll('.fsr-cb-row').forEach(function(row) { row.classList.toggle('checked', c); });
+        syncFsrSelectAll();
+    });
+}
+
+// ── Close stock request modal ──────────────────────────────────────────────────────────────────────────────
+function closeFuelSrModal() {
+    var m = document.getElementById('fuelSrModal');
+    if (m) m.classList.remove('open');
+}
+
+// ── Submit stock request ───────────────────────────────────────────────────────────────────────────────────
+function submitFuelStockRequest() {
+    var checked = document.querySelectorAll('.fsr-item-cb:checked');
+    var errEl = document.getElementById('fsrError');
+    if (checked.length === 0) {
+        errEl.textContent = 'Please select at least one fuel type.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    var btn = document.getElementById('fsrSubmitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+    errEl.style.display = 'none';
+
+    var remarks = ((document.getElementById('fsrRemarks') || {}).value || '').trim() || 'Bulk fuel stock request';
+
+    var items = [];
+    checked.forEach(function(cb) {
+        var it = allFuelData[parseInt(cb.dataset.idx)];
+        if (it) {
+            items.push({
+                fuel_type:        it.name,
+                current_level:    it.level,
+                capacity:         it.capacity,
+                stock_status:     it.status,
+                requested_liters: 0
+            });
+        }
+    });
+
+    fetch('../backend/api/fuel_stock_request.php?action=create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            items: items,
+            remarks: remarks
+        })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Stock Request';
+        closeFuelSrModal();
+
         if (res.success) {
             var srNo = res.request_no || '';
             var cnt  = res.inserted_count || items.length;
@@ -1490,7 +1680,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function esc(str) { var d = document.createElement('div'); d.appendChild(document.createTextNode(str)); return d.innerHTML; }
 
-// â”€â”€ Filter Table Logic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Filter Table Logic ──────────────────────────────────────────────────────────
 function fuelFilterValue(id) {
     var el = document.getElementById(id);
     return el ? String(el.value || '').toLowerCase().trim() : '';
@@ -1518,7 +1708,6 @@ function filterFuelTable() {
 
         if (search && rFuelType.indexOf(search) === -1 && rUgtNo.indexOf(search) === -1 && rTankNum.indexOf(search) === -1) match = false;
         if (fuelType && rFuelType.indexOf(fuelType) === -1) match = false;
-        // Status filter: match exact status value (e.g. 'low', 'critical', 'normal', 'out of stock')
         if (status && rStatus.trim() !== status.trim()) match = false;
 
         row.classList.toggle('search-hidden', !match);
@@ -1537,60 +1726,19 @@ function filterFuelTable() {
 function applyFuelInventoryFilters(e) {
     if (e) e.preventDefault();
     filterFuelTable();
-
-    // ── 15-SECOND SILENT BACKGROUND AUTO-FETCH FOR FUEL INVENTORY ──────────
-    function autoRefreshFuelInventory() {
-        // Do not refresh if user has any modal open or is typing
-        var modals = ['tankModal', 'movementModal', 'fuelSrModal', 'fsrSuccessOverlay', 'fsrSuccessPopup'];
-        for (var i = 0; i < modals.length; i++) {
-            var el = document.getElementById(modals[i]);
-            if (el && (el.classList.contains('open') || el.style.display === 'flex' || el.style.display === 'block')) return;
-        }
-        var searchInput = document.getElementById('sq');
-        if (searchInput && searchInput === document.activeElement && searchInput.value.trim() !== '') return;
-
-        // Fetch fresh HTML in background and update table & KPI cards seamlessly
-        fetch(window.location.href, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            cache: 'no-store'
-        })
-        .then(function(res) { return res.text(); })
-        .then(function(html) {
-            var parser = new DOMParser();
-            var doc = parser.parseFromString(html, 'text/html');
-            
-            // Update table body
-            var newTbody = doc.querySelector('#fuelTable tbody') || doc.querySelector('table tbody');
-            var curTbody = document.querySelector('#fuelTable tbody') || document.querySelector('table tbody');
-            if (newTbody && curTbody) {
-                curTbody.innerHTML = newTbody.innerHTML;
-                if (typeof filterFuelTable === 'function') filterFuelTable();
-            }
-            
-            // Update top KPI cards if present
-            var newCards = doc.querySelectorAll('.kpi-card, .metric-card, [class*="summary-card"]');
-            var curCards = document.querySelectorAll('.kpi-card, .metric-card, [class*="summary-card"]');
-            if (newCards.length > 0 && curCards.length === newCards.length) {
-                for (var j = 0; j < newCards.length; j++) {
-                    curCards[j].innerHTML = newCards[j].innerHTML;
-                }
-            }
-        })
-        .catch(function(e) {
-            console.warn('Fuel inventory auto-fetch notice:', e);
-        });
-    }
-    setInterval(autoRefreshFuelInventory, 2000);
     return false;
 }
+
 function resetFuelInventoryFilters() {
     ['sq', 'cf', 'sf'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.value = '';
     });
     filterFuelTable();
+}
 
-    // ── 15-SECOND SILENT BACKGROUND AUTO-FETCH FOR FUEL INVENTORY ──────────
+document.addEventListener('DOMContentLoaded', function() {
+    // ── 10-SECOND SILENT BACKGROUND AUTO-FETCH FOR FUEL INVENTORY ──────────
     function autoRefreshFuelInventory() {
         // Do not refresh if user has any modal open or is typing
         var modals = ['tankModal', 'movementModal', 'fuelSrModal', 'fsrSuccessOverlay', 'fsrSuccessPopup'];
@@ -1958,7 +2106,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.warn('Fuel inventory auto-fetch notice:', e);
         });
     }
-    setInterval(autoRefreshFuelInventory, 2000);
+    setInterval(autoRefreshFuelInventory, 10000);
 
     // Auto-open fuel stock request modal if triggered from URL
     var urlParams = new URLSearchParams(window.location.search);

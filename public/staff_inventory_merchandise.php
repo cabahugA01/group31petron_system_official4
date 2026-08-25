@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Staff Merchandise Inventory — Enhanced
  * Filters: Category, Status, Sort | Summary Cards | Last Movement | View Details
@@ -2170,7 +2170,7 @@ function submitAdjustmentForm(e) {
             console.warn('Merchandise inventory auto-fetch notice:', e);
         });
     }
-    setInterval(autoRefreshMerchandiseInventory, 2000);
+    setInterval(autoRefreshMerchandiseInventory, 10000);
 })();
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

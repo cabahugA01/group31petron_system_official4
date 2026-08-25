@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * STAFF FUEL SALES SUMMARY REPORT
  * Complete fetch process with all summaries
@@ -4541,7 +4541,7 @@ function autoRefreshStaffFuelSalesSummary() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshStaffFuelSalesSummary, 2000);
+setInterval(autoRefreshStaffFuelSalesSummary, 10000);
 </script>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>
 
