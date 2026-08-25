@@ -1,6 +1,6 @@
--- ============================================================
+﻿-- ============================================================
 -- Petron Station Management System
--- Database: petron_pos_db_secure
+-- Database: u285762786_petrondbs
 
 -- Generated: 2026-08-05 10:53:46
 -- Total Tables: 156
@@ -1128,10 +1128,10 @@ INSERT INTO `activity_logs` (`id`, `user_id`, `action`, `details`, `reference`, 
 ('1147', '1', 'Database Management', 'Verified backup: backup_2026_08_03_082203.sql (FAILED)', NULL, '::1', '2026-08-05 15:59:22', '2026-08-05 15:59:22'),
 ('1148', '1', 'Database Management', 'Saved backup configuration', NULL, '::1', '2026-08-05 16:20:49', '2026-08-05 16:20:49'),
 ('1149', '1', 'Database Management', 'Saved backup configuration', NULL, '::1', '2026-08-05 16:20:49', '2026-08-05 16:20:49'),
-('1150', '1', 'Database Management', 'Manual backup: petron_pos_db_secure
+('1150', '1', 'Database Management', 'Manual backup: u285762786_petrondbs
 .sql (Type:Full Backup, Status:Completed, Size:2.2 KB)', NULL, '::1', '2026-08-05 16:21:00', '2026-08-05 16:21:00'),
-('1151', '1', 'Database Management', 'Downloaded backup: petron_pos_db_secure
-.sql (as petron_pos_db_secure
+('1151', '1', 'Database Management', 'Downloaded backup: u285762786_petrondbs
+.sql (as u285762786_petrondbs
 .sql)', NULL, '::1', '2026-08-05 16:21:15', '2026-08-05 16:21:15'),
 ('1152', '13', 'Logout', 'Yyeng C. (Staff) logged out', NULL, '::1', '2026-08-05 16:35:24', '2026-08-05 16:35:24'),
 ('1153', '13', 'Clock Out', 'Auto clock-out on logout', NULL, '::1', '2026-08-05 16:35:24', '2026-08-05 16:35:24'),
@@ -1779,8 +1779,8 @@ CREATE TABLE `database_backups` (
 INSERT INTO `database_backups` (`id`, `backup_name`, `backup_file`, `backup_size`, `backup_type`, `station_id`, `created_by`, `status`, `backup_path`, `notes`, `created_at`, `completed_at`, `compression`, `verified`) VALUES
 ('1', 'backup_2026_08_03_082203.sql', 'local/backup_2026_08_03_082203.sql', '0', 'manual', NULL, '1', 'completed', NULL, NULL, '2026-08-03 14:22:03', NULL, 'SQL', '0'),
 ('6', 'petron_backup_2026_08_05_095644.sql', '/backup/database/petron_backup_2026_08_05_095644.sql', '188', 'Full Backup', NULL, '1', 'Simulated', NULL, NULL, '2026-08-05 15:56:44', NULL, 'SQL', '1'),
-('13', 'petron_pos_db_secure
-.sql', '/backup/database/petron_pos_db_secure
+('13', 'u285762786_petrondbs
+.sql', '/backup/database/u285762786_petrondbs
 .sql', '2274', 'Full Backup', NULL, '1', 'Completed', NULL, NULL, '2026-08-05 16:21:00', NULL, 'SQL', '0');
 
 

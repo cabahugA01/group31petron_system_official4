@@ -96,13 +96,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $btype = cfg_get($pdo, 'backup_type',        'Full Backup');
         $comp  = cfg_get($pdo, 'backup_compression', 'SQL');
 
-        // Fixed: filename is always petron_pos_db_secure
+        // Fixed: filename is always u285762786_petrondbs
 .sql
-        $fname = 'petron_pos_db_secure
+        $fname = 'u285762786_petrondbs
 .sql';
         $fpath = $backup_dir . $fname;
 
-        $db_name = 'petron_pos_db_secure
+        $db_name = 'u285762786_petrondbs
 ';
 
         // ── 1. Try real mysqldump first ──────────────────────────────
@@ -1220,14 +1220,14 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
                         <i class="fas fa-shield-alt"></i>
                       </button>
                     </form>
-                    <!-- Download via secure PHP handler → always served as petron_pos_db_secure
+                    <!-- Download via secure PHP handler → always served as u285762786_petrondbs
 .sql -->
                     <?php
                       $fexists = file_exists($backup_dir . ($bk['backup_name'] ?? ''));
                       $dl_url  = 'db_download.php?id=' . (int)$bk['id'];
                     ?>
                     <a href="<?= $fexists ? $dl_url : '#' ?>"
-                       class="db-btn db-btn-success db-btn-icon" title="Download Backup (petron_pos_db_secure
+                       class="db-btn db-btn-success db-btn-icon" title="Download Backup (u285762786_petrondbs
 .sql)"
                        <?= $fexists ? '' : 'onclick="alert(\'Backup file not found on server.\');return false;"' ?>>
                       <i class="fas fa-download"></i>

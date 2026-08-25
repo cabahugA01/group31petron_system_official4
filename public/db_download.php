@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // ================================================================
 // db_download.php  –  Secure Backup File Download Handler
 // Streams backup files through PHP so the /backups/ directory
@@ -39,10 +39,10 @@ if (!$bk) {
     exit('Backup record not found.');
 }
 
-// Always serve as petron_pos_db_secure
+// Always serve as u285762786_petrondbs
 .sql regardless of stored name
 $stored_file = $backup_dir . basename($bk['backup_name'] ?? '');
-$download_name = 'petron_pos_db_secure
+$download_name = 'u285762786_petrondbs
 .sql';
 
 if (!file_exists($stored_file)) {

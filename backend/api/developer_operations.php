@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Developer Operations API
  * Handles all developer panel operations via REST API
@@ -25,7 +25,7 @@ $action = $_GET['action'] ?? $_POST['action'] ?? 'list';
 
 // Database constants for backup
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'petron_pos_db_secure
+define('DB_NAME', 'u285762786_petrondbs
 ');
 define('DB_USER', 'root');
 define('DB_PASS', '');

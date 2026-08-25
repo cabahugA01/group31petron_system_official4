@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/lib.php';
 
 // Database connection
@@ -6,7 +6,7 @@ function getDbConnection() {
     $host = 'localhost';
     $username = 'root';
     $password = '';
-    $database = 'petron_pos_db_secure
+    $database = 'u285762786_petrondbs
 ';
     
     try {
