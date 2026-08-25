@@ -1,6 +1,6 @@
 -- MariaDB dump 10.19  Distrib 10.4.32-MariaDB, for Win64 (AMD64)
 --
--- Host: localhost    Database: u285762786_petrondbs
+-- Host: localhost    Database: petron_pos_db_secure
 
 -- ------------------------------------------------------
 -- Server version	10.4.32-MariaDB
@@ -4323,7 +4323,7 @@ LOCK TABLES `voided_transactions` WRITE;
 UNLOCK TABLES;
 
 --
--- Dumping routines for database 'u285762786_petrondbs
+-- Dumping routines for database 'petron_pos_db_secure
 '
 --
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;

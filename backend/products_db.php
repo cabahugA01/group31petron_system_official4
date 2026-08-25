@@ -6,7 +6,7 @@ function getDbConnection() {
     $host = 'localhost';
     $username = 'root';
     $password = '';
-    $database = 'u285762786_petrondbs
+    $database = 'petron_pos_db_secure
 ';
     
     try {
