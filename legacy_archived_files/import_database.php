@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
         
         // Check SQL file exists and is readable
-        $sql_file = __DIR__ . '/../sql/u285762786_petrondbs
+        $sql_file = __DIR__ . '/../sql/petron_pos_db_secure
 .sql';
         if (!file_exists($sql_file)) {
             throw new Exception("SQL file not found: $sql_file");
@@ -70,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import'])) {
     try {
         // Read the SQL file
-        $sql_file = __DIR__ . '/../sql/u285762786_petrondbs
+        $sql_file = __DIR__ . '/../sql/petron_pos_db_secure
 .sql';
         
         if (!file_exists($sql_file)) {
@@ -179,7 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import'])) {
             }
             
             // Log the import
-            log_activity($pdo, $me['id'], 'Database Import', "Successfully imported u285762786_petrondbs
+            log_activity($pdo, $me['id'], 'Database Import', "Successfully imported petron_pos_db_secure
 .sql", $_SERVER['REMOTE_ADDR']);
             
         } catch (Exception $e) {

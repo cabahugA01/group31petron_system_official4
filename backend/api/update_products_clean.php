@@ -5,7 +5,7 @@ header('Content-Type: application/json');
 try {
     // Database connection - copied from lib.php
     $host = 'localhost';
-    $dbname = 'u285762786_petrondbs
+    $dbname = 'petron_pos_db_secure
 ';
     $username = 'root';
     $password = '';

@@ -28,7 +28,7 @@ if (empty($csrf) || $csrf !== ($_SESSION['csrf_token'] ?? '')) {
 $format    = strtolower(trim($_GET['format'] ?? 'sql'));
 $tbl_param = trim($_GET['table'] ?? '__all__');
 $ts        = date('Y_m_d_His');
-$db_name   = 'u285762786_petrondbs
+$db_name   = 'petron_pos_db_secure
 ';
 
 // Whitelist formats
@@ -59,7 +59,7 @@ log_activity($pdo, $me['id'], 'DB Export',
 // FORMAT: SQL
 // ═══════════════════════════════════════════════════════════════════════
 if ($format === 'sql') {
-    $filename = "u285762786_petrondbs
+    $filename = "petron_pos_db_secure
 .sql";
     header("Content-Type: application/octet-stream");
     header("Content-Disposition: attachment; filename=\"{$filename}\"");
@@ -67,7 +67,7 @@ if ($format === 'sql') {
 
     $out  = "-- ============================================================\n";
     $out .= "-- Petron Station Management System — Database Backup\n";
-    $out .= "-- Database: u285762786_petrondbs
+    $out .= "-- Database: petron_pos_db_secure
 \n";
     $out .= "-- Generated: " . date('Y-m-d H:i:s') . "\n";
     $out .= "-- Tables: " . ($tbl_param === '__all__' ? 'ALL (' . count($tables_to_export) . ' tables)' : $tbl_param) . "\n";
