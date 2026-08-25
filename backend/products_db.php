@@ -6,7 +6,8 @@ function getDbConnection() {
     $host = 'localhost';
     $username = 'root';
     $password = '';
-    $database = 'petron_pos_db_secure';
+    $database = 'u285762786_petrondbs
+';
     
     try {
         $pdo = new PDO("mysql:host=$host;dbname=$database;charset=utf8mb4", $username, $password);

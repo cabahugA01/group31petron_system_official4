@@ -158,8 +158,10 @@ $health_rows = $stmtH->fetchAll(PDO::FETCH_ASSOC);
 // ── Tab 2: Database Report Query ──────────────────────────────────────
 $db_date_filter = $_GET['db_date'] ?? date('Y-m-d');
 $db_status_filter = $_GET['db_status'] ?? '';
-$actual_db_name = 'petron_pos_db_secure';
-try { $actual_db_name = $pdo->query("SELECT DATABASE()")->fetchColumn() ?: 'petron_pos_db_secure'; } catch(Exception $e) {}
+$actual_db_name = 'u285762786_petrondbs
+';
+try { $actual_db_name = $pdo->query("SELECT DATABASE()")->fetchColumn() ?: 'u285762786_petrondbs
+'; } catch(Exception $e) {}
 
 $database_rows = [
     [

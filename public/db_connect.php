@@ -2,7 +2,8 @@
 global $pdo;
 
 $host = "localhost";
-$dbname = "petron_pos_db_secure";
+$dbname = "u285762786_petrondbs
+";
 $user = "root";
 $pass = ""; // XAMPP default is empty
 

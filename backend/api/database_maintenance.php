@@ -127,7 +127,8 @@ function executeScriptDynamically($script, $pdo) {
     ], [
         date('Y-m-d_H-i-s'),
         '../../backups/database/backup_' . date('Y-m-d_H-i-s') . '.sql',
-        'petron_pos_db_secure'
+        'u285762786_petrondbs
+'
     ], $executionCommand);
     
     // Execute the command
