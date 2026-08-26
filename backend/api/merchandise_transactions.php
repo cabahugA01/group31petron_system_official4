@@ -709,6 +709,15 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
         }
     }
 
+    // ── Determine ar_status ──────────────────────────────────────────────────
+    if ($is_credit_account) {
+        $resolved_ar_status = ($balance_due <= 0) ? 'Settled' : 'Pending';
+    } elseif ($balance_due > 0) {
+        $resolved_ar_status = 'Pending';
+    } else {
+        $resolved_ar_status = 'No AR';
+    }
+
     // ── Ensure items table exists (DDL outside transaction) ──────────────────
     try {
         $pdo->exec("
@@ -952,6 +961,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             'balance_due'           => $balance_due > 0 ? $balance_due : null,
             // payment_status: Paid / Partially Paid / Pending
             'payment_status'        => $resolved_payment_status,
+            'ar_status'             => $resolved_ar_status,
             // Workflow status tracks service progress only; transaction validity is official on save.
             'workflow_status'       => $has_service_item ? 'Pending' : 'Completed',
             // ── Job Order integration ──────────────────────────────────────
@@ -1908,8 +1918,17 @@ function logMerchandiseTransactionAudit($pdo, $user_id, $transaction_id, $action
                 $audit_cols[strtolower($col['Field'])] = true;
             }
         } catch (Exception $e) {}
+        $txn_int_id = is_numeric($transaction_id) ? (int)$transaction_id : (int)($data['merch_transaction_id'] ?? 0);
+        if ($txn_int_id <= 0 && !empty($data['transaction_id'])) {
+            try {
+                $fStmt = $pdo->prepare("SELECT id FROM merchandise_transactions WHERE transaction_id = ? LIMIT 1");
+                $fStmt->execute([$data['transaction_id']]);
+                $txn_int_id = (int)($fStmt->fetchColumn() ?: 0);
+            } catch (Exception $e) {}
+        }
+
         $audit_values = [
-            'transaction_id' => $data['transaction_id'] ?? (string)$transaction_id,
+            'transaction_id' => $txn_int_id > 0 ? $txn_int_id : null,
             'user_id' => $user_id,
             'staff_id' => $user_id,
             'staff_name' => $data['staff_name'] ?? ('User #' . $user_id),
@@ -1936,7 +1955,7 @@ function logMerchandiseTransactionAudit($pdo, $user_id, $transaction_id, $action
                 $ins_vals[] = $value;
             }
         }
-        if ($ins_cols) {
+        if ($ins_cols && $txn_int_id > 0) {
             $col_sql = implode(', ', array_map(fn($col) => "`{$col}`", $ins_cols));
             $ph_sql = implode(', ', array_fill(0, count($ins_cols), '?'));
             $pdo->prepare("INSERT INTO merchandise_transaction_audit ({$col_sql}) VALUES ({$ph_sql})")

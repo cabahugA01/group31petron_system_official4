@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Master Admin Reports System
  * Navigation is handled by the sidebar. Page displays: Report Title + Station + Date Filter + Export Buttons + Report Content.

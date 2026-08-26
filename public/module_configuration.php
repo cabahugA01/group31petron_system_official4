@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'module_config';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';

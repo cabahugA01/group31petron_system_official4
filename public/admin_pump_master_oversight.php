@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Admin Pump Master Oversight – admin_pump_master_oversight.php
 // Purpose: Central monitoring and maintenance of all pumps.

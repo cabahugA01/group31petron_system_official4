@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Developer Operations API
  * Handles all developer panel operations via REST API

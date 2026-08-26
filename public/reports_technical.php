@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * SYSTEM REPORTS (Developer & Super Admin)
  * Fully dynamic implementation for System Health, Database, Backup, Error, and Security reports.

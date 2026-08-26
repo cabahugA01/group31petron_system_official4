@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * COMPREHENSIVE DELIVERY MANAGEMENT SYSTEM
  * 

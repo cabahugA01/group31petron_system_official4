@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // Manager Deliveries Workflow System
 session_start();
 require_once '../backend/lib.php';

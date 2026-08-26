@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'pos_fuel_sync';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';

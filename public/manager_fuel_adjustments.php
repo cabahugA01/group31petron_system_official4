@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Manager Fuel Adjustments Oversight – manager_fuel_adjustments.php
 // Purpose: Consolidated history of Fuel Transaction Adjustments

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Delete Specific Stations by Name or ID
 // public/delete_specific_stations.php

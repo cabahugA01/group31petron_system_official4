@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Admin Variance Reports - Merchandise (Admin Functional Form)
  * Access: admin and superadmin roles only.

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * ADMIN / OWNER — Admin Dashboard
  * Complete branch-wide monitoring of Fuel, Merchandise, and Job Order operations,

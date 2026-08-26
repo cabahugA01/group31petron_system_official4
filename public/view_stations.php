@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'view_stations';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../backend/rbac.php';

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * PRICING FOR RECEIVED ITEMS
  * 

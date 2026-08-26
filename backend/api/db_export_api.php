@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Database Export API
 // backend/api/db_export_api.php

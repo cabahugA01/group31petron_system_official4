@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Audit Trail Reports - Standalone Page
  * Complete Report Access Audit Trail

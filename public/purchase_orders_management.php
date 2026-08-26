@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // Purchase Orders Management System
 session_start();
 require_login();

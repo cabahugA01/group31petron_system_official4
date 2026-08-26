@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Database Management System
  * Provides database maintenance, backup, restore, and table management

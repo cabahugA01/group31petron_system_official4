@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // SuperAdmin – Module Configuration API
 // backend/api/superadmin_module_config_api.php

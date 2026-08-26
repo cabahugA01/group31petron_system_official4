@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Master Manager Reports System
  * Navigation and layout 100% aligned with Admin Reports.

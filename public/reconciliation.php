@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../public/db_connect.php';
 require_once __DIR__ . '/../backend/lib.php';
 

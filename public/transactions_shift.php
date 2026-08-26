@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'shift_transactions_view';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';

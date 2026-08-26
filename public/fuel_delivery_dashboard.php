@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * FUEL DELIVERY DASHBOARD
  * 

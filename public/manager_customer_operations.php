@@ -1244,6 +1244,7 @@ function manager_ar_history(): void {
                 : [':cid' => $customerId];
 
             $voidFilter = isset($cols['void_reason']) ? "AND COALESCE(void_reason,'') = ''" : '';
+            $creditFilter = "AND (LOWER(TRIM(payment_method)) IN ('credit account', 'credit', 'ar', 'account receivable') OR (credit_customer_id IS NOT NULL AND credit_customer_id > 0))";
 
             $sql = "
                 SELECT
@@ -1260,6 +1261,7 @@ function manager_ar_history(): void {
                     id AS db_id
                 FROM merchandise_transactions
                 WHERE ($custFilter)
+                  $creditFilter
                   $voidFilter
                 ORDER BY created_at DESC
             ";
@@ -1320,6 +1322,7 @@ function manager_ar_history(): void {
                 : "'Job Order Service'";
 
             $joCustFilter = isset($jcols['customer_id']) ? 'customer_id = :jcid' : '0=1';
+            $joCreditFilter = "AND (LOWER(TRIM(payment_method)) IN ('credit account', 'credit', 'ar', 'account receivable') OR COALESCE(is_credit,0) = 1)";
 
             $sql = "
                 SELECT
@@ -1335,6 +1338,7 @@ function manager_ar_history(): void {
                     id AS db_id
                 FROM job_orders
                 WHERE $joCustFilter
+                  $joCreditFilter
                 ORDER BY COALESCE(created_at) DESC
             ";
             $stmt = $pdo->prepare($sql);

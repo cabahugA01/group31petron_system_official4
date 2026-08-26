@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // Clean version without lib.php dependencies
 header('Content-Type: application/json');
 

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ================================================================
 // db_download.php  –  Secure Backup File Download Handler
 // Streams backup files through PHP so the /backups/ directory

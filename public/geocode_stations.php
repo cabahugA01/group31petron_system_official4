@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Station Geocoding Tool
 // public/geocode_stations.php

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Manager Dashboard — Complete Final Implementation
  * Operational Monitoring + Approval Management + Fuel Verification + Inventory Performance
@@ -908,8 +908,12 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
 
 include_once __DIR__ . '/../partials/header.php';
 ?>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="../assets/vendor/chart.js/chart.umd.min.js"></script>
+<script>
+if (typeof Chart === 'undefined') {
+    document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>');
+}
+</script>
 
 <style>
     /* Spacing Parity with Staff/System Design Rules */

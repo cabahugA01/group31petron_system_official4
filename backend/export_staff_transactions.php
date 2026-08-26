@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * EXPORT STAFF TRANSACTIONS
  * 

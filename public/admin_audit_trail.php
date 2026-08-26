@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Admin Audit Trail — Full Compliance Log (All Roles: Staff + Manager + Admin)
  * Shows every action at this station with timestamps, user IDs, roles, modules, IP.

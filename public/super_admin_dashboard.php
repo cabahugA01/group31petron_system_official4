@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Developer / Super Admin Dashboard
  * Summary Cards, System Health, Resource Usage, DB Summary,

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Admin Inventory History Oversight - admin_inventory_history.php
 // Rebuilt to support 5 required tabs: Purchase Orders, Deliveries,

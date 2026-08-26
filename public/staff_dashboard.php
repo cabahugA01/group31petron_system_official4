@@ -2405,7 +2405,12 @@ function searchFuelModal() {
 </script>
 
 <!-- Chart.js Integration & Automatic 10-Second Real-Time Polling -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="../assets/vendor/chart.js/chart.umd.min.js"></script>
+<script>
+if (typeof Chart === 'undefined') {
+    document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>');
+}
+</script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const money = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * manager_shift_transactions.php -> manager_validated_transactions.php
  * Permanent redirect shim to ensure no 404s for any old or existing notification links.

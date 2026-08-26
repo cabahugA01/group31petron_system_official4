@@ -65,22 +65,39 @@ try {
         exit;
     }
     
-    // Fetch transaction items
+    // Fetch transaction items with SKU and unit
     $stmt_items = $pdo->prepare("
         SELECT 
-            product_name,
-            category,
-            size_variant,
-            quantity,
-            unit_price,
-            subtotal,
-            item_type
-        FROM merchandise_transaction_items
-        WHERE transaction_id = ?
-        ORDER BY id ASC
+            mti.id,
+            mti.product_id,
+            mti.product_name,
+            COALESCE(NULLIF(TRIM(mti.category), ''), ip.category, 'General') AS category,
+            mti.size_variant,
+            mti.quantity,
+            mti.unit_price,
+            mti.subtotal,
+            mti.item_type,
+            COALESCE(NULLIF(TRIM(ip.sku), ''), CONCAT('P', LPAD(COALESCE(mti.product_id, 0), 4, '0')), '—') AS sku,
+            COALESCE(NULLIF(TRIM(mti.size_variant), ''), NULLIF(TRIM(ip.size), ''), 'pc') AS unit
+        FROM merchandise_transaction_items mti
+        LEFT JOIN inventory_products ip ON ip.id = mti.product_id
+        WHERE mti.transaction_id = ?
+        ORDER BY mti.id ASC
     ");
     $stmt_items->execute([$txn['id']]);
     $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
+
+    // Check for pending transaction requests (Adjustment or Void)
+    $stmt_pr = $pdo->prepare("
+        SELECT id, request_type, status, COALESCE(request_reason, remarks, '') AS reason 
+        FROM transaction_requests 
+        WHERE (transaction_id = ? OR transaction_id = ?) 
+          AND record_source = 'merchandise_transactions' 
+          AND status = 'Pending' 
+        LIMIT 1
+    ");
+    $stmt_pr->execute([(string)$txn['id'], (string)($txn['transaction_id'] ?? '')]);
+    $pending_request = $stmt_pr->fetch(PDO::FETCH_ASSOC) ?: null;
     
     // Calculate totals if not stored
     $total = (float)($txn['total_amount'] ?? 0);
@@ -155,6 +172,7 @@ try {
             'shift_period' => $txn['shift_period'],
             'transaction_date' => date('M j, Y h:i A', strtotime($txn['transaction_date'] ?: $txn['created_at'])),
             'staff_name' => $txn['staff_name'] ?: 'N/A',
+            'pending_request' => $pending_request,
             'items' => $items
         ]
     ];

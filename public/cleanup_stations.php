@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // Station Cleanup Tool
 // public/cleanup_stations.php

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Staff Transactions Hub
  * Sidebar navigation for Fuel (internal) and Merchandise (customer-facing) transactions.
@@ -103,9 +103,11 @@ if (!in_array($section, ['merchandise', 'history', 'fuel', 'fuel_history'])) {
     $section = 'merchandise';
 }
 
-// Global variance tracking variables
-$variance_alerts      = [];
-$variance_alert_count = 0;
+// Global variance tracking variables (separated by module)
+$jo_variance_alerts      = [];
+$jo_variance_alert_count = 0;
+$mh_variance_alerts      = [];
+$mh_variance_alert_count = 0;
 
 // ── Fuel types for this station — DB-driven, no hardcoded exclusions ─────────
 $fuel_types = [];
@@ -618,6 +620,7 @@ $mh_offset        = ($mh_page - 1) * $mh_per_page;
 $mh_available_shifts     = [];
 $mh_inv_impact           = [];
 $mh_variance_alerts      = [];
+$mh_variance_alert_count = 0;
 $mh_kpi_txn_count        = 0;
 $mh_kpi_items_released   = 0;
 $mh_kpi_total_encoded    = 0.00;
@@ -721,9 +724,6 @@ if ($section === 'merchandise') {
             $mh_where_clauses[] = "COALESCE(mt.transaction_type, 'merchandise') IN ('merchandise', 'combined')";
         }
 
-        // Ensure we only show merchandise/product items (not service items)
-        $mh_where_clauses[] = "COALESCE(mti.item_type, 'merchandise') = 'merchandise'";
-
         // Date Range Filters
         if ($mh_filter_start_date !== '') {
             $mh_where_clauses[] = "DATE($mh_date_col) >= ?";
@@ -736,13 +736,13 @@ if ($section === 'merchandise') {
 
         // Category Filter
         if ($mh_filter_category !== '') {
-            $mh_where_clauses[] = "COALESCE(NULLIF(TRIM(mti.category), ''), 'General') = ?";
+            $mh_where_clauses[] = "EXISTS (SELECT 1 FROM merchandise_transaction_items mti_c WHERE mti_c.transaction_id = mt.id AND COALESCE(NULLIF(TRIM(mti_c.category), ''), 'General') = ?)";
             $mh_params[] = $mh_filter_category;
         }
 
         // Product Filter
         if ($mh_filter_product !== '') {
-            $mh_where_clauses[] = "mti.product_id = ?";
+            $mh_where_clauses[] = "EXISTS (SELECT 1 FROM merchandise_transaction_items mti_p WHERE mti_p.transaction_id = mt.id AND mti_p.product_id = ?)";
             $mh_params[] = (int)$mh_filter_product;
         }
 
@@ -754,17 +754,16 @@ if ($section === 'merchandise') {
 
         $mh_where = "WHERE " . implode(" AND ", $mh_where_clauses);
 
-        // Get total count of matching items
+        // Get total count of matching transactions (ONE per transaction!)
         $cnt_stmt = $pdo->prepare("
             SELECT COUNT(*) 
             FROM merchandise_transactions mt
-            INNER JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
             $mh_where
         ");
         $cnt_stmt->execute($mh_params);
         $mh_total = (int)$cnt_stmt->fetchColumn();
 
-        // Fetch matching items (no LIMIT here because we do client-side pagination)
+        // Fetch matching transactions (1 row per transaction)
         $stmt_mh = $pdo->prepare("
             SELECT mt.id AS mt_id,
                    $mh_txnid_col AS transaction_id,
@@ -774,17 +773,15 @@ if ($section === 'merchandise') {
                    COALESCE(mt.payment_status, 'Pending') AS payment_status,
                    COALESCE(mt.validation_status, 'Pending') AS validation_status,
                    $mh_date_col AS transaction_date,
-                   mti.id AS item_id,
-                   mti.product_id,
-                   mti.product_name,
-                   mti.category AS item_category,
-                   mti.quantity,
-                   mti.unit_price,
-                   mti.subtotal AS item_total,
-                   COALESCE(NULLIF(TRIM(si.unit),''), 'pc') AS unit
+                   COALESCE(mt.total_amount, 0) AS total_amount,
+                   COALESCE(mt.amount_paid, 0) AS amount_paid,
+                   COALESCE(mt.balance_due, 0) AS balance_due,
+                   COALESCE(mt.transaction_type, 'merchandise') AS transaction_type,
+                   (SELECT COUNT(*) FROM merchandise_transaction_items mti WHERE mti.transaction_id = mt.id) AS item_count,
+                   (SELECT COALESCE(SUM(mti.quantity), 0) FROM merchandise_transaction_items mti WHERE mti.transaction_id = mt.id) AS total_quantity,
+                   (SELECT GROUP_CONCAT(CONCAT(mti.product_name, ' (', IF(mti.quantity = FLOOR(mti.quantity), CAST(mti.quantity AS UNSIGNED), mti.quantity), ')') SEPARATOR ', ') 
+                    FROM merchandise_transaction_items mti WHERE mti.transaction_id = mt.id) AS products_summary
             FROM merchandise_transactions mt
-            INNER JOIN merchandise_transaction_items mti ON mti.transaction_id = mt.id
-            LEFT JOIN station_inventory si ON si.product_id = mti.product_id AND si.station_id = mt.station_id
             $mh_where
             ORDER BY $mh_date_col DESC
         ");
@@ -869,17 +866,7 @@ if ($section === 'merchandise') {
             error_log('Variance checks error: ' . $e->getMessage());
         }
 
-        // Merge merch variance alerts into global variance_alerts (for header badge)
-        foreach ($mh_variance_alerts as $_mva) {
-            $variance_alerts[] = [
-                'jo_ref'  => $_mva['txn_ref'],
-                'source'  => 'merchandise_transactions',
-                'id'      => 0,
-                'type'    => $_mva['type'],
-                'message' => $_mva['message'],
-            ];
-        }
-        $variance_alert_count = count($variance_alerts);
+        $mh_variance_alert_count = count($mh_variance_alerts);
 
         // ── Merchandise KPI (today) ───────────────────────────────────────────
         $mh_kpi_txn_count     = 0;
@@ -913,6 +900,7 @@ if ($section === 'merchandise') {
         $mh_total = 0; 
         $mh_inv_impact = [];
         $mh_variance_alerts = [];
+        $mh_variance_alert_count = 0;
         $mh_kpi_txn_count = $mh_kpi_items_released = 0;
         $mh_kpi_total_encoded = 0.00;
         echo '<!-- MERCH ERROR: ' . htmlspecialchars($e->getMessage()) . ' -->';
@@ -1462,7 +1450,7 @@ if ($section === 'merchandise') {
 
                     if ($jo_src === 'merchandise_transactions') {
                         // Fetch current totals
-                        $row = $pdo->prepare("SELECT total_amount, COALESCE(amount_paid,0) AS amount_paid, COALESCE(balance_due, total_amount) AS balance_due FROM merchandise_transactions WHERE id=? AND station_id=? LIMIT 1");
+                        $row = $pdo->prepare("SELECT id, transaction_id, total_amount, COALESCE(amount_paid,0) AS amount_paid, COALESCE(balance_due, total_amount) AS balance_due, customer_name FROM merchandise_transactions WHERE id=? AND station_id=? LIMIT 1");
                         $row->execute([$jo_id, $station_id]);
                         $cur = $row->fetch(PDO::FETCH_ASSOC);
                         if ($cur) {
@@ -1471,10 +1459,25 @@ if ($section === 'merchandise') {
                             $new_paid    = $prev_paid + $amount_now;
                             $new_balance = max(0, round($total - $new_paid, 2));
                             $new_status  = $new_balance <= 0.009 ? 'Paid' : 'Partially Paid';
-                            $sets = "payment_status=?, amount_paid=?, balance_due=?, payment_method=?, updated_at=NOW()";
-                            $params = [$new_status, $new_paid, $new_balance, $pay_method];
-                            if ($mark_complete) { $sets .= ", workflow_status='Completed'"; }
+                            $new_ar_stat = $new_balance <= 0.009 ? 'Settled' : 'Pending';
+                            $sets = "payment_status=?, ar_status=?, amount_paid=?, balance_due=?, payment_method=?, updated_at=NOW()";
+                            $params = [$new_status, $new_ar_stat, $new_paid, $new_balance, $pay_method];
+                            if ($mark_complete || $new_balance <= 0.009) { $sets .= ", workflow_status='Completed'"; }
                             $pdo->prepare("UPDATE merchandise_transactions SET $sets WHERE id=? AND station_id=?")->execute(array_merge($params, [$jo_id, $station_id]));
+
+                            // Sync customer_accounts_receivable table
+                            try {
+                                $ar_stmt = $pdo->prepare("
+                                    UPDATE customer_accounts_receivable 
+                                    SET amount_paid = amount_paid + ?, 
+                                        outstanding_balance = ?, 
+                                        status = IF(? <= 0.009, 'Settled', 'Active'),
+                                        updated_at = NOW()
+                                    WHERE (transaction_db_id = ? OR transaction_id = ?) AND station_id = ?
+                                ");
+                                $ar_stmt->execute([$amount_now, $new_balance, $new_balance, $jo_id, $cur['transaction_id'] ?? '', $station_id]);
+                            } catch (Exception $ar_err) {}
+
                             // Audit log
                             try { $pdo->prepare("INSERT INTO payment_audit_log (record_id, record_source, staff_id, station_id, amount_paid, payment_method, balance_due, payment_status, remarks, logged_at) VALUES (?,?,?,?,?,?,?,?,?,NOW())")->execute([$jo_id,'merchandise_transactions',$me['id'],$station_id,$amount_now,$pay_method,$new_balance,$new_status,$remarks]); } catch(Exception $ae){}
                             $_SESSION['success'] = $new_status === 'Paid' ? 'Payment fully settled. Balance: ₱0.00.' : 'Partial payment recorded. Balance due: ₱' . number_format($new_balance, 2) . '.';
@@ -2023,7 +2026,7 @@ if ($section === 'merchandise') {
             // A) Quantity variance: encoded qty > current stock level
             foreach ($vitems as $_vit) {
                 if ($_vit['stock'] !== null && $_vit['qty'] > $_vit['stock']) {
-                    $variance_alerts[] = [
+                    $jo_variance_alerts[] = [
                         'jo_ref'  => $jo_ref,
                         'source'  => $_vjo['_source'] ?? 'job_orders',
                         'id'      => $_vjo['id'],
@@ -2039,7 +2042,7 @@ if ($section === 'merchandise') {
                 $computed_sum = array_sum(array_map(fn($i) => $i['qty'] * $i['unit_price'], $vitems));
                 $total_cost   = (float)($_vjo['total_cost'] ?? $_vjo['estimated_cost'] ?? 0);
                 if ($total_cost > 0 && abs($computed_sum - $total_cost) > 0.01) {
-                    $variance_alerts[] = [
+                    $jo_variance_alerts[] = [
                         'jo_ref'  => $jo_ref,
                         'source'  => $_vjo['_source'] ?? 'job_orders',
                         'id'      => $_vjo['id'],
@@ -2050,7 +2053,7 @@ if ($section === 'merchandise') {
                 }
             }
         }
-        $variance_alert_count = count($variance_alerts);
+        $jo_variance_alert_count = count($jo_variance_alerts);
 
         // ── Staff KPI Snapshot (today, current station, current user) ─────────────
         $kpi_jo_count       = 0;
@@ -2146,7 +2149,7 @@ include __DIR__ . '/../partials/header.php';
 /* Clean Checkbox Alignment for Merchandise Products and Service Types */
 #productDropdownList .prod-option,
 .prod-option {
-    display: flex !important;
+    display: flex;
     flex-direction: row !important;
     align-items: center !important;
     justify-content: space-between !important;
@@ -2155,6 +2158,13 @@ include __DIR__ . '/../partials/header.php';
     width: 100% !important;
     box-sizing: border-box !important;
     cursor: pointer !important;
+}
+
+#productDropdownList .prod-option.is-hidden,
+.prod-option.is-hidden,
+#productDropdownList .prod-group-header.is-hidden,
+.prod-group-header.is-hidden {
+    display: none !important;
 }
 
 #productDropdownList input[type="checkbox"].merch-prod-checkbox,
@@ -2210,115 +2220,19 @@ window.closeTxnRequestModal = function() {
     if (modal) modal.style.display = 'none';
 };
 
-window.viewMerchandiseDetails = function(txnId, btn) {
-    if (window.event) {
-        if (typeof window.event.stopPropagation === 'function') window.event.stopPropagation();
-        if (typeof window.event.preventDefault === 'function') window.event.preventDefault();
-    }
-    
+// viewMerchandiseDetails is defined and upgraded later in this file.
+// This early stub is intentionally left minimal and will be overridden by the
+// canonical definition at the bottom of the page (last definition wins in JS).
+window.viewMerchandiseDetails = window.viewMerchandiseDetails || function(txnId, btn) {
     if (!txnId && btn && typeof btn.getAttribute === 'function') {
         txnId = btn.getAttribute('data-txn-id') || btn.getAttribute('data-id') || btn.getAttribute('data-jo-ref') || '';
     }
-    
     if (!txnId) {
-        alert('Invalid transaction ID');
+        if (typeof showTxnAlert === 'function') showTxnAlert('Invalid transaction ID', 'error');
         return false;
     }
-
-    ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal', 'requestAdjustModal', 'requestVoidModal'].forEach(function(id) {
-        var m = document.getElementById(id);
-        if (m) m.style.display = 'none';
-    });
-
     var modal = document.getElementById('viewMerchandiseModal');
-    if (!modal) {
-        console.error('viewMerchandiseModal element not found');
-        return false;
-    }
-
-    // Reset fields to loading state
-    var setTxt = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val || '—'; };
-    var setHtml = function(id, val) { var el = document.getElementById(id); if (el) el.innerHTML = val || '—'; };
-
-    setTxt('viewMTxnRef', txnId);
-    setTxt('viewMTCustomer', 'Loading...');
-    setTxt('viewMTShift', '—');
-    setTxt('viewMTDate', '—');
-    setTxt('viewMTPayMethod', '—');
-    setHtml('viewMTPayStatus', '<span style="color:#64748b;">Loading...</span>');
-    setHtml('viewMTValStatus', '<span style="color:#64748b;">Loading...</span>');
-    setTxt('viewMTSubtotal', '₱0.00');
-    setTxt('viewMTVAT', '₱0.00');
-    setTxt('viewMTTotal', '₱0.00');
-    setTxt('viewMTPaid', '₱0.00');
-    setTxt('viewMTBalance', '₱0.00');
-    setTxt('viewMTRemarks', '—');
-    setTxt('viewMTStaff', '—');
-
-    var itemsTable = document.getElementById('viewMTItemsBody');
-    if (itemsTable) {
-        itemsTable.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading items...</td></tr>';
-    }
-
-    // Immediately show the modal
-    modal.style.display = 'flex';
-    modal.style.zIndex = '9999999';
-
-    fetch('../backend/get_merchandise_transaction_details.php?id=' + encodeURIComponent(txnId))
-        .then(function(res) { return res.json(); })
-        .then(function(data) {
-            if (data.success) {
-                var txn = data.transaction || {};
-                setTxt('viewMTxnRef', txn.transaction_id || ('#' + txn.id));
-                setTxt('viewMTCustomer', txn.customer_name || 'Walk-in Customer');
-                setTxt('viewMTShift', txn.shift_name || txn.shift_period || '—');
-                setTxt('viewMTDate', txn.transaction_date || '—');
-                setTxt('viewMTPayMethod', txn.payment_method || '—');
-                setHtml('viewMTPayStatus', txn.payment_status_badge || '—');
-                setHtml('viewMTValStatus', txn.validation_status_badge || '—');
-                setTxt('viewMTSubtotal', txn.subtotal_display || ('₱' + parseFloat(txn.subtotal_amount || 0).toFixed(2)));
-                setTxt('viewMTVAT', txn.vat_display || ('₱' + parseFloat(txn.vat_amount || 0).toFixed(2)));
-                setTxt('viewMTTotal', txn.total_display || ('₱' + parseFloat(txn.total_amount || 0).toFixed(2)));
-                setTxt('viewMTPaid', txn.paid_display || ('₱' + parseFloat(txn.amount_paid || 0).toFixed(2)));
-                setTxt('viewMTBalance', txn.balance_display || ('₱' + parseFloat(txn.balance_due || 0).toFixed(2)));
-                setTxt('viewMTRemarks', txn.remarks || '—');
-                setTxt('viewMTStaff', txn.staff_name || '—');
-
-                var itemsList = txn.items || data.items || [];
-                if (itemsTable) {
-                    if (itemsList.length > 0) {
-                        itemsTable.innerHTML = itemsList.map(function(item) {
-                            var qty = parseFloat(item.quantity || 0);
-                            var price = parseFloat(item.unit_price || 0).toFixed(2);
-                            var subtotal = parseFloat(item.subtotal || 0).toFixed(2);
-                            var name = (item.product_name || 'Item').replace(/</g, '&lt;');
-                            var cat = (item.category || '').replace(/</g, '&lt;');
-                            var size = (item.size_variant || '').replace(/</g, '&lt;');
-                            return '<tr style="border-bottom:1px solid #f1f5f9;">' +
-                                '<td style="padding:8px;"><div style="font-weight:600;color:#1e293b;">' + name + '</div>' +
-                                (cat ? '<div style="font-size:10px;color:#94a3b8;margin-top:2px;">' + cat + (size ? ' • ' + size : '') + '</div>' : '') + '</td>' +
-                                '<td style="padding:8px;text-align:center;color:#475569;">' + qty + '</td>' +
-                                '<td style="padding:8px;text-align:right;color:#475569;">₱' + price + '</td>' +
-                                '<td style="padding:8px;text-align:right;color:#003d7a;font-weight:700;">₱' + subtotal + '</td>' +
-                                '</tr>';
-                        }).join('');
-                    } else {
-                        itemsTable.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">No items found</td></tr>';
-                    }
-                }
-            } else {
-                if (itemsTable) {
-                    itemsTable.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:14px;color:#dc2626;"><i class="fas fa-exclamation-circle"></i> ' + (data.error || 'Failed to load details') + '</td></tr>';
-                }
-            }
-        })
-        .catch(function(err) {
-            console.error('Error fetching merchandise details:', err);
-            if (itemsTable) {
-                itemsTable.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:14px;color:#dc2626;"><i class="fas fa-exclamation-circle"></i> Network error: ' + err.message + '</td></tr>';
-            }
-        });
-        
+    if (modal) { modal.style.display = 'flex'; modal.style.zIndex = '9999999'; }
     return false;
 };
 
@@ -5514,13 +5428,28 @@ setTimeout(function() {
         <!-- ── Inner Tabs ─────────────────────────────────────────────── -->
         <div class="txn-subtab-nav">
             <?php
-            // Variance alert badge: show warning count if any
+            // Variance alert badges (separated per module):
+            // 1. Merchandise / Service Transaction tab badge
+            $merch_badge_warn   = $mh_variance_alert_count > 0 ? $mh_variance_alert_count : null;
+
+            // 2. Job Order Tracker tab badge
             $tracker_badge_val  = $jo_pending_count > 0 ? $jo_pending_count : null;
-            $tracker_badge_warn = $variance_alert_count > 0 ? $variance_alert_count : null;
+            $tracker_badge_warn = $jo_variance_alert_count > 0 ? $jo_variance_alert_count : null;
+
             $inner_tabs = [
-                'merchandise'   => ['label'=>'Merchandise/Service Transaction', 'icon'=>'fa-shopping-cart', 'color'=>'#28a745'],
-                'tracker'       => ['label'=>'Job Order Tracker',               'icon'=>'fa-tasks',         'color'=>'#003d7a',
-                                    'badge'=> $tracker_badge_val, 'badge_warn' => $tracker_badge_warn],
+                'merchandise'   => [
+                    'label'      => 'Merchandise/Service Transaction',
+                    'icon'       => 'fa-shopping-cart',
+                    'color'      => '#28a745',
+                    'badge_warn' => $merch_badge_warn
+                ],
+                'tracker'       => [
+                    'label'      => 'Job Order Tracker',
+                    'icon'       => 'fa-tasks',
+                    'color'      => '#003d7a',
+                    'badge'      => $tracker_badge_val,
+                    'badge_warn' => $tracker_badge_warn
+                ],
             ];
             foreach ($inner_tabs as $tk => $tc):
                 $ia = ($active_tab === $tk);
@@ -6026,6 +5955,12 @@ setTimeout(function() {
                             <button onclick="switchMerchTab('history')" id="merchTabBtn_history"
                                     class="txn-subtab-btn green <?= $mh_open ? 'active' : 'inactive' ?>">
                                 <i class="fas fa-history"></i> Merchandise History
+                                <?php if ($mh_variance_alert_count > 0): ?>
+                                <span style="background:#dc2626;color:#fff;font-size:10px;font-weight:800;
+                                             padding:1px 7px;border-radius:20px;margin-left:6px;" title="Variance alerts detected in Merchandise History">
+                                    <i class="fas fa-exclamation-triangle"></i> <?= $mh_variance_alert_count ?>
+                                </span>
+                                <?php endif; ?>
                             </button>
                         </div>
                         <div id="merchHistoryHeaderButtons" style="display: <?= $mh_open ? 'flex' : 'none' ?>; gap:8px; align-items:center; margin-left:auto;">
@@ -6101,17 +6036,19 @@ setTimeout(function() {
                             <i class="fas fa-box" style="margin-right:5px;"></i>Merchandise Section
                         </div>
 
-                        <div class="txn-form-grid">
+                        <div class="txn-form-grid" style="position:relative;z-index:500;">
                             <!-- Custom searchable dropdown -->
-                            <div class="txn-field">
+                            <div class="txn-field" style="position:relative;z-index:500;">
                                 <label>Product</label>
-                                <div id="productDropdownWrap" style="position:relative;">
+                                <div id="productDropdownWrap" style="position:relative;z-index:500;">
                                     <div style="display:flex;gap:6px;align-items:center;">
                                         <div style="position:relative;flex:1;">
                                             <input type="text" id="productSearch" class="txn-input"
                                                    placeholder="Search by name, SKU, or category…"
-                                                   oninput="filterProductDropdown()"
-                                                   onfocus="this.select(); openProductDropdown(); filterProductDropdown(true);"
+                                                   oninput="filterProductDropdown(true)"
+                                                   onkeyup="filterProductDropdown(true)"
+                                                   onpaste="setTimeout(function(){ filterProductDropdown(true); }, 50)"
+                                                   onfocus="openProductDropdown(); filterProductDropdown(true);"
                                                    autocomplete="off"
                                                    style="padding-right:58px;">
                                             <span id="productClearBtn"
@@ -6142,8 +6079,8 @@ setTimeout(function() {
                                          onmousedown="event.preventDefault()"
                                          style="display:none;position:absolute;top:100%;left:0;right:0;
                                                 background:#fff;border:1.5px solid #e2e8f0;border-top:none;
-                                                border-radius:0 0 8px 8px;box-shadow:0 6px 20px rgba(0,0,0,.1);
-                                                z-index:999;max-height:300px;overflow-y:auto;">
+                                                border-radius:0 0 8px 8px;box-shadow:0 8px 24px rgba(0,0,0,.18);
+                                                z-index:9999;max-height:220px;overflow-y:auto;">
                                         <?php if (empty($merch_products)): ?>
                                         <div style="padding:14px;text-align:center;color:#94a3b8;font-size:13px;">
                                             No products found for this station.
@@ -6234,7 +6171,9 @@ setTimeout(function() {
                             <div class="txn-field">
                                 <label>Quantity</label>
                                 <input type="number" id="itemQty" class="txn-input"
-                                       min="1" value="1" placeholder="1">
+                                       min="1" value="1" placeholder="1"
+                                       oninput="syncItemQtyToCart(this.value)"
+                                       onchange="syncItemQtyToCart(this.value)">
                             </div>
                         </div>
 
@@ -6332,7 +6271,6 @@ setTimeout(function() {
                                 <a href="staff_transactions_hub.php?section=merchandise&mh_open=1" class="txn-btn secondary">
                                     <i class="fas fa-times"></i> Clear
                                 </a>
-                                <!-- Export buttons managed in header -->
                             </form>
                         </div>
                         <!-- Table -->
@@ -6366,14 +6304,35 @@ setTimeout(function() {
                                     <?php endif; ?>
                                 </button>
                                 <?php if (!empty($mh_variance_alerts)): ?>
-                                <span style="display:inline-flex;align-items:center;gap:5px;background:#fee2e2;
-                                             color:#dc2626;border:1px solid #fca5a5;border-radius:4px;
-                                             padding:5px 10px;font-size:11px;font-weight:700;">
+                                <button type="button"
+                                        id="mhVarianceToggleBtn"
+                                        onclick="var vp=document.getElementById('mhVariancePanel');
+                                                 if (vp) { vp.style.display = (vp.style.display === 'none' ? 'block' : 'none'); }"
+                                        class="txn-btn danger"
+                                        style="font-size:11px;padding:5px 10px;display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
                                     <i class="fas fa-exclamation-triangle"></i>
                                     <?= count($mh_variance_alerts) ?> Variance Alert<?= count($mh_variance_alerts)>1?'s':'' ?>
-                                </span>
+                                </button>
                                 <?php endif; ?>
                             </div>
+
+                            <!-- Merchandise Variance Panel -->
+                            <?php if (!empty($mh_variance_alerts)): ?>
+                            <div id="mhVariancePanel"
+                                 style="display:none;margin:8px 16px 0;background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px 16px;">
+                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                                    <i class="fas fa-exclamation-triangle" style="color:#dc2626;font-size:14px;"></i>
+                                    <span style="font-weight:700;font-size:12px;color:#991b1b;">
+                                        Merchandise Variance Alerts (<?= count($mh_variance_alerts) ?>)
+                                    </span>
+                                </div>
+                                <div style="font-size:11.5px;color:#7f1d1d;line-height:1.6;padding-left:22px;">
+                                    <?php foreach ($mh_variance_alerts as $mva): ?>
+                                        <div>• <strong><?= htmlspecialchars($mva['txn_ref']) ?></strong>: <?= htmlspecialchars($mva['message']) ?></div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                            <?php endif; ?>
 
                             <!-- KPI Panel -->
                             <div id="mhKpiPanel"
@@ -6428,29 +6387,25 @@ setTimeout(function() {
 
                             <table class="txn-table" id="mhHistoryTable" style="width:100%; table-layout:fixed;">
                                 <colgroup>
-                                    <col style="width:7%;"><!-- OR No. -->
-                                    <col style="width:9%;"><!-- Transaction ID -->
-                                    <col style="width:9%;"><!-- Customer -->
-                                    <col style="width:10%;"><!-- Product -->
-                                    <col style="width:3%;"><!-- Qty -->
-                                    <col style="width:3%;"><!-- UOM -->
-                                    <col style="width:7%;"><!-- Unit Price -->
-                                    <col style="width:7%;"><!-- Total -->
-                                    <col style="width:8%;"><!-- Pay Status -->
+                                    <col style="width:8%;"><!-- OR No. -->
+                                    <col style="width:12%;"><!-- Transaction ID -->
+                                    <col style="width:13%;"><!-- Customer -->
+                                    <col style="width:23%;"><!-- Products Summary -->
+                                    <col style="width:7%;"><!-- Total Qty -->
+                                    <col style="width:10%;"><!-- Total Amount -->
+                                    <col style="width:9%;"><!-- Pay Status -->
                                     <col style="width:8%;"><!-- Pay Method -->
-                                    <col style="width:9%;"><!-- Date Released -->
-                                    <col style="width:19%;"><!-- Actions -->
+                                    <col style="width:10%;"><!-- Date Released -->
+                                    <col style="width:9%;"><!-- Actions -->
                                 </colgroup>
                                 <thead>
                                     <tr>
                                         <th style="font-size:11px;text-align:left;padding:9px 8px;">OR No.</th>
                                         <th style="font-size:11px;text-align:left;padding:9px 8px;">Txn ID</th>
                                         <th style="font-size:11px;text-align:left;padding:9px 8px;">Customer</th>
-                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">Product</th>
-                                        <th style="font-size:11px;text-align:center;padding:9px 4px;">Qty</th>
-                                        <th style="font-size:11px;text-align:center;padding:9px 4px;">UOM</th>
-                                        <th style="font-size:11px;text-align:right;padding:9px 8px;">Unit Price</th>
-                                        <th style="font-size:11px;text-align:right;padding:9px 8px;">Total</th>
+                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">Products / Items</th>
+                                        <th style="font-size:11px;text-align:center;padding:9px 4px;">Total Qty</th>
+                                        <th style="font-size:11px;text-align:right;padding:9px 8px;">Total Amount</th>
                                         <th style="font-size:11px;text-align:left;padding:9px 8px;">Pay Status</th>
                                         <th style="font-size:11px;text-align:left;padding:9px 8px;">Pay Method</th>
                                         <th style="font-size:11px;text-align:left;padding:9px 8px;">Date Released</th>
@@ -6459,18 +6414,16 @@ setTimeout(function() {
                                 </thead>
                                 <tbody id="mhTableBody">
                                 <?php foreach ($mh_recent as $txn):
-                                     $qty = (float)$txn['quantity'];
-                                     $qty_display = ($qty == (int)$qty) ? (int)$qty : $qty;
-                                     $unit_price = (float)$txn['unit_price'];
-                                     $item_total = (float)$txn['item_total'];
+                                     $total_qty = (float)($txn['total_quantity'] ?? $txn['quantity'] ?? 0);
+                                     $qty_display = ($total_qty == (int)$total_qty) ? (int)$total_qty : $total_qty;
+                                     $total_amount = (float)($txn['total_amount'] ?? $txn['item_total'] ?? 0);
+                                     $products_summary = !empty($txn['products_summary']) ? $txn['products_summary'] : ($txn['product_name'] ?? '—');
                                      $date_released = '—';
                                      if (!empty($txn['transaction_date'])) {
                                          try {
                                              $date_released = (new DateTime($txn['transaction_date']))->format('M j, Y g:i A');
                                          } catch (Exception $e) {}
                                      }
-                                     // Get unit label directly from inventory (as-is, no normalization)
-                                     $unit_label = $txn['unit'] ?? 'pc';
 
                                      // ── Determine action state ─────────────────────────────────────────
                                      $mh_val_status  = strtolower(trim($txn['validation_status'] ?? ''));
@@ -6497,23 +6450,17 @@ setTimeout(function() {
                                     </td>
                                     <td style="font-size:12px;padding:10px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                                         title="<?= htmlspecialchars($txn['customer_name'] ?? '') ?>">
-                                        <?= htmlspecialchars($txn['customer_name'] ?? 'No Customer') ?>
+                                        <?= htmlspecialchars($txn['customer_name'] ?? 'Walk-in Customer') ?>
                                     </td>
-                                    <td style="font-size:12px;padding:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                                        title="<?= htmlspecialchars($txn['product_name'] ?? '') ?>">
-                                        <?= htmlspecialchars($txn['product_name'] ?? '—') ?>
+                                    <td style="font-size:12px;padding:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                                        title="<?= htmlspecialchars($products_summary) ?>">
+                                        <?= htmlspecialchars($products_summary) ?>
                                     </td>
                                     <td style="font-size:12px;text-align:center;font-weight:600;color:#475569;padding:10px;">
                                         <?= $qty_display ?>
                                     </td>
-                                    <td style="font-size:12px;text-align:center;color:#64748b;padding:10px;">
-                                        <?= htmlspecialchars($unit_label) ?>
-                                    </td>
-                                    <td style="font-size:12px;text-align:right;font-weight:600;color:#475569;padding:10px;white-space:nowrap;">
-                                        ₱<?= number_format($unit_price, 2) ?>
-                                    </td>
                                     <td style="font-size:12px;text-align:right;font-weight:700;color:var(--petron-blue);padding:10px;white-space:nowrap;">
-                                        ₱<?= number_format($item_total, 2) ?>
+                                        ₱<?= number_format($total_amount, 2) ?>
                                     </td>
                                     <td style="font-size:11px;padding:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0;">
                                         <?php
@@ -6521,9 +6468,9 @@ setTimeout(function() {
                                             $mh_pstat_lc  = strtolower(trim($mh_pstat_raw));
                                             $mh_pstat_bg  = '#f1f5f9'; $mh_pstat_col = '#475569';
                                             if ($mh_pstat_lc === 'paid')                    { $mh_pstat_bg = '#dcfce7'; $mh_pstat_col = '#166534'; }
-                                            elseif ($mh_pstat_lc === 'partial')             { $mh_pstat_bg = '#fef9c3'; $mh_pstat_col = '#854d0e'; }
+                                            elseif ($mh_pstat_lc === 'partial' || $mh_pstat_lc === 'partially paid') { $mh_pstat_bg = '#fef9c3'; $mh_pstat_col = '#854d0e'; }
                                             elseif (in_array($mh_pstat_lc, ['account receivable','credit','ar'])) { $mh_pstat_bg = '#ede9fe'; $mh_pstat_col = '#5b21b6'; }
-                                            elseif (in_array($mh_pstat_lc, ['unpaid','pending','pending payment','unpaid'])) { $mh_pstat_bg = '#fee2e2'; $mh_pstat_col = '#b91c1c'; }
+                                            elseif (in_array($mh_pstat_lc, ['unpaid','pending','pending payment'])) { $mh_pstat_bg = '#fee2e2'; $mh_pstat_col = '#b91c1c'; }
                                         ?>
                                         <span style="display:inline-block;padding:2px 6px;border-radius:4px;background:<?= $mh_pstat_bg ?>;color:<?= $mh_pstat_col ?>;font-size:10px;font-weight:700;white-space:nowrap;">
                                             <?= htmlspecialchars($mh_pstat_raw) ?>
@@ -6535,130 +6482,31 @@ setTimeout(function() {
                                     <td style="font-size:11px;color:#64748b;padding:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                                         <?= $date_released ?>
                                     </td>
-                                     <td style="padding:6px;text-align:left;">
+                                     <td style="padding:6px;text-align:center;">
                                          <div style="display:flex;flex-direction:column;gap:3px;align-items:stretch;">
-
+                                             <button type="button"
+                                                onclick="window.viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>', this); return false;"
+                                                class="txn-btn secondary"
+                                                style="width:100%;padding:5px 8px;font-size:11px;font-weight:700;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
+                                                 <i class="fas fa-eye"></i> View
+                                             </button>
                                              <?php if ($mh_is_voided): ?>
-                                             <!-- VOIDED Status: View only + Badge -->
-                                             <button type="button"
-                                                onclick="window.viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>', this); return false;"
-                                                class="txn-btn secondary"
-                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
-                                                 <i class="fas fa-eye"></i> View
-                                             </button>
-                                             <span style="font-size:10.5px;color:#991b1b;font-weight:700;text-align:center;padding:2px 0;">
-                                                 <i class="fas fa-ban"></i> Voided
-                                             </span>
-
+                                                 <span style="font-size:10px;color:#991b1b;font-weight:700;text-align:center;padding:1px 0;">
+                                                     <i class="fas fa-ban"></i> Voided
+                                                 </span>
                                              <?php elseif ($mh_is_adjusted): ?>
-                                             <!-- ADJUSTED Status: View, Reprint + Badge -->
-                                             <button type="button"
-                                                onclick="window.viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>', this); return false;"
-                                                class="txn-btn secondary"
-                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
-                                                 <i class="fas fa-eye"></i> View
-                                             </button>
-                                             <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank" onclick="event.stopPropagation();"
-                                                class="txn-btn secondary"
-                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
-                                                 <i class="fas fa-receipt"></i> Reprint
-                                             </a>
-                                             <span style="font-size:10.5px;color:#4338ca;font-weight:700;text-align:center;padding:2px 0;">
-                                                 <i class="fas fa-check-circle"></i> Adjusted
-                                             </span>
-
+                                                 <span style="font-size:10px;color:#4338ca;font-weight:700;text-align:center;padding:1px 0;">
+                                                     <i class="fas fa-check-circle"></i> Adjusted
+                                                 </span>
                                              <?php elseif ($mh_adj_req): ?>
-                                             <!-- ADJUSTMENT REQUESTED Status: View, Reprint + Badge -->
-                                             <button type="button"
-                                                onclick="window.viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>', this); return false;"
-                                                class="txn-btn secondary"
-                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
-                                                 <i class="fas fa-eye"></i> View
-                                             </button>
-                                             <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank" onclick="event.stopPropagation();"
-                                                class="txn-btn secondary"
-                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
-                                                 <i class="fas fa-receipt"></i> Reprint
-                                             </a>
-                                             <span style="font-size:10.5px;color:#d97706;font-weight:700;text-align:center;padding:2px 0;" title="Pending manager review">
-                                                 <i class="fas fa-clock"></i> Adjustment Requested
-                                             </span>
-
+                                                 <span style="font-size:10px;color:#d97706;font-weight:700;text-align:center;padding:1px 0;" title="Pending manager review">
+                                                     <i class="fas fa-clock"></i> Adj. Requested
+                                                 </span>
                                              <?php elseif ($mh_void_req): ?>
-                                             <!-- VOID REQUESTED Status: View, Reprint + Badge -->
-                                             <button type="button"
-                                                onclick="window.viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>', this); return false;"
-                                                class="txn-btn secondary"
-                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
-                                                 <i class="fas fa-eye"></i> View
-                                             </button>
-                                             <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank" onclick="event.stopPropagation();"
-                                                class="txn-btn secondary"
-                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
-                                                 <i class="fas fa-receipt"></i> Reprint
-                                             </a>
-                                             <span style="font-size:10.5px;color:#dc2626;font-weight:700;text-align:center;padding:2px 0;" title="Pending manager review">
-                                                 <i class="fas fa-clock"></i> Void Requested
-                                             </span>
-
-                                             <?php else: ?>
-                                             <!-- NORMAL / CORRECT: View, Reprint, Request Adjust, Request Void -->
-                                             <button type="button"
-                                                onclick="window.viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>', this); return false;"
-                                                class="txn-btn secondary"
-                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
-                                                 <i class="fas fa-eye"></i> View
-                                             </button>
-                                             <a href="receipt.php?id=<?= urlencode($txn['transaction_id'] ?? '') ?>&type=merchandise" target="_blank" onclick="event.stopPropagation();"
-                                                class="txn-btn secondary"
-                                                style="width:100%;padding:5px 8px;font-size:11px;box-sizing:border-box;text-align:center;justify-content:center;text-decoration:none;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
-                                                 <i class="fas fa-receipt"></i> Reprint
-                                             </a>
-                                              <?php
-                                                $mh_needs_settle  = in_array($mh_pstat_lc, ['partial','account receivable','credit','ar','unpaid','pending','pending payment']);
-                                                $mh_total_amt     = (float)($txn['total_amount'] ?? $txn['item_subtotal'] ?? $item_total ?? 0);
-                                                $mh_paid_amt      = (float)($txn['amount_paid'] ?? 0);
-                                                $mh_balance_amt   = (float)($txn['balance_due'] ?? max(0, $mh_total_amt - $mh_paid_amt));
-                                                $mh_settle_label  = ($mh_pstat_lc === 'partial') ? 'Settle Balance' : 'Settle / Pay';
-                                              ?>
-                                              <?php if ($mh_needs_settle && $mh_balance_amt > 0.009): ?>
-                                              <button type="button"
-                                                 onclick="openPaymentModal(<?= (int)$txn['mt_id'] ?>,'merchandise_transactions',<?= $mh_total_amt ?>,<?= $mh_paid_amt ?>,<?= $mh_balance_amt ?>,'<?= addslashes($txn['customer_name'] ?? '') ?>',false,'merchandise'); return false;"
-                                                 class="txn-btn success"
-                                                 style="width:100%;padding:5px 8px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
-                                                 <i class="fas fa-money-bill-wave"></i> <?= $mh_settle_label ?>
-                                              </button>
-                                              <?php endif; ?>
-                                             <button type="button"
-                                                data-jo-id="<?= (int)$txn['mt_id'] ?>"
-                                                data-jo-source="merchandise_transactions"
-                                                data-jo-ref="<?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['mt_id'])) ?>"
-                                                data-jo-customer="<?= htmlspecialchars($txn['customer_name'] ?? 'Walk-in Customer') ?>"
-                                                data-jo-status="<?= htmlspecialchars($txn['validation_status'] ?? 'Pending') ?>"
-                                                data-jo-paystatus="<?= htmlspecialchars($txn['payment_status'] ?? 'Paid') ?>"
-                                                data-jo-paymethod="<?= htmlspecialchars($txn['payment_method'] ?? 'Cash') ?>"
-                                                data-jo-total="<?= (float)($txn['total_amount'] ?? $txn['item_subtotal'] ?? 0) ?>"
-                                                onclick="window.openRequestAdjustModal(event, this); return false;"
-                                                title="Request adjustment - wrong item/qty/price/customer details"
-                                                class="txn-btn secondary"
-                                                style="width:100%;padding:5px 8px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
-                                                 <i class="fas fa-sliders-h"></i> Request Adjust
-                                             </button>
-                                             <button type="button"
-                                                data-jo-id="<?= (int)$txn['mt_id'] ?>"
-                                                data-jo-source="merchandise_transactions"
-                                                data-jo-ref="<?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['mt_id'])) ?>"
-                                                data-jo-customer="<?= htmlspecialchars($txn['customer_name'] ?? 'Walk-in Customer') ?>"
-                                                data-jo-status="<?= htmlspecialchars($txn['validation_status'] ?? 'Pending') ?>"
-                                                data-jo-paystatus="<?= htmlspecialchars($txn['payment_status'] ?? 'Paid') ?>"
-                                                onclick="window.openRequestVoidModal(event, this); return false;"
-                                                title="Request void - duplicate, cancelled or wrong transaction"
-                                                class="txn-btn danger"
-                                                style="width:100%;padding:5px 8px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;background:#dc2626 !important;color:#fff !important;border:none !important;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:5;">
-                                                 <i class="fas fa-ban"></i> Request Void
-                                             </button>
+                                                 <span style="font-size:10px;color:#dc2626;font-weight:700;text-align:center;padding:1px 0;" title="Pending manager review">
+                                                     <i class="fas fa-clock"></i> Void Requested
+                                                 </span>
                                              <?php endif; ?>
-
                                          </div>
                                      </td>
                                  </tr>
@@ -7709,22 +7557,86 @@ setTimeout(function() {
             });
         });
 
-        // ── Product dropdown ──────────────────────────────────────────────────
+        // ── Product dropdown (body-portal: teleport to body so it's never clipped) ─
+        (function initProductDropdownPortal() {
+            document.addEventListener('DOMContentLoaded', function() {
+                var list = document.getElementById('productDropdownList');
+                var wrap = document.getElementById('productDropdownWrap');
+                if (list && wrap && list.parentElement !== document.body) {
+                    // Move to body so no ancestor z-index / overflow can clip it
+                    document.body.appendChild(list);
+                    list.style.position = 'fixed';
+                    list.style.zIndex = '99999';
+                }
+            });
+        })();
+
+        function repositionProductDropdown() {
+            var list = document.getElementById('productDropdownList');
+            var searchInput = document.getElementById('productSearch');
+            if (!list || !searchInput) return;
+            var rect = searchInput.getBoundingClientRect();
+            var spaceBelow = window.innerHeight - rect.bottom - 8;
+            var spaceAbove = rect.top - 8;
+            var maxH;
+            if (spaceBelow >= 160 || spaceBelow >= spaceAbove) {
+                maxH = Math.min(220, Math.max(100, spaceBelow));
+                list.style.top    = rect.bottom + 'px';
+                list.style.bottom = 'auto';
+                list.style.borderRadius = '0 0 8px 8px';
+                list.style.borderTop    = 'none';
+                list.style.borderBottom = '1.5px solid #e2e8f0';
+            } else {
+                maxH = Math.min(220, Math.max(100, spaceAbove));
+                list.style.top    = 'auto';
+                list.style.bottom = (window.innerHeight - rect.top) + 'px';
+                list.style.borderRadius = '8px 8px 0 0';
+                list.style.borderTop    = '1.5px solid #e2e8f0';
+                list.style.borderBottom = 'none';
+            }
+            list.style.left     = rect.left + 'px';
+            list.style.width    = rect.width + 'px';
+            list.style.maxHeight = maxH + 'px';
+        }
+
         function openProductDropdown() {
-            const list = document.getElementById('productDropdownList');
-            if (list) list.style.display = 'block';
+            var list = document.getElementById('productDropdownList');
+            if (!list) return;
+            // Ensure portal into body
+            if (list.parentElement !== document.body) {
+                document.body.appendChild(list);
+                list.style.position = 'fixed';
+                list.style.zIndex   = '99999';
+            }
+            repositionProductDropdown();
+            list.style.display = 'block';
         }
 
         function closeProductDropdown() {
-            const list = document.getElementById('productDropdownList');
+            var list = document.getElementById('productDropdownList');
             if (list) list.style.display = 'none';
         }
 
         function toggleProductDropdown() {
-            const list = document.getElementById('productDropdownList');
+            var list = document.getElementById('productDropdownList');
             if (!list) return;
-            list.style.display = list.style.display === 'none' ? 'block' : 'none';
+            if (list.style.display === 'none' || !list.style.display) {
+                openProductDropdown();
+                filterProductDropdown(true);
+            } else {
+                closeProductDropdown();
+            }
         }
+
+        // Reposition on scroll/resize so it follows the input
+        window.addEventListener('scroll', function() {
+            var list = document.getElementById('productDropdownList');
+            if (list && list.style.display !== 'none') repositionProductDropdown();
+        }, true);
+        window.addEventListener('resize', function() {
+            var list = document.getElementById('productDropdownList');
+            if (list && list.style.display !== 'none') repositionProductDropdown();
+        });
 
         function clearProductSearch() {
             const searchInput = document.getElementById('productSearch');
@@ -7737,7 +7649,7 @@ setTimeout(function() {
 
         function filterProductDropdown(shouldOpen = true) {
             const searchInput = document.getElementById('productSearch');
-            const rawQ = (searchInput?.value || '').trim().toLowerCase();
+            const rawQ = (searchInput ? searchInput.value : '').trim().toLowerCase();
             const list = document.getElementById('productDropdownList');
             const clearBtn = document.getElementById('productClearBtn');
             if (clearBtn) {
@@ -7752,18 +7664,32 @@ setTimeout(function() {
             const terms = rawQ ? rawQ.split(/\s+/).filter(Boolean) : [];
             let totalVisible = 0;
 
-            list.querySelectorAll('.prod-option').forEach(opt => {
-                const search = (opt.dataset.search || '').toLowerCase();
-                const matches = terms.length === 0 || terms.every(t => search.includes(t));
-                opt.style.display = matches ? '' : 'none';
-                if (matches) totalVisible++;
+            const options = list.querySelectorAll('.prod-option');
+            options.forEach(opt => {
+                const searchStr = (opt.getAttribute('data-search') || opt.dataset.search || opt.textContent || '').toLowerCase();
+                const matches = terms.length === 0 || terms.every(t => searchStr.includes(t));
+                if (matches) {
+                    opt.classList.remove('is-hidden');
+                    opt.style.setProperty('display', 'flex', 'important');
+                    totalVisible++;
+                } else {
+                    opt.classList.add('is-hidden');
+                    opt.style.setProperty('display', 'none', 'important');
+                }
             });
 
-            list.querySelectorAll('.prod-group-header').forEach(hdr => {
-                const group = hdr.dataset.group || '';
-                const hasVisible = [...list.querySelectorAll(`.prod-option[data-cat="${group}"]`)]
-                    .some(o => o.style.display !== 'none');
-                hdr.style.display = hasVisible ? '' : 'none';
+            const headers = list.querySelectorAll('.prod-group-header');
+            headers.forEach(hdr => {
+                const group = hdr.getAttribute('data-group') || hdr.dataset.group || '';
+                const hasVisible = Array.from(list.querySelectorAll(`.prod-option[data-cat="${group}"]`))
+                    .some(o => !o.classList.contains('is-hidden') && o.style.display !== 'none');
+                if (hasVisible) {
+                    hdr.classList.remove('is-hidden');
+                    hdr.style.setProperty('display', 'block', 'important');
+                } else {
+                    hdr.classList.add('is-hidden');
+                    hdr.style.setProperty('display', 'none', 'important');
+                }
             });
 
             // No products match feedback message
@@ -7775,10 +7701,11 @@ setTimeout(function() {
                 list.appendChild(noMatch);
             }
             if (totalVisible === 0 && terms.length > 0) {
-                noMatch.innerHTML = '<i class="fas fa-search" style="margin-right:6px;color:#94a3b8;"></i>No products found matching "<strong>' + escapeHtml(rawQ) + '</strong>"';
-                noMatch.style.display = 'block';
+                const safeQ = rawQ.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                noMatch.innerHTML = '<i class="fas fa-search" style="margin-right:6px;color:#94a3b8;"></i>No products found matching "<strong>' + safeQ + '</strong>"';
+                noMatch.style.setProperty('display', 'block', 'important');
             } else {
-                noMatch.style.display = 'none';
+                noMatch.style.setProperty('display', 'none', 'important');
             }
         }
 
@@ -7799,6 +7726,14 @@ setTimeout(function() {
                     cb.checked = false;
                     return;
                 }
+                // Use the quantity field value (default 1)
+                const qtyInput = document.getElementById('itemQty');
+                const qtyVal = Math.max(1, parseInt(qtyInput ? qtyInput.value : 1) || 1);
+                if (qtyVal > stock) {
+                    showTxnAlert('Insufficient stock. Available: ' + stock, 'warning');
+                    cb.checked = false;
+                    return;
+                }
                 const existing = cart.find(i => i.item_type === 'merchandise' && String(i.product_id) === pid);
                 if (!existing) {
                     cart.push({
@@ -7807,10 +7742,13 @@ setTimeout(function() {
                         product_name: name,
                         category:     cat,
                         size_variant: size,
-                        quantity:     1,
+                        quantity:     qtyVal,
                         unit_price:   price,
                         unit:         unit,
                     });
+                } else {
+                    // Already in cart — update quantity to match field
+                    existing.quantity = qtyVal;
                 }
             } else {
                 // Remove from cart
@@ -9819,6 +9757,26 @@ setTimeout(function() {
             showTxnAlert(`<i class="fas fa-check"></i> Item successfully added to cart.`, 'success');
         }
 
+        // ── Auto-sync itemQty field → cart quantity for the selected product ──
+        function syncItemQtyToCart(rawVal) {
+            if (!selectedProduct) return;
+            const newQty = Math.max(1, parseInt(rawVal) || 1);
+            const pid = String(selectedProduct.id);
+            const stock = parseInt(selectedProduct.stock) || 0;
+            const cartItem = cart.find(i => i.item_type === 'merchandise' && String(i.product_id) === pid);
+            if (!cartItem) return;
+            if (newQty > stock) {
+                // Clamp to available stock and update field
+                cartItem.quantity = stock;
+                const qtyEl = document.getElementById('itemQty');
+                if (qtyEl) qtyEl.value = stock;
+            } else {
+                cartItem.quantity = newQty;
+            }
+            renderCart();
+            updateCheckoutBtn();
+        }
+
         // ── Quick Add selected product directly from dropdown list option ───
         function quickAddProductToCart(productId) {
             const opt = document.querySelector(`#productSelect option[value="${productId}"]`);
@@ -10674,6 +10632,11 @@ setTimeout(function() {
                 }
             }
             item.quantity = newQty;
+            // Sync itemQty field if this is the currently selected product
+            if (selectedProduct && String(selectedProduct.id) === String(item.product_id)) {
+                const qtyEl = document.getElementById('itemQty');
+                if (qtyEl) qtyEl.value = newQty;
+            }
             renderCart();
             updateCheckoutBtn();
         }
@@ -11203,6 +11166,23 @@ setTimeout(function() {
         <?php
         // Staff view: simple tracker without manager-level KPIs
         ?>
+
+        <?php if (!empty($jo_variance_alerts)): ?>
+        <!-- Job Order Variance Alert Banner -->
+        <div style="margin-bottom:14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px 16px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <i class="fas fa-exclamation-triangle" style="color:#dc2626;font-size:14px;"></i>
+                <span style="font-weight:700;font-size:12.5px;color:#991b1b;">
+                    <?= count($jo_variance_alerts) ?> Job Order Variance Alert<?= count($jo_variance_alerts) > 1 ? 's' : '' ?> Detected
+                </span>
+            </div>
+            <div style="font-size:11.5px;color:#7f1d1d;line-height:1.6;padding-left:22px;">
+                <?php foreach ($jo_variance_alerts as $jva): ?>
+                    <div>• <strong><?= htmlspecialchars($jva['jo_ref']) ?></strong>: <?= htmlspecialchars($jva['message']) ?></div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
 
         <!-- Filter bar -->
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:14px;">
@@ -12704,6 +12684,8 @@ setTimeout(function() {
             window.open(url, '_blank');
         }
         
+        var currentMTData = null;
+
         // Print Merchandise Receipt
         function printMerchandiseReceipt(txnId) {
             var url = 'receipt.php?id=' + encodeURIComponent(txnId) + '&type=merchandise';
@@ -12712,7 +12694,7 @@ setTimeout(function() {
         
         // View Merchandise Transaction Details
         function viewMerchandiseDetails(txnId) {
-            ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal'].forEach(id => {
+            ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal', 'requestAdjustModal', 'requestVoidModal', 'paymentSettleModal'].forEach(function(id) {
                 const m = document.getElementById(id);
                 if (m) m.style.display = 'none';
             });
@@ -12721,62 +12703,208 @@ setTimeout(function() {
                 return;
             }
             
+            // Show modal in loading state
+            var itemsBody = document.getElementById('viewMTItemsBody');
+            if (itemsBody) {
+                itemsBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading transaction details...</td></tr>';
+            }
+            document.getElementById('viewMerchandiseModal').style.display = 'flex';
+
             // Fetch transaction details via AJAX
             fetch('../backend/get_merchandise_transaction_details.php?id=' + encodeURIComponent(txnId))
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    if (data.success && data.transaction) {
                         const txn = data.transaction;
+                        currentMTData = txn;
                         
                         // Populate modal fields
-                        document.getElementById('viewMTxnRef').textContent = txn.transaction_id || '—';
-                        document.getElementById('viewMTCustomer').textContent = txn.customer_name || 'No Customer';
+                        document.getElementById('viewMTxnRef').textContent = (txn.transaction_id || '—');
+                        document.getElementById('viewMTCustomer').textContent = txn.customer_name || 'Walk-in Customer';
                         document.getElementById('viewMTShift').textContent = (txn.shift_name || txn.shift_period) || '—';
                         document.getElementById('viewMTDate').textContent = txn.transaction_date || '—';
-                        document.getElementById('viewMTPayMethod').textContent = txn.payment_method || '—';
+                        document.getElementById('viewMTPayMethod').textContent = txn.payment_method || 'Cash';
                         document.getElementById('viewMTPayStatus').innerHTML = txn.payment_status_badge || '—';
-                        document.getElementById('viewMTValStatus').innerHTML = txn.validation_status_badge || '—';
                         document.getElementById('viewMTSubtotal').textContent = txn.subtotal_display || '₱0.00';
                         document.getElementById('viewMTVAT').textContent = txn.vat_display || '₱0.00';
                         document.getElementById('viewMTTotal').textContent = txn.total_display || '₱0.00';
                         document.getElementById('viewMTPaid').textContent = txn.paid_display || '₱0.00';
-                        document.getElementById('viewMTBalance').textContent = txn.balance_display || '₱0.00';
+                        
+                        var balanceDue = parseFloat(txn.balance_due || 0);
+                        var balanceEl = document.getElementById('viewMTBalance');
+                        if (balanceDue > 0.009) {
+                            balanceEl.textContent = '₱' + balanceDue.toFixed(2);
+                            balanceEl.style.color = '#dc2626';
+                        } else {
+                            balanceEl.textContent = '₱0.00 (Fully Settled)';
+                            balanceEl.style.color = '#166534';
+                        }
+
                         document.getElementById('viewMTRemarks').textContent = txn.remarks || '—';
                         document.getElementById('viewMTStaff').textContent = txn.staff_name || '—';
                         
-                        // Populate items table
-                        const itemsBody = document.getElementById('viewMTItemsBody');
-                        if (txn.items && txn.items.length > 0) {
-                            itemsBody.innerHTML = txn.items.map(item => `
-                                <tr style="border-bottom:1px solid #f1f5f9;">
-                                    <td style="padding:8px;">
-                                        <div style="font-weight:600;color:#1e293b;">${item.product_name || '—'}</div>
-                                        ${item.category ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">${item.category}${item.size_variant ? ' • ' + item.size_variant : ''}</div>` : ''}
-                                    </td>
-                                    <td style="padding:8px;text-align:center;color:#475569;">${parseInt(item.quantity) || 0} ${parseInt(item.quantity) === 1 ? 'pc' : 'pcs'}</td>
-                                    <td style="padding:8px;text-align:right;color:#475569;">₱${parseFloat(item.unit_price || 0).toFixed(2)}</td>
-                                    <td style="padding:8px;text-align:right;color:#003d7a;font-weight:700;">₱${parseFloat(item.subtotal || 0).toFixed(2)}</td>
-                                </tr>
-                            `).join('');
+                        // Populate items table (NO ACTION BUTTONS)
+                        var items = txn.items || [];
+                        var countBadge = document.getElementById('viewMTItemCountBadge');
+                        if (countBadge) countBadge.textContent = items.length + ' item' + (items.length === 1 ? '' : 's');
+
+                        if (items.length > 0) {
+                            itemsBody.innerHTML = items.map(function(item) {
+                                var qty = parseFloat(item.quantity || 0);
+                                var qtyDisplay = (qty % 1 === 0) ? parseInt(qty) : qty;
+                                var unit = item.unit || 'pc';
+                                var unitPrice = parseFloat(item.unit_price || 0);
+                                var subtotal = parseFloat(item.subtotal || (qty * unitPrice));
+                                var sku = item.sku || '—';
+                                var cat = item.category || 'General';
+
+                                return '<tr style="border-bottom:1px solid #f1f5f9;">' +
+                                    '<td style="padding:10px 12px;font-weight:700;color:#1e293b;">' + (item.product_name || '—') + '</td>' +
+                                    '<td style="padding:10px;color:#64748b;font-size:11px;">' + (sku !== '—' ? '<span style="font-family:monospace;font-weight:600;color:#002F70;">' + sku + '</span><br>' : '') + cat + '</td>' +
+                                    '<td style="padding:10px;text-align:center;font-weight:700;color:#334155;">' + qtyDisplay + ' <span style="font-size:11px;color:#64748b;font-weight:500;">' + unit + '</span></td>' +
+                                    '<td style="padding:10px;text-align:right;color:#475569;font-weight:600;">₱' + unitPrice.toFixed(2) + '</td>' +
+                                    '<td style="padding:10px 12px;text-align:right;font-weight:800;color:#002F70;">₱' + subtotal.toFixed(2) + '</td>' +
+                                '</tr>';
+                            }).join('');
                         } else {
-                            itemsBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">No items found</td></tr>';
+                            itemsBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">No items found</td></tr>';
                         }
                         
-                        // Show modal
-                        document.getElementById('viewMerchandiseModal').style.display = 'flex';
+                        // Configure Top Action Bar
+                        var valStatus = (txn.validation_status || '').toLowerCase();
+                        var isVoided = ['voided', 'cancelled', 'canceled'].indexOf(valStatus) !== -1;
+                        var isAdjusted = (valStatus === 'adjusted');
+                        var pendingReq = txn.pending_request;
+                        var settleBtn = document.getElementById('viewMTSettlePayBtn');
+                        var adjustBtn = document.getElementById('viewMTAdjustBtn');
+                        var voidBtn = document.getElementById('viewMTVoidBtn');
+                        var reprintBtn = document.getElementById('viewMTReprintBtn');
+                        var statusBadges = document.getElementById('viewMTStatusBadges');
+
+                        if (statusBadges) statusBadges.innerHTML = '';
+
+                        if (isVoided) {
+                            if (settleBtn) settleBtn.style.display = 'none';
+                            if (adjustBtn) adjustBtn.style.display = 'none';
+                            if (voidBtn) voidBtn.style.display = 'none';
+                            if (reprintBtn) reprintBtn.style.display = 'none';
+                            if (statusBadges) statusBadges.innerHTML = '<span style="padding:4px 10px;border-radius:6px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:800;"><i class="fas fa-ban"></i> VOIDED</span>';
+                        } else if (isAdjusted) {
+                            if (settleBtn) settleBtn.style.display = (balanceDue > 0.009) ? 'inline-flex' : 'none';
+                            if (adjustBtn) adjustBtn.style.display = 'none';
+                            if (voidBtn) voidBtn.style.display = 'none';
+                            if (reprintBtn) reprintBtn.style.display = 'inline-flex';
+                            if (statusBadges) statusBadges.innerHTML = '<span style="padding:4px 10px;border-radius:6px;background:#ede9fe;color:#4338ca;font-size:11px;font-weight:800;"><i class="fas fa-check-circle"></i> ADJUSTED</span>';
+                        } else if (pendingReq) {
+                            if (settleBtn) settleBtn.style.display = 'none';
+                            if (adjustBtn) adjustBtn.style.display = 'none';
+                            if (voidBtn) voidBtn.style.display = 'none';
+                            if (reprintBtn) reprintBtn.style.display = 'inline-flex';
+                            var reqColor = (pendingReq.request_type === 'Void') ? '#dc2626' : '#d97706';
+                            var reqBg = (pendingReq.request_type === 'Void') ? '#fee2e2' : '#fef3c7';
+                            if (statusBadges) statusBadges.innerHTML = '<span style="padding:4px 10px;border-radius:6px;background:' + reqBg + ';color:' + reqColor + ';font-size:11px;font-weight:800;"><i class="fas fa-clock"></i> ' + (pendingReq.request_type ? pendingReq.request_type.toUpperCase() : 'REQUEST') + ' PENDING APPROVAL</span>';
+                        } else {
+                            // Normal Active Transaction
+                            if (settleBtn) settleBtn.style.display = (balanceDue > 0.009) ? 'inline-flex' : 'none';
+                            if (adjustBtn) adjustBtn.style.display = 'inline-flex';
+                            if (voidBtn) voidBtn.style.display = 'inline-flex';
+                            if (reprintBtn) reprintBtn.style.display = 'inline-flex';
+                        }
                     } else {
                         showTxnAlert(data.error || 'Failed to load transaction details', 'error');
+                        closeViewMerchandiseModal();
                     }
                 })
-                .catch(error => {
+                .catch(function(error) {
                     console.error('Error fetching merchandise details:', error);
                     showTxnAlert('Network error: ' + error.message, 'error');
+                    closeViewMerchandiseModal();
                 });
         }
         
         function closeViewMerchandiseModal() {
             document.getElementById('viewMerchandiseModal').style.display = 'none';
         }
+
+        // Action Bar Handlers for View Modal
+        window.onViewMTSettleClick = function() {
+            if (!currentMTData) return;
+            var totalAmt = parseFloat(currentMTData.total_amount || 0);
+            var paidAmt = parseFloat(currentMTData.amount_paid || 0);
+            var balanceAmt = parseFloat(currentMTData.balance_due || Math.max(0, totalAmt - paidAmt));
+            openPaymentModal(
+                currentMTData.id,
+                'merchandise_transactions',
+                totalAmt,
+                paidAmt,
+                balanceAmt,
+                currentMTData.customer_name || 'Walk-in Customer',
+                false,
+                'merchandise'
+            );
+        };
+
+        window.onViewMTReprintClick = function() {
+            if (!currentMTData) return;
+            var txnRef = currentMTData.transaction_id || currentMTData.id;
+            window.open('receipt.php?id=' + encodeURIComponent(txnRef) + '&type=merchandise', '_blank');
+        };
+
+        window.onViewMTAdjustClick = function(e) {
+            if (!currentMTData) return;
+            var dummyBtn = {
+                dataset: {
+                    joId: currentMTData.id,
+                    joSource: 'merchandise_transactions',
+                    joRef: currentMTData.transaction_id || ('#' + currentMTData.id),
+                    joCustomer: currentMTData.customer_name || 'Walk-in Customer',
+                    joStatus: currentMTData.validation_status || 'Pending',
+                    joPaystatus: currentMTData.payment_status || 'Paid',
+                    joPaymethod: currentMTData.payment_method || 'Cash',
+                    joTotal: currentMTData.total_amount || 0
+                },
+                getAttribute: function(name) {
+                    var map = {
+                        'data-jo-id': currentMTData.id,
+                        'data-jo-source': 'merchandise_transactions',
+                        'data-jo-ref': currentMTData.transaction_id || ('#' + currentMTData.id),
+                        'data-jo-customer': currentMTData.customer_name || 'Walk-in Customer',
+                        'data-jo-status': currentMTData.validation_status || 'Pending',
+                        'data-jo-paystatus': currentMTData.payment_status || 'Paid',
+                        'data-jo-paymethod': currentMTData.payment_method || 'Cash',
+                        'data-jo-total': currentMTData.total_amount || 0
+                    };
+                    return map[name] || '';
+                }
+            };
+            window.openRequestAdjustModal(e, dummyBtn);
+        };
+
+        window.onViewMTVoidClick = function(e) {
+            if (!currentMTData) return;
+            var dummyBtn = {
+                dataset: {
+                    joId: currentMTData.id,
+                    joSource: 'merchandise_transactions',
+                    joRef: currentMTData.transaction_id || ('#' + currentMTData.id),
+                    joCustomer: currentMTData.customer_name || 'Walk-in Customer',
+                    joStatus: currentMTData.validation_status || 'Pending',
+                    joPaystatus: currentMTData.payment_status || 'Paid'
+                },
+                getAttribute: function(name) {
+                    var map = {
+                        'data-jo-id': currentMTData.id,
+                        'data-jo-source': 'merchandise_transactions',
+                        'data-jo-ref': currentMTData.transaction_id || ('#' + currentMTData.id),
+                        'data-jo-customer': currentMTData.customer_name || 'Walk-in Customer',
+                        'data-jo-status': currentMTData.validation_status || 'Pending',
+                        'data-jo-paystatus': currentMTData.payment_status || 'Paid'
+                    };
+                    return map[name] || '';
+                }
+            };
+            window.openRequestVoidModal(e, dummyBtn);
+        };
         
         // Request Void / Request Adjustment Modal Functions
         function openTxnRequestModal(e, txnId, recordSource, requestType, customerName) {
@@ -13358,8 +13486,10 @@ setTimeout(function() {
         <div id="viewMerchandiseModal" onclick="if(event.target===this) closeViewMerchandiseModal();" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;
              background:rgba(15,23,42,0.65);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
           <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
-                      width:100%;max-width:700px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
-            <div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:22px 24px;
+                      width:100%;max-width:760px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
+            
+            <!-- Modal Header -->
+            <div style="background:linear-gradient(135deg,#002F70,#004b99);padding:18px 24px;
                         display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
               <div style="display:flex;align-items:center;gap:12px;">
                 <div style="width:38px;height:38px;background:rgba(255,255,255,.18);border-radius:10px;
@@ -13367,100 +13497,159 @@ setTimeout(function() {
                   <i class="fas fa-shopping-cart" style="color:#fff;font-size:16px;"></i>
                 </div>
                 <div>
-                  <div style="color:#fff;font-weight:700;font-size:14px;">Merchandise Transaction Details</div>
-                  <div id="viewMTxnRef" style="color:#bbf7d0;font-size:11px;margin-top:1px;"></div>
+                  <div style="color:#fff;font-weight:800;font-size:15px;letter-spacing:.3px;">Merchandise Transaction Details</div>
+                  <div id="viewMTxnRef" style="color:#bfdbfe;font-size:11.5px;font-family:monospace;margin-top:2px;"></div>
                 </div>
               </div>
+              <button type="button" onclick="closeViewMerchandiseModal()" style="background:transparent;border:none;color:rgba(255,255,255,0.7);font-size:18px;cursor:pointer;padding:4px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.7)'">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div style="padding:20px 24px;max-height:calc(100vh - 280px);overflow-y:auto;">
               
-            </div>
-            <div style="padding:24px 24px 28px 24px;max-height:calc(100vh - 340px);overflow-y:auto;">
-              <div style="display:grid;gap:14px;">
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Customer:</span>
-                  <span id="viewMTCustomer" style="font-size:13px;color:#1e293b;font-weight:600;">—</span>
+              <!-- ── TOP TRANSACTION-LEVEL ACTION BAR ─────────────────── -->
+              <div id="viewMTTopActionBar" style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:12px 16px;margin-bottom:20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;">
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;" id="viewMTActionButtonsGroup">
+                  <!-- Settle & Pay Button -->
+                  <button type="button" id="viewMTSettlePayBtn" onclick="onViewMTSettleClick()"
+                          class="txn-btn success"
+                          style="display:none;background:#16a34a !important;color:#ffffff !important;border:none !important;padding:8px 16px !important;border-radius:8px !important;font-size:12px !important;font-weight:700 !important;cursor:pointer !important;box-shadow:0 2px 6px rgba(22,163,74,0.3) !important;">
+                    <i class="fas fa-hand-holding-usd" style="margin-right:6px;"></i> Settle &amp; Pay
+                  </button>
+
+                  <!-- Reprint Receipt Button -->
+                  <button type="button" id="viewMTReprintBtn" onclick="onViewMTReprintClick()"
+                          class="txn-btn secondary"
+                          style="padding:8px 14px !important;border-radius:8px !important;font-size:12px !important;font-weight:700 !important;cursor:pointer !important;">
+                    <i class="fas fa-print" style="margin-right:6px;"></i> Reprint Receipt
+                  </button>
+
+                  <!-- Request Adjustment Button -->
+                  <button type="button" id="viewMTAdjustBtn" onclick="onViewMTAdjustClick(event)"
+                          class="txn-btn secondary"
+                          style="padding:8px 14px !important;border-radius:8px !important;font-size:12px !important;font-weight:700 !important;color:#d97706 !important;border-color:#fcd34d !important;cursor:pointer !important;">
+                    <i class="fas fa-sliders-h" style="margin-right:6px;"></i> Request Adjustment
+                  </button>
+
+                  <!-- Request Void Button -->
+                  <button type="button" id="viewMTVoidBtn" onclick="onViewMTVoidClick(event)"
+                          class="txn-btn danger"
+                          style="padding:8px 14px !important;border-radius:8px !important;font-size:12px !important;font-weight:700 !important;background:#dc2626 !important;color:#ffffff !important;border:none !important;cursor:pointer !important;">
+                    <i class="fas fa-ban" style="margin-right:6px;"></i> Request Void
+                  </button>
                 </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Shift:</span>
-                  <span id="viewMTShift" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Transaction Date:</span>
-                  <span id="viewMTDate" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                
-                <!-- Items Table -->
-                <div style="border-top:1px solid #e2e8f0;padding-top:14px;">
-                  <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Items Purchased:</div>
-                  <div id="viewMTItems" style="max-height:200px;overflow-y:auto;">
-                    <table style="width:100%;font-size:12px;border-collapse:collapse;">
-                      <thead style="background:#f8fafc;position:sticky;top:0;">
-                        <tr>
-                          <th style="text-align:left;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;">Item</th>
-                          <th style="text-align:center;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;width:60px;">Qty</th>
-                          <th style="text-align:right;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;width:90px;">Unit Price</th>
-                          <th style="text-align:right;padding:6px 8px;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;width:100px;">Subtotal</th>
-                        </tr>
-                      </thead>
-                      <tbody id="viewMTItemsBody">
-                        <tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">Loading items...</td></tr>
-                      </tbody>
-                    </table>
+
+                <!-- Status Badges in Action Bar -->
+                <div id="viewMTStatusBadges" style="display:flex;align-items:center;gap:6px;"></div>
+              </div>
+
+              <!-- Transaction Information Grid -->
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:18px;">
+                <div style="display:grid;gap:8px;">
+                  <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:baseline;">
+                    <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Customer:</span>
+                    <span id="viewMTCustomer" style="font-size:13px;color:#1e293b;font-weight:700;">—</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:baseline;">
+                    <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Date Released:</span>
+                    <span id="viewMTDate" style="font-size:12.5px;color:#334155;">—</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:baseline;">
+                    <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Shift:</span>
+                    <span id="viewMTShift" style="font-size:12.5px;color:#334155;">—</span>
                   </div>
                 </div>
-                
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Method:</span>
-                  <span id="viewMTPayMethod" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Status:</span>
-                  <span id="viewMTPayStatus" style="font-size:11px;font-weight:700;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Validation Status:</span>
-                  <span id="viewMTValStatus" style="font-size:11px;font-weight:700;">—</span>
-                </div>
-                
-                <div style="border-top:1px solid #e2e8f0;padding-top:14px;display:grid;gap:8px;">
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:12px;color:#64748b;font-weight:600;">Subtotal:</span>
-                    <span id="viewMTSubtotal" style="font-size:14px;font-weight:700;color:#475569;">₱0.00</span>
+
+                <div style="display:grid;gap:8px;">
+                  <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:baseline;">
+                    <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Payment Method:</span>
+                    <span id="viewMTPayMethod" style="font-size:12.5px;color:#1e293b;font-weight:600;">—</span>
                   </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:12px;color:#64748b;font-weight:600;">VAT (12%):</span>
-                    <span id="viewMTVAT" style="font-size:14px;font-weight:700;color:#475569;">₱0.00</span>
+                  <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:baseline;">
+                    <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Payment Status:</span>
+                    <span id="viewMTPayStatus" style="font-size:11px;font-weight:700;">—</span>
                   </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:2px solid #e2e8f0;">
-                    <span style="font-size:13px;color:#1e293b;font-weight:700;">Total Amount:</span>
-                    <span id="viewMTTotal" style="font-size:18px;font-weight:800;color:#003d7a;">₱0.00</span>
+                  <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:baseline;">
+                    <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Encoded By:</span>
+                    <span id="viewMTStaff" style="font-size:12.5px;color:#334155;">—</span>
                   </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:12px;color:#64748b;font-weight:600;">Amount Paid:</span>
-                    <span id="viewMTPaid" style="font-size:14px;font-weight:700;color:#166534;">₱0.00</span>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:12px;color:#64748b;font-weight:600;">Balance Due:</span>
-                    <span id="viewMTBalance" style="font-size:14px;font-weight:700;color:#dc2626;">₱0.00</span>
-                  </div>
-                </div>
-                
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Remarks:</span>
-                  <span id="viewMTRemarks" style="font-size:12px;color:#475569;font-style:italic;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:start;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Staff:</span>
-                  <span id="viewMTStaff" style="font-size:12px;color:#64748b;">—</span>
                 </div>
               </div>
+
+              <!-- Product Line Items Table (NO ACTION COLUMN) -->
+              <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:18px;">
+                <div style="background:#f1f5f9;padding:10px 14px;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#334155;display:flex;align-items:center;justify-content:space-between;">
+                  <span><i class="fas fa-boxes" style="margin-right:6px;color:#002F70;"></i> Purchased Merchandise Items</span>
+                  <span id="viewMTItemCountBadge" style="font-size:10.5px;color:#64748b;font-weight:600;"></span>
+                </div>
+                <div id="viewMTItems" style="max-height:220px;overflow-y:auto;">
+                  <table style="width:100%;font-size:12px;border-collapse:collapse;table-layout:fixed;">
+                    <colgroup>
+                      <col style="width:34%;"><!-- Product Name -->
+                      <col style="width:18%;"><!-- SKU / Cat -->
+                      <col style="width:14%;"><!-- Qty -->
+                      <col style="width:16%;"><!-- Unit Price -->
+                      <col style="width:18%;"><!-- Subtotal -->
+                    </colgroup>
+                    <thead style="background:#f8fafc;position:sticky;top:0;z-index:2;">
+                      <tr>
+                        <th style="text-align:left;padding:8px 12px;border-bottom:1.5px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:700;">Product</th>
+                        <th style="text-align:left;padding:8px 10px;border-bottom:1.5px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:700;">SKU / Category</th>
+                        <th style="text-align:center;padding:8px 10px;border-bottom:1.5px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:700;">Qty</th>
+                        <th style="text-align:right;padding:8px 10px;border-bottom:1.5px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:700;">Unit Price</th>
+                        <th style="text-align:right;padding:8px 12px;border-bottom:1.5px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:700;">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody id="viewMTItemsBody">
+                      <tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">Loading items...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Financial Breakdown -->
+              <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px 20px;display:grid;gap:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:12px;color:#64748b;font-weight:600;">Subtotal (Vatable):</span>
+                  <span id="viewMTSubtotal" style="font-size:13px;font-weight:700;color:#475569;">₱0.00</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:12px;color:#64748b;font-weight:600;">VAT (12%):</span>
+                  <span id="viewMTVAT" style="font-size:13px;font-weight:700;color:#475569;">₱0.00</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1.5px solid #e2e8f0;">
+                  <span style="font-size:14px;color:#1e293b;font-weight:800;">Total Amount:</span>
+                  <span id="viewMTTotal" style="font-size:18px;font-weight:800;color:#002F70;">₱0.00</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:12px;color:#64748b;font-weight:600;">Amount Paid:</span>
+                  <span id="viewMTPaid" style="font-size:14px;font-weight:700;color:#166534;">₱0.00</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:4px;">
+                  <span style="font-size:13px;color:#dc2626;font-weight:700;">Outstanding Balance:</span>
+                  <span id="viewMTBalance" style="font-size:16px;font-weight:800;color:#dc2626;">₱0.00</span>
+                </div>
+              </div>
+
+              <!-- Remarks -->
+              <div id="viewMTRemarksContainer" style="margin-top:14px;display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:baseline;">
+                <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Remarks:</span>
+                <span id="viewMTRemarks" style="font-size:12px;color:#475569;font-style:italic;">—</span>
+              </div>
+
             </div>
-            <div style="padding:16px 24px 20px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;gap:10px;">
+
+            <!-- Modal Footer -->
+            <div style="padding:14px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;gap:10px;">
               <button type="button" onclick="closeViewMerchandiseModal()"
-                      style="height:38px !important;padding:0 26px !important;background:#002F70 !important;color:#ffffff !important;border:none !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;min-width:110px !important;box-shadow:0 2px 6px rgba(0,47,112,0.25) !important;"
+                      style="height:38px !important;padding:0 24px !important;background:#002F70 !important;color:#ffffff !important;border:none !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;min-width:100px !important;box-shadow:0 2px 6px rgba(0,47,112,0.2) !important;"
                       onmouseover="this.style.background='#001f4d'" onmouseout="this.style.background='#002F70'">
                 <i class="fas fa-times" style="margin-right:6px;color:#ffffff !important;"></i> Close
               </button>
             </div>
+
           </div>
         </div>
 
@@ -13839,97 +14028,157 @@ window.viewMerchandiseDetails = function(txnId, btn) {
         if (typeof window.event.stopPropagation === 'function') window.event.stopPropagation();
         if (typeof window.event.preventDefault === 'function') window.event.preventDefault();
     }
-    
+
     if (!txnId && btn && typeof btn.getAttribute === 'function') {
         txnId = btn.getAttribute('data-txn-id') || btn.getAttribute('data-id') || btn.getAttribute('data-jo-ref') || '';
     }
-    
+
     if (!txnId) {
         if (typeof showTxnAlert === 'function') showTxnAlert('Invalid transaction ID', 'error');
         else alert('Invalid transaction ID');
         return false;
     }
 
-    ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal', 'requestAdjustModal', 'requestVoidModal'].forEach(function(id) {
+    // Close any open modals
+    ['viewJobOrderModal', 'viewMerchandiseModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal', 'requestAdjustModal', 'requestVoidModal', 'paymentSettleModal'].forEach(function(id) {
         var m = document.getElementById(id);
         if (m) m.style.display = 'none';
     });
 
     var modal = document.getElementById('viewMerchandiseModal');
-    if (!modal) {
-        console.error('viewMerchandiseModal element not found');
-        return false;
-    }
+    if (!modal) { console.error('viewMerchandiseModal not found'); return false; }
 
-    var itemsTable = document.getElementById('viewMTItemsBody');
-    if (itemsTable) {
-        itemsTable.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:16px;color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading transaction details...</td></tr>';
+    // Show loading state
+    var itemsBody = document.getElementById('viewMTItemsBody');
+    if (itemsBody) {
+        itemsBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading transaction details...</td></tr>';
     }
-
+    var countBadge = document.getElementById('viewMTItemCountBadge');
+    if (countBadge) countBadge.textContent = '';
     modal.style.display = 'flex';
     modal.style.zIndex = '9999999';
 
     fetch('../backend/get_merchandise_transaction_details.php?id=' + encodeURIComponent(txnId))
         .then(function(res) { return res.json(); })
         .then(function(data) {
-            if (data.success) {
-                var txn = data.transaction || {};
-                var setTxt = function(id, val) {
-                    var el = document.getElementById(id);
-                    if (el) el.textContent = val || '—';
-                };
-                var setHtml = function(id, val) {
-                    var el = document.getElementById(id);
-                    if (el) el.innerHTML = val || '—';
-                };
-                setTxt('viewMTxnRef', txn.transaction_id || ('#' + txn.id));
-                setTxt('viewMTCustomer', txn.customer_name || 'Walk-in Customer');
-                setTxt('viewMTShift', txn.shift_name || txn.shift_period || '—');
-                setTxt('viewMTDate', txn.transaction_date || '—');
-                setTxt('viewMTPayMethod', txn.payment_method || '—');
-                setHtml('viewMTPayStatus', txn.payment_status_badge || '—');
-                setHtml('viewMTValStatus', txn.validation_status_badge || '—');
-                setTxt('viewMTSubtotal', txn.subtotal_display || ('₱' + parseFloat(txn.subtotal_amount || 0).toFixed(2)));
-                setTxt('viewMTVAT', txn.vat_display || ('₱' + parseFloat(txn.vat_amount || 0).toFixed(2)));
-                setTxt('viewMTTotal', txn.total_display || ('₱' + parseFloat(txn.total_amount || 0).toFixed(2)));
-                setTxt('viewMTPaid', txn.paid_display || ('₱' + parseFloat(txn.amount_paid || 0).toFixed(2)));
-                setTxt('viewMTBalance', txn.balance_display || ('₱' + parseFloat(txn.balance_due || 0).toFixed(2)));
-                setTxt('viewMTRemarks', txn.remarks || '—');
-                setTxt('viewMTStaff', txn.staff_name || '—');
+            if (!data.success || !data.transaction) {
+                if (typeof showTxnAlert === 'function') showTxnAlert(data.error || 'Failed to load details', 'error');
+                modal.style.display = 'none';
+                return;
+            }
+            var txn = data.transaction;
+            window.currentMTData = txn;
 
-                var itemsList = txn.items || data.items || [];
-                if (itemsTable) {
-                    if (itemsList.length > 0) {
-                        itemsTable.innerHTML = itemsList.map(function(item) {
-                            var qty = parseFloat(item.quantity || 0);
-                            var price = parseFloat(item.unit_price || 0).toFixed(2);
-                            var subtotal = parseFloat(item.subtotal || 0).toFixed(2);
-                            var name = (item.product_name || 'Item').replace(/</g, '&lt;');
-                            var cat = (item.category || '').replace(/</g, '&lt;');
-                            var size = (item.size_variant || '').replace(/</g, '&lt;');
-                            return '<tr style="border-bottom:1px solid #f1f5f9;">' +
-                                '<td style="padding:8px;"><div style="font-weight:600;color:#1e293b;">' + name + '</div>' +
-                                (cat ? '<div style="font-size:10px;color:#94a3b8;margin-top:2px;">' + cat + (size ? ' • ' + size : '') + '</div>' : '') + '</td>' +
-                                '<td style="padding:8px;text-align:center;color:#475569;">' + qty + '</td>' +
-                                '<td style="padding:8px;text-align:right;color:#475569;">₱' + price + '</td>' +
-                                '<td style="padding:8px;text-align:right;color:#003d7a;font-weight:700;">₱' + subtotal + '</td>' +
-                                '</tr>';
-                        }).join('');
-                    } else {
-                        itemsTable.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">No items found</td></tr>';
-                    }
+            // Helpers
+            var setTxt = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = (val !== null && val !== undefined && val !== '') ? val : '—'; };
+            var setHtml = function(id, val) { var el = document.getElementById(id); if (el) el.innerHTML = val || '—'; };
+
+            // Header
+            var refEl = document.getElementById('viewMTxnRef');
+            if (refEl) refEl.textContent = txn.transaction_id || ('#' + txn.id);
+
+            // Info grid
+            setTxt('viewMTCustomer', txn.customer_name || 'Walk-in Customer');
+            setTxt('viewMTShift', txn.shift_name || txn.shift_period || '—');
+            setTxt('viewMTDate', txn.transaction_date || '—');
+            setTxt('viewMTPayMethod', txn.payment_method || 'Cash');
+            setHtml('viewMTPayStatus', txn.payment_status_badge || '—');
+            setTxt('viewMTStaff', txn.staff_name || '—');
+
+            // Financials
+            setTxt('viewMTSubtotal', txn.subtotal_display || ('₱' + parseFloat(txn.subtotal || 0).toFixed(2)));
+            setTxt('viewMTVAT', txn.vat_display || ('₱' + parseFloat(txn.vat || 0).toFixed(2)));
+            setTxt('viewMTTotal', txn.total_display || ('₱' + parseFloat(txn.total_amount || 0).toFixed(2)));
+            setTxt('viewMTPaid', txn.paid_display || ('₱' + parseFloat(txn.amount_paid || 0).toFixed(2)));
+
+            var balDue = parseFloat(txn.balance_due || 0);
+            var balEl = document.getElementById('viewMTBalance');
+            if (balEl) {
+                if (balDue > 0.009) {
+                    balEl.textContent = '₱' + balDue.toFixed(2);
+                    balEl.style.color = '#dc2626';
+                } else {
+                    balEl.textContent = '₱0.00 (Fully Settled)';
+                    balEl.style.color = '#166534';
                 }
+            }
+
+            // Remarks
+            setTxt('viewMTRemarks', txn.remarks || '—');
+
+            // Items table (5 columns: Product | SKU/Cat | Qty | Unit Price | Subtotal)
+            var items = txn.items || data.items || [];
+            if (countBadge) countBadge.textContent = items.length + ' item' + (items.length === 1 ? '' : 's');
+
+            if (itemsBody) {
+                if (items.length > 0) {
+                    itemsBody.innerHTML = items.map(function(item) {
+                        var qty = parseFloat(item.quantity || 0);
+                        var qtyDisplay = (qty % 1 === 0) ? parseInt(qty) : qty;
+                        var unit = item.unit || 'pc';
+                        var unitPrice = parseFloat(item.unit_price || 0);
+                        var subtotal = parseFloat(item.subtotal || (qty * unitPrice));
+                        var sku = item.sku || '—';
+                        var cat = (item.category || 'General').replace(/</g, '&lt;');
+                        var name = (item.product_name || '—').replace(/</g, '&lt;');
+                        return '<tr style="border-bottom:1px solid #f1f5f9;">' +
+                            '<td style="padding:10px 12px;font-weight:700;color:#1e293b;">' + name + '</td>' +
+                            '<td style="padding:10px;color:#64748b;font-size:11px;">' + (sku !== '—' ? '<span style="font-family:monospace;font-weight:600;color:#002F70;">' + sku.replace(/</g, '&lt;') + '</span><br>' : '') + cat + '</td>' +
+                            '<td style="padding:10px;text-align:center;font-weight:700;color:#334155;">' + qtyDisplay + ' <span style="font-size:11px;color:#64748b;font-weight:500;">' + unit.replace(/</g, '&lt;') + '</span></td>' +
+                            '<td style="padding:10px;text-align:right;color:#475569;font-weight:600;">₱' + unitPrice.toFixed(2) + '</td>' +
+                            '<td style="padding:10px 12px;text-align:right;font-weight:800;color:#002F70;">₱' + subtotal.toFixed(2) + '</td>' +
+                        '</tr>';
+                    }).join('');
+                } else {
+                    itemsBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">No items found</td></tr>';
+                }
+            }
+
+            // Action Bar configuration
+            var valStatus = (txn.validation_status || '').toLowerCase();
+            var isVoided = ['voided', 'cancelled', 'canceled'].indexOf(valStatus) !== -1;
+            var isAdjusted = (valStatus === 'adjusted');
+            var pendingReq = txn.pending_request;
+            var settleBtn = document.getElementById('viewMTSettlePayBtn');
+            var adjustBtn = document.getElementById('viewMTAdjustBtn');
+            var voidBtn = document.getElementById('viewMTVoidBtn');
+            var reprintBtn = document.getElementById('viewMTReprintBtn');
+            var statusBadges = document.getElementById('viewMTStatusBadges');
+            if (statusBadges) statusBadges.innerHTML = '';
+
+            if (isVoided) {
+                if (settleBtn) settleBtn.style.display = 'none';
+                if (adjustBtn) adjustBtn.style.display = 'none';
+                if (voidBtn) voidBtn.style.display = 'none';
+                if (reprintBtn) reprintBtn.style.display = 'none';
+                if (statusBadges) statusBadges.innerHTML = '<span style="padding:4px 10px;border-radius:6px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:800;"><i class="fas fa-ban"></i> VOIDED</span>';
+            } else if (isAdjusted) {
+                if (settleBtn) settleBtn.style.display = (balDue > 0.009) ? 'inline-flex' : 'none';
+                if (adjustBtn) adjustBtn.style.display = 'none';
+                if (voidBtn) voidBtn.style.display = 'none';
+                if (reprintBtn) reprintBtn.style.display = 'inline-flex';
+                if (statusBadges) statusBadges.innerHTML = '<span style="padding:4px 10px;border-radius:6px;background:#ede9fe;color:#4338ca;font-size:11px;font-weight:800;"><i class="fas fa-check-circle"></i> ADJUSTED</span>';
+            } else if (pendingReq) {
+                if (settleBtn) settleBtn.style.display = 'none';
+                if (adjustBtn) adjustBtn.style.display = 'none';
+                if (voidBtn) voidBtn.style.display = 'none';
+                if (reprintBtn) reprintBtn.style.display = 'inline-flex';
+                var rColor = (pendingReq.request_type === 'Void') ? '#dc2626' : '#d97706';
+                var rBg = (pendingReq.request_type === 'Void') ? '#fee2e2' : '#fef3c7';
+                if (statusBadges) statusBadges.innerHTML = '<span style="padding:4px 10px;border-radius:6px;background:' + rBg + ';color:' + rColor + ';font-size:11px;font-weight:800;"><i class="fas fa-clock"></i> ' + (pendingReq.request_type ? pendingReq.request_type.toUpperCase() : 'REQUEST') + ' PENDING</span>';
             } else {
-                if (typeof showTxnAlert === 'function') showTxnAlert(data.error || 'Failed to load transaction details', 'error');
-                else alert(data.error || 'Failed to load transaction details');
+                if (settleBtn) settleBtn.style.display = (balDue > 0.009) ? 'inline-flex' : 'none';
+                if (adjustBtn) adjustBtn.style.display = 'inline-flex';
+                if (voidBtn) voidBtn.style.display = 'inline-flex';
+                if (reprintBtn) reprintBtn.style.display = 'inline-flex';
             }
         })
         .catch(function(err) {
             console.error('Error fetching merchandise details:', err);
             if (typeof showTxnAlert === 'function') showTxnAlert('Network error: ' + err.message, 'error');
-            else alert('Network error: ' + err.message);
+            modal.style.display = 'none';
         });
-        
+
     return false;
 };
 

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * FINAL DEVELOPER AUDIT TRAIL
  * Purely System-Level Logs for Superadmin / Developer

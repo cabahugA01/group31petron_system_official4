@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // API for Database Maintenance Operations
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');

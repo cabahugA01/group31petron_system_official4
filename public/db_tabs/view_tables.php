@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // View Tables Tab - Dynamic table listing with search/filter
 global $pdo, $config;
 

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $page_id = 'admin_stock_monitoring';
 require_once __DIR__ . '/../backend/lib.php';

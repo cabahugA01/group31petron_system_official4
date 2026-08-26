@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // Deliveries Management System
 session_start();
 require_login();

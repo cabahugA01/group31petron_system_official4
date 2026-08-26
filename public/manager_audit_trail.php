@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Manager Audit Trail — Full Branch Audit Trail
  * 12 data sources, station-scoped, no redundancy.

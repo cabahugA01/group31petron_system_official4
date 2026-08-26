@@ -137,13 +137,30 @@ try {
             WHERE id = ?
         ")->execute([$new_paid, $new_outstanding, $new_status, $ar_id]);
 
-        // Also update merchandise_transactions payment_status
+        // Also update merchandise_transactions payment_status and ar_status
         if (!empty($rec['transaction_db_id'])) {
-            $new_pay_status = ($new_outstanding <= 0) ? 'Paid' : 'Partial Payment';
+            $new_pay_status = ($new_outstanding <= 0) ? 'Paid' : 'Partially Paid';
+            $new_ar_status  = ($new_outstanding <= 0) ? 'Settled' : 'Partially Settled';
             try {
-                $pdo->prepare("UPDATE merchandise_transactions SET payment_status = ?, amount_paid = ?, updated_at = NOW() WHERE id = ?")
-                    ->execute([$new_pay_status, $new_paid, (int)$rec['transaction_db_id']]);
+                $pdo->prepare("UPDATE merchandise_transactions SET payment_status = ?, ar_status = ?, amount_paid = ?, balance_due = ?, workflow_status = IF(? <= 0, 'Completed', workflow_status), updated_at = NOW() WHERE id = ?")
+                    ->execute([$new_pay_status, $new_ar_status, $new_paid, $new_outstanding, $new_outstanding, (int)$rec['transaction_db_id']]);
             } catch (Exception $e) {}
+        }
+
+        // Update customer balance & credit transaction ledger
+        $cust_id = (int)($rec['customer_id'] ?? 0);
+        if ($cust_id > 0) {
+            try {
+                $pdo->prepare("UPDATE customers SET balance = GREATEST(0, balance - ?) WHERE id = ? AND station_id = ?")
+                    ->execute([$amount, $cust_id, $station_id]);
+                
+                $bal_stmt = $pdo->prepare("SELECT balance FROM customers WHERE id = ? AND station_id = ?");
+                $bal_stmt->execute([$cust_id, $station_id]);
+                $new_cust_bal = (float)$bal_stmt->fetchColumn();
+
+                $pdo->prepare("INSERT INTO customer_credit_transactions (customer_id, transaction_id, transaction_type, amount, running_balance, description, station_id, created_by, created_at) VALUES (?, ?, 'Payment', ?, ?, ?, ?, ?, NOW())")
+                    ->execute([$cust_id, $rec['transaction_id'] ?? ('AR-' . $ar_id), $amount, $new_cust_bal, "AR Settlement Payment (Method: {$pay_method})" . ($remarks ? " - {$remarks}" : ""), $station_id, $me['id']]);
+            } catch (Exception $cce) {}
         }
 
         log_structured_audit([

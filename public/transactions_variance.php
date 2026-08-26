@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Variance Alerts — Full Anomaly-Handling Workflow
  * Merchandise & Job Orders only. Fuel has its own reconciliation flow.

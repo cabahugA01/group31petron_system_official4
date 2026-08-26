@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // ============================================================
 // SuperAdmin – Admin Management Map View
 // public/superadmin_admin_map.php

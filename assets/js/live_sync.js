@@ -307,8 +307,7 @@
         syncNotificationsAndBadges();
         interceptRefreshButtons();
 
-        // 1. Fast loop: Notifications, alerts, badges (10s)
-        setInterval(syncNotificationsAndBadges, NOTIF_INTERVAL_MS);
+        // 1. Direct notifications: No interval polling loop
 
         // 2. Medium loop: Tables, KPIs, inventory, transactions, history (18s)
         setInterval(refreshDynamicPageFragments, DATA_INTERVAL_MS);

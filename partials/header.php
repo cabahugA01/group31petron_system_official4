@@ -3358,7 +3358,15 @@ a.sidebar-sub-item span[data-badge] {
 
     // Replace existing toggle handlers with safe wrappers
     window.petronToggleNotif = function(e){
-        try{ toggleDropdown('notificationDropdown', '#notificationBell'); if(e && e.preventDefault) e.preventDefault(); }catch(err){}
+        try{ 
+            toggleDropdown('notificationDropdown', '#notificationBell'); 
+            if(e && e.preventDefault) e.preventDefault(); 
+            var nd = document.getElementById('notificationDropdown');
+            if (nd && (nd.classList.contains('show') || nd.style.display === 'block')) {
+                if (typeof window.loadStaffNotifications === 'function') window.loadStaffNotifications();
+                else if (typeof window.saLoadNotifications === 'function') window.saLoadNotifications();
+            }
+        }catch(err){}
     };
     window.petronToggleProfile = function(e){
         try{ toggleDropdown('profileDropdown', '#profileMenu'); if(e && e.preventDefault) e.preventDefault(); }catch(err){}
@@ -5097,60 +5105,6 @@ require_once __DIR__ . '/rbac_menu.php';
             } catch (err) {}
         }, false);
 
-        // --- UNBLOCKER: Detect and disable any overlaying elements that cover the header
-        function unblockHeaderOverlays() {
-            try {
-                const header = document.querySelector('.top-header');
-                if (!header) return;
-                const hr = header.getBoundingClientRect();
-                // find potentially blocking elements
-                const els = Array.from(document.body.children);
-                const changed = [];
-                function intersects(r1, r2) {
-                    return !(r2.left > r1.right || r2.right < r1.left || r2.top > r1.bottom || r2.bottom < r1.top);
-                }
-                // Walk many elements to detect overlays (limit to first 500 to avoid perf issues)
-                const all = Array.from(document.querySelectorAll('body *')).slice(0, 1000);
-                all.forEach(function(el) {
-                    if (!el || el === header || header.contains(el)) return;
-                    const s = getComputedStyle(el);
-                    if (s.display === 'none' || s.visibility === 'hidden' || s.pointerEvents === 'none') return;
-                    const r = el.getBoundingClientRect();
-                    if (r.width === 0 || r.height === 0) return;
-                    // Only consider elements that are positioned and likely overlays
-                    if (s.position === 'fixed' || s.position === 'absolute' || parseInt(s.zIndex) > 0) {
-                        if (intersects(hr, r)) {
-                            // mark and disable pointer events
-                            if (!el.dataset._hdrUnblocked) {
-                                el.dataset._hdrUnblocked = el.style.pointerEvents || '';
-                                el.style.pointerEvents = 'none';
-                                el.style.outline = '2px dashed rgba(255,0,0,0.12)';
-                                changed.push(el);
-                            }
-                        }
-                    }
-                });
-                if (changed.length) console.log('Unblocked header by disabling pointer-events on', changed.length, 'elements', changed);
-            } catch (err) { console.error('unblockHeaderOverlays error', err); }
-        }
-
-        // Restore function (for debugging)
-        window.restoreHeaderOverlays = function() {
-            try {
-                document.querySelectorAll('[data-_hdrUnblocked]').forEach(function(el){
-                    el.style.pointerEvents = el.dataset._hdrUnblocked || '';
-                    el.style.outline = '';
-                    delete el.dataset._hdrUnblocked;
-                });
-                console.log('Header overlays restored');
-            } catch (e) { console.error(e); }
-        };
-
-        // Run immediately and on resize; also observe mutations to catch dynamic overlays
-        setTimeout(unblockHeaderOverlays, 100);
-        window.addEventListener('resize', function(){ setTimeout(unblockHeaderOverlays, 50); });
-        const mo = new MutationObserver(function(){ setTimeout(unblockHeaderOverlays, 30); });
-        mo.observe(document.body, { childList: true, subtree: true });
         // Hash-based active sidebar link
         var hash = window.location.hash;
         if (hash) {
@@ -5648,11 +5602,7 @@ require_once __DIR__ . '/rbac_menu.php';
             // Load on bell open (Expose globally for the toggle listener)
             window.saLoadNotifications = loadNotifications;
 
-            // On page load: generate new alerts then get count
-            generateAndRefresh();
-
-            // Poll every 60 seconds for new alerts
-            setInterval(generateAndRefresh, 2000);
+            // Direct notifications (no interval polling)
         })();
 
         <?php else: ?>
@@ -5985,15 +5935,8 @@ require_once __DIR__ . '/rbac_menu.php';
             window.loadStaffNotifications = loadNotifications;
             window.petronLoadNotifications = loadNotifications;
 
-            // â”€â”€ On page load: fetch count immediately, run generator after 2s â”€
-            loadNotifications();
+            // ── Direct notifications (no interval polling loops) ──
             fetchUnreadCount();
-            setTimeout(runGeneratorBackground, 800);
-
-            // â”€â”€ Poll: count every 60s, generator every 5 min â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            setInterval(fetchUnreadCount, 2000);
-            setInterval(runGeneratorBackground, 2000);
-
         })();
         <?php endif; ?>
     </script>
