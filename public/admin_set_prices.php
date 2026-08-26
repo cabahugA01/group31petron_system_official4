@@ -1202,13 +1202,23 @@ include __DIR__ . '/../partials/header.php';
                         $capacity = (float)($f['capacity'] ?? 0);
                         $reorder  = (float)($f['reorder_level'] ?? 0);
                         
-                        $status_label = $f['status'] ?? 'Normal';
-                        if ($status_label === 'Normal') {
+                        $raw_status = strtolower(trim($f['status'] ?? 'normal'));
+                        if (in_array($raw_status, ['normal', 'active', 'ok', 'available'])) {
+                            $status_label = 'Normal';
                             $status_class = 'badge-normal';
-                        } elseif ($status_label === 'Low') {
+                            $badge_style  = 'background:#dcfce7;color:#166534;border:1px solid #86efac;';
+                        } elseif (in_array($raw_status, ['low', 'low stock', 'reorder'])) {
+                            $status_label = 'Low Stock';
                             $status_class = 'badge-low';
+                            $badge_style  = 'background:#fef9c3;color:#854d0e;border:1px solid #fde68a;';
+                        } elseif (in_array($raw_status, ['out of stock', 'out', 'empty'])) {
+                            $status_label = 'Out of Stock';
+                            $status_class = 'badge-out';
+                            $badge_style  = 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;';
                         } else {
+                            $status_label = 'Critical';
                             $status_class = 'badge-critical';
+                            $badge_style  = 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;';
                         }
                         
                         $ugt_str = $f['ugt_no'] ?? ('UGT #' . $f['pump_id']);
@@ -1255,15 +1265,9 @@ include __DIR__ . '/../partials/header.php';
                         
                         <!-- Status -->
                         <td>
-                            <?php if ($status_label === 'Critical'): ?>
-                                <span class="badge <?php echo $status_class; ?>">Critical</span>
-                            <?php elseif ($status_label === 'Low'): ?>
-                                <span class="badge <?php echo $status_class; ?>">Low Stock</span>
-                            <?php elseif ($status_label === 'Out of Stock'): ?>
-                                <span class="badge <?php echo $status_class; ?>">Out of Stock</span>
-                            <?php else: ?>
-                                <span class="badge <?php echo $status_class; ?>">Normal</span>
-                            <?php endif; ?>
+                            <span class="badge <?php echo $status_class; ?>" style="<?php echo $badge_style; ?>padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;display:inline-block;">
+                                <?php echo htmlspecialchars($status_label); ?>
+                            </span>
                         </td>
                         
                         <!-- Price Request Status -->

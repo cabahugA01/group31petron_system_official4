@@ -742,16 +742,27 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         $reorder  = $f['reorder_level'] ?? 0;
                         $capacity = $f['capacity'];
                         
-                        $status_label = $f['status'];
-                        if ($status_label === 'Normal') {
+                        $raw_status = strtolower(trim($f['status'] ?? 'normal'));
+                        if (in_array($raw_status, ['normal', 'active', 'ok', 'available'])) {
+                            $status_label = 'Normal';
                             $status_class = 'badge-normal';
-                            $bar_color = '#16a34a';
-                        } elseif ($status_label === 'Low') {
+                            $bar_color    = '#16a34a';
+                            $badge_style  = 'background:#dcfce7;color:#166534;border:1px solid #86efac;';
+                        } elseif (in_array($raw_status, ['low', 'low stock', 'reorder'])) {
+                            $status_label = 'Low Stock';
                             $status_class = 'badge-low';
-                            $bar_color = '#ef4444';
+                            $bar_color    = '#eab308';
+                            $badge_style  = 'background:#fef9c3;color:#854d0e;border:1px solid #fde68a;';
+                        } elseif (in_array($raw_status, ['out of stock', 'out', 'empty'])) {
+                            $status_label = 'Out of Stock';
+                            $status_class = 'badge-out';
+                            $bar_color    = '#94a3b8';
+                            $badge_style  = 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;';
                         } else {
+                            $status_label = 'Critical';
                             $status_class = 'badge-critical';
-                            $bar_color = '#dc2626';
+                            $bar_color    = '#dc2626';
+                            $badge_style  = 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;';
                         }
                         
                         $pct = $capacity > 0 ? min(100, round($level / $capacity * 100)) : 0;

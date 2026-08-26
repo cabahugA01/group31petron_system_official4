@@ -86,10 +86,14 @@ try {
     // ── Only seed if table is completely empty (production catalog already loaded) ──
     $count = (int)$pdo->query("SELECT COUNT(*) FROM job_order_service_types")->fetchColumn();
     if ($count === 0) {
-        // No hardcoded seed — table should be populated via the official seeder script.
-        // If empty, log a warning and continue cleanly.
-        error_log('job_order_service_types is empty. Run the service catalog seeder to populate it.');
+        $seederFile = __DIR__ . '/../../database/update_service_types.php';
+        if (file_exists($seederFile)) {
+            require_once $seederFile;
+        }
     }
+
+    // Mark all existing rows (no status or empty status) as approved
+    $pdo->exec("UPDATE job_order_service_types SET status = 'approved' WHERE status IS NULL OR status = ''");
 
 } catch (Exception $e) {
     http_response_code(500);
@@ -105,7 +109,7 @@ if ($method === 'GET' || empty($method)) {
         SELECT id, service_key, service_name, category, service_price, min_price, max_price,
                price_description, pricing_notes, icon_class, color_class, status
         FROM   job_order_service_types
-        WHERE  active = 1 AND status IN ('approved', 'pending')
+        WHERE  active = 1 AND (status IN ('approved', 'pending') OR status IS NULL OR status = '')
         ORDER  BY sort_order ASC, service_name ASC
     ")->fetchAll(PDO::FETCH_ASSOC);
 
