@@ -5441,7 +5441,7 @@ setTimeout(function() {
                     'label'      => 'Merchandise/Service Transaction',
                     'icon'       => 'fa-shopping-cart',
                     'color'      => '#28a745',
-                    'badge_warn' => $merch_badge_warn
+                    'badge_warn' => null
                 ],
                 'tracker'       => [
                     'label'      => 'Job Order Tracker',
@@ -12180,7 +12180,7 @@ setTimeout(function() {
         .pm-cancel-btn{padding:12px 20px !important;background:#ffffff !important;color:#334155 !important;border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;min-height:44px !important;white-space:nowrap !important;box-shadow:0 1px 2px rgba(0,0,0,0.05) !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all .15s ease !important;}
         .pm-cancel-btn:hover{background:#f1f5f9 !important;color:#0f172a !important;border-color:#94a3b8 !important;}
         </style>
-        <div id="paymentSettleModal" style="display:none;position:fixed;inset:0;z-index:9999;
+        <div id="paymentSettleModal" style="display:none;position:fixed;inset:0;z-index:10000000;
              background:rgba(0,0,0,.5);align-items:center;justify-content:center;">
           <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
                       width:100%;max-width:450px;margin:16px;overflow:hidden;animation:pmSlideIn .18s ease;">
@@ -12198,7 +12198,6 @@ setTimeout(function() {
                   <div id="pmModalCustomer" style="color:#93c5fd;font-size:11px;margin-top:1px;"></div>
                 </div>
               </div>
-              
             </div>
 
             <!-- Balance Strip -->
@@ -12374,10 +12373,20 @@ setTimeout(function() {
         // ── Payment Settlement Modal JS ───────────────────────────────────────
         var _pmBalance = 0;
         var _pmMethod  = 'Cash';
+        window._parentModalBeforePayment = null;
 
         function openPaymentModal(joId, joSource, total, alreadyPaid, balanceDue, customerName, markComplete, redirectTab) {
             _pmBalance = parseFloat(balanceDue) || 0;
             var fmt = function(n){ return parseFloat(n).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+
+            // Check if viewMerchandiseModal (or any parent modal) is currently visible
+            var viewMerch = document.getElementById('viewMerchandiseModal');
+            if (viewMerch && viewMerch.style.display !== 'none' && viewMerch.style.display !== '') {
+                window._parentModalBeforePayment = 'viewMerchandiseModal';
+                viewMerch.style.display = 'none';
+            } else {
+                window._parentModalBeforePayment = null;
+            }
 
             document.getElementById('pmJoId').value         = joId;
             document.getElementById('pmJoSource').value     = joSource;
@@ -12446,7 +12455,12 @@ setTimeout(function() {
             if (document.getElementById('pmSubmitLabel'))
                 document.getElementById('pmSubmitLabel').textContent = submitLabel;
 
-            document.getElementById('paymentSettleModal').style.display = 'flex';
+            var payModal = document.getElementById('paymentSettleModal');
+            if (payModal) {
+                payModal.style.display = 'flex';
+                payModal.style.zIndex = '10000000';
+            }
+
             if (!alreadyPaidMode) {
                 setTimeout(function(){
                     var focus = document.getElementById('pmAmountInput');
@@ -12456,7 +12470,18 @@ setTimeout(function() {
         }
 
         function closePaymentModal() {
-            document.getElementById('paymentSettleModal').style.display = 'none';
+            var payModal = document.getElementById('paymentSettleModal');
+            if (payModal) payModal.style.display = 'none';
+
+            if (window._parentModalBeforePayment) {
+                var parentId = window._parentModalBeforePayment;
+                window._parentModalBeforePayment = null;
+                var parentModal = document.getElementById(parentId);
+                if (parentModal) {
+                    parentModal.style.display = 'flex';
+                    parentModal.style.zIndex = '9999999';
+                }
+            }
         }
 
         function pmSelectMethod(method) {
@@ -13501,9 +13526,6 @@ setTimeout(function() {
                   <div id="viewMTxnRef" style="color:#bfdbfe;font-size:11.5px;font-family:monospace;margin-top:2px;"></div>
                 </div>
               </div>
-              <button type="button" onclick="closeViewMerchandiseModal()" style="background:transparent;border:none;color:rgba(255,255,255,0.7);font-size:18px;cursor:pointer;padding:4px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.7)'">
-                <i class="fas fa-times"></i>
-              </button>
             </div>
 
             <!-- Modal Body -->
