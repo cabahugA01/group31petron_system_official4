@@ -538,7 +538,7 @@ button.remove-v-btn i {
                     </div>
                     <div class="cust-field">
                         <label>Email (Optional)</label>
-                        <input type="email" id="email" name="email" placeholder="customer@example.com">
+                        <input type="email" id="email" name="email" placeholder="customer@petron.com">
                     </div>
                     <div class="cust-field" style="grid-column:1 / -1;">
                         <label>Address</label>

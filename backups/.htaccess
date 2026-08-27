@@ -1,3 +1,0 @@
-﻿# Deny all direct browser access to backup files
-Order deny,allow
-Deny from all

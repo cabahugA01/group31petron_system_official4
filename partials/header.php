@@ -3943,11 +3943,21 @@ require_once __DIR__ . '/rbac_menu.php';
             </button>
             <?php 
                 $raw_logo = $station_settings['logo'] ?? $station_settings['company_logo'] ?? '';
-                $has_logo = (!empty($raw_logo) && $raw_logo !== 'none' && $raw_logo !== 'removed');
-                $logo_path = $has_logo ? $raw_logo : '';
+                $raw_logo_clean = ltrim(preg_replace('/^(\.\.\/)+/', '', trim($raw_logo)), '/');
+                $logo_file_sys = !empty($raw_logo_clean) ? __DIR__ . '/../' . $raw_logo_clean : '';
+                
+                if (!empty($raw_logo_clean) && $raw_logo_clean !== 'none' && $raw_logo_clean !== 'removed' && file_exists($logo_file_sys)) {
+                    $logo_path = $app_base_path . '/' . $raw_logo_clean;
+                } elseif (file_exists(__DIR__ . '/../assets/img/petron_logo.png')) {
+                    $logo_path = $app_base_path . '/assets/img/petron_logo.png';
+                } elseif (file_exists(__DIR__ . '/../assets/img/Petron Logo.png')) {
+                    $logo_path = $app_base_path . '/assets/img/Petron Logo.png';
+                } else {
+                    $logo_path = $app_base_path . '/assets/img/petron_logo.png';
+                }
                 $system_name = $station_settings['system_name'] ?? 'Petron Station Management System';
             ?>
-            <img src="<?php echo htmlspecialchars($logo_path); ?>" alt="System Logo" class="brand-mark" id="petronLogo" style="<?php echo $has_logo ? 'display: inline-block;' : 'display: none !important;'; ?>">
+            <img src="<?php echo htmlspecialchars($logo_path); ?>" alt="Petron Logo" class="brand-mark" id="petronLogo" style="display: inline-block !important; height: 38px; width: auto; max-width: 48px; object-fit: contain; vertical-align: middle; margin-right: 12px; flex-shrink: 0;">
             <div class="brand-text">
                 <div class="brand-title" id="headerSystemName"><?php echo htmlspecialchars($system_name); ?></div>
                 <?php if ($station_name && $role !== 'superadmin'): ?>
@@ -5387,13 +5397,27 @@ require_once __DIR__ . '/rbac_menu.php';
         (function () {
             'use strict';
 
-            const BASE_PATH = (window.pageData && window.pageData.appBasePath)
-                ? window.pageData.appBasePath.replace(/\/$/, '')
-                : '';
-            const resolveApiPath = (path) => {
+            const getAppBasePath = function() {
+                if (window.pageData && window.pageData.appBasePath) {
+                    return window.pageData.appBasePath.replace(/\/$/, '');
+                }
+                const path = window.location.pathname;
+                const pubIdx = path.indexOf('/public/');
+                if (pubIdx !== -1) return path.substring(0, pubIdx);
+                const backIdx = path.indexOf('/backend/');
+                if (backIdx !== -1) return path.substring(0, backIdx);
+                const parts = path.split('/').filter(Boolean);
+                if (parts.length > 0 && parts[0] !== 'public' && parts[0] !== 'backend') {
+                    return '/' + parts[0];
+                }
+                return '';
+            };
+            const resolveApiPath = function(path) {
                 if (!path) return path;
                 if (path.startsWith('http://') || path.startsWith('https://')) return path;
-                return BASE_PATH ? BASE_PATH + path : path;
+                const cleanPath = path.startsWith('/') ? path : '/' + path;
+                const bp = getAppBasePath();
+                return bp ? bp + cleanPath : '..' + cleanPath;
             };
             const API_LIST = resolveApiPath('/backend/api/notifications_api.php');
             const API_GEN  = resolveApiPath('/backend/api/superadmin_notification_generator.php');
@@ -5610,13 +5634,27 @@ require_once __DIR__ . '/rbac_menu.php';
         (function () {
             'use strict';
 
-            const BASE_PATH = (window.pageData && window.pageData.appBasePath)
-                ? window.pageData.appBasePath.replace(/\/$/, '')
-                : '';
-            const resolveApiPath = (path) => {
+            const getAppBasePath = function() {
+                if (window.pageData && window.pageData.appBasePath) {
+                    return window.pageData.appBasePath.replace(/\/$/, '');
+                }
+                const path = window.location.pathname;
+                const pubIdx = path.indexOf('/public/');
+                if (pubIdx !== -1) return path.substring(0, pubIdx);
+                const backIdx = path.indexOf('/backend/');
+                if (backIdx !== -1) return path.substring(0, backIdx);
+                const parts = path.split('/').filter(Boolean);
+                if (parts.length > 0 && parts[0] !== 'public' && parts[0] !== 'backend') {
+                    return '/' + parts[0];
+                }
+                return '';
+            };
+            const resolveApiPath = function(path) {
                 if (!path) return path;
                 if (path.startsWith('http://') || path.startsWith('https://')) return path;
-                return BASE_PATH ? BASE_PATH + path : path;
+                const cleanPath = path.startsWith('/') ? path : '/' + path;
+                const bp = getAppBasePath();
+                return bp ? bp + cleanPath : '..' + cleanPath;
             };
             const API_LIST = resolveApiPath('/backend/api/notifications_api.php');
             const API_GEN  = resolveApiPath('<?php echo $notif_generator; ?>');

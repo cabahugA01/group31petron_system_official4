@@ -2146,6 +2146,13 @@ if ($section === 'merchandise') {
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
+/* Strict CSS toggle for Merchandise Product Dropdown */
+#productDropdownList:not(.is-open) {
+    display: none !important;
+}
+#productDropdownList.is-open {
+    display: block !important;
+}
 /* Clean Checkbox Alignment for Merchandise Products and Service Types */
 #productDropdownList .prod-option,
 .prod-option {
@@ -6045,10 +6052,10 @@ setTimeout(function() {
                                         <div style="position:relative;flex:1;">
                                             <input type="text" id="productSearch" class="txn-input"
                                                    placeholder="Search by name, SKU, or category…"
-                                                   oninput="filterProductDropdown(true)"
-                                                   onkeyup="filterProductDropdown(true)"
-                                                   onpaste="setTimeout(function(){ filterProductDropdown(true); }, 50)"
-                                                   onfocus="openProductDropdown(); filterProductDropdown(true);"
+                                                   oninput="filterProductDropdown(false)"
+                                                   onkeyup="filterProductDropdown(false)"
+                                                   onpaste="setTimeout(function(){ filterProductDropdown(false); }, 50)"
+                                                   onclick="openProductDropdown(); filterProductDropdown(false);"
                                                    autocomplete="off"
                                                    style="padding-right:58px;">
                                             <span id="productClearBtn"
@@ -7559,16 +7566,25 @@ setTimeout(function() {
 
         // ── Product dropdown (body-portal: teleport to body so it's never clipped) ─
         (function initProductDropdownPortal() {
-            document.addEventListener('DOMContentLoaded', function() {
+            function forceHideProductDropdown() {
                 var list = document.getElementById('productDropdownList');
                 var wrap = document.getElementById('productDropdownWrap');
+                if (list) {
+                    list.classList.remove('is-open');
+                    list.style.display = 'none';
+                }
                 if (list && wrap && list.parentElement !== document.body) {
-                    // Move to body so no ancestor z-index / overflow can clip it
                     document.body.appendChild(list);
                     list.style.position = 'fixed';
                     list.style.zIndex = '99999';
                 }
-            });
+                if (list) {
+                    list.classList.remove('is-open');
+                    list.style.display = 'none';
+                }
+            }
+            document.addEventListener('DOMContentLoaded', forceHideProductDropdown);
+            window.addEventListener('load', forceHideProductDropdown);
         })();
 
         function repositionProductDropdown() {
@@ -7609,20 +7625,24 @@ setTimeout(function() {
                 list.style.zIndex   = '99999';
             }
             repositionProductDropdown();
+            list.classList.add('is-open');
             list.style.display = 'block';
         }
 
         function closeProductDropdown() {
             var list = document.getElementById('productDropdownList');
-            if (list) list.style.display = 'none';
+            if (list) {
+                list.classList.remove('is-open');
+                list.style.display = 'none';
+            }
         }
 
         function toggleProductDropdown() {
             var list = document.getElementById('productDropdownList');
             if (!list) return;
-            if (list.style.display === 'none' || !list.style.display) {
+            if (!list.classList.contains('is-open')) {
                 openProductDropdown();
-                filterProductDropdown(true);
+                filterProductDropdown(false);
             } else {
                 closeProductDropdown();
             }
@@ -7647,7 +7667,7 @@ setTimeout(function() {
             }
         }
 
-        function filterProductDropdown(shouldOpen = true) {
+        function filterProductDropdown(shouldOpen = false) {
             const searchInput = document.getElementById('productSearch');
             const rawQ = (searchInput ? searchInput.value : '').trim().toLowerCase();
             const list = document.getElementById('productDropdownList');

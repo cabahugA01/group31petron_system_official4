@@ -74,6 +74,103 @@ function generateEmployeeID($pdo, $role) {
 
 $msg = '';
 
+// ── AJAX HANDLER FOR EMPLOYEE DETAILS & DOCUMENTS ─────────────────────────
+if (isset($_GET['ajax_emp_details']) && !empty($_GET['user_id'])) {
+    header('Content-Type: application/json');
+    $uid = (int)$_GET['user_id'];
+    
+    if ($my_role !== 'superadmin') {
+        $chk = $pdo->prepare("SELECT id FROM users WHERE id = ? AND station_id = ?");
+        $chk->execute([$uid, $my_station_id]);
+        if (!$chk->fetch()) {
+            echo json_encode(['success' => false, 'error' => 'Unauthorized station access.']);
+            exit;
+        }
+    }
+    
+    $stmt = $pdo->prepare("SELECT u.*, s.name AS station_name FROM users u LEFT JOIN stations s ON u.station_id = s.id WHERE u.id = ?");
+    $stmt->execute([$uid]);
+    $emp_info = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$emp_info) {
+        echo json_encode(['success' => false, 'error' => 'Employee record not found.']);
+        exit;
+    }
+    
+    unset($emp_info['password_hash']);
+    
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS employee_documents (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            doc_type VARCHAR(100) NOT NULL,
+            status VARCHAR(50) NOT NULL DEFAULT 'Complete',
+            file_name VARCHAR(255) DEFAULT NULL,
+            file_path VARCHAR(255) DEFAULT NULL,
+            uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_emp_doc_user (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    } catch (Exception $e) {}
+
+    $docsStmt = $pdo->prepare("SELECT * FROM employee_documents WHERE user_id = ? ORDER BY id ASC");
+    $docsStmt->execute([$uid]);
+    $docs = $docsStmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $default_types = ['SSS', 'PhilHealth', 'Pag-IBIG', 'TIN', 'Valid ID'];
+    $existing_types = array_column($docs, 'doc_type');
+    foreach ($default_types as $dt) {
+        if (!in_array($dt, $existing_types)) {
+            $docs[] = [
+                'user_id' => $uid,
+                'doc_type' => $dt,
+                'status' => 'Complete',
+                'file_name' => null,
+                'uploaded_at' => null
+            ];
+        }
+    }
+    
+    $login_logs = [];
+    try {
+        $loginStmt = $pdo->prepare("SELECT action, created_at, shift_period FROM audit_trail WHERE user_id = ? AND action LIKE '%login%' ORDER BY created_at DESC LIMIT 20");
+        $loginStmt->execute([$uid]);
+        $login_logs = $loginStmt->fetchAll(PDO::FETCH_ASSOC);
+        if (empty($login_logs)) {
+            $loginStmt2 = $pdo->prepare("SELECT action, created_at FROM activity_logs WHERE user_id = ? AND (action LIKE '%login%' OR action LIKE '%logout%') ORDER BY created_at DESC LIMIT 20");
+            $loginStmt2->execute([$uid]);
+            $login_logs = $loginStmt2->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (Exception $e) {}
+    
+    $activities = [];
+    try {
+        $actStmt = $pdo->prepare("SELECT action, transaction_id, or_number, created_at FROM audit_trail WHERE user_id = ? ORDER BY created_at DESC LIMIT 30");
+        $actStmt->execute([$uid]);
+        $activities = $actStmt->fetchAll(PDO::FETCH_ASSOC);
+        if (empty($activities)) {
+            $actStmt2 = $pdo->prepare("SELECT action, details, created_at FROM activity_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT 30");
+            $actStmt2->execute([$uid]);
+            $activities = $actStmt2->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (Exception $e) {}
+    
+    try {
+        log_activity($pdo, $me['id'], 'Viewed Employee Details', "Viewed employee #$uid ({$emp_info['username']})");
+    } catch (Exception $e) {}
+    
+    echo json_encode([
+        'success' => true,
+        'info' => $emp_info,
+        'documents' => $docs,
+        'login_history' => $login_logs,
+        'activity_logs' => $activities
+    ]);
+    exit;
+}
+
+
 $is_error = false;
 
 // --- ACTION HANDLER (Admin / Superadmin only) ---
@@ -1014,6 +1111,69 @@ include __DIR__ . '/../partials/header.php';
     max-width: 100%;
     box-sizing: border-box;
 }
+
+/* COMPREHENSIVE VIEW EMPLOYEE DETAILS MODAL STYLES */
+.vtab-nav {
+    display: flex;
+    border-bottom: 2px solid #e2e8f0;
+    margin-bottom: 16px;
+    gap: 4px;
+}
+.vtab-btn {
+    padding: 10px 16px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #64748b;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+}
+.vtab-btn.active {
+    background: #002F70 !important;
+    color: #ffffff !important;
+    border-color: #002F70 !important;
+}
+.vtab-pane {
+    display: none;
+}
+.vtab-pane.active {
+    display: block;
+}
+.info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+@media(max-width: 580px) {
+    .info-grid { grid-template-columns: 1fr; }
+}
+.info-item {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+}
+.info-lbl {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    display: block;
+    margin-bottom: 3px;
+}
+.info-val {
+    font-size: 13px;
+    color: #0f172a;
+    font-weight: 600;
+}
+
 </style>
 
 <div class="um-wrap">
@@ -1127,6 +1287,9 @@ setTimeout(function() {
                         <td>
                             <div style="display:flex; flex-direction:column; gap:5px; align-items:center;">
 
+                                <button class="action-btn btn-view" onclick="openViewEmployeeModal(<?php echo (int)$u['id']; ?>)" title="View Employee Details">
+                                    <i class="fas fa-eye"></i> View
+                                </button>
                                 <!-- ADMIN / SUPERADMIN CONTROLS -->
                                 <?php if ($my_role === 'admin' || $my_role === 'superadmin'): ?>
                                     
@@ -1426,46 +1589,171 @@ setTimeout(function() {
     </div>
 </div>
 
-<!-- MODAL: View Profile -->
-<div class="modal" id="viewModal">
-    <div class="modal-content" style="max-width: 480px;">
+<!-- COMPREHENSIVE VIEW EMPLOYEE DETAILS MODAL -->
+<div id="viewModal" class="modal">
+    <div class="modal-content" style="max-width: 760px !important;">
         <div class="modal-header">
-            <span class="modal-title" id="view_modal_title"><i class="fas fa-user-circle"></i> User Profile</span>
+            <div>
+                <span class="modal-title" id="vmodal_title"><i class="fas fa-user-circle"></i> Employee Details</span>
+                <div style="font-size: 11.5px; color: #64748b; margin-top: 2px;" id="vmodal_sub">Master record and supporting documentation</div>
+            </div>
             <button class="modal-close" onclick="closeModal('viewModal')">&times;</button>
         </div>
-        <div class="modal-body">
 
-            <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid #e2e8f0;">
-                <div id="view_avatar" style="width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0;background:#002F70;"></div>
-                <div>
-                    <div id="view_name" style="font-size:16px;font-weight:700;color:#0f172a;"></div>
-                    <div id="view_username" style="font-size:12px;color:#64748b;margin-top:2px;"></div>
-                    <div id="view_role_badge" style="margin-top:5px;"></div>
-                </div>
+        <div class="modal-body" style="padding: 16px 20px;">
+            <!-- Tab Navigation -->
+            <div class="vtab-nav">
+                <button type="button" class="vtab-btn active" id="btn_vtab_info" onclick="switchViewTab('info')">
+                    <i class="fas fa-info-circle"></i> Information
+                </button>
+                <button type="button" class="vtab-btn" id="btn_vtab_docs" onclick="switchViewTab('docs')">
+                    <i class="fas fa-folder-open"></i> Documents
+                </button>
+                <button type="button" class="vtab-btn" id="btn_vtab_login" onclick="switchViewTab('login')">
+                    <i class="fas fa-history"></i> Login History
+                </button>
+                <button type="button" class="vtab-btn" id="btn_vtab_activity" onclick="switchViewTab('activity')">
+                    <i class="fas fa-list-alt"></i> Audit Trail
+                </button>
             </div>
 
-            <div class="form-grid-2" style="gap: 14px;">
-                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">
-                    <div style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Employee ID</div>
-                    <div id="view_employee_id" style="font-size:13px;color:#002F70;font-weight:700;font-family:monospace;"></div>
-                </div>
-                <div id="view_shift_container" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; display: none;">
-
-                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">
-                    <div style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Email</div>
-                    <div id="view_email" style="font-size:13px;color:#0f172a;word-break:break-all;"></div>
-                </div>
-                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">
-                    <div style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Contact Number</div>
-                    <div id="view_contact_number" style="font-size:13px;color:#0f172a;font-weight:600;"></div>
-                </div>
-                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; grid-column: 1 / -1;">
-                    <div style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Account Status</div>
-                    <div id="view_status"></div>
-                </div>
+            <!-- Loader -->
+            <div id="vmodal_loader" style="text-align: center; padding: 30px; color: #64748b;">
+                <i class="fas fa-spinner fa-spin fa-2x" style="color: #002F70;"></i>
+                <div style="margin-top: 10px; font-weight: 600;">Loading employee records...</div>
             </div>
 
+            <div id="vmodal_body_wrap" style="display: none;">
+                <!-- TAB 1: INFORMATION -->
+                <div id="vtab_info" class="vtab-pane active">
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-lbl">Employee ID</span>
+                            <span class="info-val" id="vi_emp_id" style="font-family: monospace; color: #002F70; font-weight: 700;">—</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-lbl">Full Name</span>
+                            <span class="info-val" id="vi_full_name">—</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-lbl">Username</span>
+                            <span class="info-val" id="vi_username">—</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-lbl">Role</span>
+                            <span class="info-val" id="vi_role">—</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-lbl">Station / Branch</span>
+                            <span class="info-val" id="vi_station">—</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-lbl">Account Status</span>
+                            <span class="info-val" id="vi_status">—</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-lbl">Date Created</span>
+                            <span class="info-val" id="vi_created">—</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-lbl">Last Login</span>
+                            <span class="info-val" id="vi_last_login">—</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-lbl">Email Address</span>
+                            <span class="info-val" id="vi_email">—</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-lbl">Contact Number</span>
+                            <span class="info-val" id="vi_phone">—</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: DOCUMENTS -->
+                <div id="vtab_docs" class="vtab-pane">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-size: 12.5px; font-weight: 700; color: #002F70;">Employee Documents Completeness</span>
+                    </div>
+                    <table class="table" style="font-size: 12px; width: 100%;">
+                        <thead>
+                            <tr>
+                                <th>DOCUMENT TYPE</th>
+                                <th>STATUS</th>
+                                <th>UPLOADED FILE</th>
+                                <th>DATE</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vdocs_tbody">
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+
+                    <?php if ($my_role === 'admin' || $my_role === 'superadmin'): ?>
+                    <form method="POST" action="users.php" enctype="multipart/form-data" style="margin-top: 14px; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                        <input type="hidden" name="action" value="update_emp_document">
+                        <input type="hidden" name="user_id" id="vdoc_form_user_id">
+                        <div style="font-weight: 700; font-size: 11.5px; color: #002F70; margin-bottom: 8px; text-transform: uppercase;">
+                            <i class="fas fa-upload"></i> Update Document Record
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <select name="doc_type" class="inp" required style="flex: 1; min-width: 130px; font-size: 12px; height: 34px;">
+                                <option value="SSS">SSS</option>
+                                <option value="PhilHealth">PhilHealth</option>
+                                <option value="Pag-IBIG">Pag-IBIG</option>
+                                <option value="TIN">TIN</option>
+                                <option value="Valid ID">Valid ID</option>
+                                <option value="Employment">Employment Contract / Docs</option>
+                                <option value="Other">Other Required Document</option>
+                            </select>
+                            <select name="doc_status" class="inp" required style="width: 120px; font-size: 12px; height: 34px;">
+                                <option value="Complete">Complete</option>
+                                <option value="Missing">Missing</option>
+                                <option value="Expired">Expired</option>
+                                <option value="Expiring Soon">Expiring Soon</option>
+                                <option value="Pending Review">Pending Review</option>
+                            </select>
+                            <input type="file" name="doc_file" class="inp" style="flex: 1; min-width: 160px; font-size: 12px; height: 34px; padding: 3px 8px;">
+                            <button type="submit" class="btn-plain-submit" style="height: 34px; padding: 0 14px; font-size: 12px;">Save</button>
+                        </div>
+                    </form>
+                    <?php endif; ?>
+                </div>
+
+                <!-- TAB 3: LOGIN HISTORY -->
+                <div id="vtab_login" class="vtab-pane">
+                    <table class="table" style="font-size: 12px; width: 100%;">
+                        <thead>
+                            <tr>
+                                <th>TIMESTAMP</th>
+                                <th>ACTION</th>
+                                <th>SHIFT PERIOD</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vlogin_tbody">
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- TAB 4: ACTIVITY LOGS -->
+                <div id="vtab_activity" class="vtab-pane">
+                    <table class="table" style="font-size: 12px; width: 100%;">
+                        <thead>
+                            <tr>
+                                <th>TIMESTAMP</th>
+                                <th>ACTION / ACTIVITY</th>
+                                <th>DETAILS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vact_tbody">
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
+
         <div class="modal-footer">
             <button type="button" class="btn-plain-cancel" onclick="closeModal('viewModal')">Close</button>
         </div>
@@ -1723,53 +2011,113 @@ function openRestoreModal(userId, fullName) {
     document.getElementById('restoreModal').style.display = 'flex';
 }
 
-function openViewModal(user) {
-    var fullName = (user.name || '').trim();
-    if (!fullName) {
-        fullName = ((user.first_name || '') + ' ' + (user.last_name || '')).trim();
-    }
-    document.getElementById('view_name').innerText = fullName;
-    document.getElementById('view_username').innerText = '@' + (user.username || '—');
-    document.getElementById('view_employee_id').innerText = user.employee_id || '—';
-    
-    var roleKey = (user.role || 'staff').toLowerCase();
-    var shiftCont = document.getElementById('view_shift_container');
-    if (shiftCont) {
-        if (roleKey === 'staff') {
-            shiftCont.style.display = 'block';
-            document.getElementById('view_assigned_shift').innerText = user.assigned_shift || 'Unassigned';
-        } else {
-            shiftCont.style.display = 'none';
-        }
-    }
-    
-    document.getElementById('view_email').innerText = user.email || 'Not set';
-    
-    const viewPhone = document.getElementById('view_contact_number');
-    if (viewPhone) {
-        viewPhone.innerText = user.phone_number || 'Not set';
-    }
 
-    var roleStr = (user.role || 'staff').toUpperCase();
-    document.getElementById('view_role_badge').innerHTML = '<span class="badge bg-primary">' + roleStr + '</span>';
-    
-    var rawStatus = (user.status || 'active').toLowerCase().trim();
-    var statusLabel = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
-    var statusStyle;
-    if (rawStatus === 'active') {
-        statusStyle = 'background:#16a34a;color:#fff;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;display:inline-block;';
-    } else if (['inactive','archived','disabled','locked'].indexOf(rawStatus) !== -1) {
-        statusStyle = 'background:#dc2626;color:#fff;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;display:inline-block;';
-    } else {
-        statusStyle = 'background:#64748b;color:#fff;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;display:inline-block;';
-    }
-    document.getElementById('view_status').innerHTML = '<span style="' + statusStyle + '">' + statusLabel + '</span>';
+function switchViewTab(tabName) {
+    document.querySelectorAll(".vtab-btn").forEach(btn => btn.classList.remove("active"));
+    document.querySelectorAll(".vtab-pane").forEach(pane => pane.classList.remove("active"));
 
-    var initial = fullName.charAt(0).toUpperCase();
-    document.getElementById('view_avatar').innerText = initial || 'U';
-
-    document.getElementById('viewModal').style.display = 'flex';
+    const btn = document.getElementById("btn_vtab_" + tabName);
+    const pane = document.getElementById("vtab_" + tabName);
+    if (btn) btn.classList.add("active");
+    if (pane) pane.classList.add("active");
 }
+
+function openViewEmployeeModal(userId) {
+    document.getElementById("vmodal_loader").style.display = "block";
+    document.getElementById("vmodal_body_wrap").style.display = "none";
+    document.getElementById("viewModal").style.display = "flex";
+    switchViewTab("info");
+
+    if (document.getElementById("vdoc_form_user_id")) {
+        document.getElementById("vdoc_form_user_id").value = userId;
+    }
+
+    fetch("users.php?ajax_emp_details=1&user_id=" + userId)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById("vmodal_loader").style.display = "none";
+            if (!data.success) {
+                alert(data.error || "Failed to load employee details.");
+                closeModal("viewModal");
+                return;
+            }
+
+            document.getElementById("vmodal_body_wrap").style.display = "block";
+
+            const info = data.info || {};
+            const fullName = ((info.first_name || "") + " " + (info.last_name || "")).trim() || info.username;
+            document.getElementById("vmodal_title").innerHTML = '<i class="fas fa-user-circle" style="color:#002F70;"></i> ' + escapeHtml(fullName);
+            document.getElementById("vmodal_sub").innerText = "Employee ID: " + (info.employee_id || "—") + " | Role: " + (info.role || "Staff");
+
+            document.getElementById("vi_emp_id").innerText = info.employee_id || "—";
+            document.getElementById("vi_full_name").innerText = fullName;
+            document.getElementById("vi_username").innerText = "@" + (info.username || "—");
+            document.getElementById("vi_role").innerText = (info.role || "Staff").toUpperCase();
+            document.getElementById("vi_station").innerText = info.station_name || "Petron Carmen";
+            document.getElementById("vi_status").innerText = (info.status || "Active").toUpperCase();
+            document.getElementById("vi_created").innerText = info.created_at ? info.created_at.substring(0, 10) : "—";
+            document.getElementById("vi_last_login").innerText = info.updated_at ? info.updated_at : "—";
+            document.getElementById("vi_email").innerText = info.email || "Not set";
+            document.getElementById("vi_phone").innerText = info.phone_number || "Not set";
+
+            // Documents Table
+            const docsBody = document.getElementById("vdocs_tbody");
+            docsBody.innerHTML = "";
+            (data.documents || []).forEach(doc => {
+                const tr = document.createElement("tr");
+                const st = (doc.status || "Complete").toLowerCase();
+                let stBadge = '<span style="color:#16a34a; font-weight:700;">Complete</span>';
+                if (st === "missing") stBadge = '<span style="color:#dc2626; font-weight:700;">Missing</span>';
+                else if (st === "expired" || st === "expiring soon") stBadge = '<span style="color:#d97706; font-weight:700;">' + escapeHtml(doc.status) + '</span>';
+
+                const fileCell = doc.file_name ? '<a href="' + escapeHtml(doc.file_path) + '" target="_blank" style="color:#002F70; font-weight:600;"><i class="fas fa-paperclip"></i> ' + escapeHtml(doc.file_name) + '</a>' : '<span style="color:#94a3b8;">No file uploaded</span>';
+
+                tr.innerHTML = '<td><strong>' + escapeHtml(doc.doc_type) + '</strong></td><td>' + stBadge + '</td><td>' + fileCell + '</td><td><span style="font-size:11px; color:#64748b;">' + (doc.uploaded_at ? doc.uploaded_at.substring(0,10) : "Registered") + '</span></td>';
+                docsBody.appendChild(tr);
+            });
+
+            // Login History Table
+            const loginBody = document.getElementById("vlogin_tbody");
+            loginBody.innerHTML = "";
+            if ((data.login_history || []).length === 0) {
+                loginBody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#94a3b8; padding:12px;">No login records found.</td></tr>';
+            } else {
+                data.login_history.forEach(log => {
+                    const tr = document.createElement("tr");
+                    tr.innerHTML = '<td>' + escapeHtml(log.created_at) + '</td><td><span style="color:#16a34a; font-weight:600;">' + escapeHtml(log.action) + '</span></td><td>' + escapeHtml(log.shift_period || "—") + '</td>';
+                    loginBody.appendChild(tr);
+                });
+            }
+
+            // Activity Logs Table
+            const actBody = document.getElementById("vact_tbody");
+            actBody.innerHTML = "";
+            if ((data.activity_logs || []).length === 0) {
+                actBody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#94a3b8; padding:12px;">No recent audit activity found.</td></tr>';
+            } else {
+                data.activity_logs.forEach(act => {
+                    const tr = document.createElement("tr");
+                    const ref = act.or_number || act.transaction_id || act.details || "—";
+                    tr.innerHTML = '<td>' + escapeHtml(act.created_at) + '</td><td><strong>' + escapeHtml(act.action) + '</strong></td><td>' + escapeHtml(ref) + '</td>';
+                    actBody.appendChild(tr);
+                });
+            }
+        })
+        .catch(err => {
+            document.getElementById("vmodal_loader").style.display = "none";
+            alert("Error loading employee data.");
+            closeModal("viewModal");
+        });
+}
+
+function openViewModal(user) {
+    if (typeof user === "object" && user.id) {
+        openViewEmployeeModal(user.id);
+    } else {
+        openViewEmployeeModal(user);
+    }
+}
+
 
 function closeModal(modalId) {
     if (modalId === 'addModal') {

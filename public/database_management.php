@@ -96,14 +96,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $btype = cfg_get($pdo, 'backup_type',        'Full Backup');
         $comp  = cfg_get($pdo, 'backup_compression', 'SQL');
 
-        // Fixed: filename is always petron_pos_db_secure
-.sql
-        $fname = 'petron_pos_db_secure
-.sql';
+        // Fixed: filename is always petron_pos_db_secure.sql
+        $fname = 'petron_pos_db_secure.sql';
         $fpath = $backup_dir . $fname;
 
-        $db_name = 'petron_pos_db_secure
-';
+        $db_name = 'petron_pos_db_secure';
 
         // ── 1. Try real mysqldump first ──────────────────────────────
         $mysqldump_bin = 'C:\\xampp\\mysql\\bin\\mysqldump.exe';
