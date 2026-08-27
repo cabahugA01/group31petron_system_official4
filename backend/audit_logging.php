@@ -341,8 +341,9 @@ function log_structured_audit(array $params): bool {
     global $pdo;
     if (!isset($pdo)) return false;
     try {
-        $userId        = $params['user_id']        ?? ($_SESSION['user_id'] ?? null);
-        $userRole      = $params['user_role']      ?? ($_SESSION['user_role'] ?? $_SESSION['role'] ?? 'System');
+        $userId        = $params['user_id']        ?? ($_SESSION['user_id'] ?? $_SESSION['user']['id'] ?? null);
+        $userRole      = $params['user_role']      ?? ($_SESSION['user_role'] ?? $_SESSION['role'] ?? ($_SESSION['user']['role'] ?? 'System'));
+        $userName      = $params['user_name']      ?? (trim(($_SESSION['user']['first_name'] ?? '') . ' ' . ($_SESSION['user']['last_name'] ?? '')) ?: ($_SESSION['user']['username'] ?? 'Staff'));
         $action        = $params['action']         ?? 'Action';
         $module        = $params['module']         ?? 'Transactions';
         $txnId         = $params['transaction_id']  ?? null;
@@ -352,15 +353,19 @@ function log_structured_audit(array $params): bool {
         $newVals       = isset($params['new_values']) ? (is_array($params['new_values']) ? json_encode($params['new_values']) : $params['new_values']) : null;
         $reason        = $params['reason']         ?? null;
         $ip            = $_SERVER['REMOTE_ADDR']   ?? '127.0.0.1';
-        $stationId     = $params['station_id']     ?? ($_SESSION['station_id'] ?? 0);
+        $stationId     = $params['station_id']     ?? ($_SESSION['station_id'] ?? $_SESSION['user']['station_id'] ?? 0);
+
+        // Automatic operational shift detection (Shift 1: 6am-2pm, Shift 2: 2pm-12mn)
+        $hour          = (int)date('H');
+        $shiftPeriod   = $params['shift_period']   ?? (($hour >= 6 && $hour < 14) ? 'Shift 1' : 'Shift 2');
 
         $stmt = $pdo->prepare("
             INSERT INTO audit_trail 
-            (user_id, user_role, action, module, transaction_id, or_number, request_id, old_values_json, new_values_json, reason, ip_address, station_id, action_type, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            (user_id, user_name, user_role, shift_period, action, module, transaction_id, or_number, request_id, old_values_json, new_values_json, reason, ip_address, station_id, action_type, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
         ");
         $stmt->execute([
-            $userId, $userRole, $action, $module, $txnId, $orNo, $requestId, $oldVals, $newVals, $reason, $ip, $stationId, $action
+            $userId, $userName, $userRole, $shiftPeriod, $action, $module, $txnId, $orNo, $requestId, $oldVals, $newVals, $reason, $ip, $stationId, $action
         ]);
         return true;
     } catch (Exception $e) {

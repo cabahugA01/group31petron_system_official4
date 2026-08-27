@@ -456,15 +456,16 @@ function exportShiftTransactions(format) {
     box-shadow: 0 4px 8px rgba(0, 0, 0, .08);
 }
 .txn-kpi-lbl {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: .5px;
     color: #64748b;
     margin-bottom: 4px;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 6px;
+    line-height: 1.3;
 }
 .txn-kpi-val {
     font-size: 24px;

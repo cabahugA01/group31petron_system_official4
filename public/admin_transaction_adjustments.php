@@ -98,7 +98,9 @@ require_once __DIR__ . '/../partials/header.php';
 .txn-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;}
 .txn-kpi-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.05);transition:transform .15s,box-shadow .15s;}
 .txn-kpi-card:hover{transform:translateY(-2px);box-shadow:0 4px 10px rgba(0,0,0,.09);}
-.txn-kpi-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+.txn-kpi-lbl{font-size: 10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:6px;display:flex;align-items: flex-start;gap:6px;
+    line-height: 1.3;
+}
 .txn-kpi-val{font-size:26px;font-weight:800;color:#002F70;line-height:1.1;}
 .filters{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:18px;}
 .filters>div{display:flex;flex-direction:column;gap:3px;}

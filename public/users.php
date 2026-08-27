@@ -206,13 +206,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $extra_sets = []; $extra_vals = [];
                 if (!empty($employee_id_input) && in_array('employee_id',    $user_cols)) { $extra_sets[] = 'employee_id = ?';    $extra_vals[] = $employee_id_input; }
                 if (!empty($contact_input)     && in_array('phone_number',   $user_cols)) { $extra_sets[] = 'phone_number = ?';   $extra_vals[] = $contact_input; }
-                if ($role === 'staff' && !empty($assigned_shift) && in_array('assigned_shift', $user_cols)) {
-                    $extra_sets[] = 'assigned_shift = ?'; $extra_vals[] = $assigned_shift;
-                    if (in_array('shift_assignment', $user_cols)) { $extra_sets[] = 'shift_assignment = ?'; $extra_vals[] = $assigned_shift; }
-                } else {
-                    if (in_array('assigned_shift', $user_cols)) { $extra_sets[] = 'assigned_shift = NULL'; }
-                    if (in_array('shift_assignment', $user_cols)) { $extra_sets[] = 'shift_assignment = NULL'; }
-                }
+                $assigned_shift = null;
+                if (in_array('assigned_shift', $user_cols)) { $extra_sets[] = 'assigned_shift = NULL'; }
+                if (in_array('shift_assignment', $user_cols)) { $extra_sets[] = 'shift_assignment = NULL'; }
                 if ($extra_sets) {
                     $extra_vals[] = $new_user_id;
                     $pdo->prepare("UPDATE users SET " . implode(', ', $extra_sets) . " WHERE id = ?")->execute($extra_vals);
@@ -259,7 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $login_id      = trim($_POST['login_id'] ?? '');
                 $contact_input = trim($_POST['contact_number'] ?? '');
                 $role          = strtolower(trim($_POST['role'] ?? 'staff'));
-                $assigned_shift= ($role === 'staff') ? (trim($_POST['assigned_shift'] ?? '') ?: null) : null;
+                $assigned_shift= null;
 
                 if (empty($first_name)) throw new Exception('First Name is required.');
                 if (empty($last_name))  throw new Exception('Last Name is required.');
@@ -341,10 +337,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 if (in_array('assigned_shift', $user_cols)) {
-                    $pdo->prepare("UPDATE users SET assigned_shift = ? WHERE id = ?")->execute([$assigned_shift, $id]);
+                    $pdo->prepare("UPDATE users SET assigned_shift = NULL WHERE id = ?")->execute([$id]);
                 }
                 if (in_array('shift_assignment', $user_cols)) {
-                    $pdo->prepare("UPDATE users SET shift_assignment = ? WHERE id = ?")->execute([$assigned_shift, $id]);
+                    $pdo->prepare("UPDATE users SET shift_assignment = NULL WHERE id = ?")->execute([$id]);
                 }
                 
                 log_activity($pdo, $me['id'], 'Edit User', "Updated details & role for user #$id ($username, $role)");
@@ -1083,7 +1079,6 @@ setTimeout(function() {
                         <th>NAME</th>
                         <th>USERNAME</th>
                         <th>ROLE</th>
-                        <th>ASSIGNED SHIFT</th>
                         <?php if($my_role === 'superadmin'): ?><th>STATION</th><?php endif; ?>
                         <th>STATUS</th>
                         <th>ACTIONS</th>
@@ -1119,13 +1114,7 @@ setTimeout(function() {
                         </td>
                         <td style="font-weight: 500; color: #475569;">@<?php echo htmlspecialchars($u['username'] ?? '—'); ?></td>
                         <td style="font-weight:600; color:#334155;"><?php echo htmlspecialchars($roleLabel); ?></td>
-                        <td>
-                            <?php if ($roleKey === 'staff'): ?>
-                                <span style="font-weight:600; color:#334155; font-size:13px;"><?php echo htmlspecialchars($u['assigned_shift'] ?? 'Unassigned'); ?></span>
-                            <?php else: ?>
-                                <span style="color:#94a3b8;">—</span>
-                            <?php endif; ?>
-                        </td>
+
                         <?php if($my_role === 'superadmin'): ?>
                             <td><?php echo htmlspecialchars($u['station_name'] ?? 'Unassigned'); ?></td>
                         <?php endif; ?>
@@ -1246,14 +1235,7 @@ setTimeout(function() {
                 </div>
 
                 <div class="form-grid-2" id="dynamic_role_fields_add">
-                    <div class="form-group" id="shift_field_group_add" style="display: none !important;" hidden>
-                        <label class="lbl">Assigned Shift <span style="color:#dc2626;">*</span></label>
-                        <select name="assigned_shift" id="add_assigned_shift" class="inp">
-                            <option value="">Select shift</option>
-                            <option value="Shift 1">Shift 1 (6:00 AM – 2:00 PM)</option>
-                            <option value="Shift 2">Shift 2 (2:00 PM – 12:00 AM)</option>
-                        </select>
-                    </div>
+
                     <?php if ($my_role === 'superadmin'): ?>
                     <div class="form-group" id="station_field_group_add">
                         <label class="lbl">Station Assignment <span style="color:#dc2626;">*</span></label>
@@ -1353,14 +1335,7 @@ setTimeout(function() {
                             <?php endif; ?>
                         </select>
                     </div>
-                    <div class="form-group" id="shift_field_group_edit" style="display: none !important;" hidden>
-                        <label class="lbl">Assigned Shift <span style="color:#dc2626;">*</span></label>
-                        <select name="assigned_shift" id="edit_assigned_shift" class="inp">
-                            <option value="">Select shift</option>
-                            <option value="Shift 1">Shift 1 (6:00 AM – 2:00 PM)</option>
-                            <option value="Shift 2">Shift 2 (2:00 PM – 12:00 AM)</option>
-                        </select>
-                    </div>
+
                 </div>
             </div>
             <div class="modal-footer">
@@ -1475,9 +1450,7 @@ setTimeout(function() {
                     <div id="view_employee_id" style="font-size:13px;color:#002F70;font-weight:700;font-family:monospace;"></div>
                 </div>
                 <div id="view_shift_container" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; display: none;">
-                    <div style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Assigned Shift</div>
-                    <div id="view_assigned_shift" style="font-size:13px;color:#0f172a;font-weight:600;"></div>
-                </div>
+
                 <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">
                     <div style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Email</div>
                     <div id="view_email" style="font-size:13px;color:#0f172a;word-break:break-all;"></div>
@@ -1614,12 +1587,6 @@ function generateResetPassword() {
 
 function validateAddForm() {
     const roleVal = (document.getElementById('user_role_add').value || '').toLowerCase().trim();
-    const shiftVal = (document.getElementById('add_assigned_shift').value || '').trim();
-    if (roleVal === 'staff' && shiftVal === '') {
-        alert('Please select an Assigned Shift for the staff member.');
-        document.getElementById('add_assigned_shift').focus();
-        return false;
-    }
 
     const contact = document.getElementById('add_contact_number').value.trim();
     if (contact !== '' && !isValidPhilippineNumber(contact)) {
@@ -1661,12 +1628,6 @@ function validateAddForm() {
 
 function validateEditForm() {
     const roleVal = (document.getElementById('user_role_edit').value || '').toLowerCase().trim();
-    const shiftVal = (document.getElementById('edit_assigned_shift').value || '').trim();
-    if (roleVal === 'staff' && shiftVal === '') {
-        alert('Please select an Assigned Shift for the staff member.');
-        document.getElementById('edit_assigned_shift').focus();
-        return false;
-    }
 
     const contact = document.getElementById('edit_contact_number').value.trim();
     if (contact !== '' && !isValidPhilippineNumber(contact)) {

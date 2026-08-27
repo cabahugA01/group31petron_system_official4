@@ -1079,11 +1079,11 @@ include __DIR__ . '/../partials/header.php';
 .vt-table thead th {
     background: #002F70 !important;
     color: #ffffff !important;
-    font-size: 9.5px !important;
+    font-size: 12px !important;
     font-weight: 700 !important;
-    padding: 8px 3px !important;
+    padding: 10px 6px !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.3px !important;
+    letter-spacing: 0.2px !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
@@ -1091,9 +1091,9 @@ include __DIR__ . '/../partials/header.php';
     vertical-align: middle !important;
 }
 .vt-table tbody td {
-    padding: 6px 3px !important;
+    padding: 10px 6px !important;
     vertical-align: middle !important;
-    font-size: 10.5px !important;
+    font-size: 13px !important;
     border-bottom: 1px solid #f1f5f9 !important;
 }
 .vt-table tbody tr:hover td {
@@ -1249,7 +1249,7 @@ try {
 </div>
 
 <!-- Summary Cards -->
-<div class="txn-kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 10px; margin-bottom: 16px;">
+<div class="txn-kpi-grid">
     <div class="txn-kpi-card">
         <div class="txn-kpi-lbl"><i class="fas fa-receipt"></i> Total Txns</div>
         <div class="txn-kpi-val" id="vt_kpi_total_txns"><?php echo $kpi_total_txns; ?></div>
@@ -1289,23 +1289,23 @@ try {
 <!-- Table -->
 <div class="card" style="padding:0;width:100%;">
     <div class="vt-table-wrapper">
-    <table class="vt-table" style="table-layout:fixed;width:100%;">
+    <table class="vt-table" style="table-layout:fixed;width:100%;min-width:960px;">
         <colgroup>
-            <col style="width:7%;"><!-- OR NO. -->
-            <col style="width:8%;"><!-- TXN ID -->
-            <col style="width:6.5%;"><!-- CUSTOMER -->
+            <col style="width:8%;"><!-- OR NO. -->
+            <col style="width:9%;"><!-- TXN ID -->
+            <col style="width:8%;"><!-- CUSTOMER -->
             <col style="width:7%;"><!-- TYPE -->
-            <col style="width:10%;"><!-- PRODUCTS -->
-            <col style="width:7.5%;"><!-- SERVICE TYPE -->
-            <col style="width:4%;"><!-- SVC FEE -->
-            <col style="width:4%;"><!-- LABOR FEE -->
-            <col style="width:4%;"><!-- PLATE NO. -->
-            <col style="width:4.5%;"><!-- TOTAL -->
-            <col style="width:5%;"><!-- PAYMENT -->
-            <col style="width:3.5%;"><!-- SHIFT -->
-            <col style="width:5%;"><!-- STAFF -->
-            <col style="width:9.5%;"><!-- STATUS -->
-            <col style="width:6.5%;"><!-- DATE & TIME -->
+            <col style="width:14%;"><!-- PRODUCTS -->
+            <col style="width:8%;"><!-- SERVICE TYPE -->
+            <col style="width:5%;"><!-- SVC FEE -->
+            <col style="width:5%;"><!-- LABOR FEE -->
+            <col style="width:5%;"><!-- PLATE NO. -->
+            <col style="width:8%;"><!-- TOTAL -->
+            <col style="width:6%;"><!-- PAYMENT -->
+            <col style="width:4%;"><!-- SHIFT -->
+            <col style="width:6%;"><!-- STAFF -->
+            <col style="width:7%;"><!-- STATUS -->
+            <col style="width:7%;"><!-- DATE & TIME -->
             <col style="width:8%;"><!-- ACTIONS -->
         </colgroup>
         <thead>
@@ -1560,19 +1560,19 @@ try {
                     </td>
                     <!-- Date & Time column -->
                     <td style="white-space:nowrap;line-height:1.2;">
-                        <div style="font-size:10px;font-weight:600;color:#334155;white-space:nowrap;"><?php echo date('M d, Y', strtotime($r['txn_date'])); ?></div>
-                        <div style="font-size:9.5px;color:#64748b;white-space:nowrap;"><?php echo date('h:i A', strtotime($r['txn_date'])); ?></div>
+                        <div style="font-size:11px;font-weight:600;color:#334155;white-space:nowrap;"><?php echo date('M d, Y', strtotime($r['txn_date'])); ?></div>
+                        <div style="font-size:10.5px;color:#64748b;white-space:nowrap;"><?php echo date('h:i A', strtotime($r['txn_date'])); ?></div>
                     </td>
                     <!-- Actions column (Manager: View Details always, Adjust/Void ONLY when requested) -->
-                    <td style="text-align:center;padding:4px 2px;vertical-align:middle;white-space:nowrap;">
+                    <td style="text-align:center;padding:4px 3px;vertical-align:middle;">
                         <?php if ($show_actions): ?>
                         <div style="display:flex;flex-direction:column;gap:3px;align-items:stretch;">
-                            <!-- 1. View Details (Grey Outline Button) -->
+                            <!-- 1. View Details (Blue Outline Button) -->
                             <button type="button" class="vt-btn-act-sm"
-                                    style="color:#475569;border:1px solid #cbd5e1;background:#ffffff !important;cursor:pointer;font-weight:600;padding:4px 8px;border-radius:5px;white-space:nowrap;"
+                                    style="color:#002F70;border:1px solid #bfdbfe;background:#eff6ff !important;cursor:pointer;font-weight:700;padding:5px 8px;font-size:12px;border-radius:6px;white-space:normal;line-height:1.3;width:100%;"
                                     onclick="viewTransactionDetails('<?php echo htmlspecialchars($r['_source']); ?>', <?php echo (int)$r['row_id']; ?>)"
                                     title="View Details">
-                                <i class="fas fa-eye" style="font-size:10px;margin-right:3px;"></i> View Details
+                                <i class="fas fa-eye" style="font-size:11px;margin-right:3px;"></i> View Details
                             </button>
                             
                             <?php if ($has_adj_req): ?>
@@ -2010,30 +2010,35 @@ html, body {
     background: transparent;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
-    padding: 14px 16px;
+    padding: 10px 12px;
     box-shadow: none;
     transition: transform .15s, box-shadow .15s;
+    box-sizing: border-box;
 }
 .txn-kpi-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 8px rgba(0, 0, 0, .08);
 }
 .txn-kpi-lbl {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: .5px;
+    letter-spacing: .2px;
     color: #64748b;
     margin-bottom: 4px;
     display: flex;
-    align-items: center;
-    gap: 6px;
+    align-items: flex-start;
+    gap: 4px;
+    line-height: 1.3;
 }
 .txn-kpi-val {
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 800;
     color: #002F70;
     line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .txn-kpi-card.blue .txn-kpi-val { color: #0369a1; }
 .txn-kpi-card.purple .txn-kpi-val { color: #7c3aed; }
@@ -2041,16 +2046,10 @@ html, body {
 .txn-kpi-card.orange .txn-kpi-val { color: #ea580c; }
 .txn-kpi-card.danger .txn-kpi-val { color: #dc2626; }
 
-/* Special Gradient Card for Total Amount */
+/* Wider card for Total Sales only */
 .txn-kpi-card.total-amount-card {
-    background: transparent;
-    border-left: 1px solid #e2e8f0;
-}
-.txn-kpi-card.total-amount-card .txn-kpi-lbl {
-    color: #64748b;
-}
-.txn-kpi-card.total-amount-card .txn-kpi-val {
-    color: #002F70;
+    flex: 2 1 195px;
+    min-width: 175px;
 }
 
 /* Filter Card */
@@ -2083,15 +2082,15 @@ html, body {
 }
 .vt-table thead th { 
     background:#002F70;color:#fff;font-size:12px;font-weight:700;text-transform:uppercase;
-    letter-spacing:.2px;padding:8px 8px;border-bottom:2px solid #001a3d;
+    letter-spacing:.2px;padding:10px 8px;border-bottom:2px solid #001a3d;
     text-align:left;vertical-align:middle;white-space:normal;word-wrap:break-word;
 }
 .vt-table tbody td { 
-    padding:9px 8px;
+    padding:10px 8px;
     border-bottom:1px solid #f1f5f9;
     vertical-align:top;
     background:#fff;
-    font-size:12.5px;
+    font-size:13px;
     white-space:normal;
     word-wrap:break-word;
     overflow:hidden;
@@ -2196,39 +2195,47 @@ text-transform: uppercase !important;
 
 /* == Petron Clean KPI Summary Cards == */
 .txn-kpi-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 12px;
-    margin-bottom: 18px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+    align-items: stretch;
 }
 .txn-kpi-card {
-    background: transparent;
+    flex: 1 1 105px;
+    min-width: 80px;
+    background: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
-    padding: 14px 16px;
-    box-shadow: none;
+    padding: 10px 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .04);
     transition: transform .15s, box-shadow .15s;
+    box-sizing: border-box;
 }
 .txn-kpi-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 8px rgba(0, 0, 0, .08);
 }
 .txn-kpi-lbl {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: .5px;
+    letter-spacing: .2px;
     color: #64748b;
     margin-bottom: 4px;
     display: flex;
-    align-items: center;
-    gap: 6px;
+    align-items: flex-start;
+    gap: 4px;
+    line-height: 1.3;
 }
 .txn-kpi-val {
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 800;
     color: #002F70;
     line-height: 1.1;
+    white-space: nowrap;
+overflow: hidden;
+    text-overflow: ellipsis;
 }
 .txn-kpi-card.blue .txn-kpi-val { color: #0369a1; }
 .txn-kpi-card.purple .txn-kpi-val { color: #7c3aed; }
@@ -2236,16 +2243,23 @@ text-transform: uppercase !important;
 .txn-kpi-card.orange .txn-kpi-val { color: #ea580c; }
 .txn-kpi-card.danger .txn-kpi-val { color: #dc2626; }
 
-/* Special Gradient Card for Total Amount */
+/* Special wider card for Total Sales */
 .txn-kpi-card.total-amount-card {
-    background: transparent;
-    border-left: 1px solid #e2e8f0;
+    flex: 2 1 195px;
+    min-width: 175px;
 }
 .txn-kpi-card.total-amount-card .txn-kpi-lbl {
     color: #64748b;
+    font-weight: 700;
+    line-height: 1.3;
 }
 .txn-kpi-card.total-amount-card .txn-kpi-val {
+    font-size: clamp(16px, 1.4vw, 22px);
+    font-weight: 800;
     color: #002F70;
+    white-space: nowrap;
+overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Filter Card */
@@ -2277,18 +2291,18 @@ text-transform: uppercase !important;
     table-layout: fixed !important;
 }
 .vt-table thead th { 
-    background:#002F70 !important;color:#fff !important;font-size:10.5px !important;font-weight:700 !important;text-transform:uppercase !important;
-    letter-spacing:.1px !important;padding:8px 3px !important;border-bottom:2px solid #001a3d !important;
+    background:#002F70 !important;color:#fff !important;font-size:12px !important;font-weight:700 !important;text-transform:uppercase !important;
+    letter-spacing:.2px !important;padding:10px 6px !important;border-bottom:2px solid #001a3d !important;
     text-align:left;vertical-align:middle;white-space:nowrap !important;
     overflow:hidden; text-overflow:ellipsis;
 }
 .vt-table tbody td { 
-    padding:7px 3px !important;
+    padding:10px 6px !important;
     border-bottom:1px solid #f1f5f9 !important;
     vertical-align:middle !important;
     background:#fff;
-    font-size:11px !important;
-    line-height:1.3;
+    font-size:13px !important;
+    line-height:1.4;
     overflow:hidden;
     text-overflow:ellipsis;
 }
@@ -2303,7 +2317,7 @@ body { overflow-x:hidden !important; max-width:100vw !important; }
 .vt-table-wrapper {
     width: 100% !important;
     max-width: 100% !important;
-    overflow-x: hidden !important;
+    overflow-x: auto !important;
     overflow-y: visible !important;
     box-sizing: border-box !important;
 }

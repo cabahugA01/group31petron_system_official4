@@ -120,18 +120,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Username already exists');
             }
             
-            // Determine shift times
-            $shift_start = ($shift_assignment === 'Shift 1') ? '06:00:00' : '14:00:00';
-            $shift_end   = ($shift_assignment === 'Shift 1') ? '14:00:00' : '00:00:00';
-            
             $emp_id = gen_emp_id($pdo, 'staff');
             $stmt = $pdo->prepare("
-                INSERT INTO users (employee_id, first_name, last_name, email, username, password_hash, role, station_id, assigned_shift, shift_assignment, shift_start_time, shift_end_time, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, 'staff', ?, ?, ?, ?, ?, 'Active', NOW())
+                INSERT INTO users (employee_id, first_name, last_name, email, username, password_hash, role, station_id, assigned_shift, shift_assignment, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'staff', ?, NULL, NULL, 'Active', NOW())
             ");
-            $stmt->execute([$emp_id, $first_name, $last_name, $email, $username, password_hash($password, PASSWORD_BCRYPT), $target_station_id, $shift_assignment, $shift_assignment, $shift_start, $shift_end]);
-            log_activity($pdo, $me['id'], 'Create Staff', "Created Staff: $first_name $last_name ($emp_id) - $shift_assignment");
-            $_SESSION['success'] = "Staff $first_name $last_name ($emp_id) created — $shift_assignment.";
+            $stmt->execute([$emp_id, $first_name, $last_name, $email, $username, password_hash($password, PASSWORD_BCRYPT), $target_station_id]);
+            log_activity($pdo, $me['id'], 'Create Staff', "Created Staff: $first_name $last_name ($emp_id)");
+            $_SESSION['success'] = "Staff $first_name $last_name ($emp_id) created successfully.";
             header('Location: admin_user_management.php'); exit;
         }
         
@@ -537,7 +533,6 @@ include __DIR__ . '/../partials/header.php';
                     <th>Name</th>
                     <th>Username</th>
                     <th>Role</th>
-                    <th>Assigned Shift</th>
                     <?php if ($my_role === 'superadmin'): ?><th>Station</th><?php endif; ?>
                     <th>Status</th>
                     <th>Actions</th>
@@ -545,28 +540,14 @@ include __DIR__ . '/../partials/header.php';
             </thead>
             <tbody>
                 <?php if (empty($staff)): ?>
-                    <tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:30px;">No staff found</td></tr>
+                    <tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:30px;">No staff found</td></tr>
                 <?php else: ?>
                     <?php foreach ($staff as $s): ?>
-                        <?php
-                        $shift = $s['assigned_shift'] ?: ($s['shift_assignment'] ?: '');
-                        $isS1  = stripos($shift,'1') !== false;
-                        $isS2  = stripos($shift,'2') !== false;
-                        ?>
                         <tr>
                             <td><span style="font-family:monospace;font-weight:700;color:#002F70;font-size:12px;"><?= htmlspecialchars($s['employee_id'] ?? '—') ?></span></td>
                             <td><strong><?= htmlspecialchars(trim($s['first_name'].' '.$s['last_name'])) ?></strong><div style="font-size:11px;color:#94a3b8;"><?= htmlspecialchars($s['email'] ?? '') ?></div></td>
                             <td>@<?= htmlspecialchars($s['username']) ?></td>
                             <td><span class="badge badge-active" style="background:#e0e7ff;color:#3730a3;">Staff</span></td>
-                            <td>
-                                <?php if ($isS2): ?>
-                                    <span class="badge badge-shift2">Shift 2 (2PM–12AM)</span>
-                                <?php elseif ($isS1): ?>
-                                    <span class="badge badge-shift1">Shift 1 (6AM–2PM)</span>
-                                <?php else: ?>
-                                    <span class="badge" style="background:#f1f5f9;color:#64748b;">Unassigned</span>
-                                <?php endif; ?>
-                            </td>
                             <?php if ($my_role === 'superadmin'): ?><td><?= htmlspecialchars($s['station_name'] ?? 'N/A') ?></td><?php endif; ?>
                             <td><span class="badge <?= strtolower($s['status']) === 'active' ? 'badge-active' : 'badge-inactive' ?>"><?= htmlspecialchars($s['status']) ?></span></td>
                             <td style="white-space:nowrap;">
@@ -664,13 +645,7 @@ include __DIR__ . '/../partials/header.php';
                     <input type="email" name="email">
                 </div>
                 
-                <div class="form-group">
-                    <label>Shift Assignment *</label>
-                    <select name="shift_assignment" required>
-                        <option value="Shift 1">Shift 1 (6AM - 2PM)</option>
-                        <option value="Shift 2">Shift 2 (2PM - 12AM)</option>
-                    </select>
-                </div>
+
                 
                 <?php if ($my_role === 'superadmin' && !empty($stations)): ?>
                     <div class="form-group">

@@ -516,7 +516,9 @@ require_once __DIR__ . '/../partials/header.php';
 @media(max-width:480px){ .txn-kpi-grid{ grid-template-columns:1fr; } }
 .txn-kpi-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; box-shadow:0 1px 4px rgba(0,0,0,.03); transition:transform .15s,box-shadow .15s; }
 .txn-kpi-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.07); }
-.txn-kpi-lbl { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#64748b; margin-bottom:6px; display:flex; align-items:center; gap:6px; }
+.txn-kpi-lbl { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#64748b; margin-bottom:6px; display:flex; align-items: flex-start; gap:6px;
+    line-height: 1.3;
+}
 .txn-kpi-val { font-size:26px; font-weight:800; color:#002F70; line-height:1.1; }
 .txn-kpi-card.blue   .txn-kpi-val { color:#0284c7; }
 .txn-kpi-card.green  .txn-kpi-val { color:#16a34a; }

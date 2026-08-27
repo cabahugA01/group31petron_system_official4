@@ -1271,7 +1271,7 @@ include __DIR__ . '/../partials/header.php';
         <span>Status segmented monitoring</span>
     </div>
     <div class="txn-kpi-grid" style="margin-bottom:14px;">
-        <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($job_order_status_counts['Pending']); ?></span><span class="txn-kpi-label">Pending</span></div>
+        <div class="txn-kpi-card total-amount-card"><span class="txn-kpi-value"><?php echo number_format($job_order_status_counts['Pending']); ?></span><span class="txn-kpi-label">Pending</span></div>
         <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($job_order_status_counts['Ongoing']); ?></span><span class="txn-kpi-label">Ongoing</span></div>
         <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($job_order_status_counts['Completed']); ?></span><span class="txn-kpi-label">Completed</span></div>
         <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($job_order_status_counts['Cancelled']); ?></span><span class="txn-kpi-label">Cancelled</span></div>
@@ -1519,7 +1519,7 @@ try {
 <div class="txn-kpi-grid">
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_transactions); ?></span><span class="txn-kpi-label">Total Transactions</span></div>
     <div class="txn-kpi-card"><span class="txn-kpi-value">₱<?php echo number_format($overview_total_sales, 2); ?></span><span class="txn-kpi-label">Total Sales</span></div>
-    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_job_orders); ?></span><span class="txn-kpi-label">Total Job Orders</span></div>
+    <div class="txn-kpi-card total-amount-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_job_orders); ?></span><span class="txn-kpi-label">Total Job Orders</span></div>
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_merchandise); ?></span><span class="txn-kpi-label">Merchandise Transactions</span></div>
 </div>
 
@@ -1645,7 +1645,7 @@ try {
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_transactions); ?></span><span class="txn-kpi-label">Total Transactions</span></div>
     <div class="txn-kpi-card"><span class="txn-kpi-value">₱<?php echo number_format($overview_total_sales, 2); ?></span><span class="txn-kpi-label">Total Sales</span></div>
     <?php if (in_array($role, ['admin', 'superadmin', 'developer'], true)): ?>
-    <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($today_transactions); ?></span><span class="txn-kpi-label">Today's Transactions</span></div>
+    <div class="txn-kpi-card total-amount-card"><span class="txn-kpi-value"><?php echo number_format($today_transactions); ?></span><span class="txn-kpi-label">Today's Transactions</span></div>
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($active_shifts_count); ?></span><span class="txn-kpi-label">Active Shifts</span></div>
     <?php else: ?>
     <div class="txn-kpi-card"><span class="txn-kpi-value"><?php echo number_format($overview_total_job_orders); ?></span><span class="txn-kpi-label">Total Job Orders</span></div>

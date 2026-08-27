@@ -465,15 +465,16 @@ require_once __DIR__ . '/../partials/header.php';
     box-shadow: 0 4px 8px rgba(0, 0, 0, .08);
 }
 .txn-kpi-lbl {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: .5px;
     color: #64748b;
     margin-bottom: 4px;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 6px;
+    line-height: 1.3;
 }
 .txn-kpi-val {
     font-size: 24px;
@@ -482,12 +483,14 @@ require_once __DIR__ . '/../partials/header.php';
     line-height: 1.1;
 }
 
-/* Special Gradient Card for Total Amount */
+/* Special wider card for Total Sales */
 .txn-kpi-card.total-amount-card {
-    background: linear-gradient(135deg, #003d7a 0%, #00264D 100%);
+    flex: 2 1 195px;
+    min-width: 175px;
 }
 .txn-kpi-card.total-amount-card .txn-kpi-lbl {
     color: #93c5fd;
+    line-height: 1.3;
 }
 .txn-kpi-card.total-amount-card .txn-kpi-val {
     color: #fff;

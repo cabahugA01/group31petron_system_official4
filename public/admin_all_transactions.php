@@ -44,36 +44,52 @@ $adj_reason_col  = aat_has($mt_cols,'adjustment_reason') ? 'mt.adjustment_reason
 $mgr_remarks_col = aat_has($mt_cols,'manager_remarks') ? 'mt.manager_remarks' : 'NULL';
 
 // Filters
-$date_from  = trim($_GET['date_from']       ?? date('Y-m-d', strtotime('-365 days')));
+$date_from  = trim($_GET['date_from']       ?? date('Y-m-d', strtotime('-5 years')));
 $date_to    = trim($_GET['date_to']         ?? date('Y-m-d'));
 $f_shift    = trim($_GET['shift']           ?? '');
-$f_staff    = trim($_GET['staff']           ?? '');
+$f_customer = trim($_GET['customer']        ?? '');
 $f_type     = trim($_GET['type']            ?? '');
 $f_pay      = trim($_GET['payment_method']  ?? '');
 $f_status   = trim($_GET['status']          ?? '');
 $search     = trim($_GET['search']          ?? '');
 
-// Fetch staff list for dropdown (Shift 1 & Shift 2 staff only)
-$staff_list = [];
+// Fetch ALL distinct customer names from every transaction source
+$customer_list = [];
 try {
     $s = $pdo->prepare("
-        SELECT DISTINCT u.id, 
-               COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), ' '), u.username, 'Unknown') as name
-        FROM users u
-        WHERE u.station_id = ?
-          AND LOWER(u.role) IN ('staff', 'operations_staff', 'operations staff')
-          AND LOWER(COALESCE(u.status, '')) NOT IN ('disabled', 'archived', 'inactive')
-          AND (
-              LOWER(COALESCE(u.assigned_shift, u.shift_assignment, '')) LIKE '%shift 1%' 
-              OR LOWER(COALESCE(u.assigned_shift, u.shift_assignment, '')) LIKE '%shift 2%' 
-              OR LOWER(COALESCE(u.assigned_shift, u.shift_assignment, '')) IN ('first', 'second', '1', '2', '') 
-              OR u.assigned_shift IS NULL
-          )
-        ORDER BY name ASC
+        SELECT DISTINCT customer FROM (
+            -- From merchandise transactions (free-text name)
+            SELECT TRIM(mt.customer_name) AS customer
+            FROM merchandise_transactions mt
+            WHERE mt.station_id = ?
+              AND mt.customer_name IS NOT NULL
+              AND TRIM(mt.customer_name) <> ''
+
+            UNION
+
+            -- From job orders (free-text name)
+            SELECT TRIM(jo.customer_name) AS customer
+            FROM job_orders jo
+            WHERE jo.station_id = ?
+              AND jo.customer_name IS NOT NULL
+              AND TRIM(jo.customer_name) <> ''
+
+            UNION
+
+            -- From customers master table (registered customers)
+            SELECT TRIM(COALESCE(NULLIF(c.name,''),
+                        CONCAT(COALESCE(c.first_name,''), ' ', COALESCE(c.last_name,'')))) AS customer
+            FROM customers c
+            WHERE c.station_id = ?
+              AND COALESCE(c.name, c.first_name, '') <> ''
+              AND LOWER(COALESCE(c.account_status, c.status, '')) NOT IN ('archived','inactive','disabled')
+        ) AS all_customers
+        WHERE customer IS NOT NULL AND TRIM(customer) <> ''
+        ORDER BY customer ASC
     ");
-    $s->execute([$station_id]);
-    $staff_list = $s->fetchAll(PDO::FETCH_ASSOC);
-} catch(Exception $e){}
+    $s->execute([$station_id, $station_id, $station_id]);
+    $customer_list = array_column($s->fetchAll(PDO::FETCH_ASSOC), 'customer');
+} catch(Exception $e){ $customer_list = []; }
 
 // Build WHERE clause
 $where  = "WHERE mt.station_id=?";
@@ -105,7 +121,7 @@ if($search!=='') {
 
 $shift_col = aat_has($mt_cols,'shift_period') ? 'mt.shift_period' : (aat_has($mt_cols,'shift_name') ? 'mt.shift_name' : null);
 if($f_shift!=='' && $shift_col) { $where.=" AND COALESCE($shift_col,'')=?"; $params[]=$f_shift; }
-if($f_staff!=='') { $where.=" AND mt.staff_id=?"; $params[]=$f_staff; }
+if($f_customer!=='') { $where.=" AND TRIM(mt.customer_name)=?"; $params[]=$f_customer; }
 
 if($f_type==='merchandise') { $where.=" AND COALESCE(mt.transaction_type,'merchandise')='merchandise'"; }
 elseif($f_type==='job_order') { $where.=" AND COALESCE(mt.transaction_type,'merchandise')='job_order'"; }
@@ -400,39 +416,65 @@ a, a:hover, a:focus, a:visited,
 
 /* 9 KPI Cards Grid */
 .txn-kpi-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 10px;
     margin-bottom: 18px;
+    align-items: stretch;
 }
 .txn-kpi-card {
+    flex: 1 1 105px;
+    min-width: 80px;
     background: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
-    padding: 12px 14px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    padding: 10px 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     transition: transform .15s, box-shadow .15s;
+    box-sizing: border-box;
 }
 .txn-kpi-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, .08);
 }
 .txn-kpi-lbl {
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: .4px;
+    letter-spacing: .2px;
     color: #64748b;
     margin-bottom: 4px;
     display: flex;
-    align-items: center;
-    gap: 5px;
+    align-items: flex-start;
+    gap: 4px;
+    line-height: 1.3;
 }
 .txn-kpi-val {
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 800;
     color: #002F70;
     line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Special wider card for Total Sales */
+.txn-kpi-card.total-amount-card {
+    flex: 2 1 195px;
+    min-width: 175px;
+}
+.txn-kpi-card.total-amount-card .txn-kpi-lbl {
+    color: #64748b;
+    font-weight: 700;
+    line-height: 1.3;
+}
+.txn-kpi-card.total-amount-card .txn-kpi-val {
+    font-size: clamp(16px, 1.4vw, 22px);
+    font-weight: 800;
+    color: #002F70;
+    white-space: nowrap;
+overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .filters {
@@ -450,7 +492,7 @@ a, a:hover, a:focus, a:visited,
 .vt-table-wrapper { 
     width: 100% !important; 
     max-width: 100% !important; 
-    overflow-x: hidden !important; 
+    overflow-x: auto !important; 
     overflow-y: visible !important; 
     box-sizing: border-box !important;
     border-radius: 10px;
@@ -458,28 +500,27 @@ a, a:hover, a:focus, a:visited,
 }
 .vt-table { 
     width: 100% !important; 
-    min-width: 100% !important; 
-    max-width: 100% !important; 
+    min-width: 960px !important; 
     border-collapse: collapse !important; 
     table-layout: fixed !important; 
 }
 .vt-table thead th {
-    background: #002F70 !important; color: #ffffff !important; font-size: 10px !important;
-    font-weight: 700 !important; padding: 8px 3px !important; text-transform: uppercase !important;
+    background: #002F70 !important; color: #ffffff !important; font-size: 12px !important;
+    font-weight: 700 !important; padding: 10px 6px !important; text-transform: uppercase !important;
     white-space: nowrap !important;
     border-bottom: 2px solid #001f4d !important; vertical-align: middle !important;
-    letter-spacing: 0.1px;
+    letter-spacing: 0.2px;
     overflow: hidden; text-overflow: ellipsis;
 }
 .vt-table tbody td {
-    padding: 7px 3px !important; vertical-align: middle !important; font-size: 11px !important;
+    padding: 10px 6px !important; vertical-align: middle !important; font-size: 13px !important;
     border-bottom: 1px solid #f1f5f9 !important; color: #334155;
     overflow: hidden; text-overflow: ellipsis;
 }
 .vt-table tbody tr:hover td { background: #f8fafc !important; }
 
 /* Badge Badges */
-.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700; white-space: nowrap; line-height: 1.2; }
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; line-height: 1.2; }
 .badge-green    { background: #16a34a !important; color: #fff !important; }
 .badge-red      { background: #dc2626 !important; color: #fff !important; }
 .badge-darkblue { background: #1e3a8a !important; color: #fff !important; }
@@ -518,7 +559,7 @@ a, a:hover, a:focus, a:visited,
             <div class="txn-kpi-lbl"><i class="fas fa-receipt"></i> Total Txns</div>
             <div class="txn-kpi-val"><?= number_format($kpi_txn_count) ?></div>
         </div>
-        <div class="txn-kpi-card">
+        <div class="txn-kpi-card total-amount-card">
             <div class="txn-kpi-lbl"><i class="fas fa-peso-sign"></i> Total Sales</div>
             <div class="txn-kpi-val">&#8369;<?= number_format($kpi_total_sales, 2) ?></div>
         </div>
@@ -565,11 +606,11 @@ a, a:hover, a:focus, a:visited,
             </select>
         </div>
         <div>
-            <label>Staff Encoder</label>
-            <select name="staff" class="inp">
-                <option value="">All Staff</option>
-                <?php foreach($staff_list as $st): ?>
-                <option value="<?=(int)$st['id']?>" <?=$f_staff==(int)$st['id']?'selected':''?>><?=htmlspecialchars($st['name'])?></option>
+            <label>Customer</label>
+            <select name="customer" class="inp">
+                <option value="">All Customers</option>
+                <?php foreach($customer_list as $cust): ?>
+                <option value="<?=htmlspecialchars($cust)?>" <?=$f_customer===$cust?'selected':''?>><?=htmlspecialchars($cust)?></option>
                 <?php endforeach; ?>
             </select>
         </div>        <div>
@@ -619,21 +660,21 @@ a, a:hover, a:focus, a:visited,
         <div class="vt-table-wrapper">
         <table class="vt-table" style="table-layout:fixed;width:100%;">
             <colgroup>
-                <col style="width:7.5%;"><!-- OR NO. -->
-                <col style="width:8.5%;"><!-- TXN ID -->
-                <col style="width:7%;"><!-- CUSTOMER -->
-                <col style="width:7.5%;"><!-- TYPE -->
-                <col style="width:10%;"><!-- PRODUCTS -->
+                <col style="width:8%;"><!-- OR NO. -->
+                <col style="width:9%;"><!-- TXN ID -->
+                <col style="width:8%;"><!-- CUSTOMER -->
+                <col style="width:7%;"><!-- TYPE -->
+                <col style="width:14%;"><!-- PRODUCTS -->
                 <col style="width:8%;"><!-- SERVICE TYPE -->
-                <col style="width:4%;"><!-- SVC FEE -->
-                <col style="width:4%;"><!-- LABOR FEE -->
-                <col style="width:4.5%;"><!-- PLATE NO. -->
-                <col style="width:4.5%;"><!-- TOTAL -->
-                <col style="width:5%;"><!-- PAYMENT -->
-                <col style="width:3.5%;"><!-- SHIFT -->
-                <col style="width:5%;"><!-- STAFF -->
-                <col style="width:7.5%;"><!-- STATUS -->
-                <col style="width:7.5%;"><!-- DATE & TIME -->
+                <col style="width:5%;"><!-- SVC FEE -->
+                <col style="width:5%;"><!-- LABOR FEE -->
+                <col style="width:5%;"><!-- PLATE NO. -->
+                <col style="width:8%;"><!-- TOTAL -->
+                <col style="width:6%;"><!-- PAYMENT -->
+                <col style="width:4%;"><!-- SHIFT -->
+                <col style="width:6%;"><!-- STAFF -->
+                <col style="width:7%;"><!-- STATUS -->
+                <col style="width:7%;"><!-- DATE & TIME -->
                 <col style="width:8%;"><!-- ACTIONS -->
             </colgroup>
             <thead>
@@ -749,9 +790,9 @@ a, a:hover, a:focus, a:visited,
                     <div style="font-size:10px;color:#64748b;"><?=date('h:i A',strtotime($r['txn_date']))?></div>
                 </td>
                 <!-- Actions: View Details ONLY (Admin Oversight) -->
-                <td style="text-align:center;padding:4px 2px;vertical-align:middle;white-space:nowrap;">
+                <td style="text-align:center;padding:4px 3px;vertical-align:middle;">
                     <button type="button" class="vt-btn-act-sm admin-view-btn"
-                            style="color:#475569;border:1px solid #cbd5e1;background:#ffffff !important;cursor:pointer;font-weight:600;padding:3px 6px;font-size:11px;border-radius:5px;white-space:nowrap;"
+                            style="color:#002F70;border:1px solid #bfdbfe;background:#eff6ff !important;cursor:pointer;font-weight:700;padding:5px 8px;font-size:12px;border-radius:6px;white-space:normal;line-height:1.3;width:100%;"
                             data-txn="<?= htmlspecialchars(json_encode([
                                 'db_id'              => (int)$r['txn_db_id'],
                                 'or_no'              => 'OR-' . date('Y', strtotime($r['txn_date'])) . '-' . str_pad($r['txn_db_id'], 6, '0', STR_PAD_LEFT),
@@ -780,8 +821,7 @@ a, a:hover, a:focus, a:visited,
                                 'adjustment_reason'  => $r['adjustment_reason'] ?? '',
                                 'manager_remarks'    => $r['manager_remarks'] ?? '',
                             ]), ENT_QUOTES, 'UTF-8') ?>"
-                            title="View Details">
-                        <i class="fas fa-eye" style="font-size:10px;margin-right:2px;"></i> View Details
+                        <i class="fas fa-eye" style="font-size:11px;margin-right:3px;"></i> View Details
                     </button>
                 </td>
             </tr>

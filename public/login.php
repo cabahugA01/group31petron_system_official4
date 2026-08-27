@@ -402,20 +402,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $auto_shift_key = $existing_session['shift_period'];
                             $auto_shift_name = $existing_session['shift_name'];
                         } elseif ($station_id) {
-                            // Check the user's assigned shift in the profile first
-                            $user_assigned_shift = strtolower(trim((string)($user['assigned_shift'] ?? '')));
-                            if (strpos($user_assigned_shift, 'shift 1') !== false || strpos($user_assigned_shift, '1') !== false || $user_assigned_shift === 'first') {
-                                $auto_shift_key = 'first';
-                            } elseif (strpos($user_assigned_shift, 'shift 2') !== false || strpos($user_assigned_shift, '2') !== false || $user_assigned_shift === 'second') {
-                                $auto_shift_key = 'second';
-                            } else {
-                                // Determine current shift using fixed schedule rules:
-                                //   Shift 1 (first)  → 6:00 AM – 2:00 PM  (06:00:00–13:59:59)
-                                //   Shift 2 (second) → 2:00 PM – 12:00 MN  (14:00:00–23:59:59)
-                                //   Early morning (00:00–05:59) → counted as Shift 2 (previous night)
-                                $login_time = date('H:i:s');
-                                $auto_shift_key = ($login_time >= '06:00:00' && $login_time < '14:00:00') ? 'first' : 'second';
-                            }
+                            // Determine current operational shift automatically using shift schedule rules:
+                            //   Shift 1 (first)  → 6:00 AM – 2:00 PM  (06:00:00–13:59:59)
+                            //   Shift 2 (second) → 2:00 PM – 12:00 MN  (14:00:00–23:59:59)
+                            //   Early morning (00:00–05:59) → counted as Shift 2 (previous night)
+                            $login_time = date('H:i:s');
+                            $auto_shift_key = ($login_time >= '06:00:00' && $login_time < '14:00:00') ? 'first' : 'second';
 
                             // Try to load exact DB record for consistent naming
                             $sp = $pdo->prepare("SELECT shift_key, shift_name FROM shift_periods WHERE shift_key = ? AND is_active = 1 LIMIT 1");
@@ -447,8 +439,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 // Store detected shift in session so dashboards & pages can reference it
-                $_SESSION['current_shift_key']  = $auto_shift_key;
+                $_SESSION['current_shift_key']   = $auto_shift_key;
                 $_SESSION['current_shift_label'] = $auto_shift_name;
+                $_SESSION['shift_period']        = ($auto_shift_key === 'first' ? 'Shift 1' : 'Shift 2');
+                $_SESSION['shift_name']          = $auto_shift_name;
 
                 // Determine dashboard URL based on role
                 if ($role === 'superadmin') {

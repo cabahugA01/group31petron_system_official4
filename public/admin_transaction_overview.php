@@ -171,10 +171,14 @@ require_once __DIR__ . '/../partials/header.php';
 .txn-kpi-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; margin-bottom:20px; }
 .txn-kpi-card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px 18px; box-shadow:0 1px 4px rgba(0,0,0,.05); transition:transform .15s,box-shadow .15s; }
 .txn-kpi-card:hover { transform:translateY(-2px); box-shadow:0 4px 10px rgba(0,0,0,.09); }
-.txn-kpi-lbl { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#64748b; margin-bottom:6px; display:flex; align-items:center; gap:6px; }
+.txn-kpi-lbl { font-size: 10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#64748b; margin-bottom:6px; display:flex; align-items: flex-start; gap:6px;
+    line-height: 1.3;
+}
 .txn-kpi-val { font-size:26px; font-weight:800; color:#002F70; line-height:1.1; }
-.txn-kpi-card.total-amount-card { background:linear-gradient(135deg,#003d7a 0%,#00264D 100%); }
-.txn-kpi-card.total-amount-card .txn-kpi-lbl { color:#93c5fd; }
+.txn-kpi-card.total-amount-card { }
+.txn-kpi-card.total-amount-card .txn-kpi-lbl { color:#93c5fd;
+    line-height: 1.3;
+}
 .txn-kpi-card.total-amount-card .txn-kpi-val { color:#fff; }
 .charts-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; margin-bottom:20px; }
 .chart-card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; box-shadow:0 1px 4px rgba(0,0,0,.05); }
@@ -233,7 +237,7 @@ require_once __DIR__ . '/../partials/header.php';
 
 <!-- KPI Cards -->
 <div class="txn-kpi-grid">
-    <div class="txn-kpi-card">
+    <div class="txn-kpi-card total-amount-card">
         <div class="txn-kpi-lbl"><i class="fas fa-receipt"></i> Total Transactions</div>
         <div class="txn-kpi-val"><?=number_format($kpi_total)?></div>
     </div>
