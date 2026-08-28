@@ -1,6 +1,6 @@
 <?php
 /**
- * Official Employee Master List & Document Status Exporter
+ * Official Consolidated Employee Master Report Exporter
  * Petron Station Management System
  */
 require_once __DIR__ . '/../backend/lib.php';
@@ -19,7 +19,7 @@ if (!in_array($my_role, ['manager', 'admin', 'superadmin'], true)) {
     exit('Unauthorized access.');
 }
 
-$format = $_GET['format'] ?? 'excel';
+$format = strtolower(trim($_GET['format'] ?? 'excel'));
 $today = date('Y-m-d');
 $now_formatted = date('F j, Y h:i A');
 
@@ -71,16 +71,104 @@ if ($my_role === 'superadmin') {
     $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
+// Filter Parameters for Export (Matches applied UI filters)
+$filter_q      = strtolower(trim($_GET['q'] ?? ''));
+$filter_role   = strtolower(trim($_GET['role'] ?? ''));
+$filter_status = strtolower(trim($_GET['status'] ?? ''));
+
+if ($filter_q !== '' || $filter_role !== '' || $filter_status !== '') {
+    $filtered_list = [];
+    foreach ($employees as $emp) {
+        $emp_id    = strtolower(trim($emp['employee_id'] ?: ('EMP-' . str_pad($emp['id'], 4, '0', STR_PAD_LEFT))));
+        $full_name = strtolower(trim($emp['full_name'] ?: $emp['username']));
+        $username  = strtolower(trim($emp['username'] ?? ''));
+        $role_key  = strtolower(trim(role_key($emp['role'] ?? '')));
+        $status    = strtolower(trim($emp['status'] ?? 'active'));
+
+        // Role Filter Check
+        if ($filter_role !== '' && $role_key !== $filter_role) {
+            continue;
+        }
+
+        // Status Filter Check
+        if ($filter_status !== '' && $status !== $filter_status) {
+            continue;
+        }
+
+        // Search Query Check (matches Employee ID, Full Name, or Username)
+        if ($filter_q !== '') {
+            $match = (strpos($emp_id, $filter_q) !== false) ||
+                     (strpos($full_name, $filter_q) !== false) ||
+                     (strpos($username, $filter_q) !== false);
+            if (!$match) {
+                continue;
+            }
+        }
+
+        $filtered_list[] = $emp;
+    }
+    $employees = $filtered_list;
+}
+
 $record_count = count($employees);
 $clean_station_name = preg_replace('/[^a-zA-Z0-9_\-]/', '_', str_replace(' ', '_', $station_name));
 
-// Log Audit Trail
+// Fetch Document Completeness Status map for each user
+$docs_map = [];
 try {
-    $audit_format_label = strtoupper(str_replace('_', ' ', $format));
+    $docs_query = $pdo->query("SELECT user_id, doc_type, status, file_name FROM employee_documents");
+    while ($d = $docs_query->fetch(PDO::FETCH_ASSOC)) {
+        $st = $d['status'];
+        if (empty($d['file_name']) && strtolower($st) === 'complete') {
+            $st = 'Missing';
+        }
+        $docs_map[$d['user_id']][$d['doc_type']] = [
+            'status' => $st,
+            'file_name' => $d['file_name']
+        ];
+    }
+} catch (Exception $e) {}
+
+// Fetch Activity & Last Login Summary map for each user
+$activity_map = [];
+try {
+    // 1. Audit Trail Activity Counts & Last Activity
+    $act_query = $pdo->query("
+        SELECT user_id, COUNT(*) AS act_count, MAX(created_at) AS last_act
+        FROM audit_trail
+        GROUP BY user_id
+    ");
+    while ($a = $act_query->fetch(PDO::FETCH_ASSOC)) {
+        $activity_map[$a['user_id']] = [
+            'count' => (int)$a['act_count'],
+            'last_act' => $a['last_act']
+        ];
+    }
+
+    // 2. Activity Logs fallback if audit_trail count is 0
+    $log_query = $pdo->query("
+        SELECT user_id, COUNT(*) AS log_count, MAX(created_at) AS last_log
+        FROM activity_logs
+        GROUP BY user_id
+    ");
+    while ($l = $log_query->fetch(PDO::FETCH_ASSOC)) {
+        $uid = $l['user_id'];
+        if (!isset($activity_map[$uid]) || $activity_map[$uid]['count'] === 0) {
+            $activity_map[$uid] = [
+                'count' => (int)$l['log_count'],
+                'last_act' => $l['last_log']
+            ];
+        }
+    }
+} catch (Exception $e) {}
+
+// Log Audit Trail for Export Action
+try {
+    $audit_format_label = strtoupper($format);
     log_activity(
         $pdo,
         $me['id'],
-        'Exported Employee List',
+        'Exported Master Employee Report',
         "Exported $record_count employee records (Format: $audit_format_label, Station: $station_name)"
     );
 } catch (Exception $e) { /* ignore */ }
@@ -95,127 +183,177 @@ function get_export_role_label($role) {
     return ucfirst($r);
 }
 
-// ── 1. EXCEL EXPORT (EMPLOYEE MASTER LIST) ──────────────────────────────────
+// Prepare Consolidated Master Data Rows (All 15 Required Columns)
+$master_rows = [];
+foreach ($employees as $emp) {
+    $uid       = $emp['id'];
+    $emp_id    = $emp['employee_id'] ?: ('EMP-' . str_pad($uid, 4, '0', STR_PAD_LEFT));
+    $name      = trim($emp['full_name']) ?: $emp['username'];
+    $role_name = get_export_role_label($emp['role']);
+    $stn_name  = $emp['station_name'] ?: $station_name;
+    $status    = ucfirst(strtolower(trim($emp['status'] ?: 'Active')));
+    $created   = $emp['created_at'] ? date('Y-m-d', strtotime($emp['created_at'])) : '—';
+    $last_login= $emp['updated_at'] ? date('Y-m-d H:i:s', strtotime($emp['updated_at'])) : '—';
+    
+    // Document statuses (Dynamic database check: missing if no file uploaded)
+    $get_doc_status = function($uid, $type) use ($docs_map) {
+        if (!isset($docs_map[$uid][$type])) return 'Missing';
+        $item = $docs_map[$uid][$type];
+        if (empty($item['file_name']) && strtolower($item['status']) === 'complete') return 'Missing';
+        return $item['status'] ?: 'Missing';
+    };
+
+    $sss        = $get_doc_status($uid, 'SSS');
+    $philhealth = $get_doc_status($uid, 'PhilHealth');
+    $pagibig    = $get_doc_status($uid, 'Pag-IBIG');
+    $tin        = $get_doc_status($uid, 'TIN');
+    $valid_id   = $get_doc_status($uid, 'Valid ID');
+    
+    // Activity summary
+    $last_act   = !empty($activity_map[$uid]['last_act']) ? date('Y-m-d H:i:s', strtotime($activity_map[$uid]['last_act'])) : '—';
+    $act_count  = isset($activity_map[$uid]['count']) ? (int)$activity_map[$uid]['count'] : 0;
+    
+    $master_rows[] = [
+        'emp_id'       => $emp_id,
+        'full_name'    => $name,
+        'username'     => '@' . $emp['username'],
+        'role'         => $role_name,
+        'station'      => $stn_name,
+        'status'       => $status,
+        'created_at'   => $created,
+        'last_login'   => $last_login,
+        'sss'          => $sss,
+        'philhealth'   => $philhealth,
+        'pagibig'      => $pagibig,
+        'tin'          => $tin,
+        'valid_id'     => $valid_id,
+        'last_activity'=> $last_act,
+        'act_count'    => $act_count
+    ];
+}
+
+// ── 1. DIRECT EXCEL (.XLS) HANDLER ──────────────────────────────────────────
 if ($format === 'excel') {
-    $filename = "{$clean_station_name}_Employee_List_{$today}.csv";
+    $filename = "Petron_User_Management_Report_{$today}.xls";
+    header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+
+    echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<style>
+    body { font-family: Arial, sans-serif; font-size: 11px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #000000; padding: 6px 10px; text-align: left; }
+    th { background-color: #00264D; color: #ffffff; font-weight: bold; text-align: center; }
+    .hdr { font-size: 14px; font-weight: bold; color: #00264D; }
+</style>
+</head>
+<body>
+<table>
+    <tr><td colspan="15" class="hdr">PETRON STATION MANAGEMENT SYSTEM</td></tr>
+    <tr><td colspan="15" class="hdr">CONSOLIDATED EMPLOYEE MASTER REPORT</td></tr>
+    <tr><td colspan="3"><b>Station/Branch:</b></td><td colspan="12">' . htmlspecialchars($station_name) . '</td></tr>
+    <tr><td colspan="3"><b>Generated By:</b></td><td colspan="12">' . htmlspecialchars(trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')) ?: $me['username']) . '</td></tr>
+    <tr><td colspan="3"><b>Generated Date:</b></td><td colspan="12">' . htmlspecialchars($now_formatted) . '</td></tr>
+    <tr><td colspan="3"><b>Total Employees:</b></td><td colspan="12">' . $record_count . '</td></tr>
+    <tr><td colspan="15"></td></tr>
+    <tr>
+        <th>Employee ID</th>
+        <th>Full Name</th>
+        <th>Username</th>
+        <th>Role</th>
+        <th>Branch/Station</th>
+        <th>Account Status</th>
+        <th>Date Created</th>
+        <th>Last Login</th>
+        <th>SSS Status</th>
+        <th>PhilHealth Status</th>
+        <th>Pag-IBIG Status</th>
+        <th>TIN Status</th>
+        <th>Valid ID Status</th>
+        <th>Last Activity</th>
+        <th>Activity Count</th>
+    </tr>';
+
+    foreach ($master_rows as $row) {
+        echo '<tr>
+            <td>' . htmlspecialchars($row['emp_id']) . '</td>
+            <td>' . htmlspecialchars($row['full_name']) . '</td>
+            <td>' . htmlspecialchars($row['username']) . '</td>
+            <td>' . htmlspecialchars($row['role']) . '</td>
+            <td>' . htmlspecialchars($row['station']) . '</td>
+            <td>' . htmlspecialchars($row['status']) . '</td>
+            <td>' . htmlspecialchars($row['created_at']) . '</td>
+            <td>' . htmlspecialchars($row['last_login']) . '</td>
+            <td>' . htmlspecialchars($row['sss']) . '</td>
+            <td>' . htmlspecialchars($row['philhealth']) . '</td>
+            <td>' . htmlspecialchars($row['pagibig']) . '</td>
+            <td>' . htmlspecialchars($row['tin']) . '</td>
+            <td>' . htmlspecialchars($row['valid_id']) . '</td>
+            <td>' . htmlspecialchars($row['last_activity']) . '</td>
+            <td>' . $row['act_count'] . '</td>
+        </tr>';
+    }
+
+    echo '</table></body></html>';
+    exit;
+}
+
+// ── 2. DIRECT CSV HANDLER ──────────────────────────────────────────────────
+if ($format === 'csv') {
+    $filename = "Petron_User_Management_Report_{$today}.csv";
     
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     
     $output = fopen('php://output', 'w');
-    // UTF-8 BOM for Excel compatibility
     fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
     
-    // Header Info Rows
     fputcsv($output, ['PETRON STATION MANAGEMENT SYSTEM']);
-    fputcsv($output, ['EMPLOYEE MASTER LIST']);
+    fputcsv($output, ['CONSOLIDATED EMPLOYEE MASTER REPORT']);
     fputcsv($output, ['Station/Branch:', $station_name]);
     fputcsv($output, ['Generated By:', trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')) ?: $me['username']]);
     fputcsv($output, ['Generated Date:', $now_formatted]);
     fputcsv($output, ['Total Employees:', $record_count]);
-    fputcsv($output, []); // Empty row gap
+    fputcsv($output, []);
     
-    // Column Headers
     fputcsv($output, [
         'Employee ID',
         'Full Name',
         'Username',
         'Role',
-        'Station/Branch',
+        'Branch/Station',
         'Account Status',
         'Date Created',
-        'Last Login'
-    ]);
-    
-    foreach ($employees as $emp) {
-        $emp_id    = $emp['employee_id'] ?: ('EMP-' . str_pad($emp['id'], 4, '0', STR_PAD_LEFT));
-        $name      = trim($emp['full_name']) ?: $emp['username'];
-        $role_name = get_export_role_label($emp['role']);
-        $stn_name  = $emp['station_name'] ?: $station_name;
-        $status    = ucfirst(strtolower(trim($emp['status'] ?: 'Active')));
-        $created   = $emp['created_at'] ? date('M j, Y', strtotime($emp['created_at'])) : '—';
-        $last_login= $emp['updated_at'] ? date('M j, Y h:i A', strtotime($emp['updated_at'])) : '—';
-        
-        fputcsv($output, [
-            $emp_id,
-            $name,
-            '@' . $emp['username'],
-            $role_name,
-            $stn_name,
-            $status,
-            $created,
-            $last_login
-        ]);
-    }
-    
-    fclose($output);
-    exit;
-}
-
-// ── 2. EXCEL EXPORT (EMPLOYEE + DOCUMENT STATUS) ───────────────────────────
-if ($format === 'excel_docs') {
-    $filename = "{$clean_station_name}_Employee_Document_Status_{$today}.csv";
-    
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    
-    $output = fopen('php://output', 'w');
-    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
-    
-    fputcsv($output, ['PETRON STATION MANAGEMENT SYSTEM']);
-    fputcsv($output, ['EMPLOYEE DOCUMENT STATUS REPORT']);
-    fputcsv($output, ['Station/Branch:', $station_name]);
-    fputcsv($output, ['Generated By:', trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')) ?: $me['username']]);
-    fputcsv($output, ['Generated Date:', $now_formatted]);
-    fputcsv($output, []);
-    
-    fputcsv($output, [
-        'Employee ID',
-        'Employee Name',
-        'Role',
+        'Last Login',
         'SSS Status',
         'PhilHealth Status',
         'Pag-IBIG Status',
         'TIN Status',
         'Valid ID Status',
-        'Employment Docs Status',
-        'Other Docs Status'
+        'Last Activity',
+        'Activity Count'
     ]);
     
-    // Fetch all document records
-    $docs_map = [];
-    try {
-        $docs_query = $pdo->query("SELECT user_id, doc_type, status FROM employee_documents");
-        while ($d = $docs_query->fetch(PDO::FETCH_ASSOC)) {
-            $docs_map[$d['user_id']][$d['doc_type']] = $d['status'];
-        }
-    } catch (Exception $e) {}
-    
-    foreach ($employees as $emp) {
-        $uid       = $emp['id'];
-        $emp_id    = $emp['employee_id'] ?: ('EMP-' . str_pad($uid, 4, '0', STR_PAD_LEFT));
-        $name      = trim($emp['full_name']) ?: $emp['username'];
-        $role_name = get_export_role_label($emp['role']);
-        
-        $sss        = $docs_map[$uid]['SSS'] ?? 'Complete';
-        $philhealth = $docs_map[$uid]['PhilHealth'] ?? 'Complete';
-        $pagibig    = $docs_map[$uid]['Pag-IBIG'] ?? 'Complete';
-        $tin        = $docs_map[$uid]['TIN'] ?? 'Complete';
-        $valid_id   = $docs_map[$uid]['Valid ID'] ?? 'Complete';
-        $employment = $docs_map[$uid]['Employment'] ?? 'Complete';
-        $other      = $docs_map[$uid]['Other'] ?? 'Complete';
-        
+    foreach ($master_rows as $row) {
         fputcsv($output, [
-            $emp_id,
-            $name,
-            $role_name,
-            $sss,
-            $philhealth,
-            $pagibig,
-            $tin,
-            $valid_id,
-            $employment,
-            $other
+            $row['emp_id'],
+            $row['full_name'],
+            $row['username'],
+            $row['role'],
+            $row['station'],
+            $row['status'],
+            $row['created_at'],
+            $row['last_login'],
+            $row['sss'],
+            $row['philhealth'],
+            $row['pagibig'],
+            $row['tin'],
+            $row['valid_id'],
+            $row['last_activity'],
+            $row['act_count']
         ]);
     }
     
@@ -223,21 +361,9 @@ if ($format === 'excel_docs') {
     exit;
 }
 
-// ── 3. PDF EXPORT (EMPLOYEE MASTER LIST OR DOCUMENT STATUS) ─────────────────
-$is_docs_pdf = ($format === 'pdf_docs');
-$title = $is_docs_pdf ? 'EMPLOYEE DOCUMENT STATUS REPORT' : 'EMPLOYEE MASTER LIST';
+// ── 2. PDF & PRINT HANDLERS ─────────────────────────────────────────────────
 $admin_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')) ?: $me['username'];
-
-// Fetch document status map if PDF docs report
-$docs_map = [];
-if ($is_docs_pdf) {
-    try {
-        $docs_query = $pdo->query("SELECT user_id, doc_type, status FROM employee_documents");
-        while ($d = $docs_query->fetch(PDO::FETCH_ASSOC)) {
-            $docs_map[$d['user_id']][$d['doc_type']] = $d['status'];
-        }
-    } catch (Exception $e) {}
-}
+$is_print_mode = ($format === 'print');
 
 ob_start();
 ?>
@@ -245,42 +371,43 @@ ob_start();
 <html>
 <head>
 <meta charset="utf-8">
+<title>USER MANAGEMENT REPORT - Petron Station Management System</title>
 <style>
-    body { font-family: 'Helvetica', 'Arial', sans-serif; color: #1e293b; font-size: 11px; margin: 0; padding: 0; }
-    .header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; border-bottom: 2px solid #002F70; padding-bottom: 10px; }
-    .header-logo { font-size: 18px; font-weight: bold; color: #002F70; text-transform: uppercase; letter-spacing: 0.5px; }
-    .header-title { font-size: 14px; font-weight: bold; color: #334155; margin-top: 4px; text-transform: uppercase; }
-    .meta-table { width: 100%; margin-bottom: 15px; background: #f8fafc; padding: 10px 14px; border-radius: 6px; border: 1px solid #e2e8f0; }
-    .meta-table td { padding: 4px 8px; font-size: 11px; }
-    .meta-lbl { font-weight: bold; color: #002F70; width: 120px; }
-    .data-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    .data-table th { background: #002F70; color: #ffffff; padding: 8px 10px; font-size: 10px; text-transform: uppercase; font-weight: bold; text-align: left; border: 1px solid #002F70; }
-    .data-table td { padding: 8px 10px; font-size: 10.5px; border-bottom: 1px solid #e2e8f0; border-left: 1px solid #f1f5f9; border-right: 1px solid #f1f5f9; }
-    .data-table tr:nth-child(even) { background: #f8fafc; }
-    .status-badge { font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 10px; display: inline-block; }
-    .status-active { background: #dcfce7; color: #15803d; }
-    .status-inactive { background: #fee2e2; color: #b91c1c; }
-    .status-complete { color: #16a34a; font-weight: bold; }
-    .status-missing { color: #dc2626; font-weight: bold; }
-    .footer-table { width: 100%; margin-top: 25px; border-top: 1px solid #cbd5e1; padding-top: 10px; font-size: 10px; color: #64748b; }
+    body { font-family: dejavusans, sans-serif; font-size: 9px; color: #1e293b; margin: 0; padding: 0; }
+    .hdr-box { text-align: center; margin-bottom: 12px; border-bottom: 2px solid #00264D; padding-bottom: 8px; }
+    .hdr-box h2 { font-size: 15px; font-weight: bold; color: #00264D; text-transform: uppercase; margin: 0 0 2px 0; letter-spacing: 0.5px; }
+    .hdr-box h4 { font-size: 12px; font-weight: bold; color: #00264D; text-transform: uppercase; margin: 0 0 2px 0; }
+    .hdr-box p { font-size: 10px; color: #475569; margin: 0; font-weight: bold; }
+    
+    .meta-tbl { width: 100%; margin-bottom: 10px; background: #f8fafc; border-collapse: collapse; }
+    .meta-tbl td { padding: 4px 6px; font-size: 9.5px; border: 1px solid #cbd5e1; }
+    .meta-lbl { font-weight: bold; color: #00264D; background: #f1f5f9; width: 110px; }
+    
+    .data-tbl { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    .data-tbl th { background: #00264D; color: #ffffff; padding: 6px 4px; font-size: 8.5px; text-transform: uppercase; font-weight: bold; text-align: left; border: 1px solid #00264D; white-space: nowrap; }
+    .data-tbl td { padding: 5px 4px; font-size: 8.5px; border: 1px solid #cbd5e1; vertical-align: middle; }
+    .data-tbl tr:nth-child(even) { background: #f8fafc; }
+    
+    .st-act { color: #15803d; font-weight: bold; }
+    .st-inact { color: #b91c1c; font-weight: bold; }
+    .st-ok { color: #16a34a; font-weight: bold; }
+    .st-miss { color: #dc2626; font-weight: bold; }
+    
+    @media print {
+        @page { size: A4 landscape; margin: 8mm; }
+        body { padding: 0; }
+    }
 </style>
 </head>
 <body>
 
-<table class="header-table">
-    <tr>
-        <td>
-            <div class="header-logo">PETRON STATION MANAGEMENT SYSTEM</div>
-            <div class="header-title"><?php echo htmlspecialchars($title); ?></div>
-        </td>
-        <td style="text-align: right; vertical-align: top;">
-            <div style="font-size: 11px; font-weight: bold; color: #002F70;"><?php echo htmlspecialchars($station_name); ?></div>
-            <div style="font-size: 10px; color: #64748b;"><?php echo htmlspecialchars($now_formatted); ?></div>
-        </td>
-    </tr>
-</table>
+<div class="hdr-box">
+    <h2>PETRON STATION MANAGEMENT SYSTEM</h2>
+    <h4>USER MANAGEMENT REPORT</h4>
+    <p><?php echo htmlspecialchars($station_name); ?></p>
+</div>
 
-<table class="meta-table">
+<table class="meta-tbl">
     <tr>
         <td class="meta-lbl">Station / Branch:</td>
         <td><strong><?php echo htmlspecialchars($station_name); ?></strong></td>
@@ -290,101 +417,71 @@ ob_start();
     <tr>
         <td class="meta-lbl">Generated Date:</td>
         <td><?php echo htmlspecialchars($now_formatted); ?></td>
-        <td class="meta-lbl">Total Records:</td>
-        <td><strong><?php echo $record_count; ?> Employee(s)</strong></td>
+        <td class="meta-lbl">Total Employees:</td>
+        <td><strong><?php echo $record_count; ?> Employee(s) Listed</strong></td>
     </tr>
 </table>
 
-<?php if (!$is_docs_pdf): ?>
-<!-- MASTER EMPLOYEE LIST TABLE -->
-<table class="data-table">
+<table class="data-tbl">
     <thead>
         <tr>
-            <th style="width: 15%;">EMPLOYEE ID</th>
-            <th style="width: 25%;">EMPLOYEE NAME</th>
-            <th style="width: 18%;">USERNAME</th>
-            <th style="width: 15%;">ROLE</th>
-            <th style="width: 15%;">STATUS</th>
-            <th style="width: 12%;">DATE CREATED</th>
+            <th>EMP ID</th>
+            <th>FULL NAME</th>
+            <th>USERNAME</th>
+            <th>ROLE</th>
+            <th>BRANCH</th>
+            <th>STATUS</th>
+            <th>CREATED</th>
+            <th>LAST LOGIN</th>
+            <th>SSS</th>
+            <th>PHILHEALTH</th>
+            <th>PAG-IBIG</th>
+            <th>TIN</th>
+            <th>VALID ID</th>
+            <th>LAST ACTIVITY</th>
+            <th>COUNT</th>
         </tr>
     </thead>
     <tbody>
-        <?php foreach ($employees as $emp): 
-            $emp_id    = $emp['employee_id'] ?: ('EMP-' . str_pad($emp['id'], 4, '0', STR_PAD_LEFT));
-            $name      = trim($emp['full_name']) ?: $emp['username'];
-            $role_name = get_export_role_label($emp['role']);
-            $status    = ucfirst(strtolower(trim($emp['status'] ?: 'Active')));
-            $created   = $emp['created_at'] ? date('M j, Y', strtotime($emp['created_at'])) : '—';
-            $is_act    = (strtolower($status) === 'active');
+        <?php foreach ($master_rows as $row): 
+            $is_act = (strtolower($row['status']) === 'active');
         ?>
         <tr>
-            <td style="font-family: monospace; font-weight: bold; color: #002F70;"><?php echo htmlspecialchars($emp_id); ?></td>
-            <td><strong><?php echo htmlspecialchars($name); ?></strong></td>
-            <td style="color: #475569;">@<?php echo htmlspecialchars($emp['username']); ?></td>
-            <td><?php echo htmlspecialchars($role_name); ?></td>
-            <td>
-                <span class="status-badge <?php echo $is_act ? 'status-active' : 'status-inactive'; ?>">
-                    <?php echo htmlspecialchars($status); ?>
-                </span>
-            </td>
-            <td><?php echo htmlspecialchars($created); ?></td>
+            <td><strong><?php echo htmlspecialchars($row['emp_id']); ?></strong></td>
+            <td><strong><?php echo htmlspecialchars($row['full_name']); ?></strong></td>
+            <td style="color: #475569;"><?php echo htmlspecialchars($row['username']); ?></td>
+            <td><?php echo htmlspecialchars($row['role']); ?></td>
+            <td><?php echo htmlspecialchars($row['station']); ?></td>
+            <td><span class="<?php echo $is_act ? 'st-act' : 'st-inact'; ?>"><?php echo htmlspecialchars($row['status']); ?></span></td>
+            <td><?php echo htmlspecialchars($row['created_at']); ?></td>
+            <td><span style="font-size: 8px; color: #475569;"><?php echo htmlspecialchars($row['last_login']); ?></span></td>
+            <td><span class="<?php echo strtolower($row['sss']) === 'complete' ? 'st-ok' : 'st-miss'; ?>"><?php echo htmlspecialchars($row['sss']); ?></span></td>
+            <td><span class="<?php echo strtolower($row['philhealth']) === 'complete' ? 'st-ok' : 'st-miss'; ?>"><?php echo htmlspecialchars($row['philhealth']); ?></span></td>
+            <td><span class="<?php echo strtolower($row['pagibig']) === 'complete' ? 'st-ok' : 'st-miss'; ?>"><?php echo htmlspecialchars($row['pagibig']); ?></span></td>
+            <td><span class="<?php echo strtolower($row['tin']) === 'complete' ? 'st-ok' : 'st-miss'; ?>"><?php echo htmlspecialchars($row['tin']); ?></span></td>
+            <td><span class="<?php echo strtolower($row['valid_id']) === 'complete' ? 'st-ok' : 'st-miss'; ?>"><?php echo htmlspecialchars($row['valid_id']); ?></span></td>
+            <td><span style="font-size: 8px; color: #475569;"><?php echo htmlspecialchars($row['last_activity']); ?></span></td>
+            <td style="text-align: center; font-weight: bold; color: #00264D;"><?php echo $row['act_count']; ?></td>
         </tr>
         <?php endforeach; ?>
-        <?php if (empty($employees)): ?>
+        <?php if (empty($master_rows)): ?>
         <tr>
-            <td colspan="6" style="text-align: center; padding: 20px; color: #94a3b8;">No employee records found for this station.</td>
+            <td colspan="15" style="text-align: center; padding: 15px; color: #94a3b8;">No employee records found.</td>
         </tr>
         <?php endif; ?>
     </tbody>
 </table>
 
-<?php else: ?>
-<!-- EMPLOYEE DOCUMENT STATUS TABLE -->
-<table class="data-table">
-    <thead>
-        <tr>
-            <th style="width: 12%;">EMP ID</th>
-            <th style="width: 22%;">EMPLOYEE NAME</th>
-            <th style="width: 12%;">ROLE</th>
-            <th style="width: 11%;">SSS</th>
-            <th style="width: 11%;">PHILHEALTH</th>
-            <th style="width: 11%;">PAG-IBIG</th>
-            <th style="width: 11%;">TIN</th>
-            <th style="width: 10%;">VALID ID</th>
-        </tr>
-    </thead>
-    <tbody>
-        <?php foreach ($employees as $emp): 
-            $uid       = $emp['id'];
-            $emp_id    = $emp['employee_id'] ?: ('EMP-' . str_pad($uid, 4, '0', STR_PAD_LEFT));
-            $name      = trim($emp['full_name']) ?: $emp['username'];
-            $role_name = get_export_role_label($emp['role']);
-            
-            $sss        = $docs_map[$uid]['SSS'] ?? 'Complete';
-            $philhealth = $docs_map[$uid]['PhilHealth'] ?? 'Complete';
-            $pagibig    = $docs_map[$uid]['Pag-IBIG'] ?? 'Complete';
-            $tin        = $docs_map[$uid]['TIN'] ?? 'Complete';
-            $valid_id   = $docs_map[$uid]['Valid ID'] ?? 'Complete';
-        ?>
-        <tr>
-            <td style="font-family: monospace; font-weight: bold; color: #002F70;"><?php echo htmlspecialchars($emp_id); ?></td>
-            <td><strong><?php echo htmlspecialchars($name); ?></strong></td>
-            <td><?php echo htmlspecialchars($role_name); ?></td>
-            <td><span class="<?php echo strtolower($sss) === 'complete' ? 'status-complete' : 'status-missing'; ?>"><?php echo htmlspecialchars($sss); ?></span></td>
-            <td><span class="<?php echo strtolower($philhealth) === 'complete' ? 'status-complete' : 'status-missing'; ?>"><?php echo htmlspecialchars($philhealth); ?></span></td>
-            <td><span class="<?php echo strtolower($pagibig) === 'complete' ? 'status-complete' : 'status-missing'; ?>"><?php echo htmlspecialchars($pagibig); ?></span></td>
-            <td><span class="<?php echo strtolower($tin) === 'complete' ? 'status-complete' : 'status-missing'; ?>"><?php echo htmlspecialchars($tin); ?></span></td>
-            <td><span class="<?php echo strtolower($valid_id) === 'complete' ? 'status-complete' : 'status-missing'; ?>"><?php echo htmlspecialchars($valid_id); ?></span></td>
-        </tr>
-        <?php endforeach; ?>
-    </tbody>
-</table>
-<?php endif; ?>
-
-<table class="footer-table">
+<table style="width: 100%; margin-top: 25px; border-collapse: collapse; page-break-inside: avoid;">
     <tr>
-        <td>Total Employees Listed: <strong><?php echo $record_count; ?></strong></td>
-        <td style="text-align: right;">Generated from Petron Station Management System</td>
+        <td style="width: 65%;"></td>
+        <td style="width: 35%; text-align: center; vertical-align: bottom;">
+            <div style="font-size: 10px; font-weight: bold; color: #00264D; text-transform: uppercase; text-align: left; margin-bottom: 30px;">PREPARED BY:</div>
+            <div style="border-top: 1.5px solid #00264D; width: 100%; margin-bottom: 3px;"></div>
+            <div style="font-size: 10px; font-weight: bold; color: #1e293b; text-transform: uppercase;"><?php echo htmlspecialchars($admin_name); ?></div>
+            <div style="font-size: 9px; color: #475569; font-weight: bold; margin-top: 1px;"><?php echo htmlspecialchars(get_export_role_label($me['role'])); ?></div>
+            <div style="font-size: 8px; color: #64748b; margin-top: 2px;">Signature over Printed Name</div>
+        </td>
     </tr>
 </table>
 
@@ -393,29 +490,38 @@ ob_start();
 <?php
 $html = ob_get_clean();
 
+if ($is_print_mode) {
+    $print_script = "<script>window.onload = function() { window.focus(); window.print(); }; window.onafterprint = function() { try { window.close(); } catch(e) {} };</script>";
+    $html = str_replace("</body>", $print_script . "</body>", $html);
+    header("Content-Type: text/html; charset=utf-8");
+    echo $html;
+    exit;
+}
+
 try {
     $mpdf = new \Mpdf\Mpdf([
         'mode' => 'utf-8',
-        'format' => 'A4',
-        'margin_left' => 12,
-        'margin_right' => 12,
-        'margin_top' => 12,
-        'margin_bottom' => 14,
+        'format' => 'A4-L',
+        'margin_left' => 8,
+        'margin_right' => 8,
+        'margin_top' => 8,
+        'margin_bottom' => 10,
         'tempDir' => __DIR__ . '/../scratch'
     ]);
     
-    $mpdf->SetTitle($title . ' - ' . $station_name);
+    $mpdf->SetTitle('User Management Report - ' . $station_name);
     $mpdf->SetAuthor('Petron Station Management System');
     $mpdf->WriteHTML($html);
     
-    $pdf_filename = "{$clean_station_name}_Employee_List_{$today}.pdf";
-    if ($is_docs_pdf) {
-        $pdf_filename = "{$clean_station_name}_Employee_Document_Status_{$today}.pdf";
-    }
+    $ts_now = date('Y-m-d_His');
+    $pdf_filename = "Petron_User_Management_Report_{$ts_now}.pdf";
     
-    $mpdf->Output($pdf_filename, 'I'); // Inline view in browser
-} catch (\Mpdf\MpdfException $e) {
-    // HTML fallback print mode if PDF engine fails
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: inline; filename="' . $pdf_filename . '"');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    
+    $mpdf->Output($pdf_filename, 'I');
+} catch (\Throwable $e) {
     header('Content-Type: text/html; charset=utf-8');
     echo $html;
     echo '<script>window.print();</script>';

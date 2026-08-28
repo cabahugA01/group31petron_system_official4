@@ -116,17 +116,29 @@ if (isset($_GET['ajax_emp_details']) && !empty($_GET['user_id'])) {
 
     $docsStmt = $pdo->prepare("SELECT * FROM employee_documents WHERE user_id = ? ORDER BY id ASC");
     $docsStmt->execute([$uid]);
-    $docs = $docsStmt->fetchAll(PDO::FETCH_ASSOC);
+    $existing_docs = $docsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $docs_by_type = [];
+    foreach ($existing_docs as $ed) {
+        $docs_by_type[$ed['doc_type']] = $ed;
+    }
     
     $default_types = ['SSS', 'PhilHealth', 'Pag-IBIG', 'TIN', 'Valid ID'];
-    $existing_types = array_column($docs, 'doc_type');
+    $docs = [];
     foreach ($default_types as $dt) {
-        if (!in_array($dt, $existing_types)) {
+        if (isset($docs_by_type[$dt])) {
+            $rec = $docs_by_type[$dt];
+            if (empty($rec['file_name']) && strtolower($rec['status']) === 'complete') {
+                $rec['status'] = 'Missing';
+            }
+            $docs[] = $rec;
+        } else {
             $docs[] = [
                 'user_id' => $uid,
                 'doc_type' => $dt,
-                'status' => 'Complete',
+                'status' => 'Missing',
                 'file_name' => null,
+                'file_path' => null,
                 'uploaded_at' => null
             ];
         }
@@ -1112,32 +1124,57 @@ include __DIR__ . '/../partials/header.php';
     box-sizing: border-box;
 }
 
-/* COMPREHENSIVE VIEW EMPLOYEE DETAILS MODAL STYLES */
+/* COMPREHENSIVE VIEW EMPLOYEE DETAILS MODAL STYLES (Reports-style sub-tabs) */
 .vtab-nav {
-    display: flex;
-    border-bottom: 2px solid #e2e8f0;
-    margin-bottom: 16px;
-    gap: 4px;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    margin-bottom: 18px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-bottom: 3px solid #00264D !important;
+    border-radius: 6px !important;
+    overflow: hidden !important;
+    gap: 0 !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    width: 100% !important;
 }
 .vtab-btn {
-    padding: 10px 16px;
-    font-size: 12px;
-    font-weight: 700;
-    color: #64748b;
-    background: #f8fafc;
-    border: 1px solid #cbd5e1;
-    border-bottom: none;
-    border-radius: 8px 8px 0 0;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    transition: all 0.15s ease;
+    flex: 1 !important;
+    padding: 11px 16px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    color: #334155 !important;
+    background: #ffffff !important;
+    border: none !important;
+    border-right: 1px solid #cbd5e1 !important;
+    border-radius: 0 !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    transition: all 0.15s ease !important;
+}
+.vtab-btn:last-child {
+    border-right: none !important;
+}
+.vtab-btn:hover {
+    background: #f1f5f9 !important;
+    color: #00264D !important;
 }
 .vtab-btn.active {
-    background: #002F70 !important;
+    background: #00264D !important;
     color: #ffffff !important;
-    border-color: #002F70 !important;
+    font-weight: 800 !important;
+}
+.vtab-btn.active i,
+.vtab-btn.active span {
+    color: #ffffff !important;
+}
+.vtab-btn i {
+    font-size: 13px !important;
 }
 .vtab-pane {
     display: none;
@@ -1174,6 +1211,91 @@ include __DIR__ . '/../partials/header.php';
     font-weight: 600;
 }
 
+
+/* Reports-Style Export Bar & Buttons (Identical to Reports Module) */
+.rpt-export-group {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    margin-left: auto !important;
+    white-space: nowrap !important;
+}
+.rpt-export-btn {
+    padding: 7px 13px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    background: #ffffff !important;
+    border: 1px solid !important;
+    transition: all 0.18s !important;
+    text-decoration: none !important;
+}
+.rpt-btn-print  { color: #475569 !important; border-color: transparent !important; background: transparent !important; }
+.rpt-btn-print:hover  { background: #f1f5f9 !important; color: #475569 !important; }
+.rpt-btn-pdf   { color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
+.rpt-btn-pdf:hover   { background: #fef2f2 !important; color: #dc2626 !important; }
+.rpt-btn-excel { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+.rpt-btn-excel:hover { background: #f0fdf4 !important; color: #16a34a !important; }
+.rpt-btn-csv   { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+.rpt-btn-csv:hover   { background: #f0fdf4 !important; color: #16a34a !important; }
+
+
+/* Exact Horizontal Filter Bar Alignment Overrides */
+.um-filter-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+    margin-bottom: 22px !important;
+    background: transparent !important;
+    padding: 0 !important;
+    border: none !important;
+    flex-wrap: wrap !important;
+    width: 100% !important;
+}
+.um-filter-left {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex-wrap: wrap !important;
+}
+.um-filter-right {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-wrap: wrap !important;
+    margin-left: auto !important;
+}
+.um-flt-item {
+    height: 32px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 4px !important;
+    font-size: 12px !important;
+    background: #ffffff !important;
+    color: #334155 !important;
+    display: inline-block !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+}
+
+
+/* Filter Button High Contrast White Text */
+.rpt-btn-apply {
+    background: #00264D !important;
+    background-color: #00264D !important;
+    color: #ffffff !important;
+    border: 1px solid #00264D !important;
+}
+.rpt-btn-apply i,
+.rpt-btn-apply span,
+.rpt-btn-apply * {
+    color: #ffffff !important;
+}
+
 </style>
 
 <div class="um-wrap">
@@ -1181,13 +1303,6 @@ include __DIR__ . '/../partials/header.php';
     <div>
         <h1 class="h1">USER MANAGEMENT</h1>
     </div>
-    <?php if ($my_role === 'admin' || $my_role === 'superadmin'): ?>
-    <div class="actions">
-        <button type="button" onclick="openAddModal()" class="btn-header-add">
-            <i class="fas fa-plus"></i> <span>Add New User</span>
-        </button>
-    </div>
-    <?php endif; ?>
 </div>
 
 <?php if ($msg): ?>
@@ -1214,6 +1329,70 @@ setTimeout(function() {
     }
 }, 8000);
 </script>
+<?php endif; ?>
+
+<!-- EXACT USER MANAGEMENT FILTER & EXPORT ARRANGEMENT -->
+<div class="um-filter-row">
+    <!-- LEFT SIDE: Search employee, All Roles, All Status, Filter, Clear -->
+    <div class="um-filter-left">
+        <!-- 1. Search employee -->
+        <div style="position: relative; width: 190px; display: inline-block;">
+            <i class="fas fa-search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 12px;"></i>
+            <input type="text" id="empSearchInput" onkeyup="filterEmployeeTable()" placeholder="Search employee..." class="um-flt-item" style="padding-left: 30px; width: 190px !important;">
+        </div>
+        
+        <!-- 2. All Roles -->
+        <select id="empRoleFilter" onchange="filterEmployeeTable()" class="um-flt-item" style="width: 110px !important; padding: 0 8px;">
+            <option value="">All Roles</option>
+            <option value="manager">Manager</option>
+            <option value="staff">Staff</option>
+        </select>
+        
+        <!-- 3. All Status -->
+        <select id="empStatusFilter" onchange="filterEmployeeTable()" class="um-flt-item" style="width: 110px !important; padding: 0 8px;">
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="archived">Archived</option>
+        </select>
+
+        <!-- 4. Filter Button -->
+        <button type="button" onclick="filterEmployeeTable()" class="rpt-btn-apply" style="height: 32px !important; padding: 0 14px !important; font-size: 12px !important; font-weight: 700 !important; border-radius: 4px !important; background: #00264D !important; color: #ffffff !important; border: 1px solid #00264D !important; display: inline-flex !important; align-items: center !important; gap: 6px !important;">
+            <i class="fas fa-filter" style="color: #ffffff !important;"></i> <span style="color: #ffffff !important;">Filter</span>
+        </button>
+
+        <!-- 5. Clear Button -->
+        <button type="button" onclick="clearEmployeeFilters()" class="btn-plain-cancel" style="height: 32px !important; padding: 0 12px !important; font-size: 12px !important; border-radius: 4px !important;" title="Reset all filters">
+            <i class="fas fa-undo"></i> Clear
+        </button>
+    </div>
+
+    <!-- RIGHT SIDE: Print, PDF, Excel, CSV ONLY -->
+    <div class="um-filter-right">
+        <div class="rpt-export-group" style="margin-left: 0 !important; gap: 4px !important;">
+            <button type="button" class="rpt-export-btn rpt-btn-print" onclick="triggerEmployeeExport('print')">
+                <i class="fas fa-print"></i> Print
+            </button>
+            <button type="button" class="rpt-export-btn rpt-btn-pdf" onclick="triggerEmployeeExport('pdf')">
+                <i class="fas fa-file-pdf"></i> PDF
+            </button>
+            <button type="button" class="rpt-export-btn rpt-btn-excel" onclick="triggerEmployeeExport('excel')">
+                <i class="fas fa-file-excel"></i> Excel
+            </button>
+            <button type="button" class="rpt-export-btn rpt-btn-csv" onclick="triggerEmployeeExport('csv')">
+                <i class="fas fa-file-csv"></i> CSV
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ADD NEW USER BUTTON (BELOW FILTERS & EXPORTS, RIGHT ABOVE TABLE/TABS) -->
+<?php if ($my_role === 'admin' || $my_role === 'superadmin'): ?>
+<div style="display: flex; justify-content: flex-end; margin-bottom: 14px;">
+    <button type="button" onclick="openAddModal()" class="btn-header-add">
+        <i class="fas fa-plus"></i> <span>Add New User</span>
+    </button>
+</div>
 <?php endif; ?>
 
 <!-- DUAL TAB NAVIGATION -->
@@ -1595,7 +1774,7 @@ setTimeout(function() {
         <div class="modal-header">
             <div>
                 <span class="modal-title" id="vmodal_title"><i class="fas fa-user-circle"></i> Employee Details</span>
-                <div style="font-size: 11.5px; color: #64748b; margin-top: 2px;" id="vmodal_sub">Master record and supporting documentation</div>
+                
             </div>
             <button class="modal-close" onclick="closeModal('viewModal')">&times;</button>
         </div>
@@ -1608,12 +1787,6 @@ setTimeout(function() {
                 </button>
                 <button type="button" class="vtab-btn" id="btn_vtab_docs" onclick="switchViewTab('docs')">
                     <i class="fas fa-folder-open"></i> Documents
-                </button>
-                <button type="button" class="vtab-btn" id="btn_vtab_login" onclick="switchViewTab('login')">
-                    <i class="fas fa-history"></i> Login History
-                </button>
-                <button type="button" class="vtab-btn" id="btn_vtab_activity" onclick="switchViewTab('activity')">
-                    <i class="fas fa-list-alt"></i> Audit Trail
                 </button>
             </div>
 
@@ -1720,37 +1893,7 @@ setTimeout(function() {
                     <?php endif; ?>
                 </div>
 
-                <!-- TAB 3: LOGIN HISTORY -->
-                <div id="vtab_login" class="vtab-pane">
-                    <table class="table" style="font-size: 12px; width: 100%;">
-                        <thead>
-                            <tr>
-                                <th>TIMESTAMP</th>
-                                <th>ACTION</th>
-                                <th>SHIFT PERIOD</th>
-                            </tr>
-                        </thead>
-                        <tbody id="vlogin_tbody">
-                            <!-- Populated via JS -->
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- TAB 4: ACTIVITY LOGS -->
-                <div id="vtab_activity" class="vtab-pane">
-                    <table class="table" style="font-size: 12px; width: 100%;">
-                        <thead>
-                            <tr>
-                                <th>TIMESTAMP</th>
-                                <th>ACTION / ACTIVITY</th>
-                                <th>DETAILS</th>
-                            </tr>
-                        </thead>
-                        <tbody id="vact_tbody">
-                            <!-- Populated via JS -->
-                        </tbody>
-                    </table>
-                </div>
+                
             </div>
         </div>
 
@@ -2012,6 +2155,17 @@ function openRestoreModal(userId, fullName) {
 }
 
 
+
+function escapeHtml(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 function switchViewTab(tabName) {
     document.querySelectorAll(".vtab-btn").forEach(btn => btn.classList.remove("active"));
     document.querySelectorAll(".vtab-pane").forEach(pane => pane.classList.remove("active"));
@@ -2047,7 +2201,7 @@ function openViewEmployeeModal(userId) {
             const info = data.info || {};
             const fullName = ((info.first_name || "") + " " + (info.last_name || "")).trim() || info.username;
             document.getElementById("vmodal_title").innerHTML = '<i class="fas fa-user-circle" style="color:#002F70;"></i> ' + escapeHtml(fullName);
-            document.getElementById("vmodal_sub").innerText = "Employee ID: " + (info.employee_id || "—") + " | Role: " + (info.role || "Staff");
+            
 
             document.getElementById("vi_emp_id").innerText = info.employee_id || "—";
             document.getElementById("vi_full_name").innerText = fullName;
@@ -2062,48 +2216,55 @@ function openViewEmployeeModal(userId) {
 
             // Documents Table
             const docsBody = document.getElementById("vdocs_tbody");
-            docsBody.innerHTML = "";
-            (data.documents || []).forEach(doc => {
-                const tr = document.createElement("tr");
-                const st = (doc.status || "Complete").toLowerCase();
-                let stBadge = '<span style="color:#16a34a; font-weight:700;">Complete</span>';
-                if (st === "missing") stBadge = '<span style="color:#dc2626; font-weight:700;">Missing</span>';
-                else if (st === "expired" || st === "expiring soon") stBadge = '<span style="color:#d97706; font-weight:700;">' + escapeHtml(doc.status) + '</span>';
-
-                const fileCell = doc.file_name ? '<a href="' + escapeHtml(doc.file_path) + '" target="_blank" style="color:#002F70; font-weight:600;"><i class="fas fa-paperclip"></i> ' + escapeHtml(doc.file_name) + '</a>' : '<span style="color:#94a3b8;">No file uploaded</span>';
-
-                tr.innerHTML = '<td><strong>' + escapeHtml(doc.doc_type) + '</strong></td><td>' + stBadge + '</td><td>' + fileCell + '</td><td><span style="font-size:11px; color:#64748b;">' + (doc.uploaded_at ? doc.uploaded_at.substring(0,10) : "Registered") + '</span></td>';
-                docsBody.appendChild(tr);
-            });
-
-            // Login History Table
-            const loginBody = document.getElementById("vlogin_tbody");
-            loginBody.innerHTML = "";
-            if ((data.login_history || []).length === 0) {
-                loginBody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#94a3b8; padding:12px;">No login records found.</td></tr>';
-            } else {
-                data.login_history.forEach(log => {
+            if (docsBody) {
+                docsBody.innerHTML = "";
+                (data.documents || []).forEach(doc => {
                     const tr = document.createElement("tr");
-                    tr.innerHTML = '<td>' + escapeHtml(log.created_at) + '</td><td><span style="color:#16a34a; font-weight:600;">' + escapeHtml(log.action) + '</span></td><td>' + escapeHtml(log.shift_period || "—") + '</td>';
-                    loginBody.appendChild(tr);
+                    const st = (doc.status || "Complete").toLowerCase();
+                    let stBadge = '<span style="color:#16a34a; font-weight:700;">Complete</span>';
+                    if (st === "missing") stBadge = '<span style="color:#dc2626; font-weight:700;">Missing</span>';
+                    else if (st === "expired" || st === "expiring soon") stBadge = '<span style="color:#d97706; font-weight:700;">' + escapeHtml(doc.status) + '</span>';
+
+                    const fileCell = doc.file_name ? '<a href="' + escapeHtml(doc.file_path) + '" target="_blank" style="color:#002F70; font-weight:600;"><i class="fas fa-paperclip"></i> ' + escapeHtml(doc.file_name) + '</a>' : '<span style="color:#94a3b8;">No file uploaded</span>';
+
+                    tr.innerHTML = '<td><strong>' + escapeHtml(doc.doc_type) + '</strong></td><td>' + stBadge + '</td><td>' + fileCell + '</td><td><span style="font-size:11px; color:#64748b;">' + (doc.uploaded_at ? doc.uploaded_at.substring(0,10) : "Registered") + '</span></td>';
+                    docsBody.appendChild(tr);
                 });
             }
 
-            // Activity Logs Table
+            // Login History Table (if tab present)
+            const loginBody = document.getElementById("vlogin_tbody");
+            if (loginBody) {
+                loginBody.innerHTML = "";
+                if ((data.login_history || []).length === 0) {
+                    loginBody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#94a3b8; padding:12px;">No login records found.</td></tr>';
+                } else {
+                    data.login_history.forEach(log => {
+                        const tr = document.createElement("tr");
+                        tr.innerHTML = '<td>' + escapeHtml(log.created_at) + '</td><td><span style="color:#16a34a; font-weight:600;">' + escapeHtml(log.action) + '</span></td><td>' + escapeHtml(log.shift_period || "—") + '</td>';
+                        loginBody.appendChild(tr);
+                    });
+                }
+            }
+
+            // Activity Logs Table (if tab present)
             const actBody = document.getElementById("vact_tbody");
-            actBody.innerHTML = "";
-            if ((data.activity_logs || []).length === 0) {
-                actBody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#94a3b8; padding:12px;">No recent audit activity found.</td></tr>';
-            } else {
-                data.activity_logs.forEach(act => {
-                    const tr = document.createElement("tr");
-                    const ref = act.or_number || act.transaction_id || act.details || "—";
-                    tr.innerHTML = '<td>' + escapeHtml(act.created_at) + '</td><td><strong>' + escapeHtml(act.action) + '</strong></td><td>' + escapeHtml(ref) + '</td>';
-                    actBody.appendChild(tr);
-                });
+            if (actBody) {
+                actBody.innerHTML = "";
+                if ((data.activity_logs || []).length === 0) {
+                    actBody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#94a3b8; padding:12px;">No recent audit activity found.</td></tr>';
+                } else {
+                    data.activity_logs.forEach(act => {
+                        const tr = document.createElement("tr");
+                        const ref = act.or_number || act.transaction_id || act.details || "—";
+                        tr.innerHTML = '<td>' + escapeHtml(act.created_at) + '</td><td><strong>' + escapeHtml(act.action) + '</strong></td><td>' + escapeHtml(ref) + '</td>';
+                        actBody.appendChild(tr);
+                    });
+                }
             }
         })
         .catch(err => {
+            console.error("AJAX Error:", err);
             document.getElementById("vmodal_loader").style.display = "none";
             alert("Error loading employee data.");
             closeModal("viewModal");
@@ -2178,6 +2339,117 @@ function autoRefreshUserManagement() {
         })
         .catch(() => {});
 }
+// ── CLIENT-SIDE REALTIME TABLE FILTERING & EXPORT LINK SYNC ─────────────────
+
+function triggerEmployeeExport(format) {
+    const q = (document.getElementById("empSearchInput") ? document.getElementById("empSearchInput").value : "").trim();
+    const role = (document.getElementById("empRoleFilter") ? document.getElementById("empRoleFilter").value : "").trim();
+    const status = (document.getElementById("empStatusFilter") ? document.getElementById("empStatusFilter").value : "").trim();
+
+    const params = new URLSearchParams();
+    params.set("format", format);
+    if (q) params.set("q", q);
+    if (role) params.set("role", role);
+    if (status) params.set("status", status);
+    params.set("_ts", Date.now());
+
+    const exportUrl = "export_employee_list.php?" + params.toString();
+
+    if (format === "print") {
+        let iframe = document.getElementById("printReportIframe");
+        if (!iframe) {
+            iframe = document.createElement("iframe");
+            iframe.id = "printReportIframe";
+            iframe.style.position = "fixed";
+            iframe.style.right = "0";
+            iframe.style.bottom = "0";
+            iframe.style.width = "0";
+            iframe.style.height = "0";
+            iframe.style.border = "0";
+            document.body.appendChild(iframe);
+        }
+        iframe.src = exportUrl;
+    } else if (format === "pdf") {
+        window.open(exportUrl, "_blank");
+    } else {
+        window.location.href = exportUrl;
+    }
+}
+
+function filterEmployeeTable() {
+    const q = (document.getElementById("empSearchInput") ? document.getElementById("empSearchInput").value : "").toLowerCase().trim();
+    const role = (document.getElementById("empRoleFilter") ? document.getElementById("empRoleFilter").value : "").toLowerCase().trim();
+    const status = (document.getElementById("empStatusFilter") ? document.getElementById("empStatusFilter").value : "").toLowerCase().trim();
+
+    // 1. Filter table rows
+    const table = document.querySelector(".table-wrap table.table");
+    if (table) {
+        const rows = table.querySelectorAll("tbody tr");
+        rows.forEach(tr => {
+            if (tr.cells.length < 5) return; // skip empty state row
+            
+            const empIdText  = (tr.cells[0] ? tr.cells[0].innerText : "").toLowerCase();
+            const nameText   = (tr.cells[1] ? tr.cells[1].innerText : "").toLowerCase();
+            const userText   = (tr.cells[2] ? tr.cells[2].innerText : "").toLowerCase();
+            const roleText   = (tr.cells[3] ? tr.cells[3].innerText : "").toLowerCase();
+            
+            let statusCellIdx = 4;
+            if (tr.cells.length >= 7) statusCellIdx = 5;
+            const statusText = (tr.cells[statusCellIdx] ? tr.cells[statusCellIdx].innerText : "").toLowerCase();
+
+            // Match query (Employee ID, Name, or Username)
+            const matchQ = (q === "") || empIdText.includes(q) || nameText.includes(q) || userText.includes(q);
+            
+            // Match role (Manager or Staff)
+            const matchRole = (role === "") || roleText.includes(role);
+            
+            // Match status (Active, Inactive, Archived)
+            const matchStatus = (status === "") || statusText.includes(status);
+
+            if (matchQ && matchRole && matchStatus) {
+                tr.style.display = "";
+            } else {
+                tr.style.display = "none";
+            }
+        });
+    }
+
+    // 2. Synchronize Export URLs with active filters
+    const exportParams = new URLSearchParams();
+    if (q) exportParams.set("q", q);
+    if (role) exportParams.set("role", role);
+    if (status) exportParams.set("status", status);
+
+    const queryString = exportParams.toString() ? ("&" + exportParams.toString()) : "";
+
+    const btnPrint = document.querySelector(".rpt-btn-print");
+    if (btnPrint) {
+        btnPrint.setAttribute("onclick", "window.open('export_employee_list.php?format=print" + queryString + "', '_blank')");
+    }
+
+    const btnPdf = document.querySelector(".rpt-btn-pdf");
+    if (btnPdf) {
+        btnPdf.setAttribute("href", "export_employee_list.php?format=pdf" + queryString);
+    }
+
+    const btnExcel = document.querySelector(".rpt-btn-excel");
+    if (btnExcel) {
+        btnExcel.setAttribute("href", "export_employee_list.php?format=excel" + queryString);
+    }
+
+    const btnCsv = document.querySelector(".rpt-btn-csv");
+    if (btnCsv) {
+        btnCsv.setAttribute("href", "export_employee_list.php?format=csv" + queryString);
+    }
+}
+
+function clearEmployeeFilters() {
+    if (document.getElementById("empSearchInput")) document.getElementById("empSearchInput").value = "";
+    if (document.getElementById("empRoleFilter")) document.getElementById("empRoleFilter").value = "";
+    if (document.getElementById("empStatusFilter")) document.getElementById("empStatusFilter").value = "";
+    filterEmployeeTable();
+}
+
 setInterval(autoRefreshUserManagement, 2000);
 </script>
 
