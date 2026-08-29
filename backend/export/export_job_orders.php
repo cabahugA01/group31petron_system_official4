@@ -65,38 +65,68 @@ try {
         
     } elseif ($format === 'pdf') {
         // ── PDF Export ──
-        header('Content-Type: application/pdf');
-        header('Content-Disposition: attachment; filename="job_orders_' . date('Y-m-d') . '.pdf"');
-        
-        echo '<html><head><style>
+        $html = '<html><head><style>
             body { font-family: Arial, sans-serif; font-size: 11px; }
             table { width: 100%; border-collapse: collapse; margin-top: 20px; }
             th { background: #002F70; color: white; padding: 8px; text-align: left; font-size: 10px; }
             td { border: 1px solid #ddd; padding: 6px; font-size: 10px; }
             h1 { color: #002F70; font-size: 18px; }
         </style></head><body>';
-        echo '<h1>Job Orders Export</h1>';
-        echo '<p>Generated: ' . date('F d, Y H:i A') . '</p>';
-        echo '<table><thead><tr>';
-        echo '<th>JO ID</th><th>Customer</th><th>Service</th><th>Vehicle</th><th>Status</th><th>Amount</th><th>Payment</th><th>Date</th>';
-        echo '</tr></thead><tbody>';
+        $html .= '<h1>Job Orders Export</h1>';
+        $html .= '<p>Generated: ' . date('F d, Y H:i A') . '</p>';
+        $html .= '<table><thead><tr>';
+        $html .= '<th>JO ID</th><th>Customer</th><th>Service</th><th>Vehicle</th><th>Status</th><th>Amount</th><th>Payment</th><th>Date</th>';
+        $html .= '</tr></thead><tbody>';
         
         foreach ($rows as $row) {
-            echo '<tr>';
-            echo '<td>' . htmlspecialchars($row['jo_id']) . '</td>';
-            echo '<td>' . htmlspecialchars($row['customer']) . '</td>';
-            echo '<td>' . htmlspecialchars($row['service']) . '</td>';
-            echo '<td>' . htmlspecialchars($row['vehicle']) . '</td>';
-            echo '<td>' . htmlspecialchars($row['status']) . '</td>';
-            echo '<td>₱' . number_format((float)$row['amount'], 2) . '</td>';
-            echo '<td>' . htmlspecialchars($row['payment_method']) . '</td>';
-            echo '<td>' . htmlspecialchars($row['date_created']) . '</td>';
-            echo '</tr>';
+            $html .= '<tr>';
+            $html .= '<td>' . htmlspecialchars($row['jo_id']) . '</td>';
+            $html .= '<td>' . htmlspecialchars($row['customer']) . '</td>';
+            $html .= '<td>' . htmlspecialchars($row['service']) . '</td>';
+            $html .= '<td>' . htmlspecialchars($row['vehicle']) . '</td>';
+            $html .= '<td>' . htmlspecialchars($row['status']) . '</td>';
+            $html .= '<td>PHP ' . number_format((float)$row['amount'], 2) . '</td>';
+            $html .= '<td>' . htmlspecialchars($row['payment_method']) . '</td>';
+            $html .= '<td>' . htmlspecialchars($row['date_created']) . '</td>';
+            $html .= '</tr>';
         }
         
-        echo '</tbody></table>';
-        echo '<script>window.print();</script>';
-        echo '</body></html>';
+        $html .= '</tbody></table>';
+        $html .= '</body></html>';
+
+        require_once __DIR__ . '/../../vendor/autoload.php';
+        if (class_exists('\Mpdf\Mpdf')) {
+            try {
+                $temp_dir = __DIR__ . '/../../scratch';
+                if (!is_dir($temp_dir)) @mkdir($temp_dir, 0777, true);
+                if (!is_writable($temp_dir)) $temp_dir = sys_get_temp_dir();
+
+                $mpdf = new \Mpdf\Mpdf([
+                    'mode' => 'utf-8',
+                    'format' => 'A4-L',
+                    'margin_left' => 8,
+                    'margin_right' => 8,
+                    'margin_top' => 8,
+                    'margin_bottom' => 10,
+                    'tempDir' => $temp_dir,
+                    'autoScriptToLang' => true,
+                    'autoLangToFont' => true
+                ]);
+                $mpdf->SetTitle('Job Orders Export');
+                $mpdf->WriteHTML($html);
+                $pdf_filename = 'job_orders_' . date('Y-m-d') . '.pdf';
+                header('Content-Type: application/pdf');
+                header('Content-Disposition: inline; filename="' . $pdf_filename . '"');
+                header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+                $mpdf->Output($pdf_filename, 'I');
+                exit;
+            } catch (\Throwable $e) {}
+        }
+
+        header('Content-Type: text/html; charset=utf-8');
+        $print_script = "<script>window.onload = function() { window.focus(); window.print(); };</script>";
+        $html = str_replace("</body>", $print_script . "</body>", $html);
+        echo $html;
         exit;
         
     } else {

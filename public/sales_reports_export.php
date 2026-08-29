@@ -193,30 +193,41 @@ function exportToPDF($data, $start_date, $end_date) {
     </body>
     </html>';
     
-    // Set headers for PDF
-    header('Content-Type: application/pdf');
-    header('Content-Disposition: attachment;filename="sales_report_' . date('Y-m-d') . '.pdf"');
-    
-    // Convert HTML to PDF using wkhtmltopdf (if available) or fallback to HTML
-    if (shell_exec('wkhtmltopdf --version')) {
-        // Use wkhtmltopdf if available
-        $temp_file = tempnam(sys_get_temp_dir(), 'pdf_') . '.html';
-        file_put_contents($temp_file, $html);
-        
-        $pdf_file = tempnam(sys_get_temp_dir(), 'pdf_') . '.pdf';
-        shell_exec("wkhtmltopdf $temp_file $pdf_file");
-        
-        if (file_exists($pdf_file)) {
-            readfile($pdf_file);
-            unlink($temp_file);
-            unlink($pdf_file);
-        } else {
-            // Fallback to HTML if wkhtmltopdf fails
-            echo $html;
-        }
-    } else {
-        // Fallback to HTML if wkhtmltopdf not available
-        echo $html;
+    // Convert HTML to PDF using mPDF if available
+    require_once __DIR__ . '/../vendor/autoload.php';
+    if (class_exists('\Mpdf\Mpdf')) {
+        try {
+            $temp_dir = __DIR__ . '/../scratch';
+            if (!is_dir($temp_dir)) @mkdir($temp_dir, 0777, true);
+            if (!is_writable($temp_dir)) $temp_dir = sys_get_temp_dir();
+
+            $mpdf = new \Mpdf\Mpdf([
+                'mode' => 'utf-8',
+                'format' => 'A4-P',
+                'margin_left' => 10,
+                'margin_right' => 10,
+                'margin_top' => 10,
+                'margin_bottom' => 10,
+                'tempDir' => $temp_dir,
+                'autoScriptToLang' => true,
+                'autoLangToFont' => true
+            ]);
+            $mpdf->SetTitle('Sales Report');
+            $mpdf->WriteHTML($html);
+            $pdf_filename = 'sales_report_' . date('Y-m-d') . '.pdf';
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: inline; filename="' . $pdf_filename . '"');
+            header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+            $mpdf->Output($pdf_filename, 'I');
+            exit;
+        } catch (\Throwable $e) {}
     }
+
+    // Fallback to printable HTML if mPDF is unavailable
+    header('Content-Type: text/html; charset=utf-8');
+    $print_script = "<script>window.onload = function() { window.focus(); window.print(); };</script>";
+    $html = str_replace("</body>", $print_script . "</body>", $html);
+    echo $html;
+    exit;
 }
 ?>

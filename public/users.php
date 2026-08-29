@@ -2346,8 +2346,12 @@ function triggerEmployeeExport(format) {
     const role = (document.getElementById("empRoleFilter") ? document.getElementById("empRoleFilter").value : "").trim();
     const status = (document.getElementById("empStatusFilter") ? document.getElementById("empStatusFilter").value : "").trim();
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const tab = urlParams.get("tab") || "active";
+
     const params = new URLSearchParams();
     params.set("format", format);
+    params.set("tab", tab);
     if (q) params.set("q", q);
     if (role) params.set("role", role);
     if (status) params.set("status", status);

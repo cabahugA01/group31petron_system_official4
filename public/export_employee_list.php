@@ -75,40 +75,49 @@ if ($my_role === 'superadmin') {
 $filter_q      = strtolower(trim($_GET['q'] ?? ''));
 $filter_role   = strtolower(trim($_GET['role'] ?? ''));
 $filter_status = strtolower(trim($_GET['status'] ?? ''));
+$filter_tab    = strtolower(trim($_GET['tab'] ?? 'active'));
 
-if ($filter_q !== '' || $filter_role !== '' || $filter_status !== '') {
-    $filtered_list = [];
-    foreach ($employees as $emp) {
-        $emp_id    = strtolower(trim($emp['employee_id'] ?: ('EMP-' . str_pad($emp['id'], 4, '0', STR_PAD_LEFT))));
-        $full_name = strtolower(trim($emp['full_name'] ?: $emp['username']));
-        $username  = strtolower(trim($emp['username'] ?? ''));
-        $role_key  = strtolower(trim(role_key($emp['role'] ?? '')));
-        $status    = strtolower(trim($emp['status'] ?? 'active'));
+$filtered_list = [];
+foreach ($employees as $emp) {
+    $emp_id    = strtolower(trim($emp['employee_id'] ?: ('EMP-' . str_pad($emp['id'], 4, '0', STR_PAD_LEFT))));
+    $full_name = strtolower(trim($emp['full_name'] ?: $emp['username']));
+    $username  = strtolower(trim($emp['username'] ?? ''));
+    $role_key  = strtolower(trim(role_key($emp['role'] ?? '')));
+    $status    = strtolower(trim($emp['status'] ?? 'active'));
+    $is_archived = is_user_archived_status($status);
 
-        // Role Filter Check
-        if ($filter_role !== '' && $role_key !== $filter_role) {
+    // Tab Filter Check (Active vs Archived) if status filter not explicitly set
+    if ($filter_status === '') {
+        if ($filter_tab === 'active' && $is_archived) {
+            continue;
+        } elseif ($filter_tab === 'archived' && !$is_archived) {
             continue;
         }
-
+    } else {
         // Status Filter Check
-        if ($filter_status !== '' && $status !== $filter_status) {
+        if ($status !== $filter_status) {
             continue;
         }
-
-        // Search Query Check (matches Employee ID, Full Name, or Username)
-        if ($filter_q !== '') {
-            $match = (strpos($emp_id, $filter_q) !== false) ||
-                     (strpos($full_name, $filter_q) !== false) ||
-                     (strpos($username, $filter_q) !== false);
-            if (!$match) {
-                continue;
-            }
-        }
-
-        $filtered_list[] = $emp;
     }
-    $employees = $filtered_list;
+
+    // Role Filter Check
+    if ($filter_role !== '' && $role_key !== $filter_role) {
+        continue;
+    }
+
+    // Search Query Check (matches Employee ID, Full Name, or Username)
+    if ($filter_q !== '') {
+        $match = (strpos($emp_id, $filter_q) !== false) ||
+                 (strpos($full_name, $filter_q) !== false) ||
+                 (strpos($username, $filter_q) !== false);
+        if (!$match) {
+            continue;
+        }
+    }
+
+    $filtered_list[] = $emp;
 }
+$employees = $filtered_list;
 
 $record_count = count($employees);
 $clean_station_name = preg_replace('/[^a-zA-Z0-9_\-]/', '_', str_replace(' ', '_', $station_name));
@@ -499,6 +508,14 @@ if ($is_print_mode) {
 }
 
 try {
+    $temp_dir = __DIR__ . '/../scratch';
+    if (!is_dir($temp_dir)) {
+        @mkdir($temp_dir, 0777, true);
+    }
+    if (!is_writable($temp_dir)) {
+        $temp_dir = sys_get_temp_dir();
+    }
+
     $mpdf = new \Mpdf\Mpdf([
         'mode' => 'utf-8',
         'format' => 'A4-L',
@@ -506,7 +523,9 @@ try {
         'margin_right' => 8,
         'margin_top' => 8,
         'margin_bottom' => 10,
-        'tempDir' => __DIR__ . '/../scratch'
+        'tempDir' => $temp_dir,
+        'autoScriptToLang' => true,
+        'autoLangToFont' => true
     ]);
     
     $mpdf->SetTitle('User Management Report - ' . $station_name);
@@ -523,7 +542,8 @@ try {
     $mpdf->Output($pdf_filename, 'I');
 } catch (\Throwable $e) {
     header('Content-Type: text/html; charset=utf-8');
+    $print_script = "<script>window.onload = function() { window.focus(); window.print(); };</script>";
+    $html = str_replace("</body>", $print_script . "</body>", $html);
     echo $html;
-    echo '<script>window.print();</script>';
 }
 exit;
