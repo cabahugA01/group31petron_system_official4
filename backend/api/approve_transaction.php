@@ -9,31 +9,24 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 
 require_once __DIR__ . '/../lib.php';
+require_once __DIR__ . '/../security_helpers.php';
 require_once __DIR__ . '/../../public/db_connect.php';
 require_once __DIR__ . '/../transaction_schema_fix.php';
 
-// Check authentication
-if (!isset($_SESSION['user'])) {
-    http_response_code(200); // 200 instead of 401 to prevent Apache from serving HTML
-    echo json_encode(['success' => false, 'message' => 'Session expired. Please login again.']);
-    exit;
-}
-
-$me = current_user();
-if (!$me) {
-    echo json_encode(['success' => false, 'message' => 'User not found in session']);
-    exit;
-}
+// Authoritative Security Enforcement: Re-verify DB user, 5-min timeout, RBAC check
+$me = enforce_server_security('approve_transactions', null, false);
+header('Content-Type: application/json');
 
 $role = role_key($me['role'] ?? '');
 
 // Restrict to managers only
 if (!is_manager_or_above()) {
+    http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Manager access required. Current role: ' . $role]);
     exit;
 }
 
-$station_id = user_station_id();
+$station_id = (int)($me['station_id'] ?? 1);
 
 // Handle case where station_id is null
 if (!$station_id) {

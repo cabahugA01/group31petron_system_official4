@@ -12,7 +12,9 @@ if (session_status() === PHP_SESSION_NONE) {
     ]);
     session_start();
 }
-ob_start(); // Buffer output to prevent "headers already sent" errors
+ob_start(function($buffer) {
+    return preg_replace('/<!--(?!\[if\s).*?-->/s', '', $buffer);
+}); // Buffer output and strip HTML comments
 
 // Include database connection
 require_once __DIR__ . '/db_connect.php';
@@ -534,10 +536,24 @@ $_asset_base = $_login_base . '/assets';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
     <title>Login | Petron Management System</title>
     <link rel="stylesheet" href="<?= htmlspecialchars($_asset_base) ?>/vendor/fontawesome/css/all.min.css">
+    <script src="<?= htmlspecialchars($_asset_base) ?>/js/security_frontend.js?v=2.0.2"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body, div, span, label, p, h1, h2, h3, h4, section, button, nav, table, tr, td {
+            -webkit-user-select: none !important;
+            -moz-user-select: none !important;
+            -ms-user-select: none !important;
+            user-select: none !important;
+        }
+        input, textarea, select {
+            -webkit-user-select: text !important;
+            -moz-user-select: text !important;
+            -ms-user-select: text !important;
+            user-select: text !important;
+        }
 
         :root {
             --blue:      #002F6C;

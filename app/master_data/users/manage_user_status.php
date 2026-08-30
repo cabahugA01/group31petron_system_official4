@@ -35,13 +35,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $notice = 'You cannot change your own status.';
             } else {
                 try {
-                    // Get user info
-                    $user = $pdo->prepare("SELECT username, name, status FROM users WHERE id = ?");
+                    // Get target user info
+                    $user = $pdo->prepare("SELECT username, name, status, role, station_id FROM users WHERE id = ?");
                     $user->execute([$user_id]);
                     $userInfo = $user->fetch();
                     
                     if (!$userInfo) {
                         $notice = 'User not found.';
+                    } elseif ($userInfo['role'] === 'superadmin' && $me['role'] !== 'superadmin') {
+                        $notice = 'Error: Cannot modify Super Admin account.';
+                    } elseif ($me['role'] !== 'superadmin' && (int)($userInfo['station_id'] ?? 0) !== (int)($me['station_id'] ?? 0)) {
+                        $notice = 'Error: Branch access violation. Cannot modify user from another station.';
                     } else {
                         // Update user status
                         $stmt = $pdo->prepare("UPDATE users SET status = ?, updated_at = NOW() WHERE id = ?");

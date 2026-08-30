@@ -532,12 +532,28 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="csrf-token" content="<?php echo function_exists('sec_generate_csrf_token') ? sec_generate_csrf_token() : ''; ?>" />
   <title>Petron Management System</title>
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/style.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_table_design.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_customer_management.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/vendor/fontawesome/css/all.min.css">
-    <!-- GLOBAL TEXT VISIBILITY FIX - Ensures all text is readable while keeping original colors -->
+  <script src="<?php echo $app_base_path; ?>/assets/js/security_frontend.js?v=2.0.2"></script>
+    <!-- GLOBAL TEXT VISIBILITY FIX & PROTECTED UI CSS -->
+    <style>
+        .protected-ui, .card, .table-responsive, table:not(.allow-select) {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        input, textarea, select, [contenteditable="true"], .allow-select {
+            -webkit-user-select: text !important;
+            -moz-user-select: text !important;
+            -ms-user-select: text !important;
+            user-select: text !important;
+        }
+    </style>
     <style>
         /* ===== TEXT VISIBILITY FIX - Keep all colors, just fix text contrast ===== */
     
@@ -5624,9 +5640,13 @@ require_once __DIR__ . '/rbac_menu.php';
             }
 
             // Load on bell open (Expose globally for the toggle listener)
-            window.saLoadNotifications = loadNotifications;
+            window.saLoadNotifications = function() {
+                generateAndRefresh();
+                loadNotifications();
+            };
 
-            // Direct notifications (no interval polling)
+            // Direct notifications (run generator on page load)
+            generateAndRefresh();
         })();
 
         <?php else: ?>
@@ -5970,11 +5990,14 @@ require_once __DIR__ . '/rbac_menu.php';
             }
 
             // Expose globally for the toggle listener
-            window.loadStaffNotifications = loadNotifications;
-            window.petronLoadNotifications = loadNotifications;
+            window.loadStaffNotifications = function() {
+                runGeneratorBackground();
+                loadNotifications();
+            };
+            window.petronLoadNotifications = window.loadStaffNotifications;
 
-            // ── Direct notifications (no interval polling loops) ──
-            fetchUnreadCount();
+            // ── Direct notifications (run generator on page load) ──
+            runGeneratorBackground();
         })();
         <?php endif; ?>
     </script>

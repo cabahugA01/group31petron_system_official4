@@ -762,7 +762,7 @@ try {
               AND p.status = 'pending'
         ORDER BY s.service_name
     ");
-    $stmt->execute([(int)$station_id, (int)$station_id]);
+    $stmt->execute();
     $service_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Add manager names in a second pass

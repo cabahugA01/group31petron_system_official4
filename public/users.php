@@ -46,9 +46,11 @@ function can_manage_role(string $actor_role, string $target_role): bool {
     return false; // Manager cannot manage any role
 }
 
-function is_user_archived_status(?string $status): bool {
-    $normalized = strtolower(trim((string)$status));
-    return in_array($normalized, ['disabled', 'archived', 'inactive', 'locked'], true);
+if (!function_exists('is_user_archived_status')) {
+    function is_user_archived_status(?string $status): bool {
+        $normalized = strtolower(trim((string)$status));
+        return in_array($normalized, ['disabled', 'archived', 'inactive', 'locked'], true);
+    }
 }
 
 function generateEmployeeID($pdo, $role) {
@@ -1774,22 +1776,11 @@ setTimeout(function() {
         <div class="modal-header">
             <div>
                 <span class="modal-title" id="vmodal_title"><i class="fas fa-user-circle"></i> Employee Details</span>
-                
             </div>
             <button class="modal-close" onclick="closeModal('viewModal')">&times;</button>
         </div>
 
         <div class="modal-body" style="padding: 16px 20px;">
-            <!-- Tab Navigation -->
-            <div class="vtab-nav">
-                <button type="button" class="vtab-btn active" id="btn_vtab_info" onclick="switchViewTab('info')">
-                    <i class="fas fa-info-circle"></i> Information
-                </button>
-                <button type="button" class="vtab-btn" id="btn_vtab_docs" onclick="switchViewTab('docs')">
-                    <i class="fas fa-folder-open"></i> Documents
-                </button>
-            </div>
-
             <!-- Loader -->
             <div id="vmodal_loader" style="text-align: center; padding: 30px; color: #64748b;">
                 <i class="fas fa-spinner fa-spin fa-2x" style="color: #002F70;"></i>
@@ -1797,8 +1788,8 @@ setTimeout(function() {
             </div>
 
             <div id="vmodal_body_wrap" style="display: none;">
-                <!-- TAB 1: INFORMATION -->
-                <div id="vtab_info" class="vtab-pane active">
+                <!-- EMPLOYEE INFORMATION -->
+                <div id="vtab_info" style="display: block;">
                     <div class="info-grid">
                         <div class="info-item">
                             <span class="info-lbl">Employee ID</span>
@@ -1829,10 +1820,6 @@ setTimeout(function() {
                             <span class="info-val" id="vi_created">—</span>
                         </div>
                         <div class="info-item">
-                            <span class="info-lbl">Last Login</span>
-                            <span class="info-val" id="vi_last_login">—</span>
-                        </div>
-                        <div class="info-item">
                             <span class="info-lbl">Email Address</span>
                             <span class="info-val" id="vi_email">—</span>
                         </div>
@@ -1842,62 +1829,10 @@ setTimeout(function() {
                         </div>
                     </div>
                 </div>
-
-                <!-- TAB 2: DOCUMENTS -->
-                <div id="vtab_docs" class="vtab-pane">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <span style="font-size: 12.5px; font-weight: 700; color: #002F70;">Employee Documents Completeness</span>
-                    </div>
-                    <table class="table" style="font-size: 12px; width: 100%;">
-                        <thead>
-                            <tr>
-                                <th>DOCUMENT TYPE</th>
-                                <th>STATUS</th>
-                                <th>UPLOADED FILE</th>
-                                <th>DATE</th>
-                            </tr>
-                        </thead>
-                        <tbody id="vdocs_tbody">
-                            <!-- Populated via JS -->
-                        </tbody>
-                    </table>
-
-                    <?php if ($my_role === 'admin' || $my_role === 'superadmin'): ?>
-                    <form method="POST" action="users.php" enctype="multipart/form-data" style="margin-top: 14px; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0;">
-                        <input type="hidden" name="action" value="update_emp_document">
-                        <input type="hidden" name="user_id" id="vdoc_form_user_id">
-                        <div style="font-weight: 700; font-size: 11.5px; color: #002F70; margin-bottom: 8px; text-transform: uppercase;">
-                            <i class="fas fa-upload"></i> Update Document Record
-                        </div>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                            <select name="doc_type" class="inp" required style="flex: 1; min-width: 130px; font-size: 12px; height: 34px;">
-                                <option value="SSS">SSS</option>
-                                <option value="PhilHealth">PhilHealth</option>
-                                <option value="Pag-IBIG">Pag-IBIG</option>
-                                <option value="TIN">TIN</option>
-                                <option value="Valid ID">Valid ID</option>
-                                <option value="Employment">Employment Contract / Docs</option>
-                                <option value="Other">Other Required Document</option>
-                            </select>
-                            <select name="doc_status" class="inp" required style="width: 120px; font-size: 12px; height: 34px;">
-                                <option value="Complete">Complete</option>
-                                <option value="Missing">Missing</option>
-                                <option value="Expired">Expired</option>
-                                <option value="Expiring Soon">Expiring Soon</option>
-                                <option value="Pending Review">Pending Review</option>
-                            </select>
-                            <input type="file" name="doc_file" class="inp" style="flex: 1; min-width: 160px; font-size: 12px; height: 34px; padding: 3px 8px;">
-                            <button type="submit" class="btn-plain-submit" style="height: 34px; padding: 0 14px; font-size: 12px;">Save</button>
-                        </div>
-                    </form>
-                    <?php endif; ?>
-                </div>
-
-                
             </div>
         </div>
 
-        <div class="modal-footer">
+        <div class="modal-footer" style="padding: 12px 20px; display: flex; justify-content: flex-end; background: #f8fafc; border-top: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
             <button type="button" class="btn-plain-cancel" onclick="closeModal('viewModal')">Close</button>
         </div>
     </div>
@@ -2180,11 +2115,6 @@ function openViewEmployeeModal(userId) {
     document.getElementById("vmodal_loader").style.display = "block";
     document.getElementById("vmodal_body_wrap").style.display = "none";
     document.getElementById("viewModal").style.display = "flex";
-    switchViewTab("info");
-
-    if (document.getElementById("vdoc_form_user_id")) {
-        document.getElementById("vdoc_form_user_id").value = userId;
-    }
 
     fetch("users.php?ajax_emp_details=1&user_id=" + userId)
         .then(r => r.json())
@@ -2201,7 +2131,6 @@ function openViewEmployeeModal(userId) {
             const info = data.info || {};
             const fullName = ((info.first_name || "") + " " + (info.last_name || "")).trim() || info.username;
             document.getElementById("vmodal_title").innerHTML = '<i class="fas fa-user-circle" style="color:#002F70;"></i> ' + escapeHtml(fullName);
-            
 
             document.getElementById("vi_emp_id").innerText = info.employee_id || "—";
             document.getElementById("vi_full_name").innerText = fullName;
@@ -2210,27 +2139,11 @@ function openViewEmployeeModal(userId) {
             document.getElementById("vi_station").innerText = info.station_name || "Petron Carmen";
             document.getElementById("vi_status").innerText = (info.status || "Active").toUpperCase();
             document.getElementById("vi_created").innerText = info.created_at ? info.created_at.substring(0, 10) : "—";
-            document.getElementById("vi_last_login").innerText = info.updated_at ? info.updated_at : "—";
+            if (document.getElementById("vi_last_login")) {
+                document.getElementById("vi_last_login").innerText = info.updated_at ? info.updated_at : "—";
+            }
             document.getElementById("vi_email").innerText = info.email || "Not set";
             document.getElementById("vi_phone").innerText = info.phone_number || "Not set";
-
-            // Documents Table
-            const docsBody = document.getElementById("vdocs_tbody");
-            if (docsBody) {
-                docsBody.innerHTML = "";
-                (data.documents || []).forEach(doc => {
-                    const tr = document.createElement("tr");
-                    const st = (doc.status || "Complete").toLowerCase();
-                    let stBadge = '<span style="color:#16a34a; font-weight:700;">Complete</span>';
-                    if (st === "missing") stBadge = '<span style="color:#dc2626; font-weight:700;">Missing</span>';
-                    else if (st === "expired" || st === "expiring soon") stBadge = '<span style="color:#d97706; font-weight:700;">' + escapeHtml(doc.status) + '</span>';
-
-                    const fileCell = doc.file_name ? '<a href="' + escapeHtml(doc.file_path) + '" target="_blank" style="color:#002F70; font-weight:600;"><i class="fas fa-paperclip"></i> ' + escapeHtml(doc.file_name) + '</a>' : '<span style="color:#94a3b8;">No file uploaded</span>';
-
-                    tr.innerHTML = '<td><strong>' + escapeHtml(doc.doc_type) + '</strong></td><td>' + stBadge + '</td><td>' + fileCell + '</td><td><span style="font-size:11px; color:#64748b;">' + (doc.uploaded_at ? doc.uploaded_at.substring(0,10) : "Registered") + '</span></td>';
-                    docsBody.appendChild(tr);
-                });
-            }
 
             // Login History Table (if tab present)
             const loginBody = document.getElementById("vlogin_tbody");
@@ -2373,8 +2286,6 @@ function triggerEmployeeExport(format) {
             document.body.appendChild(iframe);
         }
         iframe.src = exportUrl;
-    } else if (format === "pdf") {
-        window.open(exportUrl, "_blank");
     } else {
         window.location.href = exportUrl;
     }

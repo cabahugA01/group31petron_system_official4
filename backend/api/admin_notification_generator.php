@@ -262,6 +262,23 @@ if ($ar_overdue > 0) {
 }
 
 // ════════════════════════════════════════════════════════════
+// 6b. PENDING PRICE CHANGE APPROVALS
+// ════════════════════════════════════════════════════════════
+$pending_prices = adm_count($pdo,
+    "SELECT COUNT(*) FROM pending_price_approvals WHERE status = 'pending'");
+if ($pending_prices > 0) {
+    $generated += upsert_notif($pdo, $user_id, [
+        'type'        => 'warning',
+        'title'       => 'Pending Price Change Approvals',
+        'message'     => "{$pending_prices} price update request(s) submitted by Manager awaiting your review and approval.",
+        'event_type'  => 'report',
+        'severity'    => 'high',
+        'source_key'  => "pending_price_appr_{$station_id}",
+        'redirect_url'=> 'admin_set_prices.php',
+    ]);
+}
+
+// ════════════════════════════════════════════════════════════
 // 7. STAFF SHIFT ISSUES (No Active Shifts Today)
 //    Check multiple sources — only fire if truly NO staff
 //    activity at this station today.

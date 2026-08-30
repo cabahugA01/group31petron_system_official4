@@ -7,30 +7,24 @@
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 require_once __DIR__ . '/../lib.php';
+require_once __DIR__ . '/../security_helpers.php';
 require_once __DIR__ . '/../../public/db_connect.php';
-require_login();
+
+// Authoritative Security Check: 5-min timeout, DB user re-verification, CSRF verification, SuperAdmin permission
+$me = enforce_server_security('database_management', null, true);
 
 header('Content-Type: application/json');
 
-$me = current_user();
 $role = role_key($me['role'] ?? '');
 
 // Only SuperAdmin access
 if ($role !== 'superadmin') {
+    http_response_code(403);
     echo json_encode(['ok' => false, 'error' => 'Access denied. SuperAdmin role required.']);
     exit;
 }
 
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
-
-// CSRF validation for POST requests
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $csrf = $_POST['csrf_token'] ?? '';
-    if (empty($csrf) || $csrf !== ($_SESSION['csrf_token'] ?? '')) {
-        echo json_encode(['ok' => false, 'error' => 'Invalid CSRF token']);
-        exit;
-    }
-}
 
 // Helper to extract specific tables from a SQL dump
 function extract_tables_from_sql($filepath, $tables) {

@@ -2,19 +2,20 @@
 // API endpoint for staff to submit transactions
 require_once __DIR__ . '/../lib.php';
 require_once __DIR__ . '/../../public/db_connect.php';
-require_login();
+
+// Authoritative security check (5-min timeout, DB user check, CSRF check, RBAC check)
+$me = enforce_server_security('CREATE_TRANSACTION', null, false);
 header('Content-Type: application/json');
 
-$me = current_user();
 $role = role_key($me['role'] ?? '');
 
 // Restrict to staff only
-if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin'])) {
     echo json_encode(['success' => false, 'message' => 'Access denied']);
     exit;
 }
 
-$station_id = user_station_id();
+$station_id = (int)($me['station_id'] ?? 1);
 $data = json_decode(file_get_contents('php://input'), true);
 
 if (!isset($data['transaction_data'])) {
@@ -25,11 +26,29 @@ if (!isset($data['transaction_data'])) {
 $transaction_data = $data['transaction_data'];
 
 try {
-    $pdo = getPDO();
+    global $pdo;
+    if (!isset($pdo) || !$pdo) {
+        if (function_exists('getPDO')) {
+            $pdo = getPDO();
+        }
+    }
     
     // Ensure status column exists in sales table
     $pdo->exec("ALTER TABLE sales ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Completed'");
-    
+
+    // Server-side authoritative price calculation: NEVER trust client-submitted unit_price or total_amount
+    $product_id = $transaction_data['product_id'] ?? null;
+    $quantity = max(1, (float)($transaction_data['quantity'] ?? 1));
+    $unit_price = floatval($transaction_data['unit_price'] ?? 0);
+
+    if ($product_id && function_exists('get_authoritative_item_price')) {
+        $db_price = get_authoritative_item_price($pdo, $product_id);
+        if ($db_price > 0) {
+            $unit_price = $db_price;
+        }
+    }
+    $total_amount = round($quantity * $unit_price, 2);
+
     // Start transaction
     $pdo->beginTransaction();
     
@@ -39,7 +58,7 @@ try {
         $station_id,
         $me['id'],
         $transaction_data['customer_id'] ?? null,
-        $transaction_data['payment_method'],
+        $transaction_data['payment_method'] ?? 'Cash',
     ]);
     $sale_id = $pdo->lastInsertId();
     
@@ -47,11 +66,11 @@ try {
     $stmt = $pdo->prepare("INSERT INTO sale_items (sale_id, product_id, name, quantity, unit_price, total_amount) VALUES (?, ?, ?, ?, ?, ?)");
     $stmt->execute([
         $sale_id,
-        $transaction_data['product_id'] ?? null,
-        $transaction_data['product_name'],
-        $transaction_data['quantity'],
-        $transaction_data['unit_price'],
-        $transaction_data['total_amount']
+        $product_id,
+        $transaction_data['product_name'] ?? 'Product Item',
+        $quantity,
+        $unit_price,
+        $total_amount
     ]);
 
     if (!empty($transaction_data['product_id']) && !empty($transaction_data['quantity'])) {

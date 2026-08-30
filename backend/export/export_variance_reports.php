@@ -268,9 +268,9 @@ try {
                 $mpdf->WriteHTML($html);
                 $pdf_filename = 'variance_compliance_report_' . date('Y-m-d') . '.pdf';
                 header('Content-Type: application/pdf');
-                header('Content-Disposition: inline; filename="' . $pdf_filename . '"');
+                header('Content-Disposition: attachment; filename="' . $pdf_filename . '"');
                 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-                $mpdf->Output($pdf_filename, 'I');
+                $mpdf->Output($pdf_filename, 'D');
                 exit;
             } catch (\Throwable $e) {}
         }

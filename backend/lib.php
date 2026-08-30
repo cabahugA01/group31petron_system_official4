@@ -28,16 +28,39 @@ function json_response($data, $code=200){
   exit;
 }
 
+if (!function_exists('is_user_archived_status')) {
+    function is_user_archived_status(?string $status): bool {
+        $normalized = strtolower(trim((string)$status));
+        return in_array($normalized, ['disabled', 'archived', 'inactive', 'locked'], true);
+    }
+}
+
 function require_login(){
   if(session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
   }
 
-  $timeout = 900; // 15 minutes inactivity timeout (900 seconds)
+  $timeout = 300; // 5 minutes inactivity timeout (300 seconds)
   $script = $_SERVER['SCRIPT_NAME'] ?? '';
   $root = rtrim(dirname($script), '/\\');
   if($root === '' || $root === '.') $root = '/';
   $loginUrl = rtrim($root, '/') . '/login.php';
+
+  // Re-verify session user from database if DB connection exists
+  if (!empty($_SESSION['user']) && function_exists('validate_server_session_user')) {
+    global $pdo;
+    if (isset($pdo) && $pdo) {
+      $valid_user = validate_server_session_user($pdo);
+      if (!$valid_user) {
+        $_SESSION = [];
+        if (ini_get('session.use_cookies') && !headers_sent()) {
+          $p = session_get_cookie_params();
+          setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], $p['secure'], $p['httponly']);
+        }
+        session_destroy();
+      }
+    }
+  }
 
   // Check if active user session has expired due to inactivity
   if (!empty($_SESSION['user'])) {
@@ -1595,6 +1618,7 @@ function ensure_notifications_table(PDO $pdo): void {
   }
 
   $columns = [
+    'recipient_role' => "ALTER TABLE notifications ADD COLUMN recipient_role VARCHAR(30) NULL AFTER user_id",
     'type'         => "ALTER TABLE notifications ADD COLUMN type ENUM('success','warning','error','info') NOT NULL DEFAULT 'info' AFTER user_id",
     'title'        => "ALTER TABLE notifications ADD COLUMN title VARCHAR(255) NOT NULL DEFAULT 'Notification' AFTER type",
     'message'      => "ALTER TABLE notifications ADD COLUMN message TEXT NULL AFTER title",
