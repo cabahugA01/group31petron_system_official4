@@ -185,6 +185,20 @@ if (isset($_GET['ajax_emp_details']) && !empty($_GET['user_id'])) {
 }
 
 
+if (!function_exists('sanitize_optional_field')) {
+    function sanitize_optional_field(?string $val): string {
+        if ($val === null) return 'N/A';
+        $trimmed = trim($val);
+        if ($trimmed === '') return 'N/A';
+        $lower = strtolower($trimmed);
+        $invalid_placeholders = ['none', 'null', 'n/a', '-', 'unknown', 'not available', 'not_available', 'undefined', 'n.a.', 'n/a.'];
+        if (in_array($lower, $invalid_placeholders, true)) {
+            return 'N/A';
+        }
+        return $trimmed;
+    }
+}
+
 $is_error = false;
 
 // --- ACTION HANDLER (Admin / Superadmin only) ---
@@ -200,32 +214,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($action === 'add_user') {
                 $first_name_input  = trim($_POST['first_name']      ?? '');
                 $last_name_input   = trim($_POST['last_name']       ?? '');
-                $role_key_input    = $_POST['role']                 ?? '';
-                $role              = role_key($role_key_input);
-                $employee_id_input = generateEmployeeID($pdo, $role);
-                $contact_input     = trim($_POST['contact_number']  ?? '');
+                $role_key_input    = trim($_POST['role']            ?? '');
+                $contact_raw       = trim($_POST['contact_number']  ?? '');
                 $email_input       = trim($_POST['email']           ?? '');
-                $username_input    = trim($_POST['username']        ?? '');
-                $assigned_shift    = ($role === 'staff') ? (trim($_POST['assigned_shift'] ?? '') ?: null) : null;
-                $status_input      = 'Active';
+                $username_raw      = trim($_POST['username']        ?? '');
                 $raw_password      = trim($_POST['new_password']    ?? '');
                 $confirm_password  = trim($_POST['confirm_password']?? '');
+                $status_input      = 'Active';
 
-                $email = !empty($email_input) ? $email_input : null;
-                if (!empty($username_input)) {
-                    $username = $username_input;
-                } elseif (!empty($email_input)) {
-                    $username = substr(explode('@', $email_input)[0], 0, 50);
-                } else {
-                    $username = '';
+                // ── 1. FIRST NAME Validation (Required, no N/A, valid letters) ──
+                if (empty($first_name_input)) {
+                    throw new Exception('First Name is required.');
+                }
+                if (in_array(strtolower($first_name_input), ['n/a', 'none', 'null', '-'], true)) {
+                    throw new Exception('First Name cannot be N/A or a placeholder value.');
+                }
+                if (!preg_match("/^[a-zA-Z\s\-\'\.\p{L}]+$/u", $first_name_input)) {
+                    throw new Exception('First Name contains invalid characters. Only letters, spaces, hyphens, and apostrophes are allowed.');
                 }
 
-                if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                    throw new Exception('Invalid email address format.');
+                // ── 2. LAST NAME Validation (Required, no N/A, valid letters) ──
+                if (empty($last_name_input)) {
+                    throw new Exception('Last Name is required.');
+                }
+                if (in_array(strtolower($last_name_input), ['n/a', 'none', 'null', '-'], true)) {
+                    throw new Exception('Last Name cannot be N/A or a placeholder value.');
+                }
+                if (!preg_match("/^[a-zA-Z\s\-\'\.\p{L}]+$/u", $last_name_input)) {
+                    throw new Exception('Last Name contains invalid characters. Only letters, spaces, hyphens, and apostrophes are allowed.');
                 }
 
-                // Philippine Phone Validation
-                if (!empty($contact_input)) {
+                // ── 3. CONTACT NUMBER Validation (Optional -> N/A if empty) ──
+                $contact_input = sanitize_optional_field($contact_raw);
+                if ($contact_input !== 'N/A') {
                     $clean_contact = preg_replace('/[\s\-\(\)\.]/', '', $contact_input);
                     if (!preg_match('/^(09\d{9}|\+639\d{9}|639\d{9})$/', $clean_contact)) {
                         throw new Exception('Invalid Philippine contact number. Must be an 11-digit mobile number starting with 09 (e.g. 09171234567 or +639171234567).');
@@ -239,34 +260,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
-                if (empty($first_name_input)) throw new Exception('First Name is required.');
-                if (empty($last_name_input))  throw new Exception('Last Name is required.');
-                if (empty($username))         throw new Exception('Username or Email is required.');
-                if (empty($role_key_input))   throw new Exception('Role is required.');
+                // ── 4. EMAIL ADDRESS Validation (Required, valid email format) ──
+                if (empty($email_input)) {
+                    throw new Exception('Email Address is required.');
+                }
+                if (in_array(strtolower($email_input), ['n/a', 'none', 'null', '-'], true)) {
+                    throw new Exception('Email Address cannot be N/A or a placeholder value.');
+                }
+                if (!filter_var($email_input, FILTER_VALIDATE_EMAIL)) {
+                    throw new Exception('Invalid email address format.');
+                }
+                $chk_email = $pdo->prepare("SELECT id FROM users WHERE LOWER(email) = LOWER(?)");
+                $chk_email->execute([$email_input]);
+                if ($chk_email->fetch()) {
+                    throw new Exception('Email Address is already in use by another account.');
+                }
+                $email = $email_input;
 
-                // Password handling
+                // ── 5. USERNAME Handling (Optional -> Auto-generate unique username if empty) ──
+                $cleaned_username_input = sanitize_optional_field($username_raw);
+                if ($cleaned_username_input !== 'N/A') {
+                    if (!preg_match('/^[a-zA-Z0-9_\-\.]+$/', $cleaned_username_input)) {
+                        throw new Exception('Username can only contain letters, numbers, dots, hyphens, and underscores (no spaces or special characters).');
+                    }
+                    if (strlen($cleaned_username_input) < 3 || strlen($cleaned_username_input) > 50) {
+                        throw new Exception('Username must be between 3 and 50 characters.');
+                    }
+                    $chk_u = $pdo->prepare("SELECT id FROM users WHERE LOWER(username) = LOWER(?)");
+                    $chk_u->execute([$cleaned_username_input]);
+                    if ($chk_u->fetch()) {
+                        throw new Exception('Username is already taken by another account.');
+                    }
+                    $username = $cleaned_username_input;
+                } else {
+                    // Auto-generate unique username for database integrity and login compatibility
+                    $email_parts = explode('@', $email_input);
+                    $base_user = strtolower(preg_replace('/[^a-zA-Z0-9_\.]/', '', $email_parts[0]));
+                    if (strlen($base_user) < 3) {
+                        $base_user = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $first_name_input . $last_name_input));
+                    }
+                    if (empty($base_user)) {
+                        $base_user = 'user';
+                    }
+                    $username = $base_user;
+                    $counter = 1;
+                    while (true) {
+                        $chk_u = $pdo->prepare("SELECT id FROM users WHERE LOWER(username) = LOWER(?)");
+                        $chk_u->execute([$username]);
+                        if (!$chk_u->fetch()) {
+                            break;
+                        }
+                        $username = $base_user . $counter;
+                        $counter++;
+                    }
+                }
+
+                // ── 6. ROLE Validation (Required, server-side RBAC enforced) ──
+                if (empty($role_key_input)) {
+                    throw new Exception('Role selection is required.');
+                }
+                $role = role_key($role_key_input);
+                if (!in_array($role, ['staff', 'manager', 'admin', 'superadmin'], true)) {
+                    throw new Exception('Invalid role selected. Please select a valid role from the list.');
+                }
+                if ($my_role === 'admin' && !in_array($role, ['staff', 'manager'], true)) {
+                    throw new Exception('As Admin, you can only create Staff or Manager users.');
+                }
+
+                $employee_id_input = generateEmployeeID($pdo, $role);
+
+                // ── 7. PASSWORD & CONFIRM PASSWORD Rules ──
                 if (empty($raw_password)) {
                     $password = generateSecurePassword();
                 } else {
-                    if ($raw_password !== $confirm_password) throw new Exception('Passwords do not match.');
+                    if ($raw_password !== $confirm_password) {
+                        throw new Exception('Passwords do not match. Please ensure both passwords are identical.');
+                    }
                     $sym_re = '/[!@#$%^&*(),.?\":{}|<>_\-]/';
                     if (strlen($raw_password) < 8 ||
                         !preg_match('/[A-Z]/', $raw_password) ||
                         !preg_match('/[a-z]/', $raw_password) ||
                         !preg_match('/[0-9]/', $raw_password) ||
                         !preg_match($sym_re, $raw_password)) {
-                        throw new Exception('Password must be ≥8 chars with uppercase, lowercase, number, and symbol.');
+                        throw new Exception('Password must be ≥8 characters long with uppercase, lowercase, number, and special symbol.');
                     }
                     $password = $raw_password;
                 }
-
-                // Uniqueness check
-                $dup_sql    = 'SELECT id FROM users WHERE username = ?';
-                $dup_params = [$username];
-                if (!empty($email)) { $dup_sql .= ' OR email = ?'; $dup_params[] = $email; }
-                $chk = $pdo->prepare($dup_sql);
-                $chk->execute($dup_params);
-                if ($chk->fetch()) throw new Exception('Email or Username is already in use by another account.');
 
                 if (!empty($employee_id_input) && in_array('employee_id', $user_cols)) {
                     $chk_emp = $pdo->prepare("SELECT id FROM users WHERE employee_id = ?");
@@ -283,13 +362,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $station_target = $my_station_id;
                 }
 
-                // Role & per-station uniqueness rules: ONLY 1 Admin and ONLY 1 Manager per station (Staff is unlimited)
-                if ($my_role === 'admin') {
-                    if (!in_array($role, ['staff', 'manager'])) {
-                        throw new Exception('As Admin, you can only create Staff or Manager users.');
-                    }
-                }
-
+                // Role & per-station uniqueness rules
                 if ($role === 'manager' && $station_target) {
                     $cm = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role)='manager' AND station_id=? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
                     $cm->execute([$station_target]);
@@ -315,11 +388,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $new_user_id = (int)$pdo->lastInsertId();
 
                 $extra_sets = []; $extra_vals = [];
-                if (!empty($employee_id_input) && in_array('employee_id',    $user_cols)) { $extra_sets[] = 'employee_id = ?';    $extra_vals[] = $employee_id_input; }
-                if (!empty($contact_input)     && in_array('phone_number',   $user_cols)) { $extra_sets[] = 'phone_number = ?';   $extra_vals[] = $contact_input; }
-                $assigned_shift = null;
-                if (in_array('assigned_shift', $user_cols)) { $extra_sets[] = 'assigned_shift = NULL'; }
-                if (in_array('shift_assignment', $user_cols)) { $extra_sets[] = 'shift_assignment = NULL'; }
+                if (!empty($employee_id_input) && in_array('employee_id', $user_cols)) { $extra_sets[] = 'employee_id = ?'; $extra_vals[] = $employee_id_input; }
+                if (in_array('phone_number', $user_cols)) { $extra_sets[] = 'phone_number = ?'; $extra_vals[] = $contact_input; }
                 if ($extra_sets) {
                     $extra_vals[] = $new_user_id;
                     $pdo->prepare("UPDATE users SET " . implode(', ', $extra_sets) . " WHERE id = ?")->execute($extra_vals);
@@ -444,7 +514,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$first_name, $last_name, $role, $username, $email, $id]);
 
                 if (in_array('phone_number', $user_cols)) {
-                    $pdo->prepare("UPDATE users SET phone_number = ? WHERE id = ?")->execute([$contact_input ?: null, $id]);
+                    $clean_phone = sanitize_optional_field($contact_input);
+                    $pdo->prepare("UPDATE users SET phone_number = ? WHERE id = ?")->execute([$clean_phone, $id]);
                 }
 
                 if (in_array('assigned_shift', $user_cols)) {
@@ -464,6 +535,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $new_pass = trim($_POST['new_password'] ?? '');
                 if (empty($new_pass)) {
                     $new_pass = generateSecurePassword();
+                } else {
+                    if (in_array(strtolower($new_pass), ['n/a', 'none', 'null', '-'], true)) {
+                        throw new Exception('Password cannot be N/A or a placeholder value.');
+                    }
+                    $sym_re = '/[!@#$%^&*(),.?\":{}|<>_\-]/';
+                    if (strlen($new_pass) < 8 ||
+                        !preg_match('/[A-Z]/', $new_pass) ||
+                        !preg_match('/[a-z]/', $new_pass) ||
+                        !preg_match('/[0-9]/', $new_pass) ||
+                        !preg_match($sym_re, $new_pass)) {
+                        throw new Exception('Password must be ≥8 characters long with uppercase, lowercase, number, and special symbol.');
+                    }
                 }
 
                 if ($my_role !== 'superadmin') {
@@ -1532,11 +1615,11 @@ setTimeout(function() {
                 <div class="form-grid-2">
                     <div class="form-group">
                         <label class="lbl">First Name <span style="color:#dc2626;">*</span></label>
-                        <input type="text" name="first_name" id="add_first_name" class="inp" required placeholder="e.g. Judy" autocomplete="off">
+                        <input type="text" name="first_name" id="add_first_name" class="inp" required placeholder="e.g. Judy" autocomplete="off" oninput="this.value = this.value.replace(/[^a-zA-Z\s\-\'\.\u00C0-\u024F]/g, '');">
                     </div>
                     <div class="form-group">
                         <label class="lbl">Last Name <span style="color:#dc2626;">*</span></label>
-                        <input type="text" name="last_name" id="add_last_name" class="inp" required placeholder="e.g. Lastimosa" autocomplete="off">
+                        <input type="text" name="last_name" id="add_last_name" class="inp" required placeholder="e.g. Lastimosa" autocomplete="off" oninput="this.value = this.value.replace(/[^a-zA-Z\s\-\'\.\u00C0-\u024F]/g, '');">
                     </div>
                 </div>
 
@@ -1560,7 +1643,7 @@ setTimeout(function() {
                 <div class="form-grid-2">
                     <div class="form-group">
                         <label class="lbl">Username <span class="muted">(optional)</span></label>
-                        <input type="text" name="username" id="add_username" class="inp" placeholder="e.g. judy.lastimosa" autocomplete="off">
+                        <input type="text" name="username" id="add_username" class="inp" placeholder="e.g. judy.lastimosa" autocomplete="off" oninput="this.value = this.value.replace(/[^a-zA-Z0-9_\-\.]/g, '');">
                     </div>
                     <div class="form-group">
                         <label class="lbl">Role <span style="color:#dc2626;">*</span></label>
@@ -1640,18 +1723,18 @@ setTimeout(function() {
                 <div class="form-grid-2">
                     <div class="form-group">
                         <label class="lbl">First Name <span style="color:#dc2626;">*</span></label>
-                        <input type="text" name="first_name" id="edit_first_name" class="inp" required placeholder="e.g. Judy">
+                        <input type="text" name="first_name" id="edit_first_name" class="inp" required placeholder="e.g. Judy" oninput="this.value = this.value.replace(/[^a-zA-Z\s\-\'\.\u00C0-\u024F]/g, '');">
                     </div>
                     <div class="form-group">
                         <label class="lbl">Last Name <span style="color:#dc2626;">*</span></label>
-                        <input type="text" name="last_name" id="edit_last_name" class="inp" required placeholder="e.g. Lastimosa">
+                        <input type="text" name="last_name" id="edit_last_name" class="inp" required placeholder="e.g. Lastimosa" oninput="this.value = this.value.replace(/[^a-zA-Z\s\-\'\.\u00C0-\u024F]/g, '');">
                     </div>
                 </div>
                 
                 <div class="form-grid-2">
                     <div class="form-group">
                         <label class="lbl">Login ID / Email <span style="color:#dc2626;">*</span></label>
-                        <input type="text" name="login_id" id="edit_login_id" class="inp" required placeholder="Email or Username">
+                        <input type="text" name="login_id" id="edit_login_id" class="inp" required placeholder="Email or Username" oninput="this.value = this.value.replace(/[^a-zA-Z0-9@_\-\.]/g, '');">
                     </div>
                     <div class="form-group">
                         <label class="lbl">Contact Number <span class="muted">(PH format)</span></label>
@@ -1697,7 +1780,7 @@ setTimeout(function() {
             <span class="modal-title"><i class="fas fa-key"></i> Reset Password</span>
             <button class="modal-close" onclick="closeModal('resetModal')">&times;</button>
         </div>
-        <form method="post" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+        <form method="post" onsubmit="return validateResetForm();" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
             <div class="modal-body">
                 <input type="hidden" name="action" value="reset_password">
                 <input type="hidden" name="user_id" id="reset_user_id">
@@ -1862,8 +1945,8 @@ function toggleShiftField(context) {
 }
 
 function validatePhoneRealtime(input, hintId) {
-    input.value = input.value.replace(/[^0-9+\s\-]/g, '');
-    const val = input.value.replace(/[\s\-]/g, '');
+    input.value = input.value.replace(/[^0-9+]/g, '');
+    const val = input.value;
     const hint = document.getElementById(hintId);
     if (!hint) return;
 
@@ -1952,35 +2035,91 @@ function generateResetPassword() {
 }
 
 function validateAddForm() {
-    const roleVal = (document.getElementById('user_role_add').value || '').toLowerCase().trim();
+    const fnEl   = document.getElementById('add_first_name');
+    const lnEl   = document.getElementById('add_last_name');
+    const emEl   = document.getElementById('add_email');
+    const roleEl = document.getElementById('user_role_add');
+    const phEl   = document.getElementById('add_contact_number');
+    const unEl   = document.getElementById('add_username');
+    const passEl = document.getElementById('new_password');
+    const confEl = document.getElementById('confirm_password');
 
-    const contact = document.getElementById('add_contact_number').value.trim();
-    if (contact !== '' && !isValidPhilippineNumber(contact)) {
-        alert('Invalid Contact Number: Please enter a valid Philippine mobile number.\n\nExample formats:\n• 09171234567 (11 digits)\n• +639171234567');
-        document.getElementById('add_contact_number').focus();
+    const fn   = (fnEl?.value || '').trim();
+    const ln   = (lnEl?.value || '').trim();
+    const em   = (emEl?.value || '').trim();
+    const role = (roleEl?.value || '').trim();
+    const ph   = (phEl?.value || '').trim();
+    const un   = (unEl?.value || '').trim();
+    const pass = passEl?.value || '';
+    const conf = confEl?.value || '';
+
+    const placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+
+    // 1. FIRST NAME (Required)
+    if (!fn || placeholders.includes(fn.toLowerCase())) {
+        alert('First Name is required and cannot be N/A or a placeholder.');
+        if (fnEl) fnEl.focus();
         return false;
     }
 
-    const password = document.getElementById('new_password').value;
-    const confirmPassword = document.getElementById('confirm_password').value;
+    // 2. LAST NAME (Required)
+    if (!ln || placeholders.includes(ln.toLowerCase())) {
+        alert('Last Name is required and cannot be N/A or a placeholder.');
+        if (lnEl) lnEl.focus();
+        return false;
+    }
 
-    if (password === '' && confirmPassword === '') {
-        const submitBtn = document.getElementById('btnSubmitAddUser');
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Creating & Sending...</span>';
+    // 3. EMAIL ADDRESS (Required)
+    if (!em || placeholders.includes(em.toLowerCase())) {
+        alert('Email Address is required and cannot be N/A or a placeholder.');
+        if (emEl) emEl.focus();
+        return false;
+    }
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(em)) {
+        alert('Invalid Email Address format.');
+        if (emEl) emEl.focus();
+        return false;
+    }
+
+    // 4. CONTACT NUMBER (Optional)
+    if (ph !== '' && !placeholders.includes(ph.toLowerCase())) {
+        if (!isValidPhilippineNumber(ph)) {
+            alert('Invalid Contact Number: Please enter a valid 11-digit Philippine mobile number starting with 09 (e.g. 09171234567 or +639171234567).');
+            if (phEl) phEl.focus();
+            return false;
         }
-        return true;
     }
 
-    if (password !== '' && confirmPassword === '') {
-        alert('Please re-enter the password in Confirm Password to verify.');
+    // 5. USERNAME (Optional)
+    if (un !== '' && !placeholders.includes(un.toLowerCase())) {
+        const userPattern = /^[a-zA-Z0-9_\-\.]+$/;
+        if (!userPattern.test(un)) {
+            alert('Username can only contain letters, numbers, dots, hyphens, and underscores (no spaces or special characters).');
+            if (unEl) unEl.focus();
+            return false;
+        }
+    }
+
+    // 6. ROLE (Required)
+    if (!role) {
+        alert('Role selection is required. Please select a role from the dropdown.');
+        if (roleEl) roleEl.focus();
         return false;
     }
 
-    if (password !== confirmPassword) {
-        alert('Passwords do not match. Please ensure both passwords are identical.');
-        return false;
+    // 7. PASSWORD & CONFIRM PASSWORD (Optional if empty, confirm required if manually entered)
+    if (pass !== '') {
+        if (conf === '') {
+            alert('Please re-enter your password in the Confirm Password field.');
+            if (confEl) confEl.focus();
+            return false;
+        }
+        if (pass !== conf) {
+            alert('Passwords do not match. Please ensure both passwords are identical.');
+            if (confEl) confEl.focus();
+            return false;
+        }
     }
 
     const submitBtn = document.getElementById('btnSubmitAddUser');
@@ -1993,12 +2132,84 @@ function validateAddForm() {
 }
 
 function validateEditForm() {
-    const roleVal = (document.getElementById('user_role_edit').value || '').toLowerCase().trim();
+    const fnEl   = document.getElementById('edit_first_name');
+    const lnEl   = document.getElementById('edit_last_name');
+    const idEl   = document.getElementById('edit_login_id');
+    const roleEl = document.getElementById('user_role_edit');
+    const phEl   = document.getElementById('edit_contact_number');
 
-    const contact = document.getElementById('edit_contact_number').value.trim();
-    if (contact !== '' && !isValidPhilippineNumber(contact)) {
-        alert('Invalid Contact Number: Please enter a valid Philippine mobile number.\n\nExample formats:\n• 09171234567 (11 digits)\n• +639171234567');
-        document.getElementById('edit_contact_number').focus();
+    const fn   = (fnEl?.value || '').trim();
+    const ln   = (lnEl?.value || '').trim();
+    const login= (idEl?.value || '').trim();
+    const role = (roleEl?.value || '').trim();
+    const ph   = (phEl?.value || '').trim();
+
+    const placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+
+    // 1. FIRST NAME (Required)
+    if (!fn || placeholders.includes(fn.toLowerCase())) {
+        alert('First Name is required and cannot be N/A or a placeholder.');
+        if (fnEl) fnEl.focus();
+        return false;
+    }
+
+    // 2. LAST NAME (Required)
+    if (!ln || placeholders.includes(ln.toLowerCase())) {
+        alert('Last Name is required and cannot be N/A or a placeholder.');
+        if (lnEl) lnEl.focus();
+        return false;
+    }
+
+    // 3. LOGIN ID / EMAIL (Required)
+    if (!login || placeholders.includes(login.toLowerCase())) {
+        alert('Login ID (Email or Username) is required and cannot be N/A or a placeholder.');
+        if (idEl) idEl.focus();
+        return false;
+    }
+
+    // 4. CONTACT NUMBER (Optional)
+    if (ph !== '' && !placeholders.includes(ph.toLowerCase())) {
+        if (!isValidPhilippineNumber(ph)) {
+            alert('Invalid Contact Number: Please enter a valid 11-digit Philippine mobile number starting with 09 (e.g. 09171234567 or +639171234567).');
+            if (phEl) phEl.focus();
+            return false;
+        }
+    }
+
+    // 5. ROLE (Required)
+    if (!role) {
+        alert('Role selection is required. Please select a role from the dropdown.');
+        if (roleEl) roleEl.focus();
+        return false;
+    }
+
+    return true;
+}
+
+function validateResetForm() {
+    const field = document.getElementById('reset_password_field');
+    const val   = (field?.value || '').trim();
+    if (val === '') {
+        return true; // Auto-generate password
+    }
+    const placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+    if (placeholders.includes(val.toLowerCase())) {
+        alert('Password cannot be N/A or a placeholder value.');
+        if (field) field.focus();
+        return false;
+    }
+    if (val.length < 8) {
+        alert('Password must be at least 8 characters long.');
+        if (field) field.focus();
+        return false;
+    }
+    const hasUpper = /[A-Z]/.test(val);
+    const hasLower = /[a-z]/.test(val);
+    const hasNum   = /[0-9]/.test(val);
+    const hasSym   = /[!@#$%^&*(),.?":{}|<>\_\-]/.test(val);
+    if (!hasUpper || !hasLower || !hasNum || !hasSym) {
+        alert('Password must contain at least one uppercase letter, one lowercase letter, one number, and one special symbol (!@#$%^&*).');
+        if (field) field.focus();
         return false;
     }
     return true;
@@ -2365,7 +2576,7 @@ function clearEmployeeFilters() {
     filterEmployeeTable();
 }
 
-setInterval(autoRefreshUserManagement, 2000);
+setInterval(autoRefreshUserManagement, 15000);
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

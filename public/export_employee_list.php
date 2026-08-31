@@ -256,20 +256,20 @@ if ($format === 'excel') {
     table { border-collapse: collapse; width: 100%; }
     th, td { border: 1px solid #000000; padding: 6px 10px; text-align: left; }
     th { background-color: #00264D; color: #ffffff; font-weight: bold; text-align: center; }
-    .hdr { font-size: 14px; font-weight: bold; color: #00264D; }
+    .hdr-title { font-size: 16px; font-weight: bold; color: #00264D; text-align: center; text-transform: uppercase; border: none; }
+    .hdr-station { font-size: 12px; font-weight: bold; color: #00264D; text-align: center; border: none; }
+    .hdr-date { font-size: 11px; color: #475569; text-align: center; border: none; }
 </style>
 </head>
 <body>
 <table>
-    <tr><td colspan="8" class="hdr">PETRON STATION MANAGEMENT SYSTEM</td></tr>
-    <tr><td colspan="8" class="hdr">CONSOLIDATED EMPLOYEE MASTER REPORT</td></tr>
-    <tr><td colspan="8"><b><?php echo htmlspecialchars($station_name); ?></b></td></tr>
-    <tr><td colspan="8">Date: <?php echo htmlspecialchars($now_formatted); ?></td></tr>
-    <tr><td colspan="8"></td></tr>
+    <tr><td colspan="7" align="center" class="hdr-title" style="text-align: center; font-size: 16px; font-weight: bold; color: #00264D; border: none; padding: 6px 0;">USER MANAGEMENT REPORT</td></tr>
+    <tr><td colspan="7" align="center" class="hdr-station" style="text-align: center; font-size: 12px; font-weight: bold; color: #00264D; border: none; padding: 3px 0;">' . htmlspecialchars($station_name) . '</td></tr>
+    <tr><td colspan="7" align="center" class="hdr-date" style="text-align: center; font-size: 11px; color: #475569; border: none; padding: 3px 0 8px 0;">Date: ' . htmlspecialchars($now_formatted) . '</td></tr>
+    <tr><td colspan="7" style="border: none;"></td></tr>
     <tr>
         <th>Employee ID</th>
         <th>Full Name</th>
-        <th>Username</th>
         <th>Role</th>
         <th>Branch/Station</th>
         <th>Account Status</th>
@@ -281,7 +281,6 @@ if ($format === 'excel') {
         echo '<tr>
             <td>' . htmlspecialchars($row['emp_id']) . '</td>
             <td>' . htmlspecialchars($row['full_name']) . '</td>
-            <td>' . htmlspecialchars($row['username']) . '</td>
             <td>' . htmlspecialchars($row['role']) . '</td>
             <td>' . htmlspecialchars($row['station']) . '</td>
             <td>' . htmlspecialchars($row['status']) . '</td>
@@ -304,16 +303,14 @@ if ($format === 'csv') {
     $output = fopen('php://output', 'w');
     fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
     
-    fputcsv($output, ['PETRON STATION MANAGEMENT SYSTEM']);
-    fputcsv($output, ['CONSOLIDATED EMPLOYEE MASTER REPORT']);
-    fputcsv($output, [$station_name]);
-    fputcsv($output, ['Date: ' . $now_formatted]);
+    fputcsv($output, ['', '', '', 'USER MANAGEMENT REPORT']);
+    fputcsv($output, ['', '', '', $station_name]);
+    fputcsv($output, ['', '', '', 'Date: ' . $now_formatted]);
     fputcsv($output, []);
     
     fputcsv($output, [
         'Employee ID',
         'Full Name',
-        'Username',
         'Role',
         'Branch/Station',
         'Account Status',
@@ -325,7 +322,6 @@ if ($format === 'csv') {
         fputcsv($output, [
             $row['emp_id'],
             $row['full_name'],
-            $row['username'],
             $row['role'],
             $row['station'],
             $row['status'],
@@ -352,11 +348,18 @@ ob_start();
 <style>
     <?php if ($is_print_mode): ?>
     @page { size: A4 landscape; margin: 6mm; }
-    <?php endif; ?>
+    body { font-family: Arial, sans-serif; font-size: 8px; color: #1e293b; margin: 0; padding: 0; background: #525659; display: flex; justify-content: center; }
+    .rpt-paper-sheet { background: #ffffff; width: 100%; max-width: 1050px; margin: 25px auto; padding: 35px 40px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); border-radius: 4px; box-sizing: border-box; }
+    @media print {
+        body { background: #ffffff !important; padding: 0 !important; margin: 0 !important; display: block !important; }
+        .rpt-paper-sheet { box-shadow: none !important; padding: 0 !important; width: 100% !important; max-width: none !important; margin: 0 !important; border-radius: 0 !important; }
+    }
+    <?php else: ?>
     body { font-family: dejavusans, Arial, sans-serif; font-size: 8px; color: #1e293b; margin: 0; padding: 0; }
+    .rpt-paper-sheet { width: 100%; }
+    <?php endif; ?>
     .hdr-box { text-align: center; margin-bottom: 12px; border-bottom: 2px solid #00264D; padding-bottom: 6px; }
     .hdr-box h2 { font-size: 14px; font-weight: bold; color: #00264D; text-transform: uppercase; margin: 0 0 2px 0; letter-spacing: 0.5px; }
-    .hdr-box h4 { font-size: 11px; font-weight: bold; color: #00264D; text-transform: uppercase; margin: 0 0 2px 0; }
     .hdr-box p { font-size: 9px; color: #475569; margin: 0 0 2px 0; font-weight: bold; }
     
     .data-tbl { width: 100%; border-collapse: collapse; margin-top: 4px; table-layout: fixed; }
@@ -373,9 +376,9 @@ ob_start();
 </head>
 <body>
 
+<div class="rpt-paper-sheet">
 <div class="hdr-box">
-    <h2>PETRON STATION MANAGEMENT SYSTEM</h2>
-    <h4>USER MANAGEMENT REPORT</h4>
+    <h2>USER MANAGEMENT REPORT</h2>
     <p><?php echo htmlspecialchars($station_name); ?></p>
     <p style="font-weight: normal; color: #64748b; font-size: 8.5px;">Date: <?php echo htmlspecialchars($now_formatted); ?></p>
 </div>
@@ -383,14 +386,13 @@ ob_start();
 <table class="data-tbl">
     <thead>
         <tr>
-            <th style="width: 10%;">EMP ID</th>
-            <th style="width: 20%;">FULL NAME</th>
-            <th style="width: 14%;">USERNAME</th>
-            <th style="width: 10%;">ROLE</th>
-            <th style="width: 16%;">BRANCH</th>
-            <th style="width: 8%;">STATUS</th>
+            <th style="width: 12%;">EMP ID</th>
+            <th style="width: 24%;">FULL NAME</th>
+            <th style="width: 12%;">ROLE</th>
+            <th style="width: 22%;">BRANCH</th>
+            <th style="width: 10%;">STATUS</th>
             <th style="width: 10%;">CREATED</th>
-            <th style="width: 12%;">LAST ACTIVITY</th>
+            <th style="width: 10%;">LAST ACTIVITY</th>
         </tr>
     </thead>
     <tbody>
@@ -400,7 +402,6 @@ ob_start();
         <tr>
             <td><strong><?php echo htmlspecialchars($row['emp_id']); ?></strong></td>
             <td class="left"><strong><?php echo htmlspecialchars($row['full_name']); ?></strong></td>
-            <td class="left" style="color: #475569;"><?php echo htmlspecialchars($row['username']); ?></td>
             <td><?php echo htmlspecialchars($row['role']); ?></td>
             <td><?php echo htmlspecialchars($row['station']); ?></td>
             <td><span class="<?php echo $is_act ? 'st-act' : 'st-inact'; ?>"><?php echo htmlspecialchars($row['status']); ?></span></td>
@@ -410,7 +411,7 @@ ob_start();
         <?php endforeach; ?>
         <?php if (empty($master_rows)): ?>
         <tr>
-            <td colspan="8" style="text-align: center; padding: 15px; color: #94a3b8;">No employee records found.</td>
+            <td colspan="7" style="text-align: center; padding: 15px; color: #94a3b8;">No employee records found.</td>
         </tr>
         <?php endif; ?>
     </tbody>
@@ -433,6 +434,7 @@ ob_start();
         </td>
     </tr>
 </table>
+</div>
 
 </body>
 </html>

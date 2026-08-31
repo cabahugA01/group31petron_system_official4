@@ -1325,6 +1325,6 @@ function autoRefreshTechnicalReports() {
 }
 
 // Start 10-second background auto-refresh for all System Reports metrics
-setInterval(autoRefreshTechnicalReports, 2000);
+setInterval(autoRefreshTechnicalReports, 15000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

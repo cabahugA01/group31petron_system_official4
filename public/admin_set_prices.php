@@ -259,6 +259,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $reorder_level  = (float)($_POST['reorder_level'] ?? 0);
         $status_val     = trim($_POST['status'] ?? 'active');
 
+        if ($price <= 0) throw new Exception('Price per liter must be a positive number greater than 0.');
+        if ($capacity <= 0) throw new Exception('Tank capacity must be a positive number greater than 0.');
+        if ($critical_level <= 0) throw new Exception('Critical level must be a positive number greater than 0.');
+        if ($reorder_level <= 0) throw new Exception('Reorder level must be a positive number greater than 0.');
+        if ($critical_level >= $capacity) throw new Exception('Critical level cannot exceed tank capacity.');
+        if ($reorder_level >= $capacity) throw new Exception('Reorder level cannot exceed tank capacity.');
+
         $stmt_f = $pdo->prepare("SELECT * FROM fuel_inventory WHERE id=? AND station_id=? LIMIT 1");
         $stmt_f->execute([$id, $station_id]);
         $old_fuel = $stmt_f->fetch(PDO::FETCH_ASSOC);
@@ -1031,14 +1038,16 @@ include __DIR__ . '/../partials/header.php';
 .row-below-cost:hover { background: #fee2e2 !important; }
 
 /* Badges */
-.badge-normal    { background: #dcfce7; color: #166534; }
-.badge-low       { background: #fef9c3; color: #854d0e; }
-.badge-critical  { background: #fee2e2; color: #991b1b; }
-.badge-out       { background: #fee2e2; color: #991b1b; }
-.badge-available { background: #dcfce7; color: #166534; }
-.badge-noprice   { background: #fef3c7; color: #92400e; }
-.badge-warn      { background: #fee2e2; color: #991b1b; }
-.badge-ok        { background: #dcfce7; color: #166534; }
+.badge-normal    { background: #dcfce7 !important; color: #15803d !important; border: 1px solid #86efac !important; }
+.badge-available { background: #dcfce7 !important; color: #15803d !important; border: 1px solid #86efac !important; }
+.badge-ok        { background: #dcfce7 !important; color: #15803d !important; border: 1px solid #86efac !important; }
+.badge-active    { background: #dcfce7 !important; color: #15803d !important; border: 1px solid #86efac !important; }
+.badge-low       { background: #fef3c7 !important; color: #b45309 !important; border: 1px solid #fde68a !important; }
+.badge-critical  { background: #fee2e2 !important; color: #b91c1c !important; border: 1px solid #fca5a5 !important; }
+.badge-out       { background: #fee2e2 !important; color: #b91c1c !important; border: 1px solid #fca5a5 !important; }
+.badge-inactive  { background: #fee2e2 !important; color: #b91c1c !important; border: 1px solid #fca5a5 !important; }
+.badge-noprice   { background: #fef3c7 !important; color: #92400e !important; border: 1px solid #fde68a !important; }
+.badge-warn      { background: #fee2e2 !important; color: #b91c1c !important; border: 1px solid #fca5a5 !important; }
 
 .badge {
     display: inline-block; padding: 3px 9px; border-radius: 999px;
@@ -1203,22 +1212,22 @@ include __DIR__ . '/../partials/header.php';
                         $reorder  = (float)($f['reorder_level'] ?? 0);
                         
                         $raw_status = strtolower(trim($f['status'] ?? 'normal'));
-                        if (in_array($raw_status, ['normal', 'active', 'ok', 'available'])) {
-                            $status_label = 'Normal';
-                            $status_class = 'badge-normal';
-                            $badge_style  = 'background:#dcfce7;color:#166534;border:1px solid #86efac;';
-                        } elseif (in_array($raw_status, ['low', 'low stock', 'reorder'])) {
-                            $status_label = 'Low Stock';
-                            $status_class = 'badge-low';
-                            $badge_style  = 'background:#fef9c3;color:#854d0e;border:1px solid #fde68a;';
-                        } elseif (in_array($raw_status, ['out of stock', 'out', 'empty'])) {
+                        if ($level <= 0 || in_array($raw_status, ['out of stock', 'out', 'empty'])) {
                             $status_label = 'Out of Stock';
                             $status_class = 'badge-out';
-                            $badge_style  = 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;';
-                        } else {
+                            $badge_style  = 'background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;';
+                        } elseif (($critical > 0 && $level <= $critical) || in_array($raw_status, ['critical', 'crit'])) {
                             $status_label = 'Critical';
                             $status_class = 'badge-critical';
-                            $badge_style  = 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;';
+                            $badge_style  = 'background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;';
+                        } elseif (($reorder > 0 && $level <= $reorder) || in_array($raw_status, ['low', 'low stock', 'reorder'])) {
+                            $status_label = 'Low Stock';
+                            $status_class = 'badge-low';
+                            $badge_style  = 'background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;';
+                        } else {
+                            $status_label = 'Normal';
+                            $status_class = 'badge-normal';
+                            $badge_style  = 'background:#dcfce7;color:#15803d;border:1px solid #86efac;';
                         }
                         
                         $ugt_str = $f['ugt_no'] ?? ('UGT #' . $f['pump_id']);
@@ -1827,43 +1836,43 @@ include __DIR__ . '/../partials/header.php';
             <input type="hidden" id="adminEditId">
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
                 <div style="grid-column: span 2;">
-                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Product Name</label>
-                    <input type="text" id="adminEditName" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Product Name <span style="color:#dc2626;">*</span></label>
+                    <input type="text" id="adminEditName" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\.\,\&]/g, '');">
                 </div>
                 <div>
-                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Category</label>
-                    <input type="text" id="adminEditCategory" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Category <span style="color:#dc2626;">*</span></label>
+                    <input type="text" id="adminEditCategory" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&\.\,]/g, '');">
                 </div>
                 <div>
                     <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Brand</label>
-                    <input type="text" id="adminEditBrand" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                    <input type="text" id="adminEditBrand" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&\.\,]/g, '');">
                 </div>
                 <div>
                     <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">SKU / Product Code</label>
-                    <input type="text" id="adminEditSku" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                    <input type="text" id="adminEditSku" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\-\_\.]/g, '');">
                 </div>
                 <div>
                     <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Unit of Measure (UOM)</label>
-                    <input type="text" id="adminEditUnit" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                    <input type="text" id="adminEditUnit" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\(\)]/g, '');">
                 </div>
                 <div>
-                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Reorder Level</label>
-                    <input type="number" id="adminEditReorder" min="1" value="24" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Reorder Level <span style="color:#dc2626;">*</span></label>
+                    <input type="number" id="adminEditReorder" min="1" value="24" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
                 </div>
                 <div>
-                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Critical Level</label>
-                    <input type="number" id="adminEditCritical" min="1" value="10" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Critical Level <span style="color:#dc2626;">*</span></label>
+                    <input type="number" id="adminEditCritical" min="1" value="10" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
                 </div>
                 <div>
-                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Product Status</label>
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Product Status <span style="color:#dc2626;">*</span></label>
                     <select id="adminEditStatus" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
                     </select>
                 </div>
                 <div>
-                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Default Selling Price (₱)</label>
-                    <input type="number" step="0.01" min="0" id="adminEditPrice" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#002F6C;" placeholder="0.00">
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Default Selling Price (₱) <span style="color:#dc2626;">*</span></label>
+                    <input type="number" step="0.01" min="0" id="adminEditPrice" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#002F6C;" placeholder="0.00" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
                 </div>
             </div>
             <div style="margin-top:10px; font-size:11px; color:#1e40af; background:#eff6ff; border:1px solid #bfdbfe; padding:8px 10px; border-radius:6px;">
@@ -1925,26 +1934,26 @@ include __DIR__ . '/../partials/header.php';
         <form id="adminEditServiceForm" style="padding:20px;">
             <input type="hidden" id="adminEditServiceId">
             <div style="margin-bottom:12px;">
-                <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Service Name</label>
-                <input type="text" id="adminEditServiceName" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Service Name <span style="color:#dc2626;">*</span></label>
+                <input type="text" id="adminEditServiceName" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\.\,\&]/g, '');">
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
                 <div>
-                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Category</label>
-                    <input type="text" id="adminEditServiceCategory" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Category <span style="color:#dc2626;">*</span></label>
+                    <input type="text" id="adminEditServiceCategory" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&\.\,]/g, '');">
                 </div>
                 <div>
-                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Service Key</label>
-                    <input type="text" id="adminEditServiceKey" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Service Key <span style="color:#dc2626;">*</span></label>
+                    <input type="text" id="adminEditServiceKey" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\_\-]/g, '');">
                 </div>
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
                 <div>
-                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Service Price (₱)</label>
-                    <input type="number" step="0.01" min="0" id="adminEditServicePrice" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#002F6C;" placeholder="0.00">
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Service Price (₱) <span style="color:#dc2626;">*</span></label>
+                    <input type="number" step="0.01" min="0" id="adminEditServicePrice" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#002F6C;" placeholder="0.00" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
                 </div>
                 <div>
-                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Status</label>
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">Status <span style="color:#dc2626;">*</span></label>
                     <select id="adminEditServiceActive" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
                         <option value="1">Active</option>
                         <option value="0">Inactive</option>
@@ -2255,17 +2264,56 @@ function closeAdminEditProductModal() {
 
 document.getElementById('adminEditProductForm').addEventListener('submit', function(e) {
     e.preventDefault();
+
+    var nameVal  = document.getElementById('adminEditName').value.trim();
+    var catVal   = document.getElementById('adminEditCategory').value.trim();
+    var priceVal = parseFloat(document.getElementById('adminEditPrice').value || 0);
+    var reorderVal = parseFloat(document.getElementById('adminEditReorder').value || 0);
+    var criticalVal = parseFloat(document.getElementById('adminEditCritical').value || 0);
+
+    var placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+
+    if (!nameVal || placeholders.includes(nameVal.toLowerCase())) {
+        showCustomAlert('Product Name is required and cannot be N/A or a placeholder.', 'warning');
+        document.getElementById('adminEditName').focus();
+        return;
+    }
+
+    if (!catVal || placeholders.includes(catVal.toLowerCase())) {
+        showCustomAlert('Category is required and cannot be N/A or a placeholder.', 'warning');
+        document.getElementById('adminEditCategory').focus();
+        return;
+    }
+
+    if (isNaN(priceVal) || priceVal <= 0) {
+        showCustomAlert('Default Selling Price must be a valid number greater than 0.', 'warning');
+        document.getElementById('adminEditPrice').focus();
+        return;
+    }
+
+    if (isNaN(reorderVal) || reorderVal <= 0) {
+        showCustomAlert('Reorder Level must be a valid number greater than 0.', 'warning');
+        document.getElementById('adminEditReorder').focus();
+        return;
+    }
+
+    if (isNaN(criticalVal) || criticalVal <= 0) {
+        showCustomAlert('Critical Level must be a valid number greater than 0.', 'warning');
+        document.getElementById('adminEditCritical').focus();
+        return;
+    }
+
     var fd = new FormData();
     fd.append('action',         'edit_product_admin');
     fd.append('id',             document.getElementById('adminEditId').value);
-    fd.append('product_name',   document.getElementById('adminEditName').value.trim());
-    fd.append('category',       document.getElementById('adminEditCategory').value.trim());
+    fd.append('product_name',   nameVal);
+    fd.append('category',       catVal);
     fd.append('brand',          document.getElementById('adminEditBrand').value.trim());
     fd.append('sku',            document.getElementById('adminEditSku').value.trim());
     fd.append('unit',           document.getElementById('adminEditUnit').value.trim());
-    fd.append('unit_price',     document.getElementById('adminEditPrice').value);
-    fd.append('reorder_level',  document.getElementById('adminEditReorder').value);
-    fd.append('critical_level', document.getElementById('adminEditCritical').value);
+    fd.append('unit_price',     priceVal);
+    fd.append('reorder_level',  reorderVal);
+    fd.append('critical_level', criticalVal);
     fd.append('status',         document.getElementById('adminEditStatus').value);
 
     fetch('admin_set_prices_handler.php', { method: 'POST', body: fd })
@@ -2332,13 +2380,45 @@ function closeAdminEditServiceModal() {
 
 document.getElementById('adminEditServiceForm').addEventListener('submit', function(e) {
     e.preventDefault();
+
+    var nameVal  = document.getElementById('adminEditServiceName').value.trim();
+    var catVal   = document.getElementById('adminEditServiceCategory').value.trim();
+    var keyVal   = document.getElementById('adminEditServiceKey').value.trim();
+    var priceVal = parseFloat(document.getElementById('adminEditServicePrice').value || 0);
+
+    var placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+
+    if (!nameVal || placeholders.includes(nameVal.toLowerCase())) {
+        showCustomAlert('Service Name is required and cannot be N/A or a placeholder.', 'warning');
+        document.getElementById('adminEditServiceName').focus();
+        return;
+    }
+
+    if (!catVal || placeholders.includes(catVal.toLowerCase())) {
+        showCustomAlert('Category is required and cannot be N/A or a placeholder.', 'warning');
+        document.getElementById('adminEditServiceCategory').focus();
+        return;
+    }
+
+    if (!keyVal || placeholders.includes(keyVal.toLowerCase())) {
+        showCustomAlert('Service Key is required and cannot be N/A or a placeholder.', 'warning');
+        document.getElementById('adminEditServiceKey').focus();
+        return;
+    }
+
+    if (isNaN(priceVal) || priceVal <= 0) {
+        showCustomAlert('Service Price must be a valid number greater than 0.', 'warning');
+        document.getElementById('adminEditServicePrice').focus();
+        return;
+    }
+
     var fd = new FormData();
     fd.append('action',        'admin_edit_service');
     fd.append('id',            document.getElementById('adminEditServiceId').value);
-    fd.append('service_name',  document.getElementById('adminEditServiceName').value.trim());
-    fd.append('category',      document.getElementById('adminEditServiceCategory').value.trim());
-    fd.append('service_key',   document.getElementById('adminEditServiceKey').value.trim());
-    fd.append('service_price', document.getElementById('adminEditServicePrice').value);
+    fd.append('service_name',  nameVal);
+    fd.append('category',      catVal);
+    fd.append('service_key',   keyVal);
+    fd.append('service_price', priceVal);
     fd.append('active',        document.getElementById('adminEditServiceActive').value);
 
     fetch('admin_set_prices_handler.php', { method: 'POST', body: fd })
@@ -3144,6 +3224,50 @@ function closeEditPriceModalAdmin() {
     document.getElementById('editPriceModalAdmin').style.display = 'none';
 }
 
+function validateEditFuelForm() {
+    const pEl  = document.getElementById('aef_price');
+    const cEl  = document.getElementById('aef_capacity');
+    const crEl = document.getElementById('aef_critical');
+    const rEl  = document.getElementById('aef_reorder');
+
+    const p  = parseFloat(pEl?.value || 0);
+    const c  = parseFloat(cEl?.value || 0);
+    const cr = parseFloat(crEl?.value || 0);
+    const r  = parseFloat(rEl?.value || 0);
+
+    if (isNaN(p) || p <= 0) {
+        alert('Price / Liter must be a valid positive number greater than 0.');
+        if (pEl) pEl.focus();
+        return false;
+    }
+    if (isNaN(c) || c <= 0) {
+        alert('Tank Capacity must be a valid positive number greater than 0.');
+        if (cEl) cEl.focus();
+        return false;
+    }
+    if (isNaN(cr) || cr <= 0) {
+        alert('Critical Level must be a valid positive number greater than 0.');
+        if (crEl) crEl.focus();
+        return false;
+    }
+    if (cr >= c) {
+        alert('Critical Level cannot be greater than or equal to Tank Capacity (' + c + ' L).');
+        if (crEl) crEl.focus();
+        return false;
+    }
+    if (isNaN(r) || r <= 0) {
+        alert('Reorder Level must be a valid positive number greater than 0.');
+        if (rEl) rEl.focus();
+        return false;
+    }
+    if (r >= c) {
+        alert('Reorder Level cannot be greater than or equal to Tank Capacity (' + c + ' L).');
+        if (rEl) rEl.focus();
+        return false;
+    }
+    return true;
+}
+
 function openRejectPriceModalAdmin(approvalId, productName, oldPrice, newPrice) {
     document.getElementById('adminRejectApprovalId').value = approvalId;
     document.getElementById('adminRejectProdName').textContent = productName;
@@ -3285,7 +3409,7 @@ function switchTab(tabName) {
         <span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;">EDIT FUEL PRODUCT</span>
       </h3>
     </div>
-    <form method="POST" action="admin_set_prices.php" style="padding:20px 24px;">
+    <form method="POST" action="admin_set_prices.php" style="padding:20px 24px;" onsubmit="return validateEditFuelForm();">
       <input type="hidden" name="action" value="admin_edit_fuel_direct">
       <input type="hidden" name="active_tab" value="fuel">
       <input type="hidden" id="aef_fuel_id" name="id">
@@ -3306,7 +3430,7 @@ function switchTab(tabName) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Price / Liter (&#8369;) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="aef_price" name="price" step="0.01" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+          <input type="number" id="aef_price" name="price" step="0.01" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
           <div id="aef_price_notice" style="display:none;margin-top:6px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:6px 10px;align-items:center;gap:8px;">
               <i class="fas fa-lock" style="color:#92400e;font-size:12px;"></i>
               <span style="font-size:11px;color:#92400e;font-weight:700;">PRICE LOCKED &mdash; A pending price request exists. Approve or reject it first to change the price.</span>
@@ -3315,7 +3439,7 @@ function switchTab(tabName) {
         </div>
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Tank Capacity (L) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="aef_capacity" name="capacity" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+          <input type="number" id="aef_capacity" name="capacity" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
         </div>
       </div>
 
@@ -3323,11 +3447,11 @@ function switchTab(tabName) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Critical Level (L) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="aef_critical" name="critical_level" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+          <input type="number" id="aef_critical" name="critical_level" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
         </div>
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Reorder Level (L) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="aef_reorder" name="reorder_level" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;">
+          <input type="number" id="aef_reorder" name="reorder_level" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
         </div>
       </div>
 

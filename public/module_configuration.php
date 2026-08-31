@@ -1963,7 +1963,7 @@ function showModuleSettings(moduleKey) {
                 </div>
                 <div style="margin-bottom: 14px;">
                     <label for="inp_dashboard_refresh_interval" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Refresh Interval (seconds)</label>
-                    <input type="number" id="inp_dashboard_refresh_interval" name="dashboard_refresh_interval" class="config-input" value="45" data-default="45" style="width: 140px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                    <input type="number" id="inp_dashboard_refresh_interval" name="dashboard_refresh_interval" class="config-input" value="15" data-default="15" style="width: 140px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
                 </div>
             </div>
 
@@ -2597,6 +2597,6 @@ function autoRefreshModuleConfiguration() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshModuleConfiguration, 2000);
+setInterval(autoRefreshModuleConfiguration, 15000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

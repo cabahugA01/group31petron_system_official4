@@ -120,11 +120,12 @@ if (!empty($query)) {
                 $txn_id = $r['transaction_id'] ?? ('#' . $r['id']);
                 $ts     = date('M d, Y H:i', strtotime($r['created_at']));
                 
-                $txn_link = 'staff_transactions_hub.php?section=merchandise';
+                $txn_q = urlencode($txn_id);
+                $txn_link = 'staff_transactions_hub.php?section=history&hsearch=' . $txn_q;
                 if ($role === 'manager') {
-                    $txn_link = 'pending_transactions.php';
+                    $txn_link = 'pending_transactions.php?search=' . $txn_q;
                 } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                    $txn_link = 'admin_transactions_oversight.php';
+                    $txn_link = 'admin_transactions_oversight.php?search=' . $txn_q;
                 }
                 
                 $results[] = [
@@ -159,11 +160,12 @@ if (!empty($query)) {
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $ts = date('M d, Y H:i', strtotime($r['transaction_date']));
                 
+                $fuel_q = urlencode($r['id']);
                 $txn_link = 'staff_transactions_hub.php?section=fuel';
                 if ($role === 'manager') {
-                    $txn_link = 'manager_fuel_transaction_validation.php';
+                    $txn_link = 'manager_fuel_transaction_validation.php?search=' . $fuel_q;
                 } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                    $txn_link = 'admin_fuel_transactions_oversight.php';
+                    $txn_link = 'admin_fuel_transactions_oversight.php?search=' . $fuel_q;
                 }
                 
                 $results[] = [
@@ -203,12 +205,8 @@ if (!empty($query)) {
                 $contact = $r['phone'] ?: ($r['email'] ?: 'No contact');
                 $code    = $r['customer_code'] ? " · ID: {$r['customer_code']}" : '';
                 
-                $cust_link = 'customers.php?edit=' . $r['id'];
-                if ($role === 'manager') {
-                    $cust_link = 'manager_customers.php?edit=' . $r['id'];
-                } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                    $cust_link = 'admin_customer_management.php?section=list';
-                }
+                $cust_q = urlencode($r['name']);
+                $cust_link = ($role === 'staff') ? ('staff_customer_list.php?search=' . $cust_q) : ('manager_customers.php?search=' . $cust_q);
                 
                 $results[] = [
                     'type'     => 'Customer',
@@ -246,12 +244,8 @@ if (!empty($query)) {
             $desc  = trim("{$r['brand']} {$r['model']} {$r['color']}");
             if (empty($desc)) $desc = 'Vehicle';
             
-            $veh_link = 'customers.php';
-            if ($role === 'manager') {
-                $veh_link = 'manager_customers.php';
-            } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                $veh_link = 'admin_customer_management.php';
-            }
+            $veh_q = urlencode($r['plate_number']);
+            $veh_link = ($role === 'staff') ? ('staff_customer_list.php?search=' . $veh_q) : ('manager_customers.php?search=' . $veh_q);
             
             $results[] = [
                 'type'     => 'Vehicle',
@@ -264,7 +258,9 @@ if (!empty($query)) {
             ];
         }
     } catch (Exception $e) {}
-    //    Fields: product_name, sku, category, stock_level
+
+    // ════════════════════════════════════════════════════════
+    // 3. PRODUCTS & INVENTORY
     // ════════════════════════════════════════════════════════
     if (is_module_enabled('inventory') || in_array($role, ['superadmin', 'developer'])) {
         try {
@@ -300,11 +296,30 @@ if (!empty($query)) {
                 $stock  = (int)($r['stock_level'] ?? 0);
                 $avail  = $stock > 0 ? "In Stock ({$stock})" : 'Out of Stock';
                 
-                $inv_link = 'staff_inventory.php';
-                if ($role === 'manager') {
-                    $inv_link = 'manager_inventory_merchandise.php';
-                } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                    $inv_link = 'admin_inventory_merchandise.php';
+                $p_q        = urlencode($r['product_name']);
+                $cat_lower  = strtolower(trim((string)($r['category'] ?? '')));
+                $name_lower = strtolower(trim((string)($r['product_name'] ?? '')));
+                
+                $is_fuel = (strpos($cat_lower, 'fuel') !== false ||
+                            strpos($name_lower, 'diesel') !== false ||
+                            strpos($name_lower, 'xcs') !== false ||
+                            strpos($name_lower, 'kerosene') !== false ||
+                            strpos($name_lower, 'xtra') !== false ||
+                            strpos($name_lower, 'unleaded') !== false ||
+                            strpos($name_lower, 'gasoline') !== false);
+                
+                if ($is_fuel) {
+                    $inv_link = ($role === 'staff')
+                        ? ('staff_inventory_fuel.php?search=' . $p_q)
+                        : (($role === 'manager') ? ('manager_inventory_fuel.php?search=' . $p_q) : ('admin_inventory_fuel.php?search=' . $p_q));
+                    $icon  = 'fas fa-gas-pump';
+                    $color = '#f97316';
+                } else {
+                    $inv_link = ($role === 'staff')
+                        ? ('staff_inventory_merchandise.php?search=' . $p_q)
+                        : (($role === 'manager') ? ('manager_inventory_merchandise.php?search=' . $p_q) : ('admin_inventory_merchandise.php?search=' . $p_q));
+                    $icon  = $ICONS['Product'];
+                    $color = $COLORS['Product'];
                 }
                 
                 $results[] = [
@@ -313,10 +328,38 @@ if (!empty($query)) {
                     'subtitle' => "SKU: {$r['sku']} · {$r['category']} · {$avail}",
                     'meta'     => $r['category'],
                     'link'     => $inv_link,
-                    'icon'     => $ICONS['Product'],
-                    'color'    => $COLORS['Product'],
+                    'icon'     => $icon,
+                    'color'    => $color,
                 ];
             }
+            // Also search direct fuel_inventory table
+            try {
+                $sw_fuel = $station_id ? "WHERE fi.station_id = {$station_id}" : '';
+                $stmt_fuel = $pdo->prepare(
+                    "SELECT fi.id, fi.fuel_type, fi.current_level, fi.capacity, fi.price_per_liter
+                     FROM fuel_inventory fi
+                     {$sw_fuel}
+                     " . ($sw_fuel ? "AND" : "WHERE") . " (fi.fuel_type LIKE ? OR CAST(fi.current_level AS CHAR) LIKE ?)
+                     ORDER BY fi.fuel_type ASC LIMIT 5"
+                );
+                $stmt_fuel->execute([$like, $like]);
+                foreach ($stmt_fuel->fetchAll(PDO::FETCH_ASSOC) as $fr) {
+                    $fq = urlencode($fr['fuel_type']);
+                    $fuel_inv_link = ($role === 'staff')
+                        ? ('staff_inventory_fuel.php?search=' . $fq)
+                        : (($role === 'manager') ? ('manager_inventory_fuel.php?search=' . $fq) : ('admin_inventory_fuel.php?search=' . $fq));
+                    
+                    $results[] = [
+                        'type'     => 'Product',
+                        'title'    => $fr['fuel_type'],
+                        'subtitle' => "Fuel Inventory · Level: {$fr['current_level']}L / {$fr['capacity']}L",
+                        'meta'     => 'Fuel',
+                        'link'     => $fuel_inv_link,
+                        'icon'     => 'fas fa-gas-pump',
+                        'color'    => '#f97316',
+                    ];
+                }
+            } catch (Exception $e_fuel) {}
         } catch (Exception $e) {}
     }
 
@@ -386,11 +429,12 @@ if (!empty($query)) {
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $dt = $r['delivery_date'] ? date('M d, Y', strtotime($r['delivery_date'])) : 'TBD';
                 
-                $del_link = 'staff_record_delivery.php';
+                $del_q = urlencode($r['id']);
+                $del_link = 'staff_record_delivery.php?search=' . $del_q;
                 if ($role === 'manager') {
-                    $del_link = 'manager_merchandise_deliveries.php';
+                    $del_link = 'manager_merchandise_deliveries.php?search=' . $del_q;
                 } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                    $del_link = 'admin_merchandise_deliveries_oversight.php';
+                    $del_link = 'admin_merchandise_deliveries_oversight.php?search=' . $del_q;
                 }
                 
                 $results[] = [
@@ -527,10 +571,8 @@ if (!empty($query)) {
                 $price = $r['unit_price'] ? '₱' . number_format($r['unit_price'], 2) : 'No price';
                 $cost  = $r['cost_price']  ? ' · Cost: ₱' . number_format($r['cost_price'], 2) : '';
                 
-                $prod_mgmt_link = 'manager_product_merchandise.php';
-                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                    $prod_mgmt_link = 'admin_set_prices.php';
-                }
+                $pm_q = urlencode($r['product_name']);
+                $prod_mgmt_link = ($role === 'manager') ? ('manager_set_prices.php?tab=merch&search=' . $pm_q) : ('admin_set_prices.php?tab=merch&search=' . $pm_q);
                 
                 $results[] = [
                     'type'     => 'Product Mgmt',
@@ -567,10 +609,7 @@ if (!empty($query)) {
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $pct  = $r['capacity'] > 0 ? round(($r['current_level'] / $r['capacity']) * 100) : 0;
                 
-                $fuel_mgmt_link = 'manager_fuel_management_complete.php';
-                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                    $fuel_mgmt_link = 'admin_fuel_transactions_oversight.php';
-                }
+                $fuel_mgmt_link = ($role === 'manager') ? 'manager_set_prices.php?tab=fuel' : 'admin_set_prices.php?tab=fuel';
                 
                 $results[] = [
                     'type'     => 'Fuel Management',
@@ -604,10 +643,7 @@ if (!empty($query)) {
                 $dt   = date('M d, Y', strtotime($r['reading_date']));
                 $pump = $r['pump_number'] ?? $r['id'];
                 
-                $fuel_mgmt_link = 'manager_fuel_management_complete.php';
-                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                    $fuel_mgmt_link = 'admin_fuel_transactions_oversight.php';
-                }
+                $fuel_mgmt_link = ($role === 'manager') ? 'manager_set_prices.php?tab=fuel' : 'admin_set_prices.php?tab=fuel';
                 
                 $results[] = [
                     'type'     => 'Fuel Management',

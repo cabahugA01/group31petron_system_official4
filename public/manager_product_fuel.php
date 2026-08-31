@@ -468,7 +468,7 @@ include __DIR__ . '/../partials/header.php';
                     <select name="fuel_status" id="editFuelStatusSel" class="form-control">
                         <option value="Normal">Normal</option>
                         <option value="Low Stock">Low Stock</option>
-                        <option value="Critical">Critical</option>
+                        
                         <option value="Inactive">Inactive</option>
                     </select>
                 </div>

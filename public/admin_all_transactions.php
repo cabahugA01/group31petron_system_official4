@@ -1262,6 +1262,6 @@ async function autoRefreshAdminAllTransactions() {
     }
 }
 
-setInterval(autoRefreshAdminAllTransactions, 2000);
+setInterval(autoRefreshAdminAllTransactions, 15000);
 </script>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

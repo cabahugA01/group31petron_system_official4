@@ -700,7 +700,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
             <option value="">All Statuses</option>
             <option value="Normal">Normal</option>
             <option value="Low">Low</option>
-            <option value="Critical">Critical</option>
+            
         </select>
     </div>
 
@@ -715,16 +715,16 @@ body, html { overflow-x: hidden; max-width: 100%; }
             <table class="pricing-table">
                 <thead>
                     <tr>
-                        <th>UGT No.</th>
-                        <th>Fuel Type</th>
-                        <th>Price / Liter (&#8369;)</th>
-                        <th>Current Volume (L)</th>
-                        <th>Capacity (L)</th>
-                        <th>Critical Level (L)</th>
-                        <th>Reorder Level (L)</th>
-                        <th>Status</th>
-                        <th>Last Updated</th>
-                        <th>Actions</th>
+                        <th style="text-align:left;padding-left:16px;">UGT No.</th>
+                        <th style="text-align:left;">Fuel Type</th>
+                        <th style="text-align:right;">Price / Liter (&#8369;)</th>
+                        <th style="text-align:right;">Current Volume (L)</th>
+                        <th style="text-align:right;">Capacity (L)</th>
+                        <th style="text-align:right;">Critical Level (L)</th>
+                        <th style="text-align:right;">Reorder Level (L)</th>
+                        <th style="text-align:center;">Status</th>
+                        <th style="text-align:center;">Last Updated</th>
+                        <th style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -743,26 +743,22 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         $capacity = $f['capacity'];
                         
                         $raw_status = strtolower(trim($f['status'] ?? 'normal'));
-                        if (in_array($raw_status, ['normal', 'active', 'ok', 'available'])) {
+                        // Evaluate status strictly from actual numeric stock levels (Only 3 statuses: Normal = GREEN, Low Stock = RED, Out of Stock = RED)
+                        if ($level <= 0) {
+                            $status_label = 'Out of Stock';
+                            $status_class = 'badge-out';
+                            $bar_color    = '#dc2626';
+                            $badge_style  = 'background:#fee2e2 !important;color:#b91c1c !important;border:1px solid #fca5a5 !important;';
+                        } elseif ($reorder > 0 && $level <= $reorder) {
+                            $status_label = 'Low Stock';
+                            $status_class = 'badge-low';
+                            $bar_color    = '#dc2626';
+                            $badge_style  = 'background:#fee2e2 !important;color:#b91c1c !important;border:1px solid #fca5a5 !important;';
+                        } else {
                             $status_label = 'Normal';
                             $status_class = 'badge-normal';
                             $bar_color    = '#16a34a';
-                            $badge_style  = 'background:#dcfce7;color:#166534;border:1px solid #86efac;';
-                        } elseif (in_array($raw_status, ['low', 'low stock', 'reorder'])) {
-                            $status_label = 'Low Stock';
-                            $status_class = 'badge-low';
-                            $bar_color    = '#eab308';
-                            $badge_style  = 'background:#fef9c3;color:#854d0e;border:1px solid #fde68a;';
-                        } elseif (in_array($raw_status, ['out of stock', 'out', 'empty'])) {
-                            $status_label = 'Out of Stock';
-                            $status_class = 'badge-out';
-                            $bar_color    = '#94a3b8';
-                            $badge_style  = 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;';
-                        } else {
-                            $status_label = 'Critical';
-                            $status_class = 'badge-critical';
-                            $bar_color    = '#dc2626';
-                            $badge_style  = 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;';
+                            $badge_style  = 'background:#dcfce7 !important;color:#15803d !important;border:1px solid #86efac !important;';
                         }
                         
                         $pct = $capacity > 0 ? min(100, round($level / $capacity * 100)) : 0;
@@ -795,15 +791,9 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         <td><?php echo number_format($critical, 2); ?></td>
                         <td><strong style="color:#475569;"><?php echo number_format((float)$reorder, 2); ?></strong></td>
                         <td>
-                            <?php if ($status_label === 'Critical'): ?>
-                                <span class="badge <?php echo $status_class; ?>">Critical</span>
-                            <?php elseif ($status_label === 'Low' || $status_label === 'Low Stock'): ?>
-                                <span class="badge <?php echo $status_class; ?>">Low Stock</span>
-                            <?php elseif ($status_label === 'Out of Stock'): ?>
-                                <span class="badge <?php echo $status_class; ?>">Out of Stock</span>
-                            <?php else: ?>
-                                <span class="badge <?php echo $status_class; ?>">Normal</span>
-                            <?php endif; ?>
+                            <span class="badge <?php echo $status_class; ?>" style="<?php echo $badge_style; ?>display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;">
+                                <?php echo htmlspecialchars($status_label); ?>
+                            </span>
                         </td>
                         <td class="muted" style="font-size:12px;">
                             <?php echo $f['last_updated'] ? htmlspecialchars(date('M d, Y H:i', strtotime($f['last_updated']))) : '&mdash;'; ?>
@@ -878,7 +868,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
             <option value="">All Statuses</option>
             <option value="available">Available</option>
             <option value="low">Low Stock</option>
-            <option value="critical">Critical Stock</option>
+            
             <option value="out">Out of Stock</option>
             <option value="noprice">No Price Set</option>
             <option value="belowcost">Price Below Cost</option>
@@ -942,10 +932,22 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         $no_price      = ($price <= 0);
                         $brand_display = htmlspecialchars($item['brand'] ?? '—');
 
-                        if ($stock <= 0)                { $st_label = 'Out of Stock';   $st_class = 'badge-out';      $st_key = 'out'; }
-                        elseif ($stock <= $critical_lvl){ $st_label = 'Critical Stock'; $st_class = 'badge-critical'; $st_key = 'critical'; }
-                        elseif ($stock <= $reorder_level){ $st_label = 'Low Stock';     $st_class = 'badge-low';      $st_key = 'low'; }
-                        else                            { $st_label = 'Available';      $st_class = 'badge-available';$st_key = 'available'; }
+                        if ($stock <= 0) {
+                            $st_label   = 'Out of Stock';
+                            $st_class   = 'badge-out';
+                            $st_key     = 'out';
+                            $style_attr = 'background:#fee2e2 !important;color:#b91c1c !important;border:1px solid #fca5a5 !important;';
+                        } elseif ($reorder_level > 0 && $stock <= $reorder_level) {
+                            $st_label   = 'Low Stock';
+                            $st_class   = 'badge-low';
+                            $st_key     = 'low';
+                            $style_attr = 'background:#fee2e2 !important;color:#b91c1c !important;border:1px solid #fca5a5 !important;';
+                        } else {
+                            $st_label   = 'Available';
+                            $st_class   = 'badge-available';
+                            $st_key     = 'available';
+                            $style_attr = 'background:#dcfce7 !important;color:#15803d !important;border:1px solid #86efac !important;';
+                        }
 
                         $product_status = strtolower(trim($item['status'] ?? 'active'));
                         $is_inactive = in_array($product_status, ['inactive','disabled','deactivated']);
@@ -999,7 +1001,8 @@ body, html { overflow-x: hidden; max-width: 100%; }
                             <span style="display:inline-block;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700;"><?php echo number_format($critical_lvl); ?></span>
                         </td>
                         <!-- Status -->
-                        <td style="text-align:center;"><span class="badge <?php echo $st_class; ?>"><?php echo $st_label; ?></span></td>
+                        <!-- Status -->
+                        <td style="text-align:center;"><span class="badge <?php echo $st_class; ?>" style="<?php echo $style_attr; ?>display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;"><?php echo $st_label; ?></span></td>
                         <!-- Actions -->
                         <td style="text-align:center;">
                             <div class="act-btn-wrap">
@@ -1892,29 +1895,29 @@ document.addEventListener('DOMContentLoaded', function() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Product Name <span style="color:#dc2626;">*</span></label>
-          <input type="text" id="newMerchName" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coke 1.5L">
+          <input type="text" id="newMerchName" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coke 1.5L" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&]/g, '');">
         </div>
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">SKU / Product Code</label>
-          <input type="text" id="newMerchSku" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;font-family:monospace;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. ITEM-001 (auto if blank)">
+          <input type="text" id="newMerchSku" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;font-family:monospace;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. ITEM-001 (auto if blank)" oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\-\_]/g, '');">
         </div>
       </div>
       <!-- Row 2: Category + Brand -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Category <span style="color:#dc2626;">*</span></label>
-          <input type="text" id="newMerchCategory" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Drinks/Food">
+          <input type="text" id="newMerchCategory" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Drinks/Food" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
         </div>
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Brand</label>
-          <input type="text" id="newMerchBrand" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coca-Cola, Petron">
+          <input type="text" id="newMerchBrand" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coca-Cola, Petron" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
         </div>
       </div>
       <!-- Row 3: UOM + Barcode -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit of Measure (UOM)</label>
-          <input type="text" id="newMerchSize" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Bottle, Box, pcs, 500ml">
+          <input type="text" id="newMerchSize" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Bottle, Box, pcs, 500ml" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
         </div>
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Barcode <span style="color:#94a3b8;font-weight:400;text-transform:none;">(optional)</span></label>
@@ -1926,7 +1929,8 @@ document.addEventListener('DOMContentLoaded', function() {
               onblur="this.style.borderColor='#d1d5db'"
               placeholder="Scan barcode or type manually"
               autocomplete="off"
-              onkeydown="handleBarcodeKeydown(event, 'add')">
+              onkeydown="handleBarcodeKeydown(event, 'add')"
+              oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\-\_]/g, '');">
             <button type="button" id="newMerchBarcodeScanBtn"
               onclick="activateBarcodeScan('newMerchBarcode', 'add')"
               title="Click then scan with barcode gun"
@@ -1980,7 +1984,7 @@ document.addEventListener('DOMContentLoaded', function() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Product Name <span style="color:#dc2626;">*</span></label>
-          <input type="text" id="editMerchName" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+          <input type="text" id="editMerchName" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&]/g, '');">
         </div>
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Barcode <span style="color:#94a3b8;font-weight:400;text-transform:none;">(optional)</span></label>
@@ -1992,7 +1996,8 @@ document.addEventListener('DOMContentLoaded', function() {
               onblur="this.style.borderColor='#d1d5db'"
               placeholder="Scan barcode or type manually"
               autocomplete="off"
-              onkeydown="handleBarcodeKeydown(event, 'edit')">
+              onkeydown="handleBarcodeKeydown(event, 'edit')"
+              oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\-\_]/g, '');">
             <button type="button" id="editMerchBarcodeScanBtn"
               onclick="activateBarcodeScan('editMerchBarcode', 'edit')"
               title="Click then scan with barcode gun"
@@ -2007,18 +2012,18 @@ document.addEventListener('DOMContentLoaded', function() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Category <span style="color:#dc2626;">*</span></label>
-          <input type="text" id="editMerchCategory" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+          <input type="text" id="editMerchCategory" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
         </div>
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Brand</label>
-          <input type="text" id="editMerchBrand" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coca-Cola, Petron">
+          <input type="text" id="editMerchBrand" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coca-Cola, Petron" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
         </div>
       </div>
       <!-- Row 3: UOM + SKU -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit of Measure (UOM)</label>
-          <input type="text" id="editMerchSize" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Bottle, Box, pcs">
+          <input type="text" id="editMerchSize" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Bottle, Box, pcs" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
         </div>
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">SKU / Product Code <span style="color:#94a3b8;font-weight:400;text-transform:none;">(read-only)</span></label>
@@ -2029,7 +2034,7 @@ document.addEventListener('DOMContentLoaded', function() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#002F6C;text-transform:uppercase;margin-bottom:4px;">Default Selling Price (&#8369;) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="editMerchPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:2px solid #002F6C;border-radius:7px;font-size:14px;font-weight:600;box-sizing:border-box;" onfocus="this.style.borderColor='#004494'" onblur="this.style.borderColor='#002F6C'" placeholder="0.00">
+          <input type="number" id="editMerchPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:2px solid #002F6C;border-radius:7px;font-size:14px;font-weight:600;box-sizing:border-box;" onfocus="this.style.borderColor='#004494'" onblur="this.style.borderColor='#002F6C'" placeholder="0.00" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
           <small style="color:#64748b;font-size:11px;">Cost price is managed per delivery batch</small>
         </div>
         <div>
@@ -2044,11 +2049,11 @@ document.addEventListener('DOMContentLoaded', function() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:4px;">Reorder Level</label>
-          <input type="number" id="editMerchReorder" min="0" style="width:100%;padding:9px 11px;border:1.5px solid #fde68a;border-radius:7px;font-size:13px;background:#fffbeb;box-sizing:border-box;" onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#fde68a'">
+          <input type="number" id="editMerchReorder" min="0" style="width:100%;padding:9px 11px;border:1.5px solid #fde68a;border-radius:7px;font-size:13px;background:#fffbeb;box-sizing:border-box;" onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#fde68a'" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
         </div>
         <div>
           <label style="display:block;font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;margin-bottom:4px;">Critical Level</label>
-          <input type="number" id="editMerchCritical" min="0" style="width:100%;padding:9px 11px;border:1.5px solid #fca5a5;border-radius:7px;font-size:13px;background:#fff1f2;box-sizing:border-box;" onfocus="this.style.borderColor='#ef4444'" onblur="this.style.borderColor='#fca5a5'">
+          <input type="number" id="editMerchCritical" min="0" style="width:100%;padding:9px 11px;border:1.5px solid #fca5a5;border-radius:7px;font-size:13px;background:#fff1f2;box-sizing:border-box;" onfocus="this.style.borderColor='#ef4444'" onblur="this.style.borderColor='#fca5a5'" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
         </div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:16px;">
@@ -2230,7 +2235,8 @@ document.addEventListener('DOMContentLoaded', function() {
             <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Name <span style="color:#dc2626;">*</span></label>
             <input type="text" id="addSvcName" required placeholder="e.g. Change Oil - Mineral"
               style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;font-weight:500;box-sizing:border-box;"
-              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+              oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&]/g, '');">
           </div>
           <div style="grid-column:1/-1;">
             <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Category <span style="color:#dc2626;">*</span></label>
@@ -2255,14 +2261,16 @@ document.addEventListener('DOMContentLoaded', function() {
             <!-- Custom Category Input -->
             <div id="addSvcCustomWrap" style="display:none;margin-top:8px;">
               <input type="text" id="addSvcCustomCategory" placeholder="Type custom category name (e.g. Car Audio & Accessories)..."
-                style="width:100%;padding:9px 12px;border:1.5px solid #0284c7;border-radius:8px;font-size:13px;background:#f0f9ff;box-sizing:border-box;color:#0369a1;font-weight:600;">
+                style="width:100%;padding:9px 12px;border:1.5px solid #0284c7;border-radius:8px;font-size:13px;background:#f0f9ff;box-sizing:border-box;color:#0369a1;font-weight:600;"
+                oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
             </div>
           </div>
           <div>
             <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Fee (₱) <span style="color:#dc2626;">*</span></label>
             <input type="number" id="addSvcServiceFee" step="0.01" min="0" required placeholder="0.00"
               style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;"
-              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+              oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
             <small style="color:#94a3b8;font-size:11px;">Parts/materials fee</small>
           </div>
           <div>
@@ -2329,7 +2337,8 @@ document.addEventListener('DOMContentLoaded', function() {
             <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Name <span style="color:#dc2626;">*</span></label>
             <input type="text" id="editSvcName" required
               style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;font-weight:500;box-sizing:border-box;"
-              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+              oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&]/g, '');">
           </div>
           <div style="grid-column:1/-1;">
             <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Category <span style="color:#dc2626;">*</span></label>
@@ -2354,7 +2363,8 @@ document.addEventListener('DOMContentLoaded', function() {
             <!-- Custom Category Input -->
             <div id="editSvcCustomWrap" style="display:none;margin-top:8px;">
               <input type="text" id="editSvcCustomCategory" placeholder="Type custom category name..."
-                style="width:100%;padding:9px 12px;border:1.5px solid #0284c7;border-radius:8px;font-size:13px;background:#f0f9ff;box-sizing:border-box;color:#0369a1;font-weight:600;">
+                style="width:100%;padding:9px 12px;border:1.5px solid #0284c7;border-radius:8px;font-size:13px;background:#f0f9ff;box-sizing:border-box;color:#0369a1;font-weight:600;"
+                oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
             </div>
           </div>
           <div>
@@ -2377,19 +2387,22 @@ document.addEventListener('DOMContentLoaded', function() {
             <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins)</label>
             <input type="number" id="editSvcDuration" min="5" max="480" step="5"
               style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;"
-              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+              oninput="this.value = this.value.replace(/[^0-9]/g, '');">
           </div>
           <div>
             <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics</label>
             <input type="number" id="editSvcMechanics" min="1" max="10"
               style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;"
-              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+              oninput="this.value = this.value.replace(/[^0-9]/g, '');">
           </div>
           <div style="grid-column:1/-1;">
             <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Description</label>
             <textarea id="editSvcDescription" rows="2"
               style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box;"
-              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"></textarea>
+              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+              oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&\:\;'\"]/g, '');"></textarea>
           </div>
           <div>
             <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Status</label>
@@ -3581,8 +3594,22 @@ safeAddListener('addMerchandiseForm', 'submit', function(e) {
     var reorder  = parseInt(document.getElementById('newMerchReorder').value) || 24;
     var critical = parseInt(document.getElementById('newMerchCritical').value) || 10;
 
-    if (!name || !category || isNaN(price) || price < 0) {
-        showCustomAlert('Please fill all required fields with valid values.', 'error');
+    var placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+    if (!name || placeholders.includes(name.toLowerCase())) {
+        showCustomAlert('Product Name is required and cannot be N/A or a placeholder.', 'error');
+        document.getElementById('newMerchName').focus();
+        return;
+    }
+
+    if (!category || placeholders.includes(category.toLowerCase())) {
+        showCustomAlert('Category is required and cannot be N/A or a placeholder.', 'error');
+        document.getElementById('newMerchCategory').focus();
+        return;
+    }
+
+    if (isNaN(price) || price <= 0) {
+        showCustomAlert('Default Selling Price must be a valid number greater than ₱0.00.', 'error');
+        document.getElementById('newMerchPrice').focus();
         return;
     }
 
@@ -3617,10 +3644,34 @@ safeAddListener('addMerchandiseForm', 'submit', function(e) {
 // Edit Merchandise Full Form Handler
 safeAddListener('editMerchPriceForm', 'submit', function(e) {
     e.preventDefault();
+
+    var name     = document.getElementById('editMerchName').value.trim();
+    var category = document.getElementById('editMerchCategory').value.trim();
+    var price    = parseFloat(document.getElementById('editMerchPrice').value);
+
+    var placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+    if (!name || placeholders.includes(name.toLowerCase())) {
+        showCustomAlert('Product Name is required and cannot be N/A or a placeholder.', 'error');
+        document.getElementById('editMerchName').focus();
+        return;
+    }
+
+    if (!category || placeholders.includes(category.toLowerCase())) {
+        showCustomAlert('Category is required and cannot be N/A or a placeholder.', 'error');
+        document.getElementById('editMerchCategory').focus();
+        return;
+    }
+
+    if (isNaN(price) || price <= 0) {
+        showCustomAlert('Default Selling Price must be a valid number greater than ₱0.00.', 'error');
+        document.getElementById('editMerchPrice').focus();
+        return;
+    }
+
     var fd = new FormData();
     fd.append('action',         'edit_merchandise_full');
     fd.append('id',             document.getElementById('editMerchId').value);
-    fd.append('product_name',   document.getElementById('editMerchName').value.trim());
+    fd.append('product_name',   name);
     fd.append('sku',            document.getElementById('editMerchSku').value.trim());
     fd.append('category',       document.getElementById('editMerchCategory').value.trim());
     fd.append('brand',          document.getElementById('editMerchBrand').value.trim());
@@ -3643,6 +3694,74 @@ safeAddListener('editMerchPriceForm', 'submit', function(e) {
             }
         }).catch(() => showCustomAlert('Error updating product.', 'error'));
 });
+
+// ── Deactivate Merchandise ──────────────────────────────────────────────────
+function deactivateMerchandise(id, productName) {
+    showConfirmModal(
+        'Deactivate Merchandise Product',
+        'Confirm deactivation',
+        'Are you sure you want to deactivate "' + productName + '"?\n\nThis will set the product status to inactive.',
+        function(data) {
+            var formData = new FormData();
+            formData.append('action', 'deactivate_merchandise');
+            formData.append('id', data.id);
+            
+            fetch('manager_set_prices_handler.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showCustomAlert(data.message || 'Product deactivated successfully!', 'success', function() {
+                        location.reload();
+                    });
+                } else {
+                    showCustomAlert(data.message || 'Failed to deactivate product', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showCustomAlert('Error deactivating product. Please try again.', 'error');
+            });
+        },
+        { id: id, productName: productName }
+    );
+}
+
+// ── Activate Merchandise ────────────────────────────────────────────────────
+function activateMerchandise(id, productName) {
+    showConfirmModal(
+        'Activate Merchandise Product',
+        'Confirm activation',
+        'Are you sure you want to activate "' + productName + '"?\n\nThis will set the product status to active.',
+        function(data) {
+            var formData = new FormData();
+            formData.append('action', 'activate_merchandise');
+            formData.append('id', data.id);
+            
+            fetch('manager_set_prices_handler.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showCustomAlert(data.message || 'Product activated successfully!', 'success', function() {
+                        location.reload();
+                    });
+                } else {
+                    showCustomAlert(data.message || 'Failed to activate product', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showCustomAlert('Error activating product. Please try again.', 'error');
+            });
+        },
+        { id: id, productName: productName }
+    );
+}
 
 // View Batches function
 function viewProductBatches(productId, productName) {
@@ -3823,8 +3942,15 @@ safeAddListener('addServiceForm', 'submit', function(e) {
     name     = name.trim();
     category = category.trim();
 
-    if (!name || !category) {
-        showCustomAlert('Please fill in Service Name and Category.', 'error');
+    var placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+    if (!name || placeholders.includes(name.toLowerCase())) {
+        showCustomAlert('Service Name is required and cannot be N/A or a placeholder.', 'error');
+        document.getElementById('addSvcName').focus();
+        return;
+    }
+    if (!category || placeholders.includes(category.toLowerCase())) {
+        showCustomAlert('Category is required and cannot be N/A or a placeholder.', 'error');
+        document.getElementById('addSvcCategory').focus();
         return;
     }
     if (svcFee < 0 || laborFee < 0) {
@@ -3950,8 +4076,15 @@ safeAddListener('editServiceForm', 'submit', function(e) {
     var desc     = document.getElementById('editSvcDescription').value || '';
     var active   = document.getElementById('editSvcActive').value;
 
-    if (!id || !name || !category) {
-        showCustomAlert('Please fill in all required fields.', 'error');
+    var placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+    if (!name || placeholders.includes(name.toLowerCase())) {
+        showCustomAlert('Service Name is required and cannot be N/A or a placeholder.', 'error');
+        document.getElementById('editSvcName').focus();
+        return;
+    }
+    if (!category || placeholders.includes(category.toLowerCase())) {
+        showCustomAlert('Category is required and cannot be N/A or a placeholder.', 'error');
+        document.getElementById('editSvcCategory').focus();
         return;
     }
 

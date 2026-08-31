@@ -96,25 +96,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 if (!function_exists('getStatusBadgeClass')) {
     function getStatusBadgeClass($status) {
         $s = strtolower(trim($status ?? ''));
-        if ($s === 'pending') return 'bg-amber';
-        if ($s === 'available') return 'bg-green';
-        if ($s === 'low' || $s === 'low stock') return 'bg-amber';
-        if ($s === 'critical' || $s === 'critical stock') return 'bg-red';
-        if ($s === 'out' || $s === 'out of stock') return 'bg-red';
-        return 'bg-gray';
+        if ($s === 'available' || $s === 'normal' || $s === 'active' || $s === 'ok') return 'bg-green';
+        if (in_array($s, ['low', 'low stock', 'critical', 'critical stock', 'out', 'out of stock'], true)) return 'bg-red';
+        return 'bg-green';
     }
 }
 
 if (!function_exists('getStatusLabel')) {
     function getStatusLabel($status) {
         $s = strtolower(trim($status ?? ''));
-        if ($s === 'pending') return 'Pending';
-        if ($s === 'available') return 'Available';
-        if ($s === 'low') return 'Low Stock';
-        if ($s === 'critical') return 'Critical Stock';
-        if ($s === 'out') return 'Out of Stock';
-        if ($s === 'inactive') return 'Inactive';
-        return ucfirst($status);
+        if (in_array($s, ['available', 'normal', 'active', 'ok'], true)) return 'AVAILABLE';
+        if (in_array($s, ['low', 'low stock', 'critical', 'critical stock'], true)) return 'LOW STOCK';
+        if (in_array($s, ['out', 'out of stock'], true)) return 'OUT OF STOCK';
+        if ($s === 'inactive') return 'INACTIVE';
+        return 'AVAILABLE';
     }
 }
 
@@ -301,7 +296,36 @@ if (isset($_GET['print_id'])) {
                 body { padding: 0; }
                 .print-wrap { border: none; }
             }
-        </style>
+        
+/* == ACTION BUTTON STYLES (VERTICAL STACKING) == */
+.act-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    padding: 4px 8px !important;
+    border-radius: 6px !important;
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    line-height: 1.2 !important;
+    width: 100% !important;
+    max-width: 90px !important;
+    margin-bottom: 3px !important;
+    transition: all .18s ease-in-out !important;
+    background: #ffffff !important;
+    border: 1.5px solid #cbd5e1 !important;
+    text-decoration: none !important;
+    box-sizing: border-box !important;
+}
+.act-btn:last-child { margin-bottom: 0 !important; }
+.act-btn-view { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+.act-btn-view:hover { background: #16a34a !important; color: #ffffff !important; }
+.act-btn-edit { color: #002F6C !important; border-color: #002F6C !important; background: #ffffff !important; }
+.act-btn-edit:hover { background: #002F6C !important; color: #ffffff !important; }
+
+</style>
     </head>
     <body onload="window.print();">
         <div class="print-wrap">
@@ -379,7 +403,7 @@ if (isset($_GET['print_id'])) {
         </div>
     
 <script id="merchAutoRefreshScript">
-// ── Silent Background Auto-Refresh for Merchandise Inventory (2 seconds) ──
+// ── Silent Background Auto-Refresh for Merchandise Inventory (15 seconds) ──
 (function() {
     'use strict';
     setInterval(function() {
@@ -396,7 +420,7 @@ if (isset($_GET['print_id'])) {
                 }
             }
         }
-    }, 2000);
+    },  15000);
 })();
 </script>
 </body>
@@ -983,14 +1007,14 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-/* == GLOBAL OVERFLOW FIX == */
-body, html {
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
+/* == GLOBAL OVERFLOW FIX (ELIMINATE DOUBLE VERTICAL SCROLLBAR) == */
+html, body {
+    overflow: hidden !important;
+    height: 100% !important;
     max-width: 100vw !important;
 }
 .content-wrapper, .main-content {
-    overflow-x: hidden !important;
+    overflow-x: visible !important;
     overflow-y: visible !important;
     max-width: 100% !important;
     padding: 0 !important;
@@ -1257,10 +1281,30 @@ body, html {
 }
 .afto-tbl {
     width: 100% !important;
-    border-collapse: collapse;
-    font-size: 10px;
+    max-width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 10.5px !important;
     text-align: left;
-    table-layout: auto;
+    table-layout: fixed !important;
+}
+.afto-tbl th {
+    background: #002F70 !important;
+    color: #fff !important;
+    padding: 7px 4px !important;
+    font-size: 9.5px !important;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.afto-tbl td {
+    padding: 5px 4px !important;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+    font-size: 10.5px !important;
+    overflow: hidden;
 }
 /* ── Tab Navigation - Reports-style boxed design ── */
 .tab-nav {
@@ -1460,6 +1504,35 @@ body, html {
     background: #002F70 !important;
     color: #ffffff !important;
 }
+
+/* == ACTION BUTTON STYLES (VERTICAL STACKING) == */
+.act-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    padding: 4px 8px !important;
+    border-radius: 6px !important;
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    line-height: 1.2 !important;
+    width: 100% !important;
+    max-width: 90px !important;
+    margin-bottom: 3px !important;
+    transition: all .18s ease-in-out !important;
+    background: #ffffff !important;
+    border: 1.5px solid #cbd5e1 !important;
+    text-decoration: none !important;
+    box-sizing: border-box !important;
+}
+.act-btn:last-child { margin-bottom: 0 !important; }
+.act-btn-view { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+.act-btn-view:hover { background: #16a34a !important; color: #ffffff !important; }
+.act-btn-edit { color: #002F6C !important; border-color: #002F6C !important; background: #ffffff !important; }
+.act-btn-edit:hover { background: #002F6C !important; color: #ffffff !important; }
+
 </style>
 
 <div class="main-content">
@@ -1504,14 +1577,7 @@ body, html {
         </div>
         <div class="afto-card-icon"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
-    <!-- Card 5: Critical Stock -->
-    <div class="afto-card red <?= in_array($status_filter, ['critical', 'critical stock'], true) ? 'card-active' : '' ?>" onclick="filterAdminByCard('critical')" style="cursor:pointer;border-bottom:2px solid #dc2626;" title="View Critical Stock Items">
-        <div class="afto-card-info">
-            <span class="afto-card-lbl" style="color:#dc2626;">Critical Stock</span>
-            <span class="afto-card-val" style="color:#dc2626;"><?= number_format($kpi_critical_stock) ?></span>
-        </div>
-        <div class="afto-card-icon"><i class="fas fa-fire" style="color:#dc2626;"></i></div>
-    </div>
+
     <!-- Card 6: Out of Stock -->
     <div class="afto-card red <?= in_array($status_filter, ['out', 'out of stock'], true) ? 'card-active' : '' ?>" onclick="filterAdminByCard('out')" style="cursor:pointer;" title="View Out of Stock Items">
         <div class="afto-card-info">
@@ -1551,8 +1617,8 @@ body, html {
     <a href="admin_inventory_merchandise.php?tab=alerts"
        class="tab-btn <?= $active_tab === 'alerts' ? 'active' : '' ?>">
         <i class="fas fa-exclamation-triangle"></i> Stock Alerts
-        <?php if (($kpi_low_stock + $kpi_critical_stock + $kpi_out_of_stock) > 0): ?>
-            <span style="background:#dc2626 !important;color:#fff !important;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;line-height:1;"><?= ($kpi_low_stock + $kpi_critical_stock + $kpi_out_of_stock) ?></span>
+        <?php if (($kpi_low_stock + $kpi_out_of_stock) > 0): ?>
+            <span style="background:#dc2626 !important;color:#fff !important;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;line-height:1;"><?= ($kpi_low_stock + $kpi_out_of_stock) ?></span>
         <?php endif; ?>
     </a>
 </div>
@@ -1641,7 +1707,7 @@ body, html {
         <div class="adm-cdd-wrap" id="acdd-status">
             <div class="adm-cdd-trigger" onclick="acddToggle('acdd-status')">
                 <?php
-                $status_labels = ['all'=>'All Statuses','available'=>'Available','low'=>'Low Stock','critical'=>'Critical Stock','out'=>'Out of Stock','out of stock'=>'Out of Stock','variance detected'=>'Variance Detected','warning'=>'Stock Alerts','inactive'=>'Inactive'];
+                $status_labels = ['all'=>'All Statuses','available'=>'Available','low'=>'Low Stock','out'=>'Out of Stock','out of stock'=>'Out of Stock','variance detected'=>'Variance Detected','warning'=>'Stock Alerts','inactive'=>'Inactive'];
                 $status_display = $status_labels[$status_filter] ?? 'All Statuses';
                 ?>
                 <span class="adm-cdd-label"><?= htmlspecialchars($status_display) ?></span>
@@ -1651,7 +1717,7 @@ body, html {
                 <div class="adm-cdd-item <?= ($status_filter === 'all' || $status_filter === '') ? 'adm-cdd-active' : '' ?>" data-val="all">All Statuses</div>
                 <div class="adm-cdd-item <?= $status_filter === 'available' ? 'adm-cdd-active' : '' ?>" data-val="available">Available</div>
                 <div class="adm-cdd-item <?= $status_filter === 'low' ? 'adm-cdd-active' : '' ?>" data-val="low">Low Stock</div>
-                <div class="adm-cdd-item <?= $status_filter === 'critical' ? 'adm-cdd-active' : '' ?>" data-val="critical">Critical Stock</div>
+                
                 <div class="adm-cdd-item <?= in_array($status_filter, ['out','out of stock'], true) ? 'adm-cdd-active' : '' ?>" data-val="out">Out of Stock</div>
                 <div class="adm-cdd-item <?= in_array($status_filter, ['variance','variance detected'], true) ? 'adm-cdd-active' : '' ?>" data-val="variance detected">Variance Detected</div>
                 <div class="adm-cdd-item <?= $status_filter === 'inactive' ? 'adm-cdd-active' : '' ?>" data-val="inactive">Inactive</div>
@@ -1681,7 +1747,21 @@ body, html {
         <div class="tbl-title"><i class="fas fa-clipboard-list"></i> Merchandise Stock Records</div>
     </div>
     <div class="table-wrap" style="width:100%; overflow-x:hidden;">
-        <table class="afto-tbl" id="adminMerchTable" style="width:100%;">
+        <table class="afto-tbl" id="adminMerchTable" style="width:100%; max-width:100%; table-layout:fixed; border-collapse:collapse;">
+            <colgroup>
+                <col style="width: 5%;">  <!-- Batch ID -->
+                <col style="width: 8%;">  <!-- SKU -->
+                <col style="width: 20%;"> <!-- Product Name -->
+                <col style="width: 10%;"> <!-- Category -->
+                <col style="width: 6%;">  <!-- UOM -->
+                <col style="width: 8%;">  <!-- Expiration Date -->
+                <col style="width: 5%;">  <!-- Initial Stock -->
+                <col style="width: 11%;"> <!-- Current Stock -->
+                <col style="width: 5%;">  <!-- Reorder Level -->
+                <col style="width: 7%;">  <!-- Status -->
+                <col style="width: 7%;">  <!-- Last Updated -->
+                <col style="width: 8%;">  <!-- Actions -->
+            </colgroup>
             <thead>
                 <tr>
                     <th>Batch ID</th>
@@ -1753,7 +1833,7 @@ body, html {
                         $badgeCls = $has_variance ? 'bg-amber' : getStatusBadgeClass($item['computed_status']);
                         $badgeLbl = $has_variance ? 'Variance Detected' : getStatusLabel($item['computed_status']);
                         $status_color = $has_variance ? '#fd7e14' : ($item['computed_status'] === 'available' ? '#28a745' : (in_array($item['computed_status'], ['critical', 'out']) ? '#dc3545' : '#fd7e14'));
-                        $updated = $item['last_updated'] ? date('M d, Y h:i A', strtotime($item['last_updated'])) : '-';
+                        $updated = $item['last_updated'] ? date('M d, Y', strtotime($item['last_updated'])) : '-';
                     ?>
                     <tr class="merch-row"
     data-name="<?= htmlspecialchars(strtolower($item['name'])) ?>"
@@ -1781,9 +1861,9 @@ body, html {
                         <td class="align-right" style="font-weight:600;color:#ea580c;"><?= number_format($reorder, 0) ?></td>
                         <td class="align-center"><span class="badge-lbl <?= $badgeCls ?>"><?= htmlspecialchars($badgeLbl) ?></span></td>
                         <td style="font-size:11px; color:#64748b;"><?= $updated ?></td>
-                        <td class="align-center" style="white-space:nowrap;">
-                            <div style="display:inline-flex; gap:4px; align-items:center; justify-content:center;">
-                                <button type="button" class="int-btn-outline" style="font-size:11px;height:28px;padding:0 8px;cursor:pointer;"
+                        <td class="align-center">
+                            <div style="display:flex; flex-direction:column; gap:4px; align-items:center; justify-content:center; padding:2px 0;">
+                                <button type="button" class="act-btn act-btn-view"
                                     onclick='adminViewProduct(<?= htmlspecialchars(json_encode([
                                         "id" => $item["id"],
                                         "sku" => $item["sku"],
@@ -1803,7 +1883,7 @@ body, html {
                                     ]), ENT_QUOTES) ?>)'>
                                     <i class="fas fa-eye"></i> View
                                 </button>
-                                <button type="button" class="int-btn-outline" style="font-size:11px;height:28px;padding:0 8px;cursor:pointer;color:#002F70;border-color:#002F70;"
+                                <button type="button" class="act-btn act-btn-edit"
                                     onclick='openAdminEditModal(<?= htmlspecialchars(json_encode($item), ENT_QUOTES) ?>)'>
                                     <i class="fas fa-edit"></i> Edit
                                 </button>

@@ -146,26 +146,58 @@
 .table tr,
 .data-table tr { transition: background 0.2s ease; }
 
-/* ══ Plain Text Badges ══ */
-.badge,
-.badge-status,
-.badge-cat {
-    display: inline-block;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: transparent !important;
-    border: none !important;
-    font-size: 12px;
-    font-weight: 600;
+/* ══ Status Badges (Green for Normal/Available, Red for Out of Stock/Critical) ══ */
+.badge-available,
+.badge-normal,
+.badge-instock,
+.badge-active,
+.badge-ok,
+.badge-validated {
+    color: #15803d !important;
+    background: #dcfce7 !important;
+    border: 1px solid #86efac !important;
+    padding: 3px 9px !important;
+    border-radius: 999px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    display: inline-block !important;
 }
 
-.badge-pending              { color: #4338ca !important; background: transparent !important; }
-.badge-hold                 { color: #b45309 !important; background: transparent !important; }
-.badge-credit               { color: #1976d2 !important; background: transparent !important; }
-.badge-walkin               { color: #616161 !important; background: transparent !important; }
-.badge-ok, .badge-validated { color: #0d7d3e !important; background: transparent !important; }
-.badge-short                { color: #c62828 !important; background: transparent !important; }
-.badge-excess               { color: #e65100 !important; background: transparent !important; }
+.badge-out,
+.badge-critical,
+.badge-inactive,
+.badge-disabled,
+.badge-deactivated,
+.badge-rejected,
+.badge-short {
+    color: #b91c1c !important;
+    background: #fee2e2 !important;
+    border: 1px solid #fca5a5 !important;
+    padding: 3px 9px !important;
+    border-radius: 999px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    display: inline-block !important;
+}
+
+.badge-low,
+.badge-reorder,
+.badge-pending,
+.badge-hold,
+.badge-warn {
+    color: #b45309 !important;
+    background: #fef3c7 !important;
+    border: 1px solid #fde68a !important;
+    padding: 3px 9px !important;
+    border-radius: 999px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    display: inline-block !important;
+}
+
+.badge-credit { color: #1976d2 !important; background: #e0f2fe !important; border: 1px solid #93c5fd !important; padding: 3px 9px !important; border-radius: 999px !important; font-size: 11px !important; font-weight: 700 !important; display: inline-block !important; }
+.badge-walkin { color: #475569 !important; background: #f1f5f9 !important; border: 1px solid #cbd5e1 !important; padding: 3px 9px !important; border-radius: 999px !important; font-size: 11px !important; font-weight: 700 !important; display: inline-block !important; }
+.badge-excess { color: #c2410c !important; background: #ffedd5 !important; border: 1px solid #fed7aa !important; padding: 3px 9px !important; border-radius: 999px !important; font-size: 11px !important; font-weight: 700 !important; display: inline-block !important; }
 
 /* ══ Action Button Column ══ */
 .action-col {

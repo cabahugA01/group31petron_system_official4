@@ -1053,7 +1053,7 @@ Fuel Products
                     <select name="status" id="editFuelStatus" class="form-control" required>
                         <option value="Normal">Normal</option>
                         <option value="Low Stock">Low Stock</option>
-                        <option value="Critical">Critical</option>
+                        
                         <option value="Inactive">Inactive</option>
                     </select>
                 </div>

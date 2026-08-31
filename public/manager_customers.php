@@ -515,15 +515,15 @@ button.remove-v-btn i {
                     <input type="hidden" id="customerType" name="customer_type" value="registered">
                     <div class="cust-field">
                         <label>First Name / Name <span style="color:red;">*</span></label>
-                        <input type="text" id="firstName" name="first_name" required placeholder="e.g. Juan">
+                        <input type="text" id="firstName" name="first_name" required placeholder="e.g. Juan" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\'\.\u00C0-\u024F]/g, '');">
                     </div>
                     <div class="cust-field">
                         <label>Middle Name</label>
-                        <input type="text" id="middleName" name="middle_name" placeholder="e.g. Santos">
+                        <input type="text" id="middleName" name="middle_name" placeholder="e.g. Santos" oninput="this.value = this.value.replace(/[^a-zA-Z\s\-\'\.\u00C0-\u024F]/g, '');">
                     </div>
                     <div class="cust-field">
                         <label>Last Name</label>
-                        <input type="text" id="lastName" name="last_name" placeholder="e.g. Dela Cruz">
+                        <input type="text" id="lastName" name="last_name" placeholder="e.g. Dela Cruz" oninput="this.value = this.value.replace(/[^a-zA-Z\s\-\'\.\u00C0-\u024F]/g, '');">
                     </div>
                     <div class="cust-field">
                         <label>Status <span style="color:red;">*</span></label>
@@ -534,15 +534,15 @@ button.remove-v-btn i {
                     </div>
                     <div class="cust-field">
                         <label>Contact Number</label>
-                        <input type="text" id="contactNumber" name="contact_number" placeholder="0917xxxxxxx">
+                        <input type="text" id="contactNumber" name="contact_number" placeholder="0917xxxxxxx" maxlength="13" oninput="this.value = this.value.replace(/[^0-9+]/g, '');">
                     </div>
                     <div class="cust-field">
                         <label>Email (Optional)</label>
-                        <input type="email" id="email" name="email" placeholder="customer@petron.com">
+                        <input type="email" id="email" name="email" placeholder="customer@petron.com" oninput="this.value = this.value.replace(/[^a-zA-Z0-9@_\-\.]/g, '');">
                     </div>
                     <div class="cust-field" style="grid-column:1 / -1;">
                         <label>Address</label>
-                        <input type="text" id="address" name="address" placeholder="Complete Address">
+                        <input type="text" id="address" name="address" placeholder="Complete Address" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\.\,\&]/g, '');">
                     </div>
 
                     <!-- Registered Vehicles -->
@@ -618,7 +618,7 @@ button.remove-v-btn i {
                     </div>
                     <div class="cust-field">
                         <label>Loyalty Card No. <small style="color:#64748b; font-weight:normal;">(Optional - e.g. PRC-00012345)</small></label>
-                        <input type="text" id="loyaltyCardNo" name="loyalty_card_no" placeholder="e.g. PRC-00012345">
+                        <input type="text" id="loyaltyCardNo" name="loyalty_card_no" placeholder="e.g. PRC-00012345" oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\-\_]/g, '');">
                     </div>
                     <div class="cust-field">
                         <label>Points Balance <small style="color:#64748b; font-weight:normal;">(System Controlled - Read Only)</small></label>
@@ -1525,11 +1525,11 @@ function addVehicleRow(v = {}) {
         <div class="form-grid" style="gap:8px;">
             <div class="cust-field">
                 <label>Plate Number</label>
-                <input type="text" class="v-plate" value="${h(v.plate_number || '')}" placeholder="ABC-1234">
+                <input type="text" class="v-plate" value="${h(v.plate_number || '')}" placeholder="ABC-1234" oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\s\-]/g, '');">
             </div>
             <div class="cust-field">
                 <label>Vehicle Type</label>
-                <input type="text" class="v-type" list="vtype-list-${v.id||0}" value="${h(v.vehicle_type || '')}" placeholder="Sedan, SUV, Truck...">
+                <input type="text" class="v-type" list="vtype-list-${v.id||0}" value="${h(v.vehicle_type || '')}" placeholder="Sedan, SUV, Truck..." oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
                 <datalist id="vtype-list-${v.id||0}">
                     <option value="Sedan">
                     <option value="SUV">
@@ -1540,27 +1540,27 @@ function addVehicleRow(v = {}) {
             </div>
             <div class="cust-field">
                 <label>Brand</label>
-                <input type="text" class="v-brand" value="${h(v.brand || '')}" placeholder="Toyota, Honda, etc.">
+                <input type="text" class="v-brand" value="${h(v.brand || '')}" placeholder="Toyota, Honda, etc." oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
             </div>
             <div class="cust-field">
                 <label>Model</label>
-                <input type="text" class="v-model" value="${h(v.model || '')}" placeholder="Corolla, Vios, etc.">
+                <input type="text" class="v-model" value="${h(v.model || '')}" placeholder="Corolla, Vios, etc." oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
             </div>
             <div class="cust-field">
                 <label>Year Model</label>
-                <input type="text" class="v-year" value="${h(v.year_model || '')}" placeholder="2024">
+                <input type="text" class="v-year" value="${h(v.year_model || '')}" placeholder="2024" maxlength="4" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
             </div>
             <div class="cust-field">
                 <label>Color</label>
-                <input type="text" class="v-color" value="${h(v.color || '')}" placeholder="Red, Black, White">
+                <input type="text" class="v-color" value="${h(v.color || '')}" placeholder="Red, Black, White" oninput="this.value = this.value.replace(/[^a-zA-Z\s\-]/g, '');">
             </div>
             <div class="cust-field">
                 <label>Engine No. (Optional)</label>
-                <input type="text" class="v-engine" value="${h(v.engine_no || '')}">
+                <input type="text" class="v-engine" value="${h(v.engine_no || '')}" oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\-\_]/g, '');">
             </div>
             <div class="cust-field">
                 <label>Chassis No. (Optional)</label>
-                <input type="text" class="v-chassis" value="${h(v.chassis_no || '')}">
+                <input type="text" class="v-chassis" value="${h(v.chassis_no || '')}" oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\-\_]/g, '');">
             </div>
         </div>
     `;
@@ -1633,6 +1633,35 @@ function openCustomerForm(mode = 'add', id = 0) {
 
 document.getElementById('customerForm').onsubmit = function(e) {
     e.preventDefault();
+
+    const firstNameVal = (document.getElementById('firstName')?.value || '').trim();
+    const contactVal   = (document.getElementById('contactNumber')?.value || '').trim();
+    const emailVal     = (document.getElementById('email')?.value || '').trim();
+    const placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+
+    if (!firstNameVal || placeholders.includes(firstNameVal.toLowerCase())) {
+        toast('First Name / Name is required and cannot be N/A or a placeholder.', 'error');
+        document.getElementById('firstName')?.focus();
+        return;
+    }
+
+    if (contactVal && !placeholders.includes(contactVal.toLowerCase())) {
+        const cleanPh = contactVal.replace(/[\s\-\(\)\.]/g, '');
+        if (!/^(09\d{9}|\+639\d{9}|639\d{9})$/.test(cleanPh)) {
+            toast('Invalid Contact Number: Please enter a valid 11-digit Philippine mobile number starting with 09 (e.g. 09171234567 or +639171234567).', 'error');
+            document.getElementById('contactNumber')?.focus();
+            return;
+        }
+    }
+
+    if (emailVal && !placeholders.includes(emailVal.toLowerCase())) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
+            toast('Invalid email address format. Please enter a valid email or leave blank for N/A.', 'error');
+            document.getElementById('email')?.focus();
+            return;
+        }
+    }
+
     const mode = document.getElementById('formMode').value;
     const formData = new FormData(this);
     formData.append('action', mode === 'add' ? 'add' : 'update');

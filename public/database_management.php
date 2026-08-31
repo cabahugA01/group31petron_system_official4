@@ -2193,7 +2193,7 @@ function downloadSecLogs() {
   }
 
   // Start 10s timer for real-time operation auto-refresh
-  setInterval(autoRefreshDatabaseManagement, 2000);
+  setInterval(autoRefreshDatabaseManagement, 15000);
 
   // ── Fire PHP-generated toasts on DOM ready & clean polluted URL ───────
   document.addEventListener('DOMContentLoaded', function() {

@@ -2170,7 +2170,7 @@ function submitAdjustmentForm(e) {
             console.warn('Merchandise inventory auto-fetch notice:', e);
         });
     }
-    setInterval(autoRefreshMerchandiseInventory, 10000);
+    setInterval(autoRefreshMerchandiseInventory, 15000);
 })();
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

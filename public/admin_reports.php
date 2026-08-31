@@ -1702,7 +1702,7 @@ function openCustomerModal(customerId) {
             .catch(() => {});
     }
 
-    autoRefreshTimer = setInterval(autoRefreshAdminReports, 2000);
+    autoRefreshTimer = setInterval(autoRefreshAdminReports, 15000);
 })();
 </script>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

@@ -897,7 +897,7 @@ body.sidebar-collapsed .modal-overlay,
         <option value="">All Statuses</option>
         <option value="normal">Normal</option>
         <option value="low">Low Fuel</option>
-        <option value="critical">Critical Fuel</option>
+        
         <option value="out of stock">Out of Stock</option>
     </select>
     <div class="fuel-filter-actions">
@@ -1780,7 +1780,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.warn('Fuel inventory auto-fetch notice:', e);
         });
     }
-    setInterval(autoRefreshFuelInventory, 2000);
+    setInterval(autoRefreshFuelInventory, 15000);
 }
 
 // ── Sub Tab Switcher ─────────────────────────────────────────────────────────────────────────────────────────
@@ -2106,7 +2106,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.warn('Fuel inventory auto-fetch notice:', e);
         });
     }
-    setInterval(autoRefreshFuelInventory, 10000);
+    setInterval(autoRefreshFuelInventory, 15000);
 
     // Auto-open fuel stock request modal if triggered from URL
     var urlParams = new URLSearchParams(window.location.search);

@@ -229,22 +229,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if (!function_exists('sanitize_optional_field')) {
+        function sanitize_optional_field(?string $val): string {
+            if ($val === null) return 'N/A';
+            $trimmed = trim($val);
+            if ($trimmed === '') return 'N/A';
+            $lower = strtolower($trimmed);
+            $invalid_placeholders = ['none', 'null', 'n/a', '-', 'unknown', 'not available', 'not_available', 'undefined', 'n.a.', 'n/a.'];
+            if (in_array($lower, $invalid_placeholders, true)) {
+                return 'N/A';
+            }
+            return $trimmed;
+        }
+    }
+
     // Add Mechanic
     if ($action === 'add') {
         $first_name     = trim($_POST['first_name'] ?? '');
-        $middle_name    = trim($_POST['middle_name'] ?? '');
+        $middle_name    = sanitize_optional_field($_POST['middle_name'] ?? '');
         $last_name      = trim($_POST['last_name'] ?? '');
         $contact_no     = trim($_POST['contact_no'] ?? '');
-        $address        = trim($_POST['address'] ?? '');
+        $address        = sanitize_optional_field($_POST['address'] ?? '');
         $specialization = trim($_POST['specialization'] ?? '');
         $shift_assignment = trim($_POST['shift_assignment'] ?? 'All Shifts');
         $date_hired     = trim($_POST['date_hired'] ?? '') ?: null;
         $status         = ($_POST['status'] ?? 'active') === 'active' ? 'active' : 'inactive';
-        $full_name      = trim($first_name . ($middle_name !== '' ? ' ' . $middle_name : '') . ' ' . $last_name);
+        $full_name      = trim($first_name . ($middle_name !== '' && $middle_name !== 'N/A' ? ' ' . $middle_name : '') . ' ' . $last_name);
 
-        if (empty($first_name))     { $_SESSION['error'] = 'First Name is required.'; }
-        elseif (empty($last_name))  { $_SESSION['error'] = 'Last Name is required.'; }
-        elseif (empty($contact_no)) { $_SESSION['error'] = 'Contact Number is required.'; }
+        $placeholders = ['n/a', 'none', 'null', '-'];
+
+        if (empty($first_name) || in_array(strtolower($first_name), $placeholders, true)) { $_SESSION['error'] = 'First Name is required and cannot be N/A.'; }
+        elseif (empty($last_name) || in_array(strtolower($last_name), $placeholders, true))  { $_SESSION['error'] = 'Last Name is required and cannot be N/A.'; }
+        elseif (empty($contact_no) || in_array(strtolower($contact_no), $placeholders, true)) { $_SESSION['error'] = 'Contact Number is required.'; }
         elseif (!preg_match('/^(09\d{9}|\+639\d{9}|639\d{9})$/', preg_replace('/[\s\-\(\)\.]/', '', $contact_no))) {
             $_SESSION['error'] = 'Invalid Philippine contact number. Must be an 11-digit mobile number starting with 09 (e.g. 09171234567 or +639171234567).';
         }
@@ -285,19 +301,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'edit') {
         $id             = (int)($_POST['id'] ?? 0);
         $first_name     = trim($_POST['first_name'] ?? '');
-        $middle_name    = trim($_POST['middle_name'] ?? '');
+        $middle_name    = sanitize_optional_field($_POST['middle_name'] ?? '');
         $last_name      = trim($_POST['last_name'] ?? '');
         $contact_no     = trim($_POST['contact_no'] ?? '');
-        $address        = trim($_POST['address'] ?? '');
+        $address        = sanitize_optional_field($_POST['address'] ?? '');
         $specialization = trim($_POST['specialization'] ?? '');
         $shift_assignment = trim($_POST['shift_assignment'] ?? 'All Shifts');
         $date_hired     = trim($_POST['date_hired'] ?? '') ?: null;
         $status         = ($_POST['status'] ?? 'active') === 'active' ? 'active' : 'inactive';
-        $full_name      = trim($first_name . ($middle_name !== '' ? ' ' . $middle_name : '') . ' ' . $last_name);
+        $full_name      = trim($first_name . ($middle_name !== '' && $middle_name !== 'N/A' ? ' ' . $middle_name : '') . ' ' . $last_name);
 
-        if (empty($first_name))     { $_SESSION['error'] = 'First Name is required.'; }
-        elseif (empty($last_name))  { $_SESSION['error'] = 'Last Name is required.'; }
-        elseif (empty($contact_no)) { $_SESSION['error'] = 'Contact Number is required.'; }
+        $placeholders = ['n/a', 'none', 'null', '-'];
+
+        if (empty($first_name) || in_array(strtolower($first_name), $placeholders, true)) { $_SESSION['error'] = 'First Name is required and cannot be N/A.'; }
+        elseif (empty($last_name) || in_array(strtolower($last_name), $placeholders, true))  { $_SESSION['error'] = 'Last Name is required and cannot be N/A.'; }
+        elseif (empty($contact_no) || in_array(strtolower($contact_no), $placeholders, true)) { $_SESSION['error'] = 'Contact Number is required.'; }
         elseif (!preg_match('/^(09\d{9}|\+639\d{9}|639\d{9})$/', preg_replace('/[\s\-\(\)\.]/', '', $contact_no))) {
             $_SESSION['error'] = 'Invalid Philippine contact number. Must be an 11-digit mobile number starting with 09 (e.g. 09171234567 or +639171234567).';
         }
@@ -506,8 +524,40 @@ require_once __DIR__ . '/../partials/header.php';
 <style>
 /* Page Header */
 .stock-page { padding: 0 !important; margin: 0 !important; width: 100%; box-sizing: border-box; }
-.stock-head { display:flex!important; align-items:center!important; justify-content:space-between!important; margin-top:0!important; margin-bottom:25px!important; padding-bottom:0!important; border-bottom:none!important; }
+.stock-head { display:flex!important; align-items:center!important; justify-content:space-between!important; margin-top:0!important; margin-bottom:25px!important; padding-bottom:0!important; border-bottom:none!important; flex-wrap:wrap!important; gap:12px!important; }
 .stock-title { font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif!important; font-size:24px!important; font-weight:700!important; color:#002f70!important; margin:0!important; line-height:1.2!important; display:flex!important; align-items:center!important; gap:10px!important; text-transform:uppercase!important; letter-spacing:0.5px!important; }
+
+/* Reports-Style Export Bar & Buttons (Matches Reports Module Exactly) */
+.rpt-export-group {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    margin-left: auto !important;
+    white-space: nowrap !important;
+    flex-wrap: wrap !important;
+}
+.rpt-export-btn {
+    padding: 7px 13px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    background: #ffffff !important;
+    border: 1px solid !important;
+    transition: all 0.18s !important;
+    text-decoration: none !important;
+}
+.rpt-btn-print  { color: #475569 !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.rpt-btn-print:hover  { background: #f1f5f9 !important; color: #00264D !important; }
+.rpt-btn-pdf   { color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
+.rpt-btn-pdf:hover   { background: #fef2f2 !important; color: #991b1b !important; }
+.rpt-btn-excel { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+.rpt-btn-excel:hover { background: #f0fdf4 !important; color: #166534 !important; }
+.rpt-btn-csv   { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+.rpt-btn-csv:hover   { background: #f0fdf4 !important; color: #166534 !important; }
 
 /* KPI Grid - 6 columns */
 .txn-kpi-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:20px; }
@@ -616,6 +666,22 @@ button.tbl-btn.wkld { color:#475569!important; }
 <!-- Header -->
 <div class="stock-head">
     <h1 class="stock-title"><i class="fas fa-wrench"></i> Mechanics Management</h1>
+    
+    <!-- EXPORT TOOLBAR (Upper Right, Aligned with Controls) -->
+    <div class="rpt-export-group">
+        <button type="button" class="rpt-export-btn rpt-btn-print" onclick="exportMechanics('print')">
+            <i class="fas fa-print"></i> Print
+        </button>
+        <button type="button" class="rpt-export-btn rpt-btn-pdf" onclick="exportMechanics('pdf')">
+            <i class="fas fa-file-pdf"></i> PDF
+        </button>
+        <button type="button" class="rpt-export-btn rpt-btn-excel" onclick="exportMechanics('excel')">
+            <i class="fas fa-file-excel"></i> Excel
+        </button>
+        <button type="button" class="rpt-export-btn rpt-btn-csv" onclick="exportMechanics('csv')">
+            <i class="fas fa-file-csv"></i> CSV
+        </button>
+    </div>
 </div>
 
 <!-- Alerts -->
@@ -691,7 +757,6 @@ button.tbl-btn.wkld { color:#475569!important; }
             <option value="">All Shifts</option>
             <option value="First Shift">First Shift</option>
             <option value="Second Shift">Second Shift</option>
-            <option value="All Shifts">All Shifts</option>
         </select>
     </div>
     <div style="display:flex;gap:8px;align-items:flex-end;">
@@ -750,7 +815,8 @@ button.tbl-btn.wkld { color:#475569!important; }
                     $row['first_name'] = $fname; $row['middle_name'] = $mname; $row['last_name'] = $lname;
                     $row['full_name'] = $displayName;
                 ?>
-                <tr data-id="<?= (int)$row['id'] ?>"
+                <tr class="mech-row"
+                    data-id="<?= (int)$row['id'] ?>"
                     data-status="<?= htmlspecialchars($row['status']) ?>"
                     data-specialty="<?= htmlspecialchars($row['specialization'] ?: 'General Mechanic') ?>"
                     data-shift="<?= htmlspecialchars($row['shift_assignment'] ?? '') ?>">
@@ -935,7 +1001,7 @@ button.tbl-btn.wkld { color:#475569!important; }
      ===================================================================== -->
 <div id="addEditModal" class="modal-backdrop">
     <div class="modal-content">
-        <form method="POST" id="mechanicForm">
+        <form method="POST" id="mechanicForm" onsubmit="return validateMechanicForm();">
             <input type="hidden" name="action" id="formAction" value="add">
             <input type="hidden" name="id" id="formId" value="">
             <div class="modal-header">
@@ -950,21 +1016,21 @@ button.tbl-btn.wkld { color:#475569!important; }
                 <div class="form-grid-3">
                     <div class="form-field" style="margin-bottom:0;">
                         <label>First Name <span style="color:#dc2626;">*</span></label>
-                        <input type="text" name="first_name" id="field_first_name" required placeholder="First name">
+                        <input type="text" name="first_name" id="field_first_name" required placeholder="First name" oninput="this.value = this.value.replace(/[^a-zA-Z\s\-\'\.\u00C0-\u024F]/g, '');">
                     </div>
                     <div class="form-field" style="margin-bottom:0;">
                         <label>Middle Name <span style="color:#94a3b8;">(Opt.)</span></label>
-                        <input type="text" name="middle_name" id="field_middle_name" placeholder="M.I.">
+                        <input type="text" name="middle_name" id="field_middle_name" placeholder="M.I." oninput="this.value = this.value.replace(/[^a-zA-Z\s\-\'\.\u00C0-\u024F]/g, '');">
                     </div>
                     <div class="form-field" style="margin-bottom:0;">
                         <label>Last Name <span style="color:#dc2626;">*</span></label>
-                        <input type="text" name="last_name" id="field_last_name" required placeholder="Last name">
+                        <input type="text" name="last_name" id="field_last_name" required placeholder="Last name" oninput="this.value = this.value.replace(/[^a-zA-Z\s\-\'\.\u00C0-\u024F]/g, '');">
                     </div>
                 </div>
                 <div class="form-grid-2" style="margin-top:10px;">
                     <div class="form-field" style="margin-bottom:0;">
                         <label>Contact Number <span style="color:#dc2626;">*</span></label>
-                        <input type="text" name="contact_no" id="field_contact" required placeholder="09XXXXXXXXX">
+                        <input type="text" name="contact_no" id="field_contact" required placeholder="09XXXXXXXXX" maxlength="13" oninput="this.value = this.value.replace(/[^0-9+]/g, '');">
                     </div>
                     <div class="form-field" style="margin-bottom:0;">
                         <label>Date Hired</label>
@@ -1016,32 +1082,108 @@ button.tbl-btn.wkld { color:#475569!important; }
 </div>
 
 <script>
+function validateMechanicForm() {
+    const fnEl = document.getElementById('field_first_name');
+    const mnEl = document.getElementById('field_middle_name');
+    const lnEl = document.getElementById('field_last_name');
+    const phEl = document.getElementById('field_contact');
+    const spEl = document.getElementById('field_specialty');
+
+    const fn = (fnEl?.value || '').trim();
+    const ln = (lnEl?.value || '').trim();
+    const ph = (phEl?.value || '').trim();
+    const sp = (spEl?.value || '').trim();
+
+    const placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+
+    // First Name (Required)
+    if (!fn || placeholders.includes(fn.toLowerCase())) {
+        alert('First Name is required and cannot be N/A or a placeholder.');
+        if (fnEl) fnEl.focus();
+        return false;
+    }
+
+    // Last Name (Required)
+    if (!ln || placeholders.includes(ln.toLowerCase())) {
+        alert('Last Name is required and cannot be N/A or a placeholder.');
+        if (lnEl) lnEl.focus();
+        return false;
+    }
+
+    // Contact Number (Required)
+    if (!ph || placeholders.includes(ph.toLowerCase())) {
+        alert('Contact Number is required and cannot be N/A or a placeholder.');
+        if (phEl) phEl.focus();
+        return false;
+    }
+
+    const cleanPh = ph.replace(/[\s\-\(\)\.]/g, '');
+    const isValidPh = /^(09\d{9}|\+639\d{9}|639\d{9})$/.test(cleanPh);
+    if (!isValidPh) {
+        alert('Invalid Contact Number: Please enter a valid 11-digit Philippine mobile number starting with 09 (e.g. 09171234567 or +639171234567).');
+        if (phEl) phEl.focus();
+        return false;
+    }
+
+    // Specialty (Required)
+    if (!sp) {
+        alert('Specialty selection is required. Please select a specialty from the dropdown.');
+        if (spEl) spEl.focus();
+        return false;
+    }
+
+    return true;
+}
+// ── Export Mechanics ─────────────────────────────────────────────────────────
+function exportMechanics(format) {
+    const q    = encodeURIComponent(document.getElementById('tableSearch')?.value || '');
+    const st   = encodeURIComponent(document.getElementById('statusFilter')?.value || '');
+    const sp   = encodeURIComponent(document.getElementById('specialtyFilter')?.value || '');
+    const sh   = encodeURIComponent(document.getElementById('shiftFilter')?.value || '');
+    const url  = `export_mechanics_list.php?format=${format}&q=${q}&status=${st}&specialty=${sp}&shift=${sh}`;
+    if (format === 'print' || format === 'pdf') {
+        window.open(url, '_blank');
+    } else {
+        window.location.href = url;
+    }
+}
+
 // ── Filter ───────────────────────────────────────────────────────────────────
 function filterTable() {
-    const q    = document.getElementById('tableSearch').value.toLowerCase().trim();
-    const sSt  = document.getElementById('statusFilter').value.toLowerCase();
-    const sSp  = document.getElementById('specialtyFilter').value.toLowerCase();
-    const sSh  = document.getElementById('shiftFilter').value.toLowerCase();
-    const rows = document.querySelectorAll('#mechanicsTable tbody tr:not(#noFilterRow):not(#emptyDbRow)');
+    const q    = (document.getElementById('tableSearch')?.value || '').toLowerCase().trim();
+    const sSt  = (document.getElementById('statusFilter')?.value || '').toLowerCase().trim();
+    const sSp  = (document.getElementById('specialtyFilter')?.value || '').toLowerCase().trim();
+    const sSh  = (document.getElementById('shiftFilter')?.value || '').toLowerCase().trim();
+    const rows = document.querySelectorAll('#mechanicsTable tbody tr.mech-row');
     let vis = 0;
+
     rows.forEach(tr => {
-        const fname   = (tr.querySelector('.mech-fname')?.textContent||'').toLowerCase();
-        const lname   = (tr.querySelector('.mech-lname')?.textContent||'').toLowerCase();
-        const contact = (tr.querySelector('.mech-contact')?.textContent||'').toLowerCase();
-        const spec    = (tr.querySelector('.mech-spec')?.textContent||'').toLowerCase();
-        const id      = (tr.querySelector('td:first-child')?.textContent||'').toLowerCase();
-        const status  = (tr.dataset.status||'').toLowerCase();
-        const specVal = (tr.dataset.specialty||'').toLowerCase();
-        const shiftVal= (tr.dataset.shift||'').toLowerCase();
-        const ok = (!q || fname.includes(q) || lname.includes(q) || contact.includes(q) || spec.includes(q) || id.includes(q))
-                 && (!sSt || status === sSt)
-                 && (!sSp || specVal === sSp)
-                 && (!sSh || shiftVal === sSh);
+        const fname   = (tr.querySelector('.mech-fname')?.textContent || '').toLowerCase().trim();
+        const lname   = (tr.querySelector('.mech-lname')?.textContent || '').toLowerCase().trim();
+        const contact = (tr.querySelector('.mech-contact')?.textContent || '').toLowerCase().trim();
+        const spec    = (tr.querySelector('.mech-spec')?.textContent || '').toLowerCase().trim();
+        const id      = (tr.querySelector('td:first-child')?.textContent || '').toLowerCase().trim();
+        const status  = (tr.dataset.status || '').toLowerCase().trim();
+        const specVal = (tr.dataset.specialty || '').toLowerCase().trim();
+        const shiftVal= (tr.dataset.shift || '').toLowerCase().trim();
+
+        const matchQ = !q || fname.includes(q) || lname.includes(q) || contact.includes(q) || spec.includes(q) || id.includes(q);
+        const matchStatus = !sSt || status === sSt;
+        const matchSpec = !sSp || specVal === sSp || spec === sSp;
+        let matchShift = true;
+        if (sSh && sSh !== 'all shifts') {
+            matchShift = (shiftVal === sSh || shiftVal === 'all shifts' || shiftVal === '');
+        }
+
+        const ok = matchQ && matchStatus && matchSpec && matchShift;
         tr.style.display = ok ? '' : 'none';
         if (ok) vis++;
     });
+
     const nfr = document.getElementById('noFilterRow');
-    if (nfr) nfr.style.display = (vis === 0 && rows.length > 0) ? '' : 'none';
+    if (nfr) {
+        nfr.style.display = (vis === 0 && rows.length > 0) ? '' : 'none';
+    }
 }
 function resetFilters() {
     ['tableSearch','statusFilter','specialtyFilter','shiftFilter'].forEach(id => {
@@ -1050,6 +1192,7 @@ function resetFilters() {
     });
     filterTable();
 }
+document.addEventListener('DOMContentLoaded', filterTable);
 
 // ── View Modal ────────────────────────────────────────────────────────────────
 function openViewModal(m) {
@@ -1293,6 +1436,6 @@ async function autoRefreshMechanicsManagement() {
 }
 
 // Run auto-refresh every 10 seconds
-setInterval(autoRefreshMechanicsManagement, 2000);
+setInterval(autoRefreshMechanicsManagement, 15000);
 </script>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

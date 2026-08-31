@@ -2398,7 +2398,7 @@ document.addEventListener('input', function(e) {
 
 document.addEventListener('DOMContentLoaded', function() {
     updateRealTimeDeliveryInputs();
-    setInterval(updateRealTimeDeliveryInputs, 10000);
+    setInterval(updateRealTimeDeliveryInputs, 15000);
 });
 
 // Inline accordion toggle

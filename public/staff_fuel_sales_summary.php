@@ -4541,7 +4541,7 @@ function autoRefreshStaffFuelSalesSummary() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshStaffFuelSalesSummary, 10000);
+setInterval(autoRefreshStaffFuelSalesSummary, 15000);
 </script>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>
 

@@ -34,6 +34,20 @@ try {
     $pdo->exec("ALTER TABLE pending_price_approvals ADD COLUMN reason TEXT DEFAULT NULL");
 } catch (Exception $e) {}
 
+if (!function_exists('sanitize_optional_field')) {
+    function sanitize_optional_field(?string $val): string {
+        if ($val === null) return 'N/A';
+        $trimmed = trim($val);
+        if ($trimmed === '') return 'N/A';
+        $lower = strtolower($trimmed);
+        $invalid_placeholders = ['none', 'null', 'n/a', '-', 'unknown', 'not available', 'not_available', 'undefined', 'n.a.', 'n/a.'];
+        if (in_array($lower, $invalid_placeholders, true)) {
+            return 'N/A';
+        }
+        return $trimmed;
+    }
+}
+
 // Helper functions to normalize fuel names and find all tanks for the same fuel type
 if (!function_exists('get_canonical_fuel_name')) {
     function get_canonical_fuel_name($name) {
@@ -980,22 +994,27 @@ try {
         case 'add_merchandise':
             $product_name  = trim($_POST['product_name'] ?? '');
             $category      = trim($_POST['category'] ?? '');
-            $brand         = trim($_POST['brand'] ?? '');
+            $brand         = sanitize_optional_field($_POST['brand'] ?? '');
             $unit_cost     = (float)($_POST['unit_cost'] ?? 0);
             $unit_price    = (float)($_POST['unit_price'] ?? 0);
-            $sku           = trim($_POST['sku'] ?? '');
-            $size          = trim($_POST['size'] ?? '');
-            $barcode       = trim($_POST['barcode'] ?? '');
+            $sku           = sanitize_optional_field($_POST['sku'] ?? '');
+            $size          = sanitize_optional_field($_POST['size'] ?? '');
+            $barcode       = sanitize_optional_field($_POST['barcode'] ?? '');
             $reorder_level = (int)($_POST['reorder_level'] ?? 24);
             $critical_level= (int)($_POST['critical_level'] ?? 10);
 
-            if (empty($product_name) || empty($category)) {
-                echo json_encode(['success' => false, 'message' => 'Product name and category are required.']);
+            $placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+            if (empty($product_name) || in_array(strtolower($product_name), $placeholders, true)) {
+                echo json_encode(['success' => false, 'message' => 'Product Name is required and cannot be N/A or a placeholder.']);
+                exit;
+            }
+            if (empty($category) || in_array(strtolower($category), $placeholders, true)) {
+                echo json_encode(['success' => false, 'message' => 'Category is required and cannot be N/A or a placeholder.']);
                 exit;
             }
 
-            if ($unit_price < 0) {
-                echo json_encode(['success' => false, 'message' => 'Invalid price value.']);
+            if ($unit_price <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Default Selling Price must be greater than ₱0.00.']);
                 exit;
             }
 
@@ -1289,19 +1308,24 @@ try {
         case 'edit_merchandise_full':
             $id             = (int)($_POST['id'] ?? 0);
             $product_name   = trim($_POST['product_name'] ?? '');
-            $sku            = trim($_POST['sku'] ?? '');
+            $sku            = sanitize_optional_field($_POST['sku'] ?? '');
             $category       = trim($_POST['category'] ?? '');
-            $brand          = trim($_POST['brand'] ?? '');
-            $size           = trim($_POST['size'] ?? '');
-            $barcode        = trim($_POST['barcode'] ?? '');
+            $brand          = sanitize_optional_field($_POST['brand'] ?? '');
+            $size           = sanitize_optional_field($_POST['size'] ?? '');
+            $barcode        = sanitize_optional_field($_POST['barcode'] ?? '');
             $unit_cost      = (float)($_POST['unit_cost'] ?? 0);
             $unit_price     = (float)($_POST['unit_price'] ?? 0);
             $reorder_level  = (int)($_POST['reorder_level'] ?? 24);
             $critical_level = (int)($_POST['critical_level'] ?? 10);
             $prod_status    = in_array($_POST['status'] ?? '', ['active','inactive']) ? $_POST['status'] : 'active';
 
-            if ($id <= 0 || empty($product_name) || empty($category)) {
-                echo json_encode(['success'=>false,'message'=>'Name and category are required']);
+            $placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+            if ($id <= 0 || empty($product_name) || in_array(strtolower($product_name), $placeholders, true)) {
+                echo json_encode(['success' => false, 'message' => 'Product Name is required and cannot be N/A or a placeholder.']);
+                exit;
+            }
+            if (empty($category) || in_array(strtolower($category), $placeholders, true)) {
+                echo json_encode(['success' => false, 'message' => 'Category is required and cannot be N/A or a placeholder.']);
                 exit;
             }
 
@@ -1500,6 +1524,58 @@ try {
             echo json_encode(['success' => true, 'message' => 'Merchandise deactivated successfully']);
             break;
 
+        // ══════════════════════════════════════════════════════════════════════
+        // ACTIVATE MERCHANDISE
+        // ══════════════════════════════════════════════════════════════════════
+        case 'activate_merchandise':
+            $id = (int)($_POST['id'] ?? 0);
+            
+            if ($id <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Invalid ID']);
+                exit;
+            }
+            
+            $merch_row = null;
+            $chk = $pdo->prepare("SELECT id, product_name FROM inventory_products WHERE id = ? LIMIT 1");
+            $chk->execute([$id]);
+            $merch_row = $chk->fetch(PDO::FETCH_ASSOC);
+            if (!$merch_row) {
+                $chk2 = $pdo->prepare("SELECT id, name AS product_name FROM products WHERE id = ? LIMIT 1");
+                $chk2->execute([$id]);
+                $merch_row = $chk2->fetch(PDO::FETCH_ASSOC);
+            }
+            if (!$merch_row) {
+                echo json_encode(['success' => false, 'message' => 'Merchandise not found']);
+                exit;
+            }
+            
+            try { $pdo->prepare("UPDATE inventory_products SET status = 'active', updated_at = NOW() WHERE id = ?")->execute([$id]); } catch (Exception $e) {}
+            try { $pdo->prepare("UPDATE products SET status = 'active', updated_at = NOW() WHERE id = ?")->execute([$id]); } catch (Exception $e) {}
+            try { $pdo->prepare("UPDATE station_inventory SET status = 'active', last_updated = NOW() WHERE station_id = ? AND product_id = ?")->execute([$station_id, $id]); } catch (Exception $e) {}
+            
+            $user_name = $me['username'] ?? ($me['first_name'] ?? 'Manager');
+            try {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `product_status_history` (
+                    `id` INT AUTO_INCREMENT PRIMARY KEY,
+                    `station_id` INT NOT NULL,
+                    `product_id` INT NOT NULL,
+                    `old_status` VARCHAR(50) NOT NULL,
+                    `new_status` VARCHAR(50) NOT NULL,
+                    `changed_by` INT NULL,
+                    `changed_by_name` VARCHAR(255) NULL,
+                    `reason` TEXT NULL,
+                    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                $pdo->prepare("INSERT INTO product_status_history (station_id, product_id, old_status, new_status, changed_by, changed_by_name, reason, created_at) VALUES (?, ?, 'inactive', 'active', ?, ?, 'Manager Activation', NOW())")
+                    ->execute([$station_id, $id, $me['id'], $user_name]);
+            } catch (Exception $e) {}
+
+            log_activity($pdo, $me['id'], 'Activate Merchandise',
+                "Manager activated merchandise: {$merch_row['product_name']}");
+            
+            echo json_encode(['success' => true, 'message' => 'Merchandise activated successfully']);
+            break;
+
         case 'restore_merchandise_price':
             $id = (int)($_POST['id'] ?? 0);
             $target_price = (float)($_POST['target_price'] ?? 0);
@@ -1551,7 +1627,7 @@ try {
             $labor_fee          = (float)($_POST['labor_fee'] ?? 0);
             $estimated_duration = (int)($_POST['estimated_duration'] ?? 60);
             $required_mechanics = (int)($_POST['required_mechanics'] ?? 1);
-            $description        = trim($_POST['description'] ?? '');
+            $description        = sanitize_optional_field($_POST['description'] ?? '');
 
             if (empty($service_name) || empty($category)) {
                 echo json_encode(['success' => false, 'message' => 'Service name and category are required']);
@@ -1594,7 +1670,7 @@ try {
             $stmt->execute([
                 $service_code, $service_name, $category, $service_key,
                 $service_price, $labor_fee, $estimated_duration, $required_mechanics,
-                $description ?: null, $station_id, $me['id']
+                $description, $station_id, $me['id']
             ]);
             $new_id = (int)$pdo->lastInsertId();
 
@@ -1633,7 +1709,7 @@ try {
             $labor_fee          = (float)($_POST['labor_fee'] ?? 0);
             $estimated_duration = (int)($_POST['estimated_duration'] ?? 60);
             $required_mechanics = (int)($_POST['required_mechanics'] ?? 1);
-            $description        = trim($_POST['description'] ?? '');
+            $description        = sanitize_optional_field($_POST['description'] ?? '');
             $active             = (int)($_POST['active'] ?? 1);
 
             if ($id <= 0 || empty($service_name) || empty($category) || $service_price <= 0 || $labor_fee <= 0) {

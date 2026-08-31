@@ -71,6 +71,16 @@ if (in_array($role, ['staff','admin','manager','superadmin','developer'])) {
         $hc_stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'");
         $hc_stmt->execute([(int)($user['id'] ?? 0)]);
         $header_unread_count = (int)$hc_stmt->fetchColumn();
+        
+        // Respect session snooze so badge does not flicker on refresh after mark_all_read
+        $sn_key = 'notif_bell_snoozed_' . (int)($user['id'] ?? 0);
+        if (!empty($_SESSION[$sn_key])) {
+            if (time() - (int)$_SESSION[$sn_key] < 300) {
+                $header_unread_count = 0;
+            } else {
+                unset($_SESSION[$sn_key]);
+            }
+        }
     } catch (Exception $e) {
         $header_notifications = [];
         $header_unread_count = 0;
@@ -289,6 +299,16 @@ if (in_array($role, ['staff','admin','manager','superadmin','developer'])) {
         $hc_stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'");
         $hc_stmt->execute([(int)($user['id'] ?? 0)]);
         $header_unread_count = (int)$hc_stmt->fetchColumn();
+        
+        // Respect session snooze so badge does not flicker on refresh after mark_all_read
+        $sn_key = 'notif_bell_snoozed_' . (int)($user['id'] ?? 0);
+        if (!empty($_SESSION[$sn_key])) {
+            if (time() - (int)$_SESSION[$sn_key] < 300) {
+                $header_unread_count = 0;
+            } else {
+                unset($_SESSION[$sn_key]);
+            }
+        }
     } catch (Exception $e) {
         $header_notifications = [];
         $header_unread_count = 0;
@@ -3526,6 +3546,10 @@ require_once __DIR__ . '/rbac_menu.php';
           "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'",
           [$__uid]
       );
+      $sn_key = 'notif_bell_snoozed_' . $__uid;
+      if (!empty($_SESSION[$sn_key]) && (time() - (int)$_SESSION[$sn_key] < 300)) {
+          $unread_notifs_count = 0;
+      }
   }
   $badges['notifications'] = $unread_notifs_count;
 
@@ -3617,7 +3641,7 @@ require_once __DIR__ . '/rbac_menu.php';
       if ($myStationId > 0) {
           // 1. Inventory: Critical Stock + Purchase Orders
           $admin_crit_stock = $__badge_count(
-              "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.critical_level, ip.critical_level, 10)",
+              "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(NULLIF(si.critical_level, 0), NULLIF(ip.critical_level, 0), NULLIF(si.reorder_level, 0), NULLIF(ip.min_stock, 0), 10)",
               [$myStationId]
           );
           $admin_pos = $__badge_count(
@@ -3663,19 +3687,37 @@ require_once __DIR__ . '/rbac_menu.php';
       }
   }
 
-  // Calculate Header Bell Unread Count = sum of all visible sidebar badge counts
-  // This ensures bell count always matches the total of sidebar badges on page load (e.g. Transactions 6 + Inventory 41 = 47).
-  $header_unread_count = ($badges['transactions']  ?? 0)
-                       + ($badges['fuel']           ?? 0)
-                       + ($badges['inventory']      ?? 0)
-                       + ($badges['customers']      ?? 0)
-                       + ($badges['mgr_customers']  ?? 0)
-                       + ($badges['prod_pricing']   ?? 0)
-                       + ($badges['reports']        ?? 0);
-  // Deduplicate mgr_customers (same value as customers, counted once)
-  if (isset($badges['mgr_customers']) && isset($badges['customers'])) {
-      $header_unread_count -= min($badges['mgr_customers'], $badges['customers']);
+  // Auto-deduct/clear sidebar badge for the currently active page/section
+  $active_badge_keys = [];
+  if (strpos($page_id, 'inventory') !== false || strpos($page_id, 'stock') !== false || strpos($page_id, 'delivery') !== false) {
+      $active_badge_keys = ['inventory', 'admin_inventory', 'inv_merch', 'inv_fuel', 'inv_record_delivery'];
+  } elseif (strpos($page_id, 'transaction') !== false || strpos($page_id, 'jo') !== false || strpos($page_id, 'job') !== false) {
+      $active_badge_keys = ['transactions', 'admin_transactions'];
+  } elseif (strpos($page_id, 'fuel') !== false) {
+      $active_badge_keys = ['fuel', 'admin_fuel', 'admin_fuel_management'];
+  } elseif (strpos($page_id, 'customer') !== false) {
+      $active_badge_keys = ['customers', 'mgr_customers'];
+  } elseif (strpos($page_id, 'price') !== false || strpos($page_id, 'pricing') !== false || strpos($page_id, 'product') !== false) {
+      $active_badge_keys = ['prod_pricing', 'mgr_product_pricing', 'admin_product_pricing'];
+  } elseif (strpos($page_id, 'report') !== false) {
+      $active_badge_keys = ['reports', 'admin_reports'];
+  } elseif (strpos($page_id, 'notification') !== false) {
+      $active_badge_keys = ['notifications'];
   }
+
+  foreach ($active_badge_keys as $abk) {
+      $badges[$abk] = 0;
+      $fuel_sub_badges[$abk] = 0;
+      if ($__uid > 0) {
+          try {
+              $stmt_seen = $pdo->prepare("INSERT INTO user_preferences (user_id, preference_key, preference_value, updated_at) VALUES (?, ?, NOW(), NOW()) ON DUPLICATE KEY UPDATE preference_value = NOW(), updated_at = NOW()");
+              $stmt_seen->execute([$__uid, 'badge_seen_' . $abk]);
+          } catch (Exception $e) {}
+      }
+  }
+
+  // Header Bell Unread Count = unread system notifications count for this user
+  $header_unread_count = $badges['notifications'] ?? 0;
 
   foreach($items as $it){
     if (($it['id'] ?? '') === 'dashboard') {
@@ -3971,9 +4013,12 @@ require_once __DIR__ . '/rbac_menu.php';
                 } else {
                     $logo_path = $app_base_path . '/assets/img/petron_logo.png';
                 }
+                $fallback_logo = $app_base_path . '/assets/img/petron_logo.png';
                 $system_name = $station_settings['system_name'] ?? 'Petron Station Management System';
             ?>
-            <img src="<?php echo htmlspecialchars($logo_path); ?>" alt="Petron Logo" class="brand-mark" id="petronLogo" style="display: inline-block !important; height: 38px; width: auto; max-width: 48px; object-fit: contain; vertical-align: middle; margin-right: 12px; flex-shrink: 0;">
+            <img src="<?php echo htmlspecialchars($logo_path); ?>" 
+                 onerror="if(this.src!=='<?php echo htmlspecialchars($fallback_logo); ?>') this.src='<?php echo htmlspecialchars($fallback_logo); ?>';" 
+                 alt="Petron Logo" class="brand-mark" id="petronLogo" style="display: inline-block !important; height: 38px; width: auto; max-width: 48px; object-fit: contain; vertical-align: middle; margin-right: 12px; flex-shrink: 0;">
             <div class="brand-text">
                 <div class="brand-title" id="headerSystemName"><?php echo htmlspecialchars($system_name); ?></div>
                 <?php if ($station_name && $role !== 'superadmin'): ?>
@@ -5210,7 +5255,39 @@ require_once __DIR__ . '/rbac_menu.php';
                     return;
                 }
 
-                // Sidebar collapse button
+                // Sidebar badge auto-deduct/clear on click
+            document.addEventListener('click', function(e) {
+                const link = e.target.closest('a.nav-item, a.sidebar-sub-item');
+                if (!link) return;
+                const badge = link.querySelector('[data-badge], [data-sidebar-badge]');
+                if (badge) {
+                    badge.style.display = 'none';
+                    badge.textContent = '';
+                }
+                const badgeAttr = link.querySelector('[data-sidebar-badge]')?.getAttribute('data-sidebar-badge');
+                if (badgeAttr) {
+                    const _searchBase = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
+                    fetch(_searchBase + '/backend/api/notifications_api.php?action=mark_badge_seen&key=' + encodeURIComponent(badgeAttr), { credentials: 'same-origin' }).catch(()=>{});
+                }
+            });
+
+            // Sidebar badge auto-deduct/clear on click
+            document.addEventListener('click', function(e) {
+                const link = e.target.closest('a.nav-item, a.sidebar-sub-item');
+                if (!link) return;
+                const badge = link.querySelector('[data-badge], [data-sidebar-badge]');
+                if (badge) {
+                    badge.style.display = 'none';
+                    badge.textContent = '';
+                }
+                const badgeAttr = link.querySelector('[data-sidebar-badge]')?.getAttribute('data-sidebar-badge');
+                if (badgeAttr) {
+                    const _searchBase = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
+                    fetch(_searchBase + '/backend/api/notifications_api.php?action=mark_badge_seen&key=' + encodeURIComponent(badgeAttr), { credentials: 'same-origin' }).catch(()=>{});
+                }
+            });
+
+            // Sidebar collapse button
                 if (inStack('sidebarCollapseBtn')) {
                     console.log('Sidebar collapse clicked'); // Debug log
                     if (typeof toggleSidebar === 'function') toggleSidebar();
@@ -5348,16 +5425,7 @@ require_once __DIR__ . '/rbac_menu.php';
                                 });
                             });
 
-                            // "View all results" footer
-                            const footer = document.createElement('a');
-                            const _sb = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
-                            footer.href = _sb + '/public/search.php?q=' + encodeURIComponent(query);
-                            footer.style.cssText =
-                                'display:block;padding:10px 14px;text-align:center;font-size:12px;' +
-                                'font-weight:600;color:#002F6C;text-decoration:none;' +
-                                'border-top:1px solid #e2e8f0;background:#f8fafc;';
-                            footer.innerHTML = '<i class="fas fa-search" style="margin-right:5px;"></i>View all results';
-                            searchSuggestions.appendChild(footer);
+
 
                             searchSuggestions.style.display = 'block';
                         })
@@ -5367,14 +5435,13 @@ require_once __DIR__ . '/rbac_menu.php';
                 }, 280);
             });
 
-            // Keyboard: Enter searches, Escape closes dropdown
+            // Keyboard: Enter navigates directly to first matching result item, Escape closes dropdown
             searchInput.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    const query = this.value.trim();
-                    if (query) {
-                        const _sb = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
-                        window.location.href = _sb + '/public/search.php?q=' + encodeURIComponent(query);
+                    const firstResult = searchSuggestions.querySelector('div[style*="cursor:pointer"]');
+                    if (firstResult) {
+                        firstResult.click();
                     }
                 } else if (e.key === 'Escape') {
                     searchSuggestions.style.display = 'none';
@@ -5414,17 +5481,18 @@ require_once __DIR__ . '/rbac_menu.php';
             'use strict';
 
             const getAppBasePath = function() {
-                if (window.pageData && window.pageData.appBasePath) {
-                    return window.pageData.appBasePath.replace(/\/$/, '');
+                if (window.pageData && typeof window.pageData.appBasePath === 'string') {
+                    return window.pageData.appBasePath.replace(/\/+$/, '');
                 }
                 const path = window.location.pathname;
                 const pubIdx = path.indexOf('/public/');
                 if (pubIdx !== -1) return path.substring(0, pubIdx);
                 const backIdx = path.indexOf('/backend/');
                 if (backIdx !== -1) return path.substring(0, backIdx);
-                const parts = path.split('/').filter(Boolean);
-                if (parts.length > 0 && parts[0] !== 'public' && parts[0] !== 'backend') {
-                    return '/' + parts[0];
+                const lastSlash = path.lastIndexOf('/');
+                if (lastSlash > 0) {
+                    const dir = path.substring(0, lastSlash);
+                    return dir.replace(/\/public\/?$/, '').replace(/\/backend\/?$/, '');
                 }
                 return '';
             };
@@ -5433,7 +5501,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 if (path.startsWith('http://') || path.startsWith('https://')) return path;
                 const cleanPath = path.startsWith('/') ? path : '/' + path;
                 const bp = getAppBasePath();
-                return bp ? bp + cleanPath : '..' + cleanPath;
+                return bp ? bp + cleanPath : cleanPath;
             };
             const API_LIST = resolveApiPath('/backend/api/notifications_api.php');
             const API_GEN  = resolveApiPath('/backend/api/superadmin_notification_generator.php');
@@ -5655,17 +5723,18 @@ require_once __DIR__ . '/rbac_menu.php';
             'use strict';
 
             const getAppBasePath = function() {
-                if (window.pageData && window.pageData.appBasePath) {
-                    return window.pageData.appBasePath.replace(/\/$/, '');
+                if (window.pageData && typeof window.pageData.appBasePath === 'string') {
+                    return window.pageData.appBasePath.replace(/\/+$/, '');
                 }
                 const path = window.location.pathname;
                 const pubIdx = path.indexOf('/public/');
                 if (pubIdx !== -1) return path.substring(0, pubIdx);
                 const backIdx = path.indexOf('/backend/');
                 if (backIdx !== -1) return path.substring(0, backIdx);
-                const parts = path.split('/').filter(Boolean);
-                if (parts.length > 0 && parts[0] !== 'public' && parts[0] !== 'backend') {
-                    return '/' + parts[0];
+                const lastSlash = path.lastIndexOf('/');
+                if (lastSlash > 0) {
+                    const dir = path.substring(0, lastSlash);
+                    return dir.replace(/\/public\/?$/, '').replace(/\/backend\/?$/, '');
                 }
                 return '';
             };
@@ -5674,7 +5743,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 if (path.startsWith('http://') || path.startsWith('https://')) return path;
                 const cleanPath = path.startsWith('/') ? path : '/' + path;
                 const bp = getAppBasePath();
-                return bp ? bp + cleanPath : '..' + cleanPath;
+                return bp ? bp + cleanPath : cleanPath;
             };
             const API_LIST = resolveApiPath('/backend/api/notifications_api.php');
             const API_GEN  = resolveApiPath('<?php echo $notif_generator; ?>');

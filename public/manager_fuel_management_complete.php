@@ -2982,7 +2982,7 @@ function switchPriceTab(tab) {
             if (!priceInp.value || isNaN(nv) || nv <= 0) {
                 priceInp.focus();
                 priceInp.style.borderColor = '#dc3545';
-                setTimeout(function () { priceInp.style.borderColor = ''; }, 2000);
+                setTimeout(function () { priceInp.style.borderColor = ''; }, 15000);
                 return;
             }
             // reason is optional — no minimum length check
@@ -4716,7 +4716,7 @@ document.addEventListener('DOMContentLoaded', function() {
 /* -- AUTO-DISMISS ALERT -- */
 (function() {
     const alert = document.querySelector('.mfm-alert');
-    if (alert) setTimeout(() => { alert.style.opacity='0'; alert.style.transition='opacity .5s'; setTimeout(()=>alert.remove(),500); }, 5000);
+    if (alert) setTimeout(() => { alert.style.opacity='0'; alert.style.transition='opacity .5s'; setTimeout(()=>alert.remove(),500); },  15000);
 })();
 
 /* -- SHIFT HISTORY FILTER -- */

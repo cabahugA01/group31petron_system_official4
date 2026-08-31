@@ -655,27 +655,53 @@ function manager_handle_file_upload(string $fileKey): ?string {
     return null;
 }
 
+if (!function_exists('sanitize_optional_field')) {
+    function sanitize_optional_field(?string $val): string {
+        if ($val === null) return 'N/A';
+        $trimmed = trim($val);
+        if ($trimmed === '') return 'N/A';
+        $lower = strtolower($trimmed);
+        $invalid_placeholders = ['none', 'null', 'n/a', '-', 'unknown', 'not available', 'not_available', 'undefined', 'n.a.', 'n/a.'];
+        if (in_array($lower, $invalid_placeholders, true)) {
+            return 'N/A';
+        }
+        return $trimmed;
+    }
+}
+
 function manager_validate_customer_payload(): array {
     $firstName   = trim($_POST['first_name'] ?? '');
-    $middleName  = trim($_POST['middle_name'] ?? '');
-    $lastName    = trim($_POST['last_name'] ?? '');
-    $contact     = trim($_POST['contact_number'] ?? '');
-    $email       = trim($_POST['email'] ?? '');
-    $address     = trim($_POST['address'] ?? '');
+    $middleName  = sanitize_optional_field($_POST['middle_name'] ?? '');
+    $lastName    = sanitize_optional_field($_POST['last_name'] ?? '');
+    $contact     = sanitize_optional_field($_POST['contact_number'] ?? '');
+    $email       = sanitize_optional_field($_POST['email'] ?? '');
+    $address     = sanitize_optional_field($_POST['address'] ?? '');
     $type        = trim($_POST['customer_type'] ?? 'registered');
     $status      = trim($_POST['status'] ?? 'active');
     $creditLimit = (float)($_POST['credit_limit'] ?? 0);
     $creditTerms = trim($_POST['credit_terms'] ?? '30 Days');
     $govIdType   = trim($_POST['gov_id_type'] ?? '');
 
-    if ($firstName === '') {
-        throw new Exception('Customer First Name is required.');
+    $placeholders = ['n/a', 'none', 'null', '-'];
+
+    if ($firstName === '' || in_array(strtolower($firstName), $placeholders, true)) {
+        throw new Exception('Customer First Name / Name is required and cannot be N/A or a placeholder.');
     }
-    if ($lastName === '') {
-        $lastName = $firstName;
+
+    if ($contact !== 'N/A') {
+        $cleanPhone = preg_replace('/[\s\-\(\)\.]/', '', $contact);
+        if (!preg_match('/^(09\d{9}|\+639\d{9}|639\d{9})$/', $cleanPhone)) {
+            throw new Exception('Invalid Philippine contact number. Must be an 11-digit mobile number starting with 09 (e.g. 09171234567 or +639171234567).');
+        }
+        if (str_starts_with($cleanPhone, '+639')) { $contact = '09' . substr($cleanPhone, 4); }
+        elseif (str_starts_with($cleanPhone, '639')) { $contact = '09' . substr($cleanPhone, 3); }
+        else { $contact = $cleanPhone; }
     }
-    if ($contact === '') {
-        $contact = 'N/A';
+
+    if ($email !== 'N/A') {
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new Exception('Invalid email address format. Please enter a valid email address or leave blank for N/A.');
+        }
     }
 
     if (!in_array($type, ['registered', 'credit', 'fleet', 'corporate', 'regular', 'walk-in'], true) || $type === 'walk-in') {
@@ -702,7 +728,7 @@ function manager_validate_customer_payload(): array {
         'status'         => $status,
         'credit_limit'   => max(0, $creditLimit),
         'credit_terms'   => $creditTerms,
-        'gov_id_type'    => $govIdType,
+        'gov_id_type'    => sanitize_optional_field($_POST['gov_id_type'] ?? ''),
         'gov_id_file'    => $govIdFile,
         'cr_file'        => $crFile,
         'or_file'        => $orFile,
@@ -711,7 +737,7 @@ function manager_validate_customer_payload(): array {
         'vehicle_brand'  => trim($_POST['vehicle_make'] ?? $_POST['brand'] ?? ''),
         'vehicle_model'  => trim($_POST['vehicle_model'] ?? ''),
         'vehicle_type'   => trim($_POST['vehicle_type'] ?? ''),
-        'loyalty_card_no' => trim($_POST['loyalty_card_no'] ?? ''),
+        'loyalty_card_no' => sanitize_optional_field($_POST['loyalty_card_no'] ?? ''),
     ];
 }
 

@@ -133,7 +133,7 @@ function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', i
         );
 
         $counts['inventory'] = $safe_count(
-            "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.reorder_level, ip.min_stock, 24)",
+            "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(NULLIF(si.reorder_level, 0), NULLIF(ip.min_stock, 0), 10)",
             [$station_id]
         );
 
@@ -159,7 +159,7 @@ function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', i
         );
 
         $counts['inventory'] = $safe_count(
-            "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.reorder_level, ip.min_stock, 24)",
+            "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND (LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(NULLIF(si.reorder_level, 0), NULLIF(ip.min_stock, 0), 10)",
             [$station_id]
         ) + $safe_count(
             "SELECT COUNT(*) FROM stock_requests WHERE station_id = ? AND status IN ('Pending','Pending Manager Review')",
@@ -183,7 +183,7 @@ function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', i
         $stn_param2 = $station_id > 0 ? [$station_id] : [];
 
         $admin_crit_stock = $safe_count(
-            "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE {$stn_where}(LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(si.critical_level, ip.critical_level, 10)",
+            "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE {$stn_where}(LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(NULLIF(si.critical_level, 0), NULLIF(ip.critical_level, 0), NULLIF(si.reorder_level, 0), NULLIF(ip.min_stock, 0), 10)",
             $stn_param
         );
         $admin_pos = $safe_count(
@@ -219,6 +219,19 @@ function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', i
         $counts['admin_fuel']            = $admin_fuel_pending;
         $counts['admin_fuel_management'] = $admin_fuel_pending;
     }
+
+    // Respect user_preferences badge_seen timestamps so visited sections stay cleared
+    try {
+        $st_pref = $pdo->prepare("SELECT preference_key, preference_value FROM user_preferences WHERE user_id = ? AND preference_key LIKE 'badge_seen_%'");
+        $st_pref->execute([$user_id]);
+        foreach ($st_pref->fetchAll(PDO::FETCH_ASSOC) as $r_seen) {
+            $k_seen = str_replace('badge_seen_', '', $r_seen['preference_key']);
+            $seen_ts = strtotime($r_seen['preference_value']);
+            if ($seen_ts && (time() - $seen_ts < 7200)) {
+                if (isset($counts[$k_seen])) $counts[$k_seen] = 0;
+            }
+        }
+    } catch (Throwable $e) {}
 
     return $counts;
 }
@@ -382,6 +395,23 @@ try {
                 break;
 
             // ── Unread count (sidebar-equivalent action badge) ─
+            case 'mark_badge_seen':
+                $key = trim($_GET['key'] ?? $_POST['key'] ?? '');
+                if (!empty($key)) {
+                    try {
+                        $pref_key = 'badge_seen_' . $key;
+                        $now = date('Y-m-d H:i:s');
+                        $stmt = $pdo->prepare(
+                            "INSERT INTO user_preferences (user_id, preference_key, preference_value, updated_at)
+                             VALUES (?, ?, ?, NOW())
+                             ON DUPLICATE KEY UPDATE preference_value = VALUES(preference_value), updated_at = NOW()"
+                        );
+                        $stmt->execute([$user_id, $pref_key, $now]);
+                    } catch (Throwable $e) {}
+                }
+                echo json_encode(['success' => true]);
+                exit;
+
             case 'unread_count':
                 $myStationId  = (int)($me['station_id'] ?? 0);
                 $station_param = $myStationId ? [$myStationId] : [];

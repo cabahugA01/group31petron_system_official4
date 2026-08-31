@@ -1773,7 +1773,7 @@ function updateAdjustmentRow(adjustmentId, newStatus) {
             // Remove highlight after 2 seconds
             setTimeout(() => {
                 row.style.backgroundColor = '';
-            }, 2000);
+            }, 15000);
             
             break;
         }

@@ -251,7 +251,29 @@ try {
             $prod_status    = in_array($_POST['status'] ?? '', ['active', 'inactive']) ? $_POST['status'] : 'active';
 
             if ($id <= 0 || empty($product_name) || empty($category)) {
-                echo json_encode(['success' => false, 'message' => 'Product name and category are required']);
+                echo json_encode(['success' => false, 'message' => 'Product name and category are required.']);
+                exit;
+            }
+
+            $placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+            if (in_array(strtolower($product_name), $placeholders, true)) {
+                echo json_encode(['success' => false, 'message' => 'Product name cannot be N/A or a placeholder.']);
+                exit;
+            }
+            if (in_array(strtolower($category), $placeholders, true)) {
+                echo json_encode(['success' => false, 'message' => 'Category cannot be N/A or a placeholder.']);
+                exit;
+            }
+            if ($unit_price <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Default selling price must be a valid number greater than 0.']);
+                exit;
+            }
+            if ($reorder_level <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Reorder level must be a valid number greater than 0.']);
+                exit;
+            }
+            if ($critical_level <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Critical level must be a valid number greater than 0.']);
                 exit;
             }
 
@@ -757,8 +779,26 @@ try {
             $service_price = (float)($_POST['service_price'] ?? 0);
             $active        = (int)($_POST['active'] ?? 1);
 
-            if ($id <= 0 || empty($service_name) || empty($category) || empty($service_key) || $service_price < 0) {
-                echo json_encode(['success' => false, 'message' => 'Service name, category, key and price are required']);
+            if ($id <= 0 || empty($service_name) || empty($category) || empty($service_key)) {
+                echo json_encode(['success' => false, 'message' => 'Service name, category, and service key are required.']);
+                exit;
+            }
+
+            $placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+            if (in_array(strtolower($service_name), $placeholders, true)) {
+                echo json_encode(['success' => false, 'message' => 'Service Name cannot be N/A or a placeholder.']);
+                exit;
+            }
+            if (in_array(strtolower($category), $placeholders, true)) {
+                echo json_encode(['success' => false, 'message' => 'Category cannot be N/A or a placeholder.']);
+                exit;
+            }
+            if (in_array(strtolower($service_key), $placeholders, true)) {
+                echo json_encode(['success' => false, 'message' => 'Service Key cannot be N/A or a placeholder.']);
+                exit;
+            }
+            if ($service_price <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Service Price must be a valid number greater than 0.']);
                 exit;
             }
 

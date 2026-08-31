@@ -1,4 +1,17 @@
 <?php
+if (!function_exists('sanitize_optional_field')) {
+    function sanitize_optional_field(?string $val): string {
+        if ($val === null) return 'N/A';
+        $trimmed = trim($val);
+        if ($trimmed === '') return 'N/A';
+        $lower = strtolower($trimmed);
+        $invalid_placeholders = ['none', 'null', 'n/a', '-', 'unknown', 'not available', 'not_available', 'undefined', 'n.a.', 'n/a.'];
+        if (in_array($lower, $invalid_placeholders, true)) {
+            return 'N/A';
+        }
+        return $trimmed;
+    }
+}
 /**
  * Staff Transaction Processor
  * Handles: Job Order, Merchandise, Job Order + Merchandise
@@ -31,7 +44,7 @@ try {
     
     // ── 1. VALIDATE TRANSACTION DATA ────────────────────────────────────────
     $customer_first_name = trim($input['customer_first_name'] ?? '');
-    $customer_last_name = trim($input['customer_last_name'] ?? '');
+    $customer_last_name = sanitize_optional_field($input['customer_last_name'] ?? '');
     $customer_name = trim("$customer_first_name $customer_last_name");
     
     if (empty($customer_name)) {
@@ -105,7 +118,7 @@ try {
         $service_type = trim($input['service_type'] ?? '');
         $service_description = trim($input['service_description'] ?? '');
         $mechanic_id = (int)($input['mechanic_id'] ?? 0);
-        $contact_number = trim($input['contact_number'] ?? '');
+        $contact_number = sanitize_optional_field($input['contact_number'] ?? '');
         
         if (empty($service_type)) {
             throw new Exception("Service type is required for Job Order");

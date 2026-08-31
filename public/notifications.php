@@ -946,7 +946,7 @@ function handleFeedItemClick(el, notifId, redirectUrl, nData) {
     const staffFallback = {
         'fuel_transaction'  : 'staff_fuel_sales_closing.php',
         'fuel_management'   : 'staff_fuel_sales_closing.php',
-        'inventory'         : 'staff_inventory.php',
+        'inventory'         : 'staff_inventory_merchandise.php',
         'stock_request'     : 'staff_my_requests.php',
         'general'           : 'staff_fuel_sales_closing.php'
     };

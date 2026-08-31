@@ -1037,14 +1037,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
         </div>
         <div style="background:#fff7ed;color:#ea580c;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
-    <!-- Critical Fuel Types -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fecaca;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.3px;">Critical Fuel Types</div>
-            <div style="font-size:24px;font-weight:800;color:#dc2626;margin-top:4px;"><?= number_format($critical_fuel_types) ?></div>
-        </div>
-        <div style="background:#fef2f2;color:#dc2626;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-fire"></i></div>
-    </div>
+
 </div>
 
 <!-- â•â• Fuel Catalog Card â•â• -->
@@ -1069,7 +1062,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                 <option value="">All Statuses</option>
                 <option value="normal">Normal</option>
                 <option value="low">Low</option>
-                <option value="critical">Critical</option>
+                
                 <option value="out of stock">Out of Stock</option>
             </select>
             <button type="button" class="flt-btn flt-btn-search" onclick="filterFuelTable()"><i class="fas fa-search"></i> Filter</button>

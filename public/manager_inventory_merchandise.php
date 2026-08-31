@@ -1198,7 +1198,7 @@ body { overflow-x: hidden; }
 .mim-wrap { width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden !important; padding: 0 !important; margin: 0 !important; }
 /* Prevent horizontal scrollbar on main merchandise table */
 .table-wrap { overflow-x: hidden !important; width: 100% !important; }
-#mgrMerchTable { width: 100% !important; table-layout: auto !important; border-collapse: collapse; }
+#mgrMerchTable { width: 100% !important; table-layout: fixed !important; border-collapse: collapse; }
 #mgrMerchTable thead th { padding: 8px 5px !important; font-size: 11px !important; font-weight: 700 !important; text-transform: uppercase !important; letter-spacing: .2px !important; white-space: nowrap !important; }
 #mgrMerchTable tbody td { padding: 6px 5px !important; font-size: 11.5px !important; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
 .int-head { display: flex !important; align-items: center !important; justify-content: space-between !important; flex-wrap: wrap !important; gap: 15px !important; margin-top: 0 !important; margin-bottom: 25px !important; padding: 0 !important; border: none !important; width: 100% !important; }
@@ -1497,14 +1497,7 @@ body { overflow-x: hidden; }
         </div>
         <div style="background:#fff7ed;color:#ea580c;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
-    <!-- Critical Stock -->
-    <div onclick="filterMgrByCard('warning')" style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fecaca;cursor:pointer;" title="Click to filter critical stock items">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.3px;">Critical Stock</div>
-            <div style="font-size:24px;font-weight:800;color:#dc2626;margin-top:4px;"><?= number_format($summary_alert_critical) ?></div>
-        </div>
-        <div style="background:#fef2f2;color:#dc2626;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-fire"></i></div>
-    </div>
+
     <!-- Out of Stock -->
     <div onclick="filterMgrByCard('warning')" style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fecaca;cursor:pointer;" title="Click to filter out of stock items">
         <div>
@@ -1540,7 +1533,7 @@ body { overflow-x: hidden; }
                 <option value="">All Statuses</option>
                 <option value="available">Available</option>
                 <option value="low">Low Stock</option>
-                <option value="critical">Critical Stock</option>
+                
                 <option value="out of stock">Out of Stock</option>
                 <option value="variance detected">Variance Detected</option>
                 <option value="warning" hidden>Stock Alerts</option>
@@ -3959,7 +3952,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </div> <!-- /.mim-wrap -->
 
 <script id="merchAutoRefreshScript">
-// ── Silent Background Auto-Refresh for Merchandise Inventory (2 seconds) ──
+// ── Silent Background Auto-Refresh for Merchandise Inventory (15 seconds) ──
 (function() {
     'use strict';
     setInterval(function() {
@@ -3976,7 +3969,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         }
-    }, 2000);
+    },  15000);
 })();
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

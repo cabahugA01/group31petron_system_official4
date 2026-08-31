@@ -5073,7 +5073,7 @@ setTimeout(function() {
         }
 
         // Run silent background refresh every 10 seconds
-        setInterval(autoRefreshMeterReadingHistory, 10000);
+        setInterval(autoRefreshMeterReadingHistory, 15000);
         
         function renderTodayEntriesTable() {
             const body = document.getElementById('todayEntriesBody');
@@ -5528,7 +5528,7 @@ setTimeout(function() {
                                        class="txn-input"
                                        placeholder="Type customer name or search..."
                                        autocomplete="off"
-                                       oninput="unlockCustomerIfNeeded('jo'); searchCustomerByName('jo')"
+                                       oninput="this.value = this.value.replace(/[^a-zA-Z\s\-'\.\u00C0-\u024F]/g, ''); unlockCustomerIfNeeded('jo'); searchCustomerByName('jo');"
                                        onfocus="searchCustomerByName('jo')">
                                 <!-- First Name Dropdown -->
                                 <div id="joFirstNameResults" 
@@ -5544,7 +5544,8 @@ setTimeout(function() {
                                        id="joLastName" 
                                        class="txn-input"
                                        placeholder="Customer last name"
-                                       autocomplete="off">
+                                       autocomplete="off"
+                                       oninput="this.value = this.value.replace(/[^a-zA-Z\s\-'\.\u00C0-\u024F]/g, '');">
                             </div>
                         </div>
                         <div class="txn-form-grid" style="margin-bottom:14px;">
@@ -5552,7 +5553,8 @@ setTimeout(function() {
                                 <label>Contact Number</label>
                                 <input type="text" id="joContactNumber" class="txn-input"
                                        placeholder="e.g. 09XX-XXX-XXXX"
-                                       autocomplete="off">
+                                       autocomplete="off"
+                                       oninput="this.value = this.value.replace(/[^0-9+]/g, ''); if (this.value.length > 13) this.value = this.value.slice(0, 13);">
                             </div>
                         </div>
 
@@ -5571,7 +5573,7 @@ setTimeout(function() {
                                                style="flex:1;width:100%;" 
                                                placeholder="Type or select vehicle type..."
                                                autocomplete="off"
-                                               oninput="filterVehicleDropdown(this.value)"
+                                               oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, ''); filterVehicleDropdown(this.value);"
                                                onfocus="showVehicleDropdown()"
                                                onblur="setTimeout(hideVehicleDropdown,200)"
                                                onchange="onVehicleTypeChange()">
@@ -5596,7 +5598,8 @@ setTimeout(function() {
                                 <input type="text" id="joVehiclePlate" class="txn-input"
                                        placeholder="e.g. ABC 1234"
                                        style="text-transform:uppercase;"
-                                       autocomplete="off">
+                                       autocomplete="off"
+                                       oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\s\-]/g, '');">
                             </div>
                         </div>
                         
@@ -5606,13 +5609,15 @@ setTimeout(function() {
                                 <label>Vehicle Brand</label>
                                 <input type="text" id="joVehicleBrand" class="txn-input auto-pull"
                                        placeholder="e.g. Toyota, Honda..."
-                                       autocomplete="off">
+                                       autocomplete="off"
+                                       oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
                             </div>
                             <div class="txn-field">
                                 <label>Vehicle Model</label>
                                 <input type="text" id="joVehicleModel" class="txn-input"
                                        placeholder="e.g. Vios, City, Civic..."
-                                       autocomplete="off">
+                                       autocomplete="off"
+                                       oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
                             </div>
                         </div>
                         <!-- Year Model + Odometer -->
@@ -5621,14 +5626,15 @@ setTimeout(function() {
                                 <label>Year Model <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
                                 <input type="number" id="joYearModel" class="txn-input"
                                        placeholder="e.g. 2020" min="1900" max="2099"
-                                       autocomplete="off">
+                                       autocomplete="off"
+                                       oninput="this.value = this.value.replace(/[^0-9]/g, ''); if (this.value.length > 4) this.value = this.value.slice(0, 4);">
                             </div>
                             <div class="txn-field">
                                 <label>Odometer Reading</label>
                                 <input type="text" id="joOdometer" class="txn-input"
                                        placeholder="e.g. 35,000 km"
                                        autocomplete="off"
-                                       oninput="formatOdometerInput(this)">
+                                       oninput="this.value = this.value.replace(/[^0-9a-zA-Z\s\,\.]/g, ''); formatOdometerInput(this);">
                             </div>
                         </div>
 
@@ -5641,7 +5647,7 @@ setTimeout(function() {
                                        placeholder="e.g. 1NZ-FE-1234567"
                                        style="text-transform:uppercase;"
                                        autocomplete="off"
-                                       oninput="formatEngineNumberInput(this)">
+                                       oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\-\_]/g, ''); formatEngineNumberInput(this);">
                             </div>
                             <div class="txn-field">
                                 <label>Chassis Number (VIN) <span style="color:#dc2626;">*</span></label>
@@ -5649,7 +5655,7 @@ setTimeout(function() {
                                        placeholder="e.g. MHFXE1234567890"
                                        style="text-transform:uppercase;"
                                        autocomplete="off"
-                                       oninput="checkVehicleSecurityWarning()">
+                                       oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\-\_]/g, ''); checkVehicleSecurityWarning();">
                             </div>
                         </div>
 
@@ -6010,7 +6016,7 @@ setTimeout(function() {
                                        class="txn-input"
                                        placeholder="Type customer name or search..."
                                        autocomplete="off"
-                                       oninput="unlockCustomerIfNeeded('merch'); searchCustomerByName('merch')"
+                                       oninput="this.value = this.value.replace(/[^a-zA-Z\s\-'\.\u00C0-\u024F]/g, ''); unlockCustomerIfNeeded('merch'); searchCustomerByName('merch');"
                                        onfocus="searchCustomerByName('merch')">
                                 <!-- First Name Dropdown -->
                                 <div id="merchFirstNameResults" 
@@ -6026,7 +6032,8 @@ setTimeout(function() {
                                        id="merchLastName"
                                        class="txn-input"
                                        placeholder="Customer last name"
-                                       autocomplete="off">
+                                       autocomplete="off"
+                                       oninput="this.value = this.value.replace(/[^a-zA-Z\s\-'\.\u00C0-\u024F]/g, '');">
                             </div>
                         </div>
                         <div class="txn-form-grid" style="margin-bottom:14px;">
@@ -6034,7 +6041,8 @@ setTimeout(function() {
                                 <label>Contact Number</label>
                                 <input type="text" id="merchContactNumber" class="txn-input"
                                        placeholder="e.g. 09XX-XXX-XXXX"
-                                       autocomplete="off">
+                                       autocomplete="off"
+                                       oninput="this.value = this.value.replace(/[^0-9+]/g, ''); if (this.value.length > 13) this.value = this.value.slice(0, 13);">
                             </div>
                         </div>
 
@@ -6179,7 +6187,7 @@ setTimeout(function() {
                                 <label>Quantity</label>
                                 <input type="number" id="itemQty" class="txn-input"
                                        min="1" value="1" placeholder="1"
-                                       oninput="syncItemQtyToCart(this.value)"
+                                       oninput="this.value = this.value.replace(/[^0-9]/g, ''); syncItemQtyToCart(this.value);"
                                        onchange="syncItemQtyToCart(this.value)">
                             </div>
                         </div>
@@ -12176,7 +12184,7 @@ setTimeout(function() {
         }
 
         // Run auto-refresh every 10 seconds
-        setInterval(autoRefreshJobOrderTracker, 10000);
+        setInterval(autoRefreshJobOrderTracker, 15000);
         </script>
 
         </div><!-- /innerTab_tracker -->
@@ -12579,7 +12587,7 @@ setTimeout(function() {
                 var wrap = document.getElementById('pmAmountWrap');
                 wrap.style.borderColor = '#dc2626';
                 document.getElementById('pmAmountInput').focus();
-                setTimeout(function(){ wrap.style.borderColor = '#d1d5db'; }, 2000);
+                setTimeout(function(){ wrap.style.borderColor = '#d1d5db'; }, 15000);
             }
         });
         </script>

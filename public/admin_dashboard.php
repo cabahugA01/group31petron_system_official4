@@ -2670,7 +2670,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    setInterval(autoRefreshAdminDashboard, 2000);
+    setInterval(autoRefreshAdminDashboard, 15000);
 });
 </script>
 

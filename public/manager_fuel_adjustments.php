@@ -897,7 +897,7 @@ function autoRefreshFuelAdjustments() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshFuelAdjustments, 2000);
+setInterval(autoRefreshFuelAdjustments, 15000);
 
 // ── Fuel Adjustments Pagination ──
 var mfaState = { page: 1, per_page: 10 };

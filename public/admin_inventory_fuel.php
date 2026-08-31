@@ -717,14 +717,7 @@ body, html { overflow-x:hidden !important; }
         </div>
         <div style="background:#fff3cd; color:#ea580c; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
-    <!-- Card 4: Critical Fuel Tanks -->
-    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
-        <div>
-            <div style="font-size:10px; font-weight:700; color:#dc2626; text-transform:uppercase; letter-spacing:.3px;">Critical Fuel Tanks</div>
-            <div style="font-size:20px; font-weight:800; color:#dc2626; margin-top:4px;"><?= number_format($total_critical_fuel_tanks) ?></div>
-        </div>
-        <div style="background:#fce8e6; color:#dc2626; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-fire"></i></div>
-    </div>
+
     <!-- Card 5: Total Fuel Inventory Value -->
     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
@@ -771,7 +764,7 @@ body, html { overflow-x:hidden !important; }
     <option value="">All Statuses</option>
     <option value="normal">Normal</option>
     <option value="low">Low</option>
-    <option value="critical">Critical</option>
+    
     <option value="out of stock">Out of Stock</option>
   </select>
   <button type="button" class="flt-btn flt-btn-csv" onclick="filterFuelTable()"><i class="fas fa-search"></i> Filter</button>
@@ -1269,7 +1262,7 @@ function viewTankDetails(r) {
         var statusMap = {
             'Normal': '<span class="status-pill" style="background:#dcfce7;color:#15803d;border:1px solid #a7f3d0;">Normal</span>',
             'Low': '<span class="status-pill" style="background:#fff3cd;color:#ea580c;border:1px solid #ffeba8;">Low</span>',
-            'Critical': '<span class="status-pill" style="background:#fce8e6;color:#dc3545;border:1px solid #f8c2bc;">Critical</span>',
+            
             'Out of Stock': '<span class="status-pill" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;">Out of Stock</span>'
         };
         if (document.getElementById('vfmStatus')) document.getElementById('vfmStatus').innerHTML = statusMap[r.status] || '<span class="status-pill" style="background:#f1f5f9;color:#475569;">' + esc(r.status || '') + '</span>';
@@ -1452,7 +1445,7 @@ function filterFuelTable() {
         if (status) {
             if (status === 'normal' && rStatus !== 'normal') match = false;
             else if (status === 'low' && rStatus !== 'low') match = false;
-            else if (status === 'critical' && rStatus !== 'critical') match = false;
+            
             else if (status === 'out of stock' && rStatus !== 'out of stock') match = false;
         }
 
