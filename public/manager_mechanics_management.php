@@ -79,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $params   = $station_id > 0 ? ['inactive', 1, $reason, $id, $station_id] : ['inactive', 1, $reason, $id];
             $pdo->prepare("UPDATE mechanics SET status='inactive', archived=1, archive_reason=?, updated_at=NOW() WHERE {$where_id}")
                 ->execute($station_id > 0 ? [$reason, $id, $station_id] : [$reason, $id]);
-            echo json_encode(['success' => true]);
+            $n_stmt = $pdo->prepare("SELECT full_name FROM mechanics WHERE id = ?"); $n_stmt->execute([$id]); $m_name = $n_stmt->fetchColumn() ?: "Mechanic"; $msg_arch = "Mechanic \"" . htmlspecialchars($m_name) . "\" archived successfully."; echo json_encode(['success' => true, 'message' => $msg_arch]);
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         }
@@ -521,6 +521,138 @@ if (isset($_GET['ajax_mm']) && $_GET['ajax_mm'] == '1') {
 
 require_once __DIR__ . '/../partials/header.php';
 ?>
+
+<style>
+/* Mechanics Action Buttons - Stacked One-By-One Vertically (ITAGSA-TAGSA) */
+.tbl-btn-group {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    width: 100% !important;
+}
+
+.tbl-btn-group .tbl-btn, button.tbl-btn {
+    width: 85px !important;
+    min-width: 85px !important;
+    max-width: 85px !important;
+    height: 26px !important;
+    padding: 0 6px !important;
+    font-size: 11.5px !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    float: none !important;
+}
+
+#mechanicsTable td:last-child, #mechanicsTable th:last-child {
+    text-align: center !important;
+    white-space: nowrap !important;
+    padding: 8px 6px !important;
+}
+</style>
+
+
+
+
+
+
+
+
+<style>
+/* ABSOLUTE NO TEXT OVERLAPPING RULE */
+.cust-section, .table-wrap, .table-responsive, .table-card, .card {
+    overflow-x: auto !important;
+    width: 100% !important;
+}
+
+table.cust-table, #mgrMerchTable, table.pricing-table, table.tbl-requests, table.table {
+    table-layout: auto !important;
+    width: 100% !important;
+    min-width: 1050px !important;
+    border-collapse: collapse !important;
+}
+
+table th {
+    padding: 9px 8px !important;
+    font-size: 12.5px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.2px !important;
+    text-transform: uppercase !important;
+    white-space: nowrap !important;
+}
+
+table td {
+    padding: 9px 8px !important;
+    font-size: 13.5px !important;
+    line-height: 1.3 !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+}
+
+/* Customer ID Monospace Code */
+.cust-table td:first-child, .cust-table td code {
+    font-size: 12.5px !important;
+    font-weight: 800 !important;
+    font-family: monospace !important;
+    white-space: nowrap !important;
+}
+
+/* Customer Name High Legibility */
+.cust-table td:nth-child(2) strong {
+    font-size: 14px !important;
+    font-weight: 800 !important;
+    color: #002F6C !important;
+    white-space: nowrap !important;
+}
+
+/* Vehicles, Amounts, & Dates Never Overlap */
+td:nth-child(3), td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9), td:nth-child(10),
+th:nth-child(3), th:nth-child(4), th:nth-child(5), th:nth-child(6), th:nth-child(7), th:nth-child(8), th:nth-child(9), th:nth-child(10) {
+    white-space: nowrap !important;
+}
+
+/* Status Pill */
+.pill, .pill.active, .pill.inactive, .pill.archived, .pill.regular, .pill.credit, .status-pill, .badge {
+    white-space: nowrap !important;
+    display: inline-block !important;
+    padding: 3px 8px !important;
+    font-size: 11.5px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    border-radius: 5px !important;
+    line-height: 1.1 !important;
+}
+
+/* Action Buttons */
+.cust-actions button, .cust-table .btn-plain, .act-btn, .tbl-btn {
+    font-size: 11.5px !important;
+    font-weight: 700 !important;
+    height: 26px !important;
+    padding: 0 8px !important;
+    white-space: nowrap !important;
+    border-radius: 5px !important;
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
 <style>
 /* Page Header */
 .stock-page { padding: 0 !important; margin: 0 !important; width: 100%; box-sizing: border-box; }
@@ -566,7 +698,7 @@ require_once __DIR__ . '/../partials/header.php';
 @media(max-width:480px){ .txn-kpi-grid{ grid-template-columns:1fr; } }
 .txn-kpi-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; box-shadow:0 1px 4px rgba(0,0,0,.03); transition:transform .15s,box-shadow .15s; }
 .txn-kpi-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.07); }
-.txn-kpi-lbl { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#64748b; margin-bottom:6px; display:flex; align-items: flex-start; gap:6px;
+.txn-kpi-lbl { font-size:15.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#64748b; margin-bottom:6px; display:flex; align-items: flex-start; gap:6px;
     line-height: 1.3;
 }
 .txn-kpi-val { font-size:26px; font-weight:800; color:#002F70; line-height:1.1; }
@@ -580,22 +712,22 @@ require_once __DIR__ . '/../partials/header.php';
 /* Filter Bar */
 .filters-form { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:14px 18px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
 .filters-form > div { display:flex; flex-direction:column; gap:4px; }
-.filters-form label { font-size:10px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.4px; }
-.filters-form .inp { height:36px; padding:0 10px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; color:#1e293b; background:#fff; outline:none; transition:border-color .15s; }
+.filters-form label { font-size:15.5px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.4px; }
+.filters-form .inp { height:36px; padding:0 10px; border:1px solid #cbd5e1; border-radius:8px; font-size:15.5px; color:#1e293b; background:#fff; outline:none; transition:border-color .15s; }
 .filters-form .inp:focus { border-color:#002F70; box-shadow:0 0 0 3px rgba(0,47,112,.1); }
 
 /* Table */
 .table-card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.04); }
 .table-card-head { padding:14px 18px; border-bottom:1px solid #f1f5f9; background:#f8fafc; display:flex; align-items:center; justify-content:space-between; }
 .table-card-title { font-size:14px; font-weight:700; color:#0f172a; display:flex; align-items:center; gap:8px; }
-.table-responsive { width:100%; overflow-x:auto; }
-.tbl-requests { width:100%; border-collapse:collapse; font-size:12.5px; text-align:left; }
-.tbl-requests th { background:#002F70; color:#fff; font-weight:700; text-transform:uppercase; font-size:10.5px; letter-spacing:.5px; padding:11px 12px; border-bottom:2px solid #001a3d; white-space:nowrap; }
+.table-responsive { width:100%; overflow-x: hidden; }
+.tbl-requests { width:100%; border-collapse:collapse; font-size:15px; text-align:left; }
+.tbl-requests th { background:#002F70; color:#fff; font-weight:700; text-transform:uppercase; font-size:13.5px; letter-spacing:.5px; padding:11px 12px; border-bottom:2px solid #001a3d; white-space:nowrap; }
 .tbl-requests td { padding:10px 12px; border-bottom:1px solid #f1f5f9; color:#334155; vertical-align:middle; }
 .tbl-requests tr:hover { background:#f8fafc; }
 
 /* Buttons */
-.btn-action { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 14px; height:36px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent; transition:all .15s; text-decoration:none; }
+.btn-action { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 14px; height:36px; border-radius:8px; font-size:15.5px; font-weight:600; cursor:pointer; border:1px solid transparent; transition:all .15s; text-decoration:none; }
 .btn-primary { background:#002F70; color:#fff; border-color:#002F70; }
 .btn-primary:hover { background:#001f4d; }
 .btn-secondary, button.btn-secondary { background:#ffffff !important; background-color:#ffffff !important; color:#334155 !important; border:1px solid #cbd5e1 !important; }
@@ -603,12 +735,12 @@ require_once __DIR__ . '/../partials/header.php';
 
 .btn-danger { background:#dc2626; color:#fff; border-color:#dc2626; }
 .btn-danger:hover { background:#b91c1c; }
-.btn-header-add { background:#002F70!important; color:#fff!important; border:1px solid #002F70; display:inline-flex; align-items:center; gap:6px; padding:0 16px; height:34px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s; white-space:nowrap; }
+.btn-header-add { background:#002F70!important; color:#fff!important; border:1px solid #002F70; display:inline-flex; align-items:center; gap:6px; padding:0 16px; height:34px; border-radius:7px; font-size:15.5px; font-weight:600; cursor:pointer; transition:all .15s; white-space:nowrap; }
 .btn-header-add:hover { background:#001f4d!important; }
 
 /* Table Action Buttons */
 .tbl-btn-group { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
-.tbl-btn { background:white!important; display:inline-flex; align-items:center; justify-content:center; gap:4px; height:26px; border-radius:6px; border:1px solid transparent; cursor:pointer; font-size:10.5px; font-weight:700; padding:0 8px; white-space:nowrap; transition:all .15s; }
+.tbl-btn { background:white!important; display:inline-flex; align-items:center; justify-content:center; gap:4px; height:32px; font-size:13px; border-radius:6px; border:1px solid transparent; cursor:pointer; font-size:13.5px; font-weight:700; padding:0 8px; white-space:nowrap; transition:all .15s; }
 .tbl-btn.view    { color:#0284c7!important; border-color:#0284c7!important; }
 .tbl-btn.view:hover    { background:#0284c7!important; color:#fff!important; }
 .tbl-btn.edit    { color:#002F70!important; border-color:#002F70!important; }
@@ -624,7 +756,7 @@ button.tbl-btn.wkld { color:#475569!important; }
 .tbl-btn.archive:hover { background:#d97706!important; color:#fff!important; }
 
 /* Status Badges */
-.badge { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:20px; font-size:10.5px; font-weight:700; }
+.badge { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:20px; font-size:13.5px; font-weight:700; }
 .badge-active   { background:#16a34a !important; color:#fff !important; border:none; }
 .badge-inactive { background:#dc2626 !important; color:#fff !important; border:none; }
 .badge-archived { background:#64748b !important; color:#fff !important; border:none; }
@@ -636,28 +768,28 @@ button.tbl-btn.wkld { color:#475569!important; }
 @keyframes modalSlideUp { from{transform:translateY(16px);opacity:0} to{transform:translateY(0);opacity:1} }
 .modal-header { padding:14px 18px; border-bottom:1px solid #f1f5f9; background:#f8fafc; display:flex; align-items:center; justify-content:space-between; }
 .modal-title  { font-size:15px; font-weight:800; color:#002F70; display:flex; align-items:center; gap:8px; }
-.modal-body   { padding:18px; font-size:13px; color:#334155; max-height:calc(100vh - 180px); overflow-y:auto; }
+.modal-body   { padding:18px; font-size:15.5px; color:#334155; max-height:calc(100vh - 180px); overflow-y:auto; }
 .modal-footer { padding:12px 18px; border-top:1px solid #f1f5f9; background:#f8fafc; display:flex; justify-content:flex-end; gap:8px; }
 
-.form-section-title { font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.6px; color:#002F70; margin:14px 0 8px; padding-bottom:4px; border-bottom:1px solid #e2e8f0; }
+.form-section-title { font-size:13.5px; font-weight:800; text-transform:uppercase; letter-spacing:.6px; color:#002F70; margin:14px 0 8px; padding-bottom:4px; border-bottom:1px solid #e2e8f0; }
 .form-section-title:first-child { margin-top:0; }
 .form-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .form-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
 @media(max-width:500px){ .form-grid-2,.form-grid-3{ grid-template-columns:1fr; } }
 .form-field  { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
-.form-field label { font-weight:700; color:#475569; font-size:10.5px; text-transform:uppercase; letter-spacing:.3px; }
-.form-field input, .form-field select, .form-field textarea { height:36px; padding:0 10px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; color:#1e293b; outline:none; background:#fff; transition:border-color .15s; }
+.form-field label { font-weight:700; color:#475569; font-size:13.5px; text-transform:uppercase; letter-spacing:.3px; }
+.form-field input, .form-field select, .form-field textarea { height:36px; padding:0 10px; border:1px solid #cbd5e1; border-radius:8px; font-size:15.5px; color:#1e293b; outline:none; background:#fff; transition:border-color .15s; }
 .form-field textarea { height:64px; padding:8px 10px; resize:vertical; }
 .form-field input:focus, .form-field select:focus, .form-field textarea:focus { border-color:#002F70; box-shadow:0 0 0 3px rgba(0,47,112,.1); }
 
 /* Workload Table */
-.wkld-table { width:100%; border-collapse:collapse; font-size:12px; }
-.wkld-table th { background:#f1f5f9; color:#475569; font-size:10px; font-weight:700; text-transform:uppercase; padding:7px 10px; border-bottom:2px solid #e2e8f0; white-space:nowrap; }
+.wkld-table { width:100%; border-collapse:collapse; font-size:14.5px; }
+.wkld-table th { background:#f1f5f9; color:#475569; font-size:15.5px; font-weight:700; text-transform:uppercase; padding:7px 10px; border-bottom:2px solid #e2e8f0; white-space:nowrap; }
 .wkld-table td { padding:7px 10px; border-bottom:1px solid #f1f5f9; color:#334155; }
 .wkld-table tr:hover td { background:#f8fafc; }
 .perf-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-top:10px; }
 .perf-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; text-align:center; }
-.perf-card-lbl { font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; }
+.perf-card-lbl { font-size:15.5px; font-weight:700; color:#64748b; text-transform:uppercase; }
 .perf-card-val { font-size:20px; font-weight:800; color:#002F70; margin-top:3px; }
 </style>
 
@@ -685,13 +817,13 @@ button.tbl-btn.wkld { color:#475569!important; }
 </div>
 
 <!-- Alerts -->
-<?php if (!empty($success_msg)): ?>
-<div style="background:#d1fae5;border:1px solid #a7f3d0;color:#065f46;padding:11px 16px;border-radius:8px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:8px;">
+<?php if (!empty($success_msg)): ?><script>document.addEventListener('DOMContentLoaded', function(){ showToastNotification(<?= json_encode($success_msg) ?>, 'success'); });</script>
+<div style="background:#d1fae5;border:1px solid #a7f3d0;color:#065f46;padding:11px 16px;border-radius:8px;margin-bottom:16px;font-size:15.5px;display:flex;align-items:center;gap:8px;">
     <i class="fas fa-check-circle"></i> <span><?= htmlspecialchars($success_msg) ?></span>
 </div>
 <?php endif; ?>
-<?php if (!empty($error_msg)): ?>
-<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:11px 16px;border-radius:8px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:8px;">
+<?php if (!empty($error_msg)): ?><script>document.addEventListener('DOMContentLoaded', function(){ showToastNotification(<?= json_encode($error_msg) ?>, 'error'); });</script>
+<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:11px 16px;border-radius:8px;margin-bottom:16px;font-size:15.5px;display:flex;align-items:center;gap:8px;">
     <i class="fas fa-exclamation-circle"></i> <span><?= htmlspecialchars($error_msg) ?></span>
 </div>
 <?php endif; ?>
@@ -784,7 +916,7 @@ button.tbl-btn.wkld { color:#475569!important; }
                     <th style="text-align:center;">Assigned JO</th>
                     <th style="text-align:center;">Completed Today</th>
                     <th style="text-align:center;">Status</th>
-                    <th style="text-align:center;min-width:310px;">Actions</th>
+                    <th style="text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -793,7 +925,7 @@ button.tbl-btn.wkld { color:#475569!important; }
                     <td colspan="10" style="text-align:center;padding:50px 20px;color:#64748b;">
                         <i class="fas fa-user-slash" style="font-size:40px;color:#cbd5e1;display:block;margin:0 auto 10px;"></i>
                         <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin:0 0 5px;">No mechanics available.</h3>
-                        <p style="font-size:12px;color:#64748b;margin:0;">Click "Add New Mechanic" to register.</p>
+                        <p style="font-size:14.5px;color:#64748b;margin:0;">Click "Add New Mechanic" to register.</p>
                     </td>
                 </tr>
                 <?php else: ?>
@@ -820,30 +952,30 @@ button.tbl-btn.wkld { color:#475569!important; }
                     data-status="<?= htmlspecialchars($row['status']) ?>"
                     data-specialty="<?= htmlspecialchars($row['specialization'] ?: 'General Mechanic') ?>"
                     data-shift="<?= htmlspecialchars($row['shift_assignment'] ?? '') ?>">
-                    <td style="font-family:monospace;font-weight:700;color:#002F70;font-size:12px;"><?= $fid ?></td>
+                    <td style="font-family:monospace;font-weight:700;color:#002F70;font-size:14.5px;"><?= $fid ?></td>
                     <td class="mech-fname" style="font-weight:700;color:#0f172a;"><?= htmlspecialchars($fname ?: '—') ?></td>
                     <td class="mech-lname" style="font-weight:600;color:#0f172a;"><?= htmlspecialchars($lname ?: '—') ?></td>
                     <td class="mech-contact" style="color:#475569;"><?= htmlspecialchars($row['contact_no'] ?: '—') ?></td>
                     <td class="mech-spec" style="font-weight:600;color:#334155;"><?= htmlspecialchars($row['specialization'] ?: 'General Mechanic') ?></td>
                     <td style="text-align:center;">
-                        <span style="font-size:11px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:2px 8px;font-weight:600;color:#475569;"><?= $shift ?></span>
+                        <span style="font-size:14px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:2px 8px;font-weight:600;color:#475569;"><?= $shift ?></span>
                     </td>
                     <td style="text-align:center;">
                         <?php if ($assigned > 0): ?>
-                        <span style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;padding:2px 8px;border-radius:12px;font-size:11px;display:inline-flex;align-items:center;gap:4px;">
+                        <span style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;padding:2px 8px;border-radius:12px;font-size:14px;display:inline-flex;align-items:center;gap:4px;">
                             <i class="fas fa-wrench"></i> <?= $assigned ?> Active
                         </span>
                         <?php else: ?>
-                        <span style="color:#94a3b8;font-size:11px;font-weight:600;">0 Active</span>
+                        <span style="color:#94a3b8;font-size:14px;font-weight:600;">0 Active</span>
                         <?php endif; ?>
                     </td>
                     <td style="text-align:center;">
                         <?php if ($completedToday > 0): ?>
-                        <span style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;font-weight:700;padding:3px 10px;border-radius:12px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px;" id="completed-badge-<?= (int)$row['id'] ?>">
+                        <span style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;font-weight:700;padding:3px 10px;border-radius:12px;font-size:14px;display:inline-flex;align-items:center;gap:5px;" id="completed-badge-<?= (int)$row['id'] ?>">
                             <i class="fas fa-check-circle"></i> <?= $completedToday ?> Done
                         </span>
                         <?php else: ?>
-                        <span style="background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;font-weight:600;padding:3px 10px;border-radius:12px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px;" id="completed-badge-<?= (int)$row['id'] ?>">
+                        <span style="background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;font-weight:600;padding:3px 10px;border-radius:12px;font-size:14px;display:inline-flex;align-items:center;gap:5px;" id="completed-badge-<?= (int)$row['id'] ?>">
                             <i class="fas fa-check-circle" style="color:#cbd5e1;"></i> 0 Done
                         </span>
                         <?php endif; ?>
@@ -917,7 +1049,7 @@ button.tbl-btn.wkld { color:#475569!important; }
                     </div>
                     <div class="perf-card" style="grid-column:span 1;">
                         <div class="perf-card-lbl">Last Service</div>
-                        <div style="font-size:13px;font-weight:700;color:#002F70;margin-top:4px;" id="perfLast">—</div>
+                        <div style="font-size:15.5px;font-weight:700;color:#002F70;margin-top:4px;" id="perfLast">—</div>
                     </div>
                 </div>
                 <!-- Sub-Tab Header Navigation Bar (EXACT MATCH WITH REPORTS SUB-TAB DESIGN) -->
@@ -937,7 +1069,7 @@ button.tbl-btn.wkld { color:#475569!important; }
                 <!-- Sub-Tab 1: Current Workload Panel -->
                 <div id="wkldPanel_workload" style="display:block;">
                     <div class="form-section-title" style="margin-bottom:8px;"><i class="fas fa-wrench"></i> Current Active Workload</div>
-                    <div style="overflow-x:auto;">
+                    <div style="overflow-x: hidden;">
                         <table class="wkld-table">
                             <thead><tr><th>JO No.</th><th>Customer</th><th>Vehicle</th><th>Service</th><th>Status</th></tr></thead>
                             <tbody id="wkldTableBody">
@@ -950,7 +1082,7 @@ button.tbl-btn.wkld { color:#475569!important; }
                 <!-- Sub-Tab 2: Service History Panel -->
                 <div id="wkldPanel_history" style="display:none;">
                     <div class="form-section-title" style="margin-bottom:8px;"><i class="fas fa-history"></i> Completed Service History</div>
-                    <div style="overflow-x:auto;">
+                    <div style="overflow-x: hidden;">
                         <table class="wkld-table">
                             <thead><tr><th>JO No.</th><th>Date</th><th>Service</th><th>Vehicle</th><th>Duration (min)</th><th>Status</th></tr></thead>
                             <tbody id="histTableBody">
@@ -977,7 +1109,7 @@ button.tbl-btn.wkld { color:#475569!important; }
             <button onclick="document.getElementById('archiveModal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:20px;color:#94a3b8;">×</button>
         </div>
         <div class="modal-body">
-            <p style="margin:0 0 12px;font-size:13px;color:#334155;">
+            <p style="margin:0 0 12px;font-size:15.5px;color:#334155;">
                 You are about to archive <strong id="archiveMechName">this mechanic</strong>.
                 Archived mechanics are <strong>hidden from active lists</strong> but their records are preserved.
             </p>
@@ -1244,7 +1376,7 @@ function openWorkloadModal(mechId, mechName) {
                     <td>${escH(w.customer||'—')}</td>
                     <td>${escH(w.vehicle||'—')}</td>
                     <td>${escH(w.service||'—')}</td>
-                    <td><span style="background:#fef9c3;color:#713f12;border:1px solid #fde68a;border-radius:12px;padding:2px 8px;font-size:10.5px;font-weight:700;">${escH(w.status_val||'—')}</span></td>
+                    <td><span style="background:#fef9c3;color:#713f12;border:1px solid #fde68a;border-radius:12px;padding:2px 8px;font-size:13.5px;font-weight:700;">${escH(w.status_val||'—')}</span></td>
                 </tr>`).join('');
             } else {
                 wkldBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8;">No active job orders.</td></tr>';
@@ -1265,7 +1397,7 @@ function openWorkloadModal(mechId, mechName) {
                     <td>${escH(h.service||'—')}</td>
                     <td>${escH(h.vehicle||'—')}</td>
                     <td style="text-align:center;">${h.duration > 0 ? h.duration : '—'}</td>
-                    <td><span style="background:#d1fae5;color:#065f46;border:1px solid #a7f3d0;border-radius:12px;padding:2px 8px;font-size:10.5px;font-weight:700;">Completed</span></td>
+                    <td><span style="background:#d1fae5;color:#065f46;border:1px solid #a7f3d0;border-radius:12px;padding:2px 8px;font-size:13.5px;font-weight:700;">Completed</span></td>
                 </tr>`).join('');
             } else {
                 histBody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#94a3b8;">No service history found.</td></tr>';
@@ -1340,7 +1472,7 @@ async function confirmArchive() {
     try {
         const r = await fetch('manager_mechanics_management.php',{method:'POST',body:fd});
         const d = await r.json();
-        if (d.success) { window.location.reload(); }
+        if (d.success) { try{ sessionStorage.setItem('toastMsg', d.message || 'Mechanic archived successfully.'); sessionStorage.setItem('toastType', 'success'); }catch(e){} window.location.reload(); }
         else { alert(d.error || 'Failed to archive mechanic.'); }
     } catch(e) { alert('Network error: '+e.message); }
 }
@@ -1388,7 +1520,7 @@ async function toggleStatus(id, newStatus, assignedCount) {
     try {
         const r = await fetch('manager_mechanics_management.php',{method:'POST',body:fd});
         const d = await r.json();
-        if (d.success) { window.location.reload(); } else { alert(d.error||'Failed to update status.'); }
+        if (d.success) { try{ sessionStorage.setItem('toastMsg', d.message || 'Status updated successfully.'); sessionStorage.setItem('toastType', 'success'); }catch(e){} window.location.reload(); } else { showToastNotification(d.error||'Failed to update status.', 'error'); }
     } catch(e) { alert('Network error: '+e.message); }
 }
 
@@ -1438,4 +1570,86 @@ async function autoRefreshMechanicsManagement() {
 // Run auto-refresh every 10 seconds
 setInterval(autoRefreshMechanicsManagement, 15000);
 </script>
+
+<div id="toastContainer" style="position:fixed; top:80px; right:24px; z-index:99999; display:flex; flex-direction:column; gap:10px; pointer-events:none;"></div>
+
+<script>
+function showToastNotification(message, type = "success", title = "") {
+    let container = document.getElementById("toastContainer");
+    if (!container) {
+        container = document.createElement("div");
+        container.id = "toastContainer";
+        container.style.cssText = "position:fixed; top:80px; right:24px; z-index:99999; display:flex; flex-direction:column; gap:10px; pointer-events:none;";
+        document.body.appendChild(container);
+    }
+
+    const isSuccess = type === "success";
+    const bgBorder  = isSuccess ? "#16a34a" : "#dc2626";
+    const iconBg    = isSuccess ? "#d1fae5" : "#fee2e2";
+    const iconColor = isSuccess ? "#16a34a" : "#dc2626";
+    const iconClass = isSuccess ? "fa-check-circle" : "fa-exclamation-circle";
+    const defaultTitle = isSuccess ? "SUCCESS" : "ERROR";
+
+    const toast = document.createElement("div");
+    toast.style.cssText = `
+        pointer-events: auto;
+        min-width: 320px;
+        max-width: 440px;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.12), 0 4px 10px rgba(0,0,0,0.04);
+        padding: 14px 18px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        transform: translateX(120%);
+        transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease;
+        opacity: 0;
+        font-family: system-ui, -apple-system, sans-serif;
+    `;
+
+    const cleanMsg = document.createElement("div");
+    cleanMsg.textContent = message;
+
+    toast.innerHTML = `
+        <div style="width:36px; height:36px; border-radius:50%; background:${iconBg}; color:${iconColor}; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:17px;">
+            <i class="fas ${iconClass}"></i>
+        </div>
+        <div style="flex:1;">
+            <div style="font-size:14px; font-weight:800; color:${bgBorder}; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:2px;">${title || defaultTitle}</div>
+            <div style="font-size:15.5px; font-weight:600; color:#1e293b; line-height:1.3;">${cleanMsg.innerHTML}</div>
+        </div>
+        <button type="button" onclick="this.parentElement.remove()" style="background:transparent !important; background-color:transparent !important; border:none !important; border-radius:0 !important; box-shadow:none !important; color:#64748b !important; cursor:pointer !important; font-size:16px !important; padding:4px 6px !important; margin-left:auto !important; outline:none !important;" onmouseover="this.style.color='#0f172a'" onmouseout="this.style.color='#64748b'">
+            <i class="fas fa-times" style="color:inherit !important;"></i>
+        </button>
+    `;
+
+    container.appendChild(toast);
+
+    requestAnimationFrame(() => {
+        toast.style.transform = "translateX(0)";
+        toast.style.opacity = "1";
+    });
+
+    setTimeout(() => {
+        toast.style.transform = "translateX(120%)";
+        toast.style.opacity = "0";
+        setTimeout(() => toast.remove(), 400);
+    }, 5000);
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    try {
+        const savedMsg  = sessionStorage.getItem("toastMsg");
+        const savedType = sessionStorage.getItem("toastType") || "success";
+        if (savedMsg) {
+            sessionStorage.removeItem("toastMsg");
+            sessionStorage.removeItem("toastType");
+            showToastNotification(savedMsg, savedType);
+        }
+    } catch(e) {}
+});
+</script>
+
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

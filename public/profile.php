@@ -55,24 +55,18 @@ if ($raw_role === 'admin') {
     $role_display_title = 'DEVELOPER';
     $role_badge = 'Developer';
 } else {
-    // Operations Staff Shift Detection
-    $shift_val = $me['assigned_shift'] ?? $me['shift_assignment'] ?? '';
-    if (stripos($shift_val, '1') !== false) {
-        $role_display_title = 'OPERATIONS STAFF — SHIFT 1';
-        $role_badge = 'Operations Staff';
-        $shift_label = 'Shift 1';
+    // Operations Staff Real-Time Clock Shift Detection (STRICTLY REAL-TIME CLOCK DRIVEN)
+    date_default_timezone_set('Asia/Manila');
+    $cur_hour = (int)date('G');
+    if ($cur_hour >= 6 && $cur_hour < 14) {
+        $shift_label    = 'Shift 1';
         $schedule_label = '6:00 AM – 2:00 PM';
-    } elseif (stripos($shift_val, '2') !== false) {
-        $role_display_title = 'OPERATIONS STAFF — SHIFT 2';
-        $role_badge = 'Operations Staff';
-        $shift_label = 'Shift 2';
-        $schedule_label = '2:00 PM – 12:00 MN';
     } else {
-        $role_display_title = 'OPERATIONS STAFF';
-        $role_badge = 'Operations Staff';
-        $shift_label = $shift_val ?: 'Shift 1';
-        $schedule_label = (stripos($shift_label, '2') !== false) ? '2:00 PM – 12:00 MN' : '6:00 AM – 2:00 PM';
+        $shift_label    = 'Shift 2';
+        $schedule_label = '2:00 PM – 12:00 MN';
     }
+    $role_display_title = 'OPERATIONS STAFF — ' . strtoupper($shift_label);
+    $role_badge         = 'Operations Staff';
 }
 
 $last_login = 'Never';
@@ -983,19 +977,22 @@ require_once __DIR__ . '/../partials/header.php';
                         <label for="first_name">First Name <span>*</span></label>
                         <input type="text" id="first_name" name="first_name" class="pf-input"
                                value="<?php echo htmlspecialchars(strip_tags($disp_first)); ?>"
+                               oninput="this.value = this.value.replace(/[^a-zA-Z\s\-'\.\u00C0-\u024F]/g, ''); resetProfileFieldValidation(this);"
                                required placeholder="e.g. Edgar">
                     </div>
                     <div class="pf-fg">
                         <label for="last_name">Last Name <span>*</span></label>
                         <input type="text" id="last_name" name="last_name" class="pf-input"
                                value="<?php echo htmlspecialchars(strip_tags($disp_last)); ?>"
+                               oninput="this.value = this.value.replace(/[^a-zA-Z\s\-'\.\u00C0-\u024F]/g, ''); resetProfileFieldValidation(this);"
                                required placeholder="e.g. Eslit">
                     </div>
                     <div class="pf-fg" style="grid-column: 1 / -1;">
                         <label for="phone">Contact Number</label>
                         <input type="text" id="phone" name="phone" class="pf-input"
                                value="<?php echo htmlspecialchars($me['phone_number'] ?? ''); ?>"
-                               placeholder="+63 917 123 4567">
+                               oninput="this.value = this.value.replace(/[^0-9+]/g, ''); if (this.value.length > 11) this.value = this.value.slice(0, 11); resetProfileFieldValidation(this);"
+                               placeholder="e.g. 09452136587">
                     </div>
                 </div>
 

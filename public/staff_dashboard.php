@@ -119,44 +119,22 @@ $st_params = [$station_id];
 $req_shift = strtolower(trim($_GET['shift'] ?? 'auto'));
 $cur_hour  = (int)date('G');
 
-if ($req_shift === '1' || $req_shift === 'shift 1' || $req_shift === 'shift_1' || $req_shift === 'first') {
+// Real-time Clock Shift Determination (Shift 1: 6:00 AM – 2:00 PM | Shift 2: 2:00 PM – 12:00 MN)
+$cur_hour = (int)date('G');
+if ($cur_hour >= 6 && $cur_hour < 14) {
     $active_shift_num    = 1;
     $active_shift_name   = 'Shift 1';
     $active_shift_period = 'first';
     $active_shift_hours  = '6:00 AM – 2:00 PM';
     $active_shift_start  = '06:00:00';
     $active_shift_end    = '14:00:00';
-} elseif ($req_shift === '2' || $req_shift === 'shift 2' || $req_shift === 'shift_2' || $req_shift === 'second') {
+} else {
     $active_shift_num    = 2;
     $active_shift_name   = 'Shift 2';
     $active_shift_period = 'second';
     $active_shift_hours  = '2:00 PM – 12:00 MN';
     $active_shift_start  = '14:00:00';
     $active_shift_end    = '23:59:59';
-} elseif ($req_shift === 'both' || $req_shift === 'all' || $req_shift === 'combined') {
-    $active_shift_num    = 0;
-    $active_shift_name   = 'Both Shifts (Shift 1 & 2)';
-    $active_shift_period = 'all';
-    $active_shift_hours  = 'Full Day (6:00 AM – 12:00 MN)';
-    $active_shift_start  = '00:00:00';
-    $active_shift_end    = '23:59:59';
-} else {
-    $req_shift = 'auto';
-    if ($cur_hour >= 6 && $cur_hour < 14) {
-        $active_shift_num    = 1;
-        $active_shift_name   = 'Shift 1';
-        $active_shift_period = 'first';
-        $active_shift_hours  = '6:00 AM – 2:00 PM';
-        $active_shift_start  = '06:00:00';
-        $active_shift_end    = '14:00:00';
-    } else {
-        $active_shift_num    = 2;
-        $active_shift_name   = 'Shift 2';
-        $active_shift_period = 'second';
-        $active_shift_hours  = '2:00 PM – 12:00 MN';
-        $active_shift_start  = '14:00:00';
-        $active_shift_end    = '23:59:59';
-    }
 }
 
 // ── 2. KPI METRICS (Fuel + Merchandise + Job Orders + Inventory + Requests) ──

@@ -88,41 +88,34 @@ include __DIR__ . '/../partials/header.php';
 
 /* ── Header banner ── */
 .cp-banner {
-    background: linear-gradient(135deg, #00264D 0%, #003a70 60%, #004d99 100%);
+    background: #ffffff;
     border-radius: 14px 14px 0 0;
-    padding: 24px 28px 20px;
+    padding: 26px 28px 18px;
     display: flex;
     align-items: center;
     gap: 16px;
     position: relative;
-    overflow: hidden;
-}
-.cp-banner::before {
-    content: '';
-    position: absolute; top: -30px; right: -30px;
-    width: 130px; height: 130px; border-radius: 50%;
-    background: rgba(255,255,255,0.05);
+    border-bottom: 1px solid #f1f5f9;
 }
 .cp-banner-icon {
-    width: 52px; height: 52px; border-radius: 14px;
-    background: rgba(255,255,255,0.15);
-    border: 1.5px solid rgba(255,255,255,0.25);
+    width: 48px; height: 48px; border-radius: 12px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
     display: flex; align-items: center; justify-content: center;
-    font-size: 22px; color: #fff; flex-shrink: 0;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    font-size: 20px; color: #00264D; flex-shrink: 0;
     z-index: 1;
 }
 .cp-banner-text { z-index: 1; }
 .cp-banner-title {
-    font-size: 18px; font-weight: 800; color: #fff;
+    font-size: 18px; font-weight: 800; color: #00264D;
     letter-spacing: 0.3px; margin-bottom: 3px;
     text-transform: uppercase;
 }
 .cp-banner-sub {
-    font-size: 12px; color: rgba(255,255,255,0.65);
+    font-size: 12px; color: #64748b;
     display: flex; align-items: center; gap: 6px;
 }
-.cp-banner-sub strong { color: rgba(255,255,255,0.9); }
+.cp-banner-sub strong { color: #1e293b; }
 
 /* ── Card body ── */
 .cp-body {
@@ -186,6 +179,19 @@ include __DIR__ . '/../partials/header.php';
 }
 .cp-input.valid   { border-color: #28a745; background: #fff; }
 .cp-input.invalid { border-color: #CC0000; background: #fff; }
+
+
+/* Disable Edge/Browser built-in password reveal button so only single custom eye icon shows */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear,
+input[type="password"]::-webkit-contacts-auto-fill-button,
+input[type="password"]::-webkit-credentials-auto-fill-button {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
 
 .cp-eye {
     position: absolute; right: 12px;
@@ -301,17 +307,34 @@ include __DIR__ . '/../partials/header.php';
 <div class="cp-page">
 
     <?php if ($msg): ?>
-    <div class="cp-alert success" id="cpAlert">
-        <div class="cp-alert-icon"><i class="fas fa-check"></i></div>
-        <div><?php echo htmlspecialchars($msg); ?></div>
-    </div>
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        if (typeof window.showPetronFlash === "function") {
+            window.showPetronFlash(<?php echo json_encode($msg); ?>, "success", 5000);
+        } else if (typeof window.showTxnAlert === "function") {
+            window.showTxnAlert(<?php echo json_encode($msg); ?>, "success");
+        }
+    });
+    </script>
     <?php endif; ?>
 
     <?php if ($error): ?>
-    <div class="cp-alert error" id="cpAlert">
-        <div class="cp-alert-icon"><i class="fas fa-exclamation"></i></div>
-        <div><?php echo htmlspecialchars($error); ?></div>
-    </div>
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        if (typeof window.showPetronFlash === "function") {
+            window.showPetronFlash(<?php echo json_encode($error); ?>, "error", 5000);
+        } else if (typeof window.showTxnAlert === "function") {
+            window.showTxnAlert(<?php echo json_encode($error); ?>, "error");
+        }
+        var curInput = document.getElementById("current_password");
+        var errText  = <?php echo json_encode(strtolower($error)); ?>;
+        if (curInput && (errText.indexOf("current password") !== -1 || errText.indexOf("incorrect") !== -1)) {
+            curInput.style.setProperty("border-color", "#dc2626", "important");
+            curInput.style.setProperty("box-shadow", "0 0 0 3px rgba(220, 38, 38, 0.2)", "important");
+            curInput.focus();
+        }
+    });
+    </script>
     <?php endif; ?>
 
     <!-- Banner -->
@@ -333,6 +356,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="cp-body">
 
         <form method="POST" id="cpForm" autocomplete="off" novalidate>
+            <input type="hidden" name="csrf_token" value="<?php echo function_exists('sec_generate_csrf_token') ? sec_generate_csrf_token() : ''; ?>">
 
             <!-- Current Password -->
             <div class="cp-fg">
@@ -492,27 +516,89 @@ function checkReqs() {
 function setReq(id, met) {
     var el = document.getElementById(id);
     if (!el) return;
+    var icon = el.querySelector('.cp-req-dot i');
+    var npVal = document.getElementById('new_password').value;
+    var isFail = !met && npVal.length > 0;
+
     el.classList.toggle('met',  met);
-    el.classList.toggle('fail', !met && document.getElementById('new_password').value.length > 0);
-    if (!document.getElementById('new_password').value.length) {
+    el.classList.toggle('fail', isFail);
+
+    if (icon) {
+        if (met) {
+            icon.className = 'fas fa-check';
+        } else if (isFail) {
+            icon.className = 'fas fa-times';
+        } else {
+            icon.className = 'fas fa-check';
+        }
+    }
+    if (!npVal.length) {
         el.classList.remove('fail');
+        if (icon) icon.className = 'fas fa-check';
+    }
+}
+
+window.resetCpFieldValidation = function(el) {
+    if (!el) return;
+    el.style.borderColor = '';
+    el.style.boxShadow = '';
+};
+
+function highlightCpError(fieldId, msg) {
+    ['current_password', 'new_password', 'confirm_password'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) {
+            el.style.borderColor = '';
+            el.style.boxShadow = '';
+        }
+    });
+    var target = document.getElementById(fieldId);
+    if (target) {
+        target.style.setProperty('border-color', '#dc2626', 'important');
+        target.style.setProperty('box-shadow', '0 0 0 3px rgba(220, 38, 38, 0.2)', 'important');
+        target.focus();
+    }
+    if (typeof window.showPetronFlash === 'function') {
+        window.showPetronFlash(msg, 'error', 4500);
+    } else if (typeof window.showTxnAlert === 'function') {
+        window.showTxnAlert(msg, 'error');
+    } else {
+        alert(msg);
     }
 }
 
 /* ── Form submit guard ── */
 document.getElementById('cpForm').addEventListener('submit', function(e) {
-    var np  = document.getElementById('new_password').value;
-    var cp  = document.getElementById('confirm_password').value;
-    var cur = document.getElementById('current_password').value;
+    var cur = (document.getElementById('current_password')?.value || '').trim();
+    var np  = (document.getElementById('new_password')?.value || '').trim();
+    var cp  = (document.getElementById('confirm_password')?.value || '').trim();
 
-    if (!cur) { e.preventDefault(); alert('Please enter your current password.'); return; }
-    if (np.length < 8) { e.preventDefault(); alert('New password must be at least 8 characters.'); return; }
-    if (np !== cp)     { e.preventDefault(); alert('Passwords do not match.'); return; }
-    if (np === cur)    { e.preventDefault(); alert('New password must be different from current password.'); return; }
+    if (!cur) {
+        e.preventDefault();
+        highlightCpError('current_password', 'Please enter your current password.');
+        return false;
+    }
+    if (!np || np.length < 8) {
+        e.preventDefault();
+        highlightCpError('new_password', 'New password must be at least 8 characters long.');
+        return false;
+    }
+    if (np === cur) {
+        e.preventDefault();
+        highlightCpError('new_password', 'New password must be different from current password.');
+        return false;
+    }
+    if (np !== cp) {
+        e.preventDefault();
+        highlightCpError('confirm_password', 'Passwords do not match.');
+        return false;
+    }
 
     var btn = document.getElementById('submitBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+    }
 });
 
 /* ── Auto-dismiss success alert ── */

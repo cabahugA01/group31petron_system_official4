@@ -487,7 +487,45 @@ try {
 } catch (Exception $e) {}
 
 
-include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
+
+
+
+include __DIR__ . '/../partials/header.php'; ?>
+
+<style>
+/* Prevent Column Text Overlap CSS */
+.table-wrap, .table-responsive {
+    overflow-x: hidden !important;
+    width: 100% !important;
+}
+#mgrMerchTable, table.pricing-table, table.tbl-requests, table.table {
+    table-layout: auto !important;
+    min-width: 0 !important;
+    width: 100% !important;
+}
+#mgrMerchTable th, table.pricing-table th, table.tbl-requests th {
+    padding: 10px 10px !important;
+    white-space: nowrap !important;
+}
+#mgrMerchTable td, table.pricing-table td, table.tbl-requests td {
+    padding: 10px 10px !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+}
+.cat-cell, td:nth-child(4), th:nth-child(4) {
+    white-space: nowrap !important;
+}
+td:nth-child(6), th:nth-child(6) {
+    white-space: nowrap !important;
+}
+td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
+    white-space: nowrap !important;
+}
+.badge, .status-badge, .status-pill, .inv-stock-badge, .pstatus-badge {
+    white-space: nowrap !important;
+}
+</style>
+<?php  require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 <style>
 .main-content {
@@ -498,7 +536,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 /* == PAGE HEADER - Uniform standard across all modules == */
 .int-head { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-top:0 !important; margin-bottom:25px !important; padding:0 !important; border:none !important; width:100%; }
 .int-head h1 { margin:0 !important; color:#002f70 !important; font-size:24px !important; font-weight:700 !important; text-transform:uppercase !important; letter-spacing:0.5px !important; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important; display:flex !important; align-items:center !important; gap:10px !important; line-height:1.2 !important; }
-.int-head .sub { font-size:13px; color:#666; margin-top:4px; text-transform:none !important; }
+.int-head .sub { font-size:15.5px; color:#666; margin-top:4px; text-transform:none !important; }
 
 /* â”€â”€ Tab Navigation â”€â”€ */
 /* ── Tab Navigation - Reports-style boxed design ── */
@@ -573,15 +611,15 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
 body, html { overflow-x:hidden !important; }
 
 /* Table */
-.aif-wrap { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
-.aif-tbl { width:100%; border-collapse:collapse; font-size:12px; }
+.aif-wrap { width:100%; overflow-x: hidden; -webkit-overflow-scrolling:touch; }
+.aif-tbl { width:100%; border-collapse:collapse; font-size:14.5px; }
 .aif-tbl thead tr { background:#002F70; }
-.aif-tbl thead th { padding:10px 8px; text-align:left; font-size:11px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; border:none; }
+.aif-tbl thead th { padding:10px 8px; text-align:left; font-size:14px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; border:none; }
 .aif-tbl tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
 .aif-tbl tbody tr:hover { background:#f8fafc; }
-.aif-tbl tbody td { padding:10px 8px; color:#1e293b; vertical-align:middle; font-size:12px; }
+.aif-tbl tbody td { padding:10px 8px; color:#1e293b; vertical-align:middle; font-size:14.5px; }
 .aif-tbl tbody td.bold { font-weight:700; color:#002F70; }
-.status-pill { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; white-space:nowrap; }
+.status-pill { display:inline-block; padding:3px 10px; border-radius:20px; font-size:14px; font-weight:700; white-space:nowrap; }
 
 /* Buttons */
 .flt-btn {
@@ -592,7 +630,7 @@ body, html { overflow-x:hidden !important; }
     padding: 0 16px;
     height: 36px;
     border-radius: 7px;
-    font-size: 13px;
+    font-size: 15.5px;
     font-weight: 600;
     cursor: pointer;
     text-decoration: none;
@@ -610,7 +648,7 @@ body, html { overflow-x:hidden !important; }
 
 .int-btn-outline {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: 600;
+    padding: 6px 12px; border-radius: 4px; font-size: 14px; font-weight: 600;
     cursor: pointer; border: 1px solid #002F6C; transition: all 0.2s;
     background: white !important; color: #002F6C !important; height: 30px;
     line-height: 1; white-space: nowrap; text-decoration: none; box-sizing: border-box;
@@ -621,7 +659,7 @@ body, html { overflow-x:hidden !important; }
 
 .btn-cancel {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 0 16px; border-radius: 6px; font-size: 13px; font-weight: 600;
+    padding: 0 16px; border-radius: 6px; font-size: 15.5px; font-weight: 600;
     cursor: pointer; border: 1px solid #6b7280; background: white !important;
     color: #475569 !important; transition: all .15s; height: 36px;
 }
@@ -696,7 +734,7 @@ body, html { overflow-x:hidden !important; }
     <!-- Card 1: Total Fuel Available -->
     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
-            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Fuel Available (L)</div>
+            <div style="font-size:15.5px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Fuel Available (L)</div>
             <div style="font-size:20px; font-weight:800; color:#002F70; margin-top:4px;"><?= number_format($total_fuel_available, 2) ?> L</div>
         </div>
         <div style="background:#e0f2fe; color:#002F70; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-gas-pump"></i></div>
@@ -704,7 +742,7 @@ body, html { overflow-x:hidden !important; }
     <!-- Card 2: Total UGT Tanks -->
     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
-            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total UGT Tanks</div>
+            <div style="font-size:15.5px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total UGT Tanks</div>
             <div style="font-size:20px; font-weight:800; color:#0f172a; margin-top:4px;"><?= count($rows) ?></div>
         </div>
         <div style="background:#f1f5f9; color:#475569; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-database"></i></div>
@@ -712,7 +750,7 @@ body, html { overflow-x:hidden !important; }
     <!-- Card 3: Low Fuel Tanks -->
     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
-            <div style="font-size:10px; font-weight:700; color:#ea580c; text-transform:uppercase; letter-spacing:.3px;">Low Fuel Tanks</div>
+            <div style="font-size:15.5px; font-weight:700; color:#ea580c; text-transform:uppercase; letter-spacing:.3px;">Low Fuel Tanks</div>
             <div style="font-size:20px; font-weight:800; color:#ea580c; margin-top:4px;"><?= number_format($total_low_fuel_tanks) ?></div>
         </div>
         <div style="background:#fff3cd; color:#ea580c; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-exclamation-triangle"></i></div>
@@ -721,7 +759,7 @@ body, html { overflow-x:hidden !important; }
     <!-- Card 5: Total Fuel Inventory Value -->
     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
-            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Inventory Value</div>
+            <div style="font-size:15.5px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Inventory Value</div>
             <div style="font-size:20px; font-weight:800; color:#16a34a; margin-top:4px;">₱<?= number_format($total_fuel_value, 2) ?></div>
         </div>
         <div style="background:#dcfce7; color:#16a34a; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-coins"></i></div>
@@ -749,10 +787,10 @@ body, html { overflow-x:hidden !important; }
 <!-- Search & Filters -->
 <div class="inv-filter-bar" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:20px; background:#fff; padding:12px 16px; border:1px solid #e2e8f0; border-radius:8px;">
   <div style="position:relative;">
-    <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:12px;"></i>
-    <input type="text" id="sq" placeholder="Search UGT No. / Fuel Type..." oninput="filterFuelTable()" style="padding:7px 10px 7px 28px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:220px; outline:none;">
+    <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:14.5px;"></i>
+    <input type="text" id="sq" placeholder="Search UGT No. / Fuel Type..." oninput="filterFuelTable()" style="padding:7px 10px 7px 28px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; width:220px; outline:none;">
   </div>
-  <select id="cf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
+  <select id="cf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; color:#334155; outline:none; background:#fff;">
     <option value="">All Fuel Types</option>
     <option value="diesel">Diesel</option>
     <option value="kerosene">Kerosene</option>
@@ -760,7 +798,7 @@ body, html { overflow-x:hidden !important; }
     <option value="xcs">XCS</option>
     <option value="xtra advance">Xtra Advance</option>
   </select>
-  <select id="sf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
+  <select id="sf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; color:#334155; outline:none; background:#fff;">
     <option value="">All Statuses</option>
     <option value="normal">Normal</option>
     <option value="low">Low</option>
@@ -803,7 +841,7 @@ body, html { overflow-x:hidden !important; }
             data-ugt-no="<?= htmlspecialchars(strtolower($ugt_no)) ?>"
             data-fuel-type="<?= htmlspecialchars(strtolower(get_canonical_fuel_name($r['fuel_type']))) ?>"
             data-status="<?= htmlspecialchars(strtolower($r['status'])) ?>">
-          <td><code style="font-weight:700;color:#002F70;font-size:12px;"><?= htmlspecialchars($ugt_no) ?></code></td>
+          <td><code style="font-weight:700;color:#002F70;font-size:14.5px;"><?= htmlspecialchars($ugt_no) ?></code></td>
           <td style="font-weight:700;color:#0f172a;"><?= htmlspecialchars(get_canonical_fuel_name($r['fuel_type'])) ?></td>
           <td style="text-align:right; font-weight:600; color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
           <td style="text-align:right; font-weight:800; color:#002F70;"><?= number_format($r['current_level'], 2) ?> L</td>
@@ -811,7 +849,7 @@ body, html { overflow-x:hidden !important; }
           <td style="text-align:right; font-weight:600; color:#eab308;"><?= number_format($r['reorder_level'], 0) ?> L</td>
           <td style="text-align:right; font-weight:600; color:#dc2626;"><?= number_format($r['critical_level'], 0) ?> L</td>
           <td style="text-align:center;"><span class="status-pill" style="background:<?= $r['status_color'] ?>18; color:<?= $r['status_color'] ?>; border:1px solid <?= $r['status_color'] ?>40;"><?= htmlspecialchars($r['status']) ?></span></td>
-          <td style="color:#64748b; font-size:11px;"><?= $ts_str ?></td>
+          <td style="color:#64748b; font-size:14px;"><?= $ts_str ?></td>
           <td style="text-align:center;">
             <button type="button" class="int-btn-outline" 
                     data-fuel="<?= $r_json ?>"
@@ -851,28 +889,28 @@ body, html { overflow-x:hidden !important; }
 <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:20px;">
     <div style="background:#fff; border:1px solid #bbf7d0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
-            <div style="font-size:11px; font-weight:700; color:#15803d; text-transform:uppercase; letter-spacing:.3px;">Total Deliveries (Inflow)</div>
+            <div style="font-size:14px; font-weight:700; color:#15803d; text-transform:uppercase; letter-spacing:.3px;">Total Deliveries (Inflow)</div>
             <div style="font-size:22px; font-weight:800; color:#15803d; margin-top:4px;">+<?= number_format($fmov_inflow, 2) ?> L</div>
         </div>
         <div style="background:#dcfce7; color:#15803d; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-truck"></i></div>
     </div>
     <div style="background:#fff; border:1px solid #fed7aa; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
-            <div style="font-size:11px; font-weight:700; color:#c2410c; text-transform:uppercase; letter-spacing:.3px;">Total Dispensed (Outflow)</div>
+            <div style="font-size:14px; font-weight:700; color:#c2410c; text-transform:uppercase; letter-spacing:.3px;">Total Dispensed (Outflow)</div>
             <div style="font-size:22px; font-weight:800; color:#c2410c; margin-top:4px;">-<?= number_format($fmov_outflow, 2) ?> L</div>
         </div>
         <div style="background:#ffedd5; color:#c2410c; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-gas-pump"></i></div>
     </div>
     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
-            <div style="font-size:11px; font-weight:700; color:#002F70; text-transform:uppercase; letter-spacing:.3px;">Net Movement Volume</div>
+            <div style="font-size:14px; font-weight:700; color:#002F70; text-transform:uppercase; letter-spacing:.3px;">Net Movement Volume</div>
             <div style="font-size:22px; font-weight:800; color:<?= ($fmov_inflow - $fmov_outflow) >= 0 ? '#15803d' : '#dc2626' ?>; margin-top:4px;"><?= (($fmov_inflow - $fmov_outflow) >= 0 ? '+' : '') . number_format($fmov_inflow - $fmov_outflow, 2) ?> L</div>
         </div>
         <div style="background:#f0f4ff; color:#002F70; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-scale-balanced"></i></div>
     </div>
     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between;">
         <div>
-            <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Movement Logs</div>
+            <div style="font-size:14px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Movement Logs</div>
             <div style="font-size:22px; font-weight:800; color:#0f172a; margin-top:4px;"><?= count($fuel_movement_history) ?> Logs</div>
         </div>
         <div style="background:#f1f5f9; color:#475569; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-list-check"></i></div>
@@ -882,10 +920,10 @@ body, html { overflow-x:hidden !important; }
 <!-- Search & Filter Bar -->
 <div class="inv-filter-bar" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:20px; background:#fff; padding:12px 16px; border:1px solid #e2e8f0; border-radius:8px;">
   <div style="position:relative;">
-    <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:12px;"></i>
-    <input type="text" id="fmovSearch" placeholder="Search Ref, Type, Staff..." oninput="filterFuelMovementTable()" style="padding:7px 10px 7px 28px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:220px; outline:none;">
+    <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:14.5px;"></i>
+    <input type="text" id="fmovSearch" placeholder="Search Ref, Type, Staff..." oninput="filterFuelMovementTable()" style="padding:7px 10px 7px 28px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; width:220px; outline:none;">
   </div>
-  <select id="fmovTypeFilter" onchange="filterFuelMovementTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
+  <select id="fmovTypeFilter" onchange="filterFuelMovementTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; color:#334155; outline:none; background:#fff;">
     <option value="">All Fuel Types</option>
     <option value="diesel">Diesel</option>
     <option value="kerosene">Kerosene</option>
@@ -893,7 +931,7 @@ body, html { overflow-x:hidden !important; }
     <option value="xcs">XCS</option>
     <option value="xtra advance">Xtra Advance</option>
   </select>
-  <select id="fmovMoveFilter" onchange="filterFuelMovementTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none; background:#fff;">
+  <select id="fmovMoveFilter" onchange="filterFuelMovementTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; color:#334155; outline:none; background:#fff;">
     <option value="">All Movement Types</option>
     <option value="delivery">Delivery (IN)</option>
     <option value="dispensed">Dispensed / Sales (OUT)</option>
@@ -938,14 +976,14 @@ body, html { overflow-x:hidden !important; }
             data-fuel-type="<?= strtolower(htmlspecialchars(get_canonical_fuel_name($fm['fuel_type']))) ?>"
             data-move-type="<?= strtolower(htmlspecialchars($fm['movement_type'])) ?>">
           <td><code style="font-weight:700;color:#002F70;"><?= htmlspecialchars($fm['ref_no']) ?></code></td>
-          <td style="color:#64748b; font-size:11px; white-space:nowrap;"><?= date('M d, Y h:i A', strtotime($fm['date'])) ?></td>
+          <td style="color:#64748b; font-size:14px; white-space:nowrap;"><?= date('M d, Y h:i A', strtotime($fm['date'])) ?></td>
           <td style="font-weight:700;color:#0f172a;"><?= htmlspecialchars(get_canonical_fuel_name($fm['fuel_type'])) ?></td>
-          <td><span style="background:<?= $badge_bg ?>;color:<?= $badge_color ?>;padding:3px 8px;border-radius:12px;font-size:10.5px;font-weight:700;white-space:nowrap;"><?= htmlspecialchars($fm['movement_type']) ?></span></td>
+          <td><span style="background:<?= $badge_bg ?>;color:<?= $badge_color ?>;padding:3px 8px;border-radius:12px;font-size:13.5px;font-weight:700;white-space:nowrap;"><?= htmlspecialchars($fm['movement_type']) ?></span></td>
           <td style="text-align:right; font-weight:700; color:#15803d;"><?= (float)$fm['inflow'] > 0 ? ('+' . number_format((float)$fm['inflow'], 2) . ' L') : '—' ?></td>
           <td style="text-align:right; font-weight:700; color:#dc2626;"><?= (float)$fm['outflow'] > 0 ? ('-' . number_format((float)$fm['outflow'], 2) . ' L') : '—' ?></td>
           <td style="text-align:right; font-weight:800; color:<?= $net_color ?>;"><?= ($net > 0 ? '+' : '') . number_format($net, 2) ?> L</td>
-          <td style="font-size:11px; color:#334155;"><?= htmlspecialchars($fm['user_name']) ?></td>
-          <td style="font-size:11px; color:#64748b; max-width:200px;"><?= htmlspecialchars($fm['remarks'] ?: '—') ?></td>
+          <td style="font-size:14px; color:#334155;"><?= htmlspecialchars($fm['user_name']) ?></td>
+          <td style="font-size:14px; color:#64748b; max-width:200px;"><?= htmlspecialchars($fm['remarks'] ?: '—') ?></td>
         </tr>
         <?php endforeach; ?>
       <?php endif; ?>
@@ -963,7 +1001,7 @@ body, html { overflow-x:hidden !important; }
     <div style="font-weight:700; color:#002F70; font-size:14px; text-transform:uppercase; display:flex; align-items:center; gap:8px;">
       <i class="fas fa-history"></i> Fuel Adjustment History Log
     </div>
-    <input type="text" id="adjSearchInput" placeholder="Search adjustment..." oninput="filterAdjTable()" style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; width:220px; outline:none;">
+    <input type="text" id="adjSearchInput" placeholder="Search adjustment..." oninput="filterAdjTable()" style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:14.5px; width:220px; outline:none;">
   </div>
   <div class="aif-wrap">
     <table class="aif-tbl" id="adminFuelAdjTable">
@@ -992,27 +1030,27 @@ body, html { overflow-x:hidden !important; }
             $var_color = $var > 0 ? '#16a34a' : ($var < 0 ? '#dc2626' : '#64748b');
             $st = strtolower(trim($adj['status'] ?? ''));
             $is_pending = strpos($st, 'pending') !== false;
-            $st_badge = $is_pending ? '<span style="background:#fef3c7;color:#b45309;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700;"><i class="fas fa-clock"></i> Pending Admin Approval</span>'
-                      : ($st === 'approved' ? '<span style="background:#dcfce7;color:#15803d;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700;"><i class="fas fa-check-circle"></i> Approved</span>'
-                      : '<span style="background:#fee2e2;color:#b91c1c;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700;"><i class="fas fa-times-circle"></i> Rejected</span>');
+            $st_badge = $is_pending ? '<span style="background:#fef3c7;color:#b45309;padding:3px 8px;border-radius:12px;font-size:14px;font-weight:700;"><i class="fas fa-clock"></i> Pending Admin Approval</span>'
+                      : ($st === 'approved' ? '<span style="background:#dcfce7;color:#15803d;padding:3px 8px;border-radius:12px;font-size:14px;font-weight:700;"><i class="fas fa-check-circle"></i> Approved</span>'
+                      : '<span style="background:#fee2e2;color:#b91c1c;padding:3px 8px;border-radius:12px;font-size:14px;font-weight:700;"><i class="fas fa-times-circle"></i> Rejected</span>');
         ?>
         <tr class="adj-row" data-search="<?= strtolower(htmlspecialchars($adj['adjustment_no'] . ' ' . $adj['fuel_type'] . ' ' . $adj['reason'])) ?>">
           <td><code style="font-weight:700; color:#002F70;"><?= htmlspecialchars($adj['adjustment_no']) ?></code></td>
           <td><code style="font-weight:700; color:#002F70;"><?= htmlspecialchars($adj['ugt_no']) ?></code></td>
           <td style="font-weight:700; color:#0f172a;"><?= htmlspecialchars(get_canonical_fuel_name($adj['fuel_type'])) ?></td>
-          <td style="font-size:11px; font-weight:600; color:#475569;"><?= htmlspecialchars($adj['adjustment_type']) ?></td>
+          <td style="font-size:14px; font-weight:600; color:#475569;"><?= htmlspecialchars($adj['adjustment_type']) ?></td>
           <td style="text-align:right; font-weight:600; color:#475569;"><?= number_format((float)$adj['previous_reading'], 2) ?> L</td>
           <td style="text-align:right; font-weight:700; color:#002F70;"><?= number_format((float)$adj['new_reading'], 2) ?> L</td>
           <td style="text-align:right; font-weight:700; color:<?= $var_color ?>;"><?= ($var >= 0 ? '+' : '') . number_format($var, 2) ?> L</td>
-          <td style="font-size:11px; color:#334155; max-width:180px;"><?= htmlspecialchars($adj['reason']) ?></td>
-          <td style="font-size:11px; color:#334155;"><?= htmlspecialchars($adj['adjusted_by']) ?></td>
+          <td style="font-size:14px; color:#334155; max-width:180px;"><?= htmlspecialchars($adj['reason']) ?></td>
+          <td style="font-size:14px; color:#334155;"><?= htmlspecialchars($adj['adjusted_by']) ?></td>
           <td><?= $st_badge ?></td>
           <td style="text-align:center; white-space:nowrap;">
             <?php if ($is_pending): ?>
-              <button type="button" onclick="approveFuelAdjustment(<?= $adj['id'] ?>)" style="background:#16a34a; color:#fff; border:none; border-radius:5px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer; margin-right:4px;"><i class="fas fa-check"></i> Approve</button>
-              <button type="button" onclick="rejectFuelAdjustment(<?= $adj['id'] ?>)" style="background:#dc2626; color:#fff; border:none; border-radius:5px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer;"><i class="fas fa-times"></i> Reject</button>
+              <button type="button" onclick="approveFuelAdjustment(<?= $adj['id'] ?>)" style="background:#16a34a; color:#fff; border:none; border-radius:5px; padding:4px 10px; font-size:14px; font-weight:700; cursor:pointer; margin-right:4px;"><i class="fas fa-check"></i> Approve</button>
+              <button type="button" onclick="rejectFuelAdjustment(<?= $adj['id'] ?>)" style="background:#dc2626; color:#fff; border:none; border-radius:5px; padding:4px 10px; font-size:14px; font-weight:700; cursor:pointer;"><i class="fas fa-times"></i> Reject</button>
             <?php else: ?>
-              <span style="color:#94a3b8; font-size:11px; font-weight:600;">Processed</span>
+              <span style="color:#94a3b8; font-size:14px; font-weight:600;">Processed</span>
             <?php endif; ?>
           </td>
         </tr>
@@ -1034,14 +1072,14 @@ body, html { overflow-x:hidden !important; }
 <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:20px;">
     <div style="background:#fff; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #fed7aa;">
         <div>
-            <div style="font-size:11px; font-weight:700; color:#ea580c; text-transform:uppercase; letter-spacing:.3px;">Low Fuel Tanks</div>
+            <div style="font-size:14px; font-weight:700; color:#ea580c; text-transform:uppercase; letter-spacing:.3px;">Low Fuel Tanks</div>
             <div style="font-size:24px; font-weight:800; color:#ea580c; margin-top:4px;"><?= number_format($total_low_fuel_tanks) ?></div>
         </div>
         <div style="background:#fff7ed; color:#ea580c; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
     <div style="background:#fff; border-radius:8px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; align-items:center; justify-content:space-between; border:1px solid #fecaca;">
         <div>
-            <div style="font-size:11px; font-weight:700; color:#dc2626; text-transform:uppercase; letter-spacing:.3px;">Critical Fuel Tanks</div>
+            <div style="font-size:14px; font-weight:700; color:#dc2626; text-transform:uppercase; letter-spacing:.3px;">Critical Fuel Tanks</div>
             <div style="font-size:24px; font-weight:800; color:#dc2626; margin-top:4px;"><?= number_format($total_critical_fuel_tanks) ?></div>
         </div>
         <div style="background:#fef2f2; color:#dc2626; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;"><i class="fas fa-fire"></i></div>
@@ -1075,7 +1113,7 @@ body, html { overflow-x:hidden !important; }
             $ugt_no = 'UGT-' . str_pad($r['tanker_num'], 2, '0', STR_PAD_LEFT);
         ?>
         <tr>
-          <td><code style="font-weight:700;color:#002F70;font-size:12px;"><?= htmlspecialchars($ugt_no) ?></code></td>
+          <td><code style="font-weight:700;color:#002F70;font-size:14.5px;"><?= htmlspecialchars($ugt_no) ?></code></td>
           <td style="font-weight:700;color:#0f172a;"><?= htmlspecialchars(get_canonical_fuel_name($r['fuel_type'])) ?></td>
           <td style="text-align:right; font-weight:600; color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
           <td style="text-align:right; font-weight:800; color:#002F70;"><?= number_format($r['current_level'], 2) ?> L</td>
@@ -1102,7 +1140,7 @@ body, html { overflow-x:hidden !important; }
             </div>
         </div>
         <!-- Sub-tabs -->
-        <div style="display:flex; border-bottom:2px solid #e2e8f0; background:#f8fafc; flex-shrink:0; padding:0 16px; overflow-x:auto; white-space:nowrap; gap:4px;">
+        <div style="display:flex; border-bottom:2px solid #e2e8f0; background:#f8fafc; flex-shrink:0; padding:0 16px; overflow-x: hidden; white-space:nowrap; gap:4px;">
             <button type="button" class="modal-tab-btn active" id="vfmTab1" onclick="vfmSwitchTab(1)"><i class="fas fa-info-circle"></i> UGT Information</button>
             <button type="button" class="modal-tab-btn" id="vfmTab2" onclick="vfmSwitchTab(2)"><i class="fas fa-truck-loading"></i> Fuel Delivery History</button>
             <button type="button" class="modal-tab-btn" id="vfmTab3" onclick="vfmSwitchTab(3)"><i class="fas fa-history"></i> Fuel Adjustment History</button>
@@ -1111,26 +1149,26 @@ body, html { overflow-x:hidden !important; }
         <div style="overflow-y:auto; flex:1; padding:22px;" id="vfmBody">
             <!-- SUB-TAB 1: UGT Information -->
             <div id="vfmPane1">
-                <div style="font-size:11px; font-weight:700; color:#002F70; text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px; padding-bottom:6px; border-bottom:2px solid #e9ecef;"><i class="fas fa-info-circle"></i> Tank &amp; Fuel Specifications</div>
+                <div style="font-size:14px; font-weight:700; color:#002F70; text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px; padding-bottom:6px; border-bottom:2px solid #e9ecef;"><i class="fas fa-info-circle"></i> Tank &amp; Fuel Specifications</div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px 24px; margin-bottom:20px;">
-                    <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">UGT No.</div><div id="vfmUgtNo" style="font-weight:800; color:#002F70; font-size:16px;"></div></div>
-                    <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Fuel Type</div><div id="vfmFuelType" style="font-weight:800; color:#0f172a; font-size:16px;"></div></div>
-                    <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Storage Capacity</div><div id="vfmCapacity" style="font-weight:600; color:#475569;"></div></div>
-                    <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Current Volume</div><div id="vfmVolume" style="font-weight:800; color:#002F70; font-size:18px;"></div></div>
-                    <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Available Space</div><div id="vfmAvailableSpace" style="font-weight:700; color:#16a34a; font-size:16px;"></div></div>
-                    <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Reorder Level</div><div id="vfmReorder" style="font-weight:600; color:#d97706;"></div></div>
-                    <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Critical Level</div><div id="vfmCritical" style="font-weight:600; color:#dc2626;"></div></div>
-                    <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Status</div><div id="vfmStatus"></div></div>
+                    <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">UGT No.</div><div id="vfmUgtNo" style="font-weight:800; color:#002F70; font-size:16px;"></div></div>
+                    <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Fuel Type</div><div id="vfmFuelType" style="font-weight:800; color:#0f172a; font-size:16px;"></div></div>
+                    <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Storage Capacity</div><div id="vfmCapacity" style="font-weight:600; color:#475569;"></div></div>
+                    <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Current Volume</div><div id="vfmVolume" style="font-weight:800; color:#002F70; font-size:18px;"></div></div>
+                    <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Available Space</div><div id="vfmAvailableSpace" style="font-weight:700; color:#16a34a; font-size:16px;"></div></div>
+                    <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Reorder Level</div><div id="vfmReorder" style="font-weight:600; color:#d97706;"></div></div>
+                    <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Critical Level</div><div id="vfmCritical" style="font-weight:600; color:#dc2626;"></div></div>
+                    <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Status</div><div id="vfmStatus"></div></div>
                 </div>
             </div>
             <!-- SUB-TAB 2: Fuel Delivery History -->
             <div id="vfmPane2" style="display:none;">
-                <div style="font-size:11px; font-weight:700; color:#002F70; text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px; padding-bottom:6px; border-bottom:2px solid #e9ecef;"><i class="fas fa-truck-loading"></i> Recent Fuel Deliveries</div>
+                <div style="font-size:14px; font-weight:700; color:#002F70; text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px; padding-bottom:6px; border-bottom:2px solid #e9ecef;"><i class="fas fa-truck-loading"></i> Recent Fuel Deliveries</div>
                 <div id="vfmDeliveriesTable"><div style="text-align:center; padding:24px; color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading deliveries...</div></div>
             </div>
             <!-- SUB-TAB 3: Fuel Adjustment History -->
             <div id="vfmPane3" style="display:none;">
-                <div style="font-size:11px; font-weight:700; color:#002F70; text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px; padding-bottom:6px; border-bottom:2px solid #e9ecef;"><i class="fas fa-history"></i> Recent Fuel Adjustments</div>
+                <div style="font-size:14px; font-weight:700; color:#002F70; text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px; padding-bottom:6px; border-bottom:2px solid #e9ecef;"><i class="fas fa-history"></i> Recent Fuel Adjustments</div>
                 <div id="vfmAdjustmentsTable"><div style="text-align:center; padding:24px; color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading adjustments...</div></div>
             </div>
         </div>
@@ -1149,25 +1187,25 @@ body, html { overflow-x:hidden !important; }
                 <i class="fas fa-truck-loading"></i> Fuel Delivery Details
             </div>
         </div>
-        <div style="padding:22px; font-size:13px;">
+        <div style="padding:22px; font-size:15.5px;">
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
-                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Delivery No.</div><div id="vdmNo" style="font-weight:800; color:#002F70; font-size:15px;"></div></div>
-                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">PO Number</div><div id="vdmPo" style="font-weight:700; color:#0f172a;"></div></div>
+                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Delivery No.</div><div id="vdmNo" style="font-weight:800; color:#002F70; font-size:15px;"></div></div>
+                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">PO Number</div><div id="vdmPo" style="font-weight:700; color:#0f172a;"></div></div>
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
-                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Supplier</div><div id="vdmSupplier" style="font-weight:600; color:#334155;"></div></div>
-                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Fuel Type</div><div id="vdmFuelType" style="font-weight:700; color:#002F70;"></div></div>
+                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Supplier</div><div id="vdmSupplier" style="font-weight:600; color:#334155;"></div></div>
+                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Fuel Type</div><div id="vdmFuelType" style="font-weight:700; color:#002F70;"></div></div>
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:12px; background:#f8fafc; padding:10px; border-radius:6px; border:1px solid #e2e8f0;">
-                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Liters Received</div><div id="vdmLiters" style="font-weight:800; color:#16a34a; font-size:15px;"></div></div>
-                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Cost / Liter</div><div id="vdmCost" style="font-weight:700; color:#475569;"></div></div>
-                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Status</div><div id="vdmStatus"></div></div>
+                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Liters Received</div><div id="vdmLiters" style="font-weight:800; color:#16a34a; font-size:15px;"></div></div>
+                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Cost / Liter</div><div id="vdmCost" style="font-weight:700; color:#475569;"></div></div>
+                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Status</div><div id="vdmStatus"></div></div>
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
-                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Delivery Date</div><div id="vdmDate" style="font-weight:600; color:#334155;"></div></div>
-                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Received By</div><div id="vdmBy" style="font-weight:600; color:#334155;"></div></div>
+                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Delivery Date</div><div id="vdmDate" style="font-weight:600; color:#334155;"></div></div>
+                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Received By</div><div id="vdmBy" style="font-weight:600; color:#334155;"></div></div>
             </div>
-            <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Notes</div><div id="vdmNotes" style="color:#64748b; font-style:italic;"></div></div>
+            <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Notes</div><div id="vdmNotes" style="color:#64748b; font-style:italic;"></div></div>
         </div>
         <div style="padding:12px 22px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; background:#f8fafc;">
             <button type="button" onclick="closeDelViewModal()" class="int-btn-outline" style="border-color:#6b7280 !important; color:#6b7280 !important;">Close</button>
@@ -1299,7 +1337,7 @@ function viewTankDetails(r) {
         if (!data.deliveries || data.deliveries.length === 0) {
             if (document.getElementById('vfmDeliveriesTable')) document.getElementById('vfmDeliveriesTable').innerHTML = '<div style="text-align:center;padding:12px;color:#94a3b8;">No delivery records for this fuel type.</div>';
         } else {
-            var dHtml = '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery No.</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Liters</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Cost/Liter</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Supplier</th></tr></thead><tbody>';
+            var dHtml = '<table style="width:100%;border-collapse:collapse;font-size:14.5px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery No.</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Liters</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Cost/Liter</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Supplier</th></tr></thead><tbody>';
             data.deliveries.forEach(function(d) {
                 var dNo = d.invoice_no || ('DEL-' + String(d.id || 0).padStart(5, '0'));
                 var dDate = d.delivery_date ? new Date(d.delivery_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
@@ -1317,7 +1355,7 @@ function viewTankDetails(r) {
         if (!data.adjustments || data.adjustments.length === 0) {
             if (document.getElementById('vfmAdjustmentsTable')) document.getElementById('vfmAdjustmentsTable').innerHTML = '<div style="text-align:center;padding:12px;color:#94a3b8;">No adjustment history for this fuel type.</div>';
         } else {
-            var aHtml = '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Previous</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">New</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Variance</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Reason</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Adjusted By</th></tr></thead><tbody>';
+            var aHtml = '<table style="width:100%;border-collapse:collapse;font-size:14.5px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Previous</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">New</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Variance</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Reason</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Adjusted By</th></tr></thead><tbody>';
             data.adjustments.forEach(function(a) {
                 var aDate = a.adjustment_date ? new Date(a.adjustment_date).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
                 var prev = Number(a.previous_value || 0);
@@ -1328,8 +1366,8 @@ function viewTankDetails(r) {
                 aHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:600;color:#64748b;">' + prev.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
                 aHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;">' + newVal.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
                 aHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:' + vColor + ';">' + (v >= 0 ? '+' : '') + v.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
-                aHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;font-size:11px;">' + esc(a.reason || a.notes || 'Routine Calibration') + '</td>';
-                aHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;font-size:11px;">' + esc(a.adjusted_by || 'Manager') + '</td></tr>';
+                aHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;font-size:14px;">' + esc(a.reason || a.notes || 'Routine Calibration') + '</td>';
+                aHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;font-size:14px;">' + esc(a.adjusted_by || 'Manager') + '</td></tr>';
             });
             aHtml += '</tbody></table>';
             if (document.getElementById('vfmAdjustmentsTable')) document.getElementById('vfmAdjustmentsTable').innerHTML = aHtml;
@@ -1396,7 +1434,7 @@ function openDelViewModal(d) {
     document.getElementById('vdmFuelType').textContent = d.fuel_type;
     document.getElementById('vdmLiters').textContent = d.liters;
     document.getElementById('vdmCost').textContent = d.cost;
-    document.getElementById('vdmStatus').innerHTML = '<span style="background:#dcfce7;color:#15803d;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;">' + esc(d.status) + '</span>';
+    document.getElementById('vdmStatus').innerHTML = '<span style="background:#dcfce7;color:#15803d;padding:2px 7px;border-radius:4px;font-size:14px;font-weight:700;">' + esc(d.status) + '</span>';
     document.getElementById('vdmDate').textContent = d.date;
     document.getElementById('vdmBy').textContent = d.received_by;
     document.getElementById('vdmNotes').textContent = d.notes;
@@ -1524,12 +1562,12 @@ document.querySelectorAll('.modal-overlay').forEach(function(modal) {
                 <i class="fas fa-gas-pump"></i>
             </div>
             <h4 style="margin:0 0 8px; font-size:16px; font-weight:800; color:#0f172a;">Approve this Fuel Stock Adjustment?</h4>
-            <p style="margin:0; font-size:13px; color:#64748b; line-height:1.5;">This will automatically update the Underground Storage Tank (UGT) Current Volume and record the movement in the audit trail.</p>
-            <div id="adminApproveError" style="color:#dc2626; font-size:12px; font-weight:700; margin-top:10px; display:none;"></div>
+            <p style="margin:0; font-size:15.5px; color:#64748b; line-height:1.5;">This will automatically update the Underground Storage Tank (UGT) Current Volume and record the movement in the audit trail.</p>
+            <div id="adminApproveError" style="color:#dc2626; font-size:14.5px; font-weight:700; margin-top:10px; display:none;"></div>
         </div>
         <div style="padding:14px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:flex-end; gap:10px;">
-            <button type="button" id="adminApproveConfirmBtn" onclick="execApproveFuelAdjustment()" style="background:#ffffff !important; color:#16a34a !important; border:1px solid #16a34a !important; border-radius:6px; padding:8px 20px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:none !important;"><i class="fas fa-check"></i> Approve Adjustment</button>
-            <button type="button" onclick="closeAdminApproveModal()" style="background:#ffffff !important; color:#475569 !important; border:1px solid #cbd5e1 !important; border-radius:6px; padding:8px 20px; font-size:13px; font-weight:600; cursor:pointer; box-shadow:none !important;">Cancel</button>
+            <button type="button" id="adminApproveConfirmBtn" onclick="execApproveFuelAdjustment()" style="background:#ffffff !important; color:#16a34a !important; border:1px solid #16a34a !important; border-radius:6px; padding:8px 20px; font-size:15.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:none !important;"><i class="fas fa-check"></i> Approve Adjustment</button>
+            <button type="button" onclick="closeAdminApproveModal()" style="background:#ffffff !important; color:#475569 !important; border:1px solid #cbd5e1 !important; border-radius:6px; padding:8px 20px; font-size:15.5px; font-weight:600; cursor:pointer; box-shadow:none !important;">Cancel</button>
         </div>
     </div>
 </div>
@@ -1543,13 +1581,13 @@ document.querySelectorAll('.modal-overlay').forEach(function(modal) {
             </div>
         </div>
         <div style="padding:22px;">
-            <p style="margin:0 0 10px; font-size:13px; font-weight:700; color:#334155;">Enter reason for rejecting this stock adjustment request: <span style="color:#dc2626;">*</span></p>
-            <textarea id="adminRejectReason" rows="3" placeholder="State reason for rejection..." style="width:100%; padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; box-sizing:border-box; resize:vertical;"></textarea>
-            <div id="adminRejectError" style="color:#dc2626; font-size:12px; font-weight:700; margin-top:8px; display:none;"></div>
+            <p style="margin:0 0 10px; font-size:15.5px; font-weight:700; color:#334155;">Enter reason for rejecting this stock adjustment request: <span style="color:#dc2626;">*</span></p>
+            <textarea id="adminRejectReason" rows="3" placeholder="State reason for rejection..." style="width:100%; padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; box-sizing:border-box; resize:vertical;"></textarea>
+            <div id="adminRejectError" style="color:#dc2626; font-size:14.5px; font-weight:700; margin-top:8px; display:none;"></div>
         </div>
         <div style="padding:14px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:flex-end; gap:10px;">
-            <button type="button" id="adminRejectConfirmBtn" onclick="execRejectFuelAdjustment()" style="background:#ffffff !important; color:#dc2626 !important; border:1px solid #dc2626 !important; border-radius:6px; padding:8px 20px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:none !important;"><i class="fas fa-times"></i> Confirm Rejection</button>
-            <button type="button" onclick="closeAdminRejectModal()" style="background:#ffffff !important; color:#475569 !important; border:1px solid #cbd5e1 !important; border-radius:6px; padding:8px 20px; font-size:13px; font-weight:600; cursor:pointer; box-shadow:none !important;">Cancel</button>
+            <button type="button" id="adminRejectConfirmBtn" onclick="execRejectFuelAdjustment()" style="background:#ffffff !important; color:#dc2626 !important; border:1px solid #dc2626 !important; border-radius:6px; padding:8px 20px; font-size:15.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:none !important;"><i class="fas fa-times"></i> Confirm Rejection</button>
+            <button type="button" onclick="closeAdminRejectModal()" style="background:#ffffff !important; color:#475569 !important; border:1px solid #cbd5e1 !important; border-radius:6px; padding:8px 20px; font-size:15.5px; font-weight:600; cursor:pointer; box-shadow:none !important;">Cancel</button>
         </div>
     </div>
 </div>

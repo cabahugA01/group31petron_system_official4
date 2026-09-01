@@ -558,14 +558,14 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_table_design.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_customer_management.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/vendor/fontawesome/css/all.min.css">
-  <script src="<?php echo $app_base_path; ?>/assets/js/security_frontend.js?v=2.0.2"></script>
+  <script src="<?php echo $app_base_path; ?>/assets/js/security_frontend.js?v=1788169806"></script>
     <!-- GLOBAL TEXT VISIBILITY FIX & PROTECTED UI CSS -->
     <style>
         .protected-ui, .card, .table-responsive, table:not(.allow-select) {
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
+            -webkit-user-select: text !important;
+            -moz-user-select: text !important;
+            -ms-user-select: text !important;
+            user-select: text !important;
         }
         input, textarea, select, [contenteditable="true"], .allow-select {
             -webkit-user-select: text !important;
@@ -3027,6 +3027,106 @@ a.sidebar-sub-item span[data-badge] {
     font-weight: 700 !important;
 }
 </style>
+
+  <!-- Global Safe Handler Stubs for POS & Draft Engine -->
+  <script>
+    window.searchCustomerByName      = window.searchCustomerByName      || function(p) {};
+    window.hideVehicleDropdown       = window.hideVehicleDropdown       || function() {};
+    window.checkVehicleSecurityWarning = window.checkVehicleSecurityWarning || function() {};
+    window.hideMechanicDropdown      = window.hideMechanicDropdown      || function() {};
+    window.unlockCustomerIfNeeded  = window.unlockCustomerIfNeeded  || function(p) {};
+    window.filterVehicleDropdown   = window.filterVehicleDropdown   || function(q) {};
+    window.onVehicleTypeChange     = window.onVehicleTypeChange     || function() {};
+    window.onPaymentAmountInput    = window.onPaymentAmountInput    || function(m) {};
+    window.onCreditCustomerChange  = window.onCreditCustomerChange  || function() {};
+    window.onLoyaltyChange         = window.onLoyaltyChange         || function() {};
+    window.calcLoyaltyPoints       = window.calcLoyaltyPoints       || function() {};
+    window.computeChange           = window.computeChange           || function() {};
+    window.onPaymentChange         = window.onPaymentChange         || function() {};
+    window.syncItemQtyToCart       = window.syncItemQtyToCart       || function(v) {};
+    window.filterServiceTypes      = window.filterServiceTypes      || function(s) {};
+    window.showServiceDropdown     = window.showServiceDropdown     || function() {};
+    window.onServiceCheckboxChange = window.onServiceCheckboxChange || function(c) {};
+    window.onJoServicePriceInput   = window.onJoServicePriceInput   || function() {};
+    window.onJoLaborChargeInput    = window.onJoLaborChargeInput    || function() {};
+    window.filterMechanicDropdown  = window.filterMechanicDropdown  || function(v) {};
+    window.filterProductDropdown   = window.filterProductDropdown   || function(f) {};
+    window.onProductCheckboxChange = window.onProductCheckboxChange || function(c) {};
+    window.onMerchandiseRowChange  = window.onMerchandiseRowChange  || function(r) {};
+    window.joApplyFilters          = window.joApplyFilters          || function() {};
+    window.joChangePerPage         = window.joChangePerPage         || function() {};
+    window.pmRecalc                = window.pmRecalc                || function() {};
+    window.pmSelectMethod          = window.pmSelectMethod          || function(m) {};
+    window.pmCalcChange            = window.pmCalcChange            || function() {};
+    window.onReqAdjFieldChange     = window.onReqAdjFieldChange     || function(f) {};
+  </script>
+
+<style>
+/* Disable Edge/Browser built-in password reveal button so only single custom eye icon shows */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear,
+input[type="password"]::-webkit-contacts-auto-fill-button,
+input[type="password"]::-webkit-credentials-auto-fill-button {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+</style>
+
+<style>
+/* Senior-Friendly Global Font Size Rule */
+html, body {
+    font-size: 15px;
+}
+.sidebar-nav-item, .sidebar-link, .nav-link {
+    font-size: 15px !important;
+}
+.sidebar-sub-item {
+    font-size: 14px !important;
+}
+table.tbl-requests th, table.pricing-table th, table.fuel-table th {
+    font-size: 13px !important;
+}
+table.tbl-requests td, table.pricing-table td, table.fuel-table td {
+    font-size: 14.5px !important;
+}
+</style>
+
+
+<style>
+
+
+
+<style>
+
+
+
+<style>
+
+
+
+<style>
+
+
+
+<style>
+/* Global No Text Overlapping Rule */
+.table-wrap, .table-responsive, .cust-section, .card, .table-card {
+    overflow-x: auto !important;
+    width: 100% !important;
+}
+table {
+    width: 100% !important;
+    min-width: 1050px !important;
+    table-layout: auto !important;
+}
+table th, table td {
+    white-space: nowrap !important;
+}
+</style>
+
 </head>
 <body class="app" data-page="<?php echo htmlspecialchars($page_id); ?>" data-role="<?php echo htmlspecialchars($role); ?>">
 <!-- NUCLEAR-HEADER-FIX: Force header above any overlays and ensure clicks reach controls -->
@@ -3715,6 +3815,24 @@ require_once __DIR__ . '/rbac_menu.php';
           } catch (Exception $e) {}
       }
   }
+
+  // Resolve current logged-in user profile & live profile picture from database
+  $user = isset($user) && is_array($user) ? $user : (isset($me) && is_array($me) ? $me : current_user());
+  if (isset($pdo) && !empty($user['id'])) {
+      try {
+          $st_pic = $pdo->prepare("SELECT profile_picture, first_name, last_name, name, username, role FROM users WHERE id = ? LIMIT 1");
+          $st_pic->execute([$user['id']]);
+          $db_usr = $st_pic->fetch(PDO::FETCH_ASSOC);
+          if ($db_usr) {
+              foreach ($db_usr as $k => $v) {
+                  if ($v !== null && $v !== '') {
+                      $user[$k] = $v;
+                  }
+              }
+          }
+      } catch (Exception $e) {}
+  }
+  $_SESSION['user'] = array_merge($_SESSION['user'] ?? [], $user);
 
   // Header Bell Unread Count = unread system notifications count for this user
   $header_unread_count = $badges['notifications'] ?? 0;

@@ -420,7 +420,45 @@ try {
     $fuel_deliveries_list = $s->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partials/flash_toast.php';
+
+
+
+include __DIR__ . '/../partials/header.php'; ?>
+
+<style>
+/* Prevent Column Text Overlap CSS */
+.table-wrap, .table-responsive {
+    overflow-x: hidden !important;
+    width: 100% !important;
+}
+#mgrMerchTable, table.pricing-table, table.tbl-requests, table.table {
+    table-layout: auto !important;
+    min-width: 0 !important;
+    width: 100% !important;
+}
+#mgrMerchTable th, table.pricing-table th, table.tbl-requests th {
+    padding: 10px 10px !important;
+    white-space: nowrap !important;
+}
+#mgrMerchTable td, table.pricing-table td, table.tbl-requests td {
+    padding: 10px 10px !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+}
+.cat-cell, td:nth-child(4), th:nth-child(4) {
+    white-space: nowrap !important;
+}
+td:nth-child(6), th:nth-child(6) {
+    white-space: nowrap !important;
+}
+td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
+    white-space: nowrap !important;
+}
+.badge, .status-badge, .status-pill, .inv-stock-badge, .pstatus-badge {
+    white-space: nowrap !important;
+}
+</style>
+<?php  require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 <div class="stock-page">
 <style>
@@ -447,7 +485,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
     padding:8px 10px;
     border:1px solid #ced4da;
     border-radius:6px;
-    font-size:13px;
+    font-size:15.5px;
     color:#374151;
     background:#fff;
     height:36px;
@@ -498,16 +536,16 @@ body, html { overflow-x: hidden !important; }
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
-    table-layout: fixed !important;
+    table-layout: auto !important; min-width: 0 !important;
     border-collapse: collapse;
     border-spacing: 0;
-    font-size: 12.5px;
+    font-size: 15px;
 }
 .fuel-table thead tr { background: #002F6C; }
 .fuel-table thead th {
     padding: 10px 6px; 
     text-align: center; 
-    font-size: 11px; 
+    font-size: 14px; 
     font-weight: 700;
     color: #fff; 
     text-transform: uppercase; 
@@ -540,7 +578,7 @@ body, html { overflow-x: hidden !important; }
     display: inline-block; 
     padding: 3px 10px; 
     border-radius: 20px;
-    font-size: 11px; 
+    font-size: 14px; 
     font-weight: 700; 
     white-space: nowrap;
 }
@@ -622,8 +660,8 @@ body.sidebar-collapsed .sr-modal-box {
 .modal-tab-btn:not(.active) {
     color: #64748b !important;
 }
-.sr-info-box { background:#eff6ff; border-left:4px solid #002F70; padding:12px 16px; margin:16px; border-radius:0 8px 8px 0; font-size:13px; color:#1e293b; line-height:1.5; }
-.fsr-select-bar { display:flex; align-items:center; padding:10px 20px; background:#f8fafc; border-bottom:1px solid #e2e8f0; font-size:13px; font-weight:600; pointer-events:auto !important; }
+.sr-info-box { background:#eff6ff; border-left:4px solid #002F70; padding:12px 16px; margin:16px; border-radius:0 8px 8px 0; font-size:15.5px; color:#1e293b; line-height:1.5; }
+.fsr-select-bar { display:flex; align-items:center; padding:10px 20px; background:#f8fafc; border-bottom:1px solid #e2e8f0; font-size:15.5px; font-weight:600; pointer-events:auto !important; }
 .fsr-select-bar input[type="checkbox"] { pointer-events:auto !important; cursor:pointer !important; }
 .fsr-select-bar label { pointer-events:auto !important; cursor:pointer !important; }
 #fsrCheckList { overflow-y:auto; flex:1; padding:8px 16px; pointer-events:auto !important; }
@@ -634,7 +672,7 @@ body.sidebar-collapsed .sr-modal-box {
 .fsr-cb-row input[type="checkbox"] { margin-top:3px; transform:scale(1.1); cursor:pointer !important; pointer-events:auto !important; }
 .fsr-item-info { flex:1; pointer-events:none; }
 .fsr-item-name { font-weight:700; font-size:14px; color:#1e293b; }
-.fsr-item-meta { font-size:12px; color:#64748b; margin-top:3px; display:flex; align-items:center; flex-wrap:wrap; gap:4px; }
+.fsr-item-meta { font-size:14.5px; color:#64748b; margin-top:3px; display:flex; align-items:center; flex-wrap:wrap; gap:4px; }
 .sr-modal-footer {
     display: flex !important;
     align-items: center !important;
@@ -676,7 +714,7 @@ body.sidebar-collapsed .sr-modal-box {
 }
 
 /* Custom Outlined Buttons for Petron-clean Look */
-.flt-btn { display:inline-flex; align-items:center; gap:6px; padding:0 14px; height:35px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none; border:1px solid transparent; background:#fff !important; transition:all .15s; }
+.flt-btn { display:inline-flex; align-items:center; gap:6px; padding:0 14px; height:35px; border-radius:6px; font-size:14.5px; font-weight:600; cursor:pointer; text-decoration:none; border:1px solid transparent; background:#fff !important; transition:all .15s; }
 .flt-btn-search { color:#0891b2 !important; -webkit-text-fill-color:#0891b2 !important; border-color:#0891b2 !important; background:#fff !important; }
 .flt-btn-search:hover { background:#0891b2 !important; color:#fff !important; -webkit-text-fill-color:#fff !important; }
 .flt-btn-reset { color:#475569 !important; -webkit-text-fill-color:#475569 !important; border-color:#cbd5e1 !important; background:#fff !important; }
@@ -691,7 +729,7 @@ body.sidebar-collapsed .sr-modal-box {
 /* Custom Outlined Buttons for Petron-clean Look */
 .int-btn-outline {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 700;
+    padding: 6px 14px; border-radius: 6px; font-size: 14.5px; font-weight: 700;
     cursor: pointer; border: 1.5px solid #002F70 !important; transition: all 0.2s;
     background: #ffffff !important; color: #002F70 !important; -webkit-text-fill-color: #002F70 !important; height: 32px;
     line-height: 1; white-space: nowrap; text-decoration: none; box-sizing: border-box;
@@ -702,7 +740,7 @@ body.sidebar-collapsed .sr-modal-box {
 
 .btn-cancel {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 0 16px; border-radius: 6px; font-size: 13px; font-weight: 600;
+    padding: 0 16px; border-radius: 6px; font-size: 15.5px; font-weight: 600;
     cursor: pointer; border: 1px solid #6b7280; background: white !important;
     color: #475569 !important; transition: all .15s; height: 36px;
 }
@@ -778,13 +816,13 @@ body.sidebar-collapsed .modal-overlay,
 .po-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 12px;
+    font-size: 14.5px;
 }
 .po-table th {
     background: #f1f5f9;
     color: #475569;
     text-transform: uppercase;
-    font-size: 10px;
+    font-size: 15.5px;
     font-weight: 700;
     padding: 8px 12px;
     text-align: left;
@@ -800,7 +838,7 @@ body.sidebar-collapsed .modal-overlay,
     border: none;
     background: none;
     font-weight: 700;
-    font-size: 12px;
+    font-size: 14.5px;
     text-transform: uppercase;
     cursor: pointer;
     border-bottom: 2px solid transparent;
@@ -838,9 +876,9 @@ body.sidebar-collapsed .modal-overlay,
         <div style="width:34px; height:34px; border-radius:50%; background:#dcfce7; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
             <i class="fas fa-check-circle" style="font-size:17px; color:#16a34a;"></i>
         </div>
-        <div style="font-size:13px; font-weight:800; color:#15803d; letter-spacing:0.2px; line-height:1.3;" id="fsrBannerTitle">FUEL STOCK REQUEST SUBMITTED!</div>
+        <div style="font-size:15.5px; font-weight:800; color:#15803d; letter-spacing:0.2px; line-height:1.3;" id="fsrBannerTitle">FUEL STOCK REQUEST SUBMITTED!</div>
     </div>
-    <div style="font-size:12px; color:#475569; padding-left:44px; line-height:1.5;" id="fsrBannerText">Your fuel stock request is now pending manager approval.</div>
+    <div style="font-size:14.5px; color:#475569; padding-left:44px; line-height:1.5;" id="fsrBannerText">Your fuel stock request is now pending manager approval.</div>
 </div>
 
 <!-- ══ Dashboard Cards (4 Cards ONLY) ══ -->
@@ -848,7 +886,7 @@ body.sidebar-collapsed .modal-overlay,
     <!-- Card 1: Total Fuel Available -->
     <div style="background:#fff; border-radius:8px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
         <div>
-            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Fuel Available (L)</div>
+            <div style="font-size:15.5px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Fuel Available (L)</div>
             <div style="font-size:20px; font-weight:800; color:#0284c7; margin-top:4px;"><?= number_format($total_fuel_available, 2) ?> L</div>
         </div>
         <div style="background:#e0f2fe; color:#0284c7; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-gas-pump"></i></div>
@@ -856,7 +894,7 @@ body.sidebar-collapsed .modal-overlay,
     <!-- Card 2: Diesel Available -->
     <div style="background:#fff; border-radius:8px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
         <div>
-            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Diesel Available (L)</div>
+            <div style="font-size:15.5px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Diesel Available (L)</div>
             <div style="font-size:20px; font-weight:800; color:#002F6C; margin-top:4px;"><?= number_format($diesel_available, 2) ?> L</div>
         </div>
         <div style="background:#e8f4fd; color:#002F6C; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-tint"></i></div>
@@ -864,7 +902,7 @@ body.sidebar-collapsed .modal-overlay,
     <!-- Card 3: Premium Available -->
     <div style="background:#fff; border-radius:8px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
         <div>
-            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Premium Available (L)</div>
+            <div style="font-size:15.5px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Premium Available (L)</div>
             <div style="font-size:20px; font-weight:800; color:#7c3aed; margin-top:4px;"><?= number_format($premium_available, 2) ?> L</div>
         </div>
         <div style="background:#ede9fe; color:#7c3aed; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-star"></i></div>
@@ -872,7 +910,7 @@ body.sidebar-collapsed .modal-overlay,
     <!-- Card 4: Regular Available -->
     <div style="background:#fff; border-radius:8px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
         <div>
-            <div style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Regular Available (L)</div>
+            <div style="font-size:15.5px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Regular Available (L)</div>
             <div style="font-size:20px; font-weight:800; color:#059669; margin-top:4px;"><?= number_format($regular_available, 2) ?> L</div>
         </div>
         <div style="background:#d1fae5; color:#059669; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-leaf"></i></div>
@@ -882,7 +920,7 @@ body.sidebar-collapsed .modal-overlay,
 <!-- â• â•  Search & Filter Bar â• â•  -->
 <form id="fuelFilterForm" class="inv-filter-bar" onsubmit="applyFuelInventoryFilters(event)" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
     <div style="position:relative;">
-        <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:12px;"></i>
+        <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:14.5px;"></i>
         <input type="text" id="sq" placeholder="Search Fuel Type / UGT No..." oninput="filterFuelTable()" autocomplete="off" style="padding-left:28px; width:240px;">
     </div>
     <select id="cf" onchange="filterFuelTable()">
@@ -918,7 +956,7 @@ body.sidebar-collapsed .modal-overlay,
         <?php
         $alert_count = count(array_filter($rows, fn($r) => in_array($r['status'] ?? '', ['Critical','Low','Out of Stock'])));
         if ($alert_count > 0): ?>
-            <span style="background:#dc2626 !important;color:#ffffff !important;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700;margin-left:4px;line-height:1;"><?= $alert_count ?></span>
+            <span style="background:#dc2626 !important;color:#ffffff !important;border-radius:20px;padding:2px 8px;font-size:14px;font-weight:700;margin-left:4px;line-height:1;"><?= $alert_count ?></span>
         <?php endif; ?>
     </button>
 </div>
@@ -947,7 +985,7 @@ body.sidebar-collapsed .modal-overlay,
 <div class="inv-card">
     <div class="inv-card-head" style="display:flex; align-items:center; justify-content:space-between;">
         <div class="inv-card-title"><i class="fas fa-gas-pump"></i> Fuel Inventory Overview</div>
-        <button type="button" onclick="openFuelSrModal()" class="sr-btn-outline" style="background:#ffffff !important; background-color:#ffffff !important; color:#002F70 !important; -webkit-text-fill-color:#002F70 !important; border:1.5px solid #cbd5e1 !important; border-radius:6px; padding:7px 16px; font-size:13px; font-weight:700 !important; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 1px 3px rgba(0,0,0,0.05) !important; text-decoration:none;">
+        <button type="button" onclick="openFuelSrModal()" class="sr-btn-outline" style="background:#ffffff !important; background-color:#ffffff !important; color:#002F70 !important; -webkit-text-fill-color:#002F70 !important; border:1.5px solid #cbd5e1 !important; border-radius:6px; padding:7px 16px; font-size:15.5px; font-weight:700 !important; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 1px 3px rgba(0,0,0,0.05) !important; text-decoration:none;">
             <i class="fas fa-paper-plane" style="color:#002F70 !important; -webkit-text-fill-color:#002F70 !important;"></i> Stock Request
         </button>
     </div>
@@ -989,7 +1027,7 @@ body.sidebar-collapsed .modal-overlay,
                         data-fuel-type="<?= htmlspecialchars(strtolower($r['fuel_type'])) ?>"
                         data-status="<?= htmlspecialchars(strtolower($r['status'])) ?>"
                         data-date="<?= $row_date ?>">
-                        <td><code style="font-weight:700;color:#002F70;font-size:12px;"><?= htmlspecialchars($ugt_str) ?></code></td>
+                        <td><code style="font-weight:700;color:#002F70;font-size:14.5px;"><?= htmlspecialchars($ugt_str) ?></code></td>
                         <td style="font-weight:700;color:#0f172a;"><?= htmlspecialchars($r['fuel_type']) ?></td>
                         <td style="text-align:right;font-weight:600;color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
                         <td style="text-align:right;font-weight:800;color:#002F70;"><?= number_format($r['current_level'], 2) ?> L</td>
@@ -999,7 +1037,7 @@ body.sidebar-collapsed .modal-overlay,
                                 <?= htmlspecialchars($st_label) ?>
                             </span>
                         </td>
-                        <td style="color:#475569; font-size:12px; font-weight:500; white-space:nowrap;"><?= $ts_str ?></td>
+                        <td style="color:#475569; font-size:14.5px; font-weight:500; white-space:nowrap;"><?= $ts_str ?></td>
                         <td style="text-align:center;">
                             <button type="button" class="int-btn-outline" onclick='openTankModal(<?= $r_json ?>)'>
                                 <i class="fas fa-eye"></i> View
@@ -1036,11 +1074,11 @@ body.sidebar-collapsed .modal-overlay,
             <div style="text-align:center;padding:40px;color:#64748b;">
                 <i class="fas fa-check-circle" style="font-size:32px;color:#28a745;margin-bottom:12px;display:block;"></i>
                 <strong>All fuel tanks are at normal levels.</strong><br>
-                <span style="font-size:12px;">No low stock or critical alerts at this time.</span>
+                <span style="font-size:14.5px;">No low stock or critical alerts at this time.</span>
             </div>
         <?php else: ?>
         <div class="table-wrap">
-            <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <table style="width:100%; border-collapse:collapse; font-size:15.5px;">
                 <thead>
                     <tr style="background:#002F70; color:#fff;">
                         <th style="padding:10px 12px;">UGT No.</th>
@@ -1067,7 +1105,7 @@ body.sidebar-collapsed .modal-overlay,
                     <td style="padding:10px 12px; text-align:right; font-weight:800; color:#002F70;"><?= number_format($r['current_level'], 2) ?> L</td>
                     <td style="padding:10px 12px; text-align:right; color:#d97706; font-weight:600;"><?= number_format($r['reorder_level'] ?? 0, 0) ?> L</td>
                     <td style="padding:10px 12px; text-align:center;">
-                        <span style="background:<?= $sc ?>18; color:<?= $sc ?>; border:1px solid <?= $sc ?>40; border-radius:20px; padding:3px 10px; font-size:11px; font-weight:700;">
+                        <span style="background:<?= $sc ?>18; color:<?= $sc ?>; border:1px solid <?= $sc ?>40; border-radius:20px; padding:3px 10px; font-size:14px; font-weight:700;">
                             <?= htmlspecialchars($st_label) ?>
                         </span>
                     </td>
@@ -1091,24 +1129,24 @@ body.sidebar-collapsed .modal-overlay,
         </div>
         <div class="modal-body" style="padding:20px;">
             <!-- UGT Information -->
-            <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-info-circle"></i> UGT Information</div>
+            <div style="font-size:14px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-info-circle"></i> UGT Information</div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px 24px; margin-bottom:20px;">
-                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">UGT No.</div><div id="detUgtNo" style="font-weight:800; color:#002F70; font-size:15px;"></div></div>
-                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Fuel Type</div><div id="detFuelType" style="font-weight:800; color:#0f172a; font-size:15px;"></div></div>
-                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Tank Capacity</div><div id="detCapacity" style="font-weight:600; color:#475569;"></div></div>
-                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Current Volume</div><div id="detVolume" style="font-weight:800; color:#002F70; font-size:16px;"></div></div>
-                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Available Space</div><div id="detAvailableSpace" style="font-weight:700; color:#16a34a; font-size:15px;"></div></div>
-                <div><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Status</div><div id="detStatus"></div></div>
-                <div style="grid-column:span 2;"><div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Last Updated</div><div id="detUpdated" style="font-weight:600; color:#64748b;"></div></div>
+                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">UGT No.</div><div id="detUgtNo" style="font-weight:800; color:#002F70; font-size:15px;"></div></div>
+                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Fuel Type</div><div id="detFuelType" style="font-weight:800; color:#0f172a; font-size:15px;"></div></div>
+                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Tank Capacity</div><div id="detCapacity" style="font-weight:600; color:#475569;"></div></div>
+                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Current Volume</div><div id="detVolume" style="font-weight:800; color:#002F70; font-size:16px;"></div></div>
+                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Available Space</div><div id="detAvailableSpace" style="font-weight:700; color:#16a34a; font-size:15px;"></div></div>
+                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Status</div><div id="detStatus"></div></div>
+                <div style="grid-column:span 2;"><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Last Updated</div><div id="detUpdated" style="font-weight:600; color:#64748b;"></div></div>
             </div>
             <!-- Fuel Delivery History (Read Only) -->
-            <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-truck"></i> Fuel Delivery History (Read Only)</div>
+            <div style="font-size:14px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-truck"></i> Fuel Delivery History (Read Only)</div>
             <div id="detDeliverySummary">
-                <div style="text-align:center;padding:16px;color:#94a3b8;font-size:13px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                <div style="text-align:center;padding:16px;color:#94a3b8;font-size:15.5px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
             </div>
         </div>
         <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px; background:#f8fafc; padding:12px 20px;">
-            <button type="button" onclick="closeTankModal()" class="btn-cancel" style="height:36px; font-size:13px; padding:0 16px;"><i class="fas fa-times"></i> Close</button>
+            <button type="button" onclick="closeTankModal()" class="btn-cancel" style="height:36px; font-size:15.5px; padding:0 16px;"><i class="fas fa-times"></i> Close</button>
         </div>
     </div>
 </div>
@@ -1122,7 +1160,7 @@ body.sidebar-collapsed .modal-overlay,
         </div>
         <div class="modal-body" id="deliveryDetailBody"></div>
         <div class="modal-footer">
-            <button onclick="closeDeliveryDetail()" class="btn-cancel" style="height:34px;font-size:12px;padding:0 14px;">Close</button>
+            <button onclick="closeDeliveryDetail()" class="btn-cancel" style="height:34px;font-size:14.5px;padding:0 14px;">Close</button>
         </div>
     </div>
 </div>
@@ -1136,8 +1174,8 @@ body.sidebar-collapsed .modal-overlay,
         </div>
         <div class="modal-body" style="padding:0;">
             <div style="display:flex; border-bottom:2px solid #e2e8f0; background:#f8fafc; padding:0 10px;">
-                <button class="modal-tab-btn active" id="tabDelBtn" onclick="switchMovTab('deliveries')" style="padding:12px 16px; border:none; background:none; font-weight:700; font-size:12px; text-transform:uppercase; color:#002F70; border-bottom:2px solid #002F70; cursor:pointer; display:flex; align-items:center; gap:6px;"><i class="fas fa-truck"></i> Deliveries</button>
-                <button class="modal-tab-btn" id="tabSalesBtn" onclick="switchMovTab('sales')" style="padding:12px 16px; border:none; background:none; font-weight:700; font-size:12px; text-transform:uppercase; color:#64748b; border-bottom:2px solid transparent; cursor:pointer; display:flex; align-items:center; gap:6px;"><i class="fas fa-receipt"></i> Sales Transactions</button>
+                <button class="modal-tab-btn active" id="tabDelBtn" onclick="switchMovTab('deliveries')" style="padding:12px 16px; border:none; background:none; font-weight:700; font-size:14.5px; text-transform:uppercase; color:#002F70; border-bottom:2px solid #002F70; cursor:pointer; display:flex; align-items:center; gap:6px;"><i class="fas fa-truck"></i> Deliveries</button>
+                <button class="modal-tab-btn" id="tabSalesBtn" onclick="switchMovTab('sales')" style="padding:12px 16px; border:none; background:none; font-weight:700; font-size:14.5px; text-transform:uppercase; color:#64748b; border-bottom:2px solid transparent; cursor:pointer; display:flex; align-items:center; gap:6px;"><i class="fas fa-receipt"></i> Sales Transactions</button>
             </div>
             <div style="padding:20px;">
                 <!-- Tab: Deliveries -->
@@ -1173,7 +1211,7 @@ body.sidebar-collapsed .modal-overlay,
             </div>
         </div>
         <div class="modal-footer">
-            <button onclick="closeMovementModal()" class="btn-cancel" style="height:32px; font-size:12px; padding:0 12px;">Close</button>
+            <button onclick="closeMovementModal()" class="btn-cancel" style="height:32px; font-size:14.5px; padding:0 12px;">Close</button>
         </div>
     </div>
 </div>
@@ -1196,29 +1234,29 @@ body.sidebar-collapsed .modal-overlay,
                         <h4 style="margin:0 0 12px; font-size:14px; font-weight:700; color:#002F70; text-transform:uppercase; border-bottom:1px solid #cbd5e1; padding-bottom:6px;">
                             <i class="fas fa-file-alt"></i> Request Information
                         </h4>
-                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12.5px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:15px;">
                             <span style="color:#64748b; font-weight:600;">Request No:</span>
                             <span style="font-weight:700; color:#1e293b;">Auto-Assigned</span>
                         </div>
-                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12.5px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:15px;">
                             <span style="color:#64748b; font-weight:600;">Request Date:</span>
                             <span style="font-weight:700; color:#1e293b;"><?= date('M d, Y') ?></span>
                         </div>
-                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12.5px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:15px;">
                             <span style="color:#64748b; font-weight:600;">Requested By:</span>
                             <span style="font-weight:700; color:#1e293b;"><?= htmlspecialchars($me['name'] ?? $me['username'] ?? 'Staff') ?></span>
                         </div>
                     </div>
 
                     <div style="margin-top:14px;">
-                        <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px;">Remarks / Notes</label>
-                        <textarea id="fsrRemarks" rows="4" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#334155;resize:vertical;box-sizing:border-box;outline:none;" placeholder="Optional remarks..."></textarea>
+                        <label style="display:block;font-size:14.5px;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px;">Remarks / Notes</label>
+                        <textarea id="fsrRemarks" rows="4" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;color:#334155;resize:vertical;box-sizing:border-box;outline:none;" placeholder="Optional remarks..."></textarea>
                     </div>
                 </div>
 
                 <!-- RIGHT COLUMN: Fuel Selection -->
                 <div style="display:flex; flex-direction:column;">
-                    <label style="display:block;font-size:12.5px;font-weight:700;color:#374151;margin-bottom:8px;">
+                    <label style="display:block;font-size:15px;font-weight:700;color:#374151;margin-bottom:8px;">
                         <i class="fas fa-gas-pump" style="color:#eab308;margin-right:4px;"></i> Fuel Types <span style="color:#dc2626;">*</span>
                     </label>
                     
@@ -1234,7 +1272,7 @@ body.sidebar-collapsed .modal-overlay,
                 </div>
             </div>
 
-            <div id="fsrError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;margin-top:12px;font-size:13px;"></div>
+            <div id="fsrError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;margin-top:12px;font-size:15.5px;"></div>
         </div>
 
         <div class="sr-modal-footer" style="display:flex !important; justify-content:flex-end !important; align-items:center !important; gap:12px !important; padding:16px 24px !important; background:#f8fafc !important; border-top:1px solid #cbd5e1 !important; box-sizing:border-box !important;">
@@ -1249,201 +1287,6 @@ body.sidebar-collapsed .modal-overlay,
 </div>
 
 <!-- â”€â”€ Success popup â”€â”€ -->
-<div id="fsrSuccessOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10998;"></div>
-<div id="fsrSuccessPopup" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10999;background:#fff;padding:28px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);text-align:center;">
-    <div style="width:56px;height:56px;background:linear-gradient(135deg,#28a745,#20c997);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
-        <i class="fas fa-check" style="color:#fff;font-size:28px;"></i>
-    </div>
-    <h3 style="margin:0 0 8px;color:#28a745;">Request Submitted!</h3>
-    <p style="margin:0 0 18px;color:#333;font-size:14px;line-height:1.5;" id="fsrSuccessMsg">
-        Your fuel stock request is now <strong>Pending</strong> Manager review.
-    </p>
-    <button onclick="closeFsrSuccess()" class="txn-btn primary">OK</button>
-</div>
-
-<script>
-var allFuelData = <?php echo json_encode($js_fuel); ?>;
-
-// â”€â”€ Open stock request modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function openFuelSrModal() {
-    renderFsrCheckList();
-    syncFsrSelectAll();
-    document.getElementById('fsrError').style.display = 'none';
-    var rem = document.getElementById('fsrRemarks');
-    if (rem) rem.value = '';
-    var sb = document.getElementById('fsrSubmitBtn');
-    if (sb) { sb.disabled = false; sb.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Stock Request'; }
-    document.getElementById('fuelSrModal').classList.add('open');
-}
-
-function renderFsrCheckList() {
-    // Only show fuels that need replenishment — exclude AVAILABLE status
-    var needsRestock = allFuelData.filter(function(it) {
-        var s = (it.status || '').toUpperCase();
-        return s === 'CRITICAL' || s === 'LOW' || s === 'LOW STOCK' || s === 'OUT OF STOCK';
-    });
-
-    if (needsRestock.length === 0) {
-        document.getElementById('fsrCheckList').innerHTML =
-            '<div style="text-align:center;padding:28px 16px;color:#6c757d;">' +
-            '<strong>All fuel tanks are at sufficient levels.</strong><br>' +
-            '<small>Stock requests are only needed for Critical, Low, or Out-of-Stock fuels.</small></div>';
-        document.getElementById('fsrSubmitBtn').disabled = true;
-        return;
-    }
-
-    document.getElementById('fsrSubmitBtn').disabled = false;
-
-    var rows = needsRestock.map(function(it) {
-        var idx = allFuelData.indexOf(it);
-        var badge = '<span style="background:' + it.color + '20;color:' + it.color + ';border:1px solid ' + it.color + '40;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;">' + esc(it.status) + '</span>';
-        var ugtNo = it.tanker_num ? it.tanker_num : (it.tanker_label || '');
-        return '<tr class="fsr-cb-row ' + it.statusCls + '" data-idx="' + idx + '" style="cursor:pointer;">' +
-            '<td style="text-align:center;"><input type="checkbox" class="fsr-cb fsr-item-cb" data-idx="' + idx + '"></td>' +
-            '<td style="font-weight:700;color:#002F70;">' + esc(it.name) + '</td>' +
-            '<td style="font-family:monospace;font-weight:700;">' + esc(ugtNo) + '</td>' +
-            '<td style="text-align:right;font-weight:700;">' + it.level.toLocaleString('en-PH',{minimumFractionDigits:2}) + ' L</td>' +
-            '<td style="text-align:right;color:#dc2626;font-weight:700;">' + Number(it.reorder_level || 0).toLocaleString('en-PH',{minimumFractionDigits:0}) + ' L</td>' +
-            '<td style="text-align:center;">' + badge + '</td>' +
-        '</tr>';
-    }).join('');
-    var html = '<div style="max-height:360px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;">' +
-        '<table class="sr-table" style="width:100%;border-collapse:collapse;font-size:12px;">' +
-            '<thead><tr style="background:#002F70;color:#fff;position:sticky;top:0;z-index:5;">' +
-                '<th style="width:7%;text-align:center;">Select</th>' +
-                '<th style="width:24%;text-align:left;">Fuel Type</th>' +
-                '<th style="width:16%;text-align:left;">UGT No.</th>' +
-                '<th style="width:19%;text-align:right;">Current Liters</th>' +
-                '<th style="width:18%;text-align:right;">Reorder Level</th>' +
-                '<th style="width:16%;text-align:center;">Status</th>' +
-            '</tr></thead><tbody>' + rows + '</tbody></table></div>';
-    document.getElementById('fsrCheckList').innerHTML = html;
-
-    // Highlight row when checkbox changes
-    document.querySelectorAll('.fsr-item-cb').forEach(function(cb) {
-        cb.addEventListener('change', function() {
-            var row = this.closest('.fsr-cb-row');
-            if (row) {
-                row.classList.toggle('checked', this.checked);
-            }
-            syncFsrSelectAll();
-        });
-    });
-
-    document.querySelectorAll('.fsr-cb-row').forEach(function(row) {
-        row.addEventListener('click', function(e) {
-            if (e.target && e.target.matches('input')) return;
-            var cb = this.querySelector('.fsr-item-cb');
-            if (!cb) return;
-            cb.checked = !cb.checked;
-            this.classList.toggle('checked', cb.checked);
-            syncFsrSelectAll();
-        });
-    });
-}
-
-function syncFsrSelectAll() {
-    var all     = document.querySelectorAll('.fsr-item-cb');
-    var checked = document.querySelectorAll('.fsr-item-cb:checked');
-    var sa = document.getElementById('fsrSelectAll');
-    if (sa) {
-        sa.indeterminate = checked.length > 0 && checked.length < all.length;
-        sa.checked       = all.length > 0 && checked.length === all.length;
-    }
-    var countLabel = document.getElementById('fsrSelectedCount');
-    if (countLabel) {
-        countLabel.textContent = checked.length > 0 ? checked.length + ' selected' : '';
-    }
-}
-
-var selectAllEl = document.getElementById('fsrSelectAll');
-if (selectAllEl) {
-    selectAllEl.addEventListener('change', function() {
-        var c = this.checked;
-        document.querySelectorAll('.fsr-item-cb').forEach(function(cb) { cb.checked = c; });
-        document.querySelectorAll('.fsr-cb-row').forEach(function(row) { row.classList.toggle('checked', c); });
-        syncFsrSelectAll();
-    });
-}
-
-// â”€â”€ Close stock request modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function closeFuelSrModal() {
-    var m = document.getElementById('fuelSrModal');
-    if (m) m.classList.remove('open');
-}
-
-// Event listener setup is deferred to DOMContentLoaded to avoid race
-// conditions when elements are moved to body
-
-// â”€â”€ Submit stock request â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function submitFuelStockRequest() {
-    var checked = document.querySelectorAll('.fsr-item-cb:checked');
-    var errEl = document.getElementById('fsrError');
-    if (checked.length === 0) {
-        errEl.textContent = 'Please select at least one fuel type.';
-        errEl.style.display = 'block';
-        return;
-    }
-
-    var btn = document.getElementById('fsrSubmitBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
-    errEl.style.display = 'none';
-
-    var remarks = ((document.getElementById('fsrRemarks') || {}).value || '').trim() || 'Bulk fuel stock request';
-
-    var items = [];
-    checked.forEach(function(cb) {
-        var it = allFuelData[parseInt(cb.dataset.idx)];
-        if (it) {
-            items.push({
-                fuel_type:        it.name,
-                current_level:    it.level,
-                capacity:         it.capacity,
-                stock_status:     it.status,
-                requested_liters: 0
-            });
-        }
-    });
-
-    fetch('../backend/api/fuel_stock_request.php?action=create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            items: items,
-            remarks: remarks
-        })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(res) {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Stock Request';
-        closeFuelSrModal();
-
-                        <label for="fsrSelectAll" style="cursor:pointer;margin:0;margin-left:8px;">Select All</label>
-                        <span id="fsrSelectedCount" style="margin-left:auto;color:#002F70;"></span>
-                    </div>
-
-                    <!-- Fuel list with checkboxes -->
-                    <div id="fsrCheckList"></div>
-                </div>
-            </div>
-
-            <div id="fsrError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;margin-top:12px;font-size:13px;"></div>
-        </div>
-
-        <div class="sr-modal-footer" style="display:flex !important; justify-content:flex-end !important; align-items:center !important; gap:12px !important; padding:16px 24px !important; background:#f8fafc !important; border-top:1px solid #cbd5e1 !important; box-sizing:border-box !important;">
-            <button type="button" id="fsrCancelBtn" onclick="closeFuelSrModal()" style="padding:9px 20px !important; border:1.5px solid #00264D !important; background:#ffffff !important; background-color:#ffffff !important; color:#00264D !important; -webkit-text-fill-color:#00264D !important; border-radius:6px !important; font-size:13px !important; font-weight:700 !important; cursor:pointer !important; display:inline-flex !important; align-items:center !important; gap:6px !important; opacity:1 !important; visibility:visible !important;">
-                <i class="fas fa-times"></i> Cancel
-            </button>
-            <button type="button" id="fsrSubmitBtn" onclick="fsrHandleSubmit(this)" style="padding:9px 22px !important; background:#002F70 !important; background-color:#002F70 !important; color:#ffffff !important; -webkit-text-fill-color:#ffffff !important; border:none !important; border-radius:6px !important; font-size:13px !important; font-weight:700 !important; cursor:pointer !important; display:inline-flex !important; align-items:center !important; gap:6px !important; opacity:1 !important; visibility:visible !important;">
-                <i class="fas fa-paper-plane"></i> Submit Stock Request
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- ── Success popup ── -->
 <div id="fsrSuccessOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10998;"></div>
 <div id="fsrSuccessPopup" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10999;background:#fff;padding:28px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);text-align:center;">
     <div style="width:56px;height:56px;background:linear-gradient(135deg,#28a745,#20c997);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
@@ -1490,7 +1333,7 @@ function renderFsrCheckList() {
 
     var rows = needsRestock.map(function(it) {
         var idx = allFuelData.indexOf(it);
-        var badge = '<span style="background:' + it.color + '20;color:' + it.color + ';border:1px solid ' + it.color + '40;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;">' + esc(it.status) + '</span>';
+        var badge = '<span style="background:' + it.color + '20;color:' + it.color + ';border:1px solid ' + it.color + '40;border-radius:20px;padding:1px 7px;font-size:15.5px;font-weight:700;">' + esc(it.status) + '</span>';
         var ugtNo = it.tanker_num ? it.tanker_num : (it.tanker_label || '');
         return '<tr class="fsr-cb-row ' + it.statusCls + '" data-idx="' + idx + '" style="cursor:pointer;">' +
             '<td style="text-align:center;"><input type="checkbox" class="fsr-cb fsr-item-cb" data-idx="' + idx + '"></td>' +
@@ -1502,7 +1345,7 @@ function renderFsrCheckList() {
         '</tr>';
     }).join('');
     var html = '<div style="max-height:360px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;">' +
-        '<table class="sr-table" style="width:100%;border-collapse:collapse;font-size:12px;">' +
+        '<table class="sr-table" style="width:100%;border-collapse:collapse;font-size:14.5px;">' +
             '<thead><tr style="background:#002F70;color:#fff;position:sticky;top:0;z-index:5;">' +
                 '<th style="width:7%;text-align:center;">Select</th>' +
                 '<th style="width:24%;text-align:left;">Fuel Type</th>' +
@@ -1614,7 +1457,7 @@ function submitFuelStockRequest() {
             var srNo = res.request_no || '';
             var cnt  = res.inserted_count || items.length;
             var msg  = 'Successfully submitted stock requests for <strong>' + cnt + '</strong> fuel type' + (cnt !== 1 ? 's' : '') + '. Pending Manager Approval.';
-            if (srNo) msg += '<br><span style="font-size:12px;color:#64748b;">Request No: <strong>' + esc(srNo) + '</strong></span>';
+            if (srNo) msg += '<br><span style="font-size:14.5px;color:#64748b;">Request No: <strong>' + esc(srNo) + '</strong></span>';
             if (res.message && res.message.indexOf('skipped') !== -1) {
                 msg += '<br><small style="color:#d97706;">' + esc(res.message.split('Note:')[1] || '') + '</small>';
             }
@@ -1737,51 +1580,6 @@ function resetFuelInventoryFilters() {
     filterFuelTable();
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    // ── 10-SECOND SILENT BACKGROUND AUTO-FETCH FOR FUEL INVENTORY ──────────
-    function autoRefreshFuelInventory() {
-        // Do not refresh if user has any modal open or is typing
-        var modals = ['tankModal', 'movementModal', 'fuelSrModal', 'fsrSuccessOverlay', 'fsrSuccessPopup'];
-        for (var i = 0; i < modals.length; i++) {
-            var el = document.getElementById(modals[i]);
-            if (el && (el.classList.contains('open') || el.style.display === 'flex' || el.style.display === 'block')) return;
-        }
-        var searchInput = document.getElementById('sq');
-        if (searchInput && searchInput === document.activeElement && searchInput.value.trim() !== '') return;
-
-        // Fetch fresh HTML in background and update table & KPI cards seamlessly
-        fetch(window.location.href, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            cache: 'no-store'
-        })
-        .then(function(res) { return res.text(); })
-        .then(function(html) {
-            var parser = new DOMParser();
-            var doc = parser.parseFromString(html, 'text/html');
-            
-            // Update table body
-            var newTbody = doc.querySelector('#fuelTable tbody') || doc.querySelector('table tbody');
-            var curTbody = document.querySelector('#fuelTable tbody') || document.querySelector('table tbody');
-            if (newTbody && curTbody) {
-                curTbody.innerHTML = newTbody.innerHTML;
-                if (typeof filterFuelTable === 'function') filterFuelTable();
-            }
-            
-            // Update top KPI cards if present
-            var newCards = doc.querySelectorAll('.kpi-card, .metric-card, [class*="summary-card"]');
-            var curCards = document.querySelectorAll('.kpi-card, .metric-card, [class*="summary-card"]');
-            if (newCards.length > 0 && curCards.length === newCards.length) {
-                for (var j = 0; j < newCards.length; j++) {
-                    curCards[j].innerHTML = newCards[j].innerHTML;
-                }
-            }
-        })
-        .catch(function(e) {
-            console.warn('Fuel inventory auto-fetch notice:', e);
-        });
-    }
-    setInterval(autoRefreshFuelInventory, 15000);
-}
 
 // ── Sub Tab Switcher ─────────────────────────────────────────────────────────────────────────────────────────
 function switchFuelTab(tab) {
@@ -1837,20 +1635,20 @@ function openTankModal(r) {
         .then(function(res) { return res.json(); })
         .then(function(data) {
             if (!data.success || !data.deliveries || data.deliveries.length === 0) {
-                dSummary.innerHTML = '<div style="text-align:center;padding:12px;color:#94a3b8;font-size:13px;">No delivery records found for this fuel type.</div>';
+                dSummary.innerHTML = '<div style="text-align:center;padding:12px;color:#94a3b8;font-size:15.5px;">No delivery records found for this fuel type.</div>';
                 return;
             }
-            var html = '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f1f5f9;">' +
-                '<th style="padding:8px 10px;text-align:left;color:#475569;font-size:10px;text-transform:uppercase;">Delivery No.</th>' +
-                '<th style="padding:8px 10px;text-align:left;color:#475569;font-size:10px;text-transform:uppercase;">Supplier</th>' +
-                '<th style="padding:8px 10px;text-align:right;color:#475569;font-size:10px;text-transform:uppercase;">Liters Received</th>' +
-                '<th style="padding:8px 10px;text-align:center;color:#475569;font-size:10px;text-transform:uppercase;">Delivery Date</th>' +
+            var html = '<table style="width:100%;border-collapse:collapse;font-size:14.5px;"><thead><tr style="background:#f1f5f9;">' +
+                '<th style="padding:8px 10px;text-align:left;color:#475569;font-size:15.5px;text-transform:uppercase;">Delivery No.</th>' +
+                '<th style="padding:8px 10px;text-align:left;color:#475569;font-size:15.5px;text-transform:uppercase;">Supplier</th>' +
+                '<th style="padding:8px 10px;text-align:right;color:#475569;font-size:15.5px;text-transform:uppercase;">Liters Received</th>' +
+                '<th style="padding:8px 10px;text-align:center;color:#475569;font-size:15.5px;text-transform:uppercase;">Delivery Date</th>' +
                 '</tr></thead><tbody>';
             data.deliveries.slice(0, 10).forEach(function(d) {
                 var dNo = d.invoice_no || ('DEL-' + String(d.id || 0).padStart(5, '0'));
                 var dateStr = d.delivery_date ? new Date(d.delivery_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
                 html += '<tr style="border-bottom:1px solid #f1f5f9;">' +
-                    '<td style="padding:8px 10px;font-weight:700;color:#002F70;"><code style="font-size:11px;">' + esc(dNo) + '</code></td>' +
+                    '<td style="padding:8px 10px;font-weight:700;color:#002F70;"><code style="font-size:14px;">' + esc(dNo) + '</code></td>' +
                     '<td style="padding:8px 10px;font-weight:600;">' + esc(d.supplier || 'Petron Corporation') + '</td>' +
                     '<td style="padding:8px 10px;text-align:right;font-weight:700;color:#16a34a;">' + Number(d.delivery_liters || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>' +
                     '<td style="padding:8px 10px;text-align:center;color:#64748b;">' + dateStr + '</td>' +
@@ -1860,7 +1658,7 @@ function openTankModal(r) {
             dSummary.innerHTML = html;
         })
         .catch(function() {
-            dSummary.innerHTML = '<div style="text-align:center;padding:12px;color:#dc3545;font-size:13px;">Failed to load delivery history.</div>';
+            dSummary.innerHTML = '<div style="text-align:center;padding:12px;color:#dc3545;font-size:15.5px;">Failed to load delivery history.</div>';
         });
     }
     
@@ -1907,7 +1705,7 @@ function viewFuelMovement(fuelType, tankName) {
                     '<td><code>' + esc(d.invoice_no || '—') + '</code></td>' +
                     '<td>' + esc(d.supplier || '—') + '</td>' +
                     '<td style="text-align:right; font-weight:700; color:#002F70;">' + Number(d.delivery_liters).toLocaleString() + ' Liters (L)</td>' +
-                    '<td><span style="font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px;' + statusCls + '">' + esc(d.status) + '</span></td>' +
+                    '<td><span style="font-size:15.5px; font-weight:700; padding:2px 6px; border-radius:4px;' + statusCls + '">' + esc(d.status) + '</span></td>' +
                     '</tr>';
             });
             delBody.innerHTML = delHtml;
@@ -1926,7 +1724,7 @@ function viewFuelMovement(fuelType, tankName) {
                     '<td>' + esc(t.shift_period || '—') + '</td>' +
                     '<td style="text-align:right; font-weight:700; color:#002F70;">' + Number(t.liters_sold).toLocaleString() + ' Liters (L)</td>' +
                     '<td style="text-align:right; font-weight:600;">₱' + Number(t.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</td>' +
-                    '<td><span style="font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px;' + statusCls + '">' + esc(t.status) + '</span></td>' +
+                    '<td><span style="font-size:15.5px; font-weight:700; padding:2px 6px; border-radius:4px;' + statusCls + '">' + esc(t.status) + '</span></td>' +
                     '</tr>';
             });
             salesBody.innerHTML = salesHtml;
@@ -1973,7 +1771,7 @@ function printTankRecord(r) {
     html += 'body { font-family: Arial, sans-serif; margin: 40px; color: #333; }';
     html += '.header { border-bottom: 2px solid #002F6C; padding-bottom: 10px; margin-bottom: 20px; }';
     html += 'h2 { color: #002F6C; margin: 0; }';
-    html += '.meta { font-size: 12px; color: #666; margin-top: 5px; }';
+    html += '.meta { font-size: 14.5px; color: #666; margin-top: 5px; }';
     html += 'table { width: 100%; border-collapse: collapse; margin-top: 20px; }';
     html += 'th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }';
     html += 'th { background-color: #f8f9fa; color: #002F6C; font-weight: bold; }';

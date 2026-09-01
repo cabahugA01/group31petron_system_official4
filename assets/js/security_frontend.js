@@ -13,47 +13,7 @@
 (function () {
     'use strict';
 
-    // 1. Disable Right-Click (Context Menu)
-    document.addEventListener('contextmenu', function (e) {
-        e.preventDefault();
-        return false;
-    }, false);
-
-    // 2. Disable Common View-Source and DevTools Keyboard Shortcuts
-    document.addEventListener('keydown', function (e) {
-        // F12
-        if (e.key === 'F12' || e.keyCode === 123) {
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
-        }
-
-        // Ctrl+Shift+I (DevTools), Ctrl+Shift+J (Console), Ctrl+Shift+C (Inspect Element), Ctrl+Shift+K
-        if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j' || e.key === 'C' || e.key === 'c' || e.key === 'K' || e.key === 'k')) {
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
-        }
-
-        // Ctrl+U (View Source), Ctrl+S (Save Page), Ctrl+P (Print Page)
-        if (e.ctrlKey && (e.key === 'U' || e.key === 'u' || e.key === 'S' || e.key === 's' || e.key === 'P' || e.key === 'p')) {
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
-        }
-    }, false);
-
-    // 3. Console Purging / Debug Log Suppression
-    (function suppressConsole() {
-        if (window.console) {
-            var emptyFn = function () {};
-            window.console.log = emptyFn;
-            window.console.debug = emptyFn;
-            window.console.info = emptyFn;
-            window.console.dir = emptyFn;
-            window.console.trace = emptyFn;
-        }
-    })();
+    // Right-click (context menu), DevTools shortcuts (F12, Ctrl+Shift+I/J/C), and Console output are ENABLED.
 
     // 4. Automatic CSRF Token Injection for fetch() and XMLHttpRequest
     function getCsrfToken() {

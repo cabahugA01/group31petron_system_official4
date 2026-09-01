@@ -539,14 +539,14 @@ $_asset_base = $_login_base . '/assets';
     <meta name="csrf-token" content="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
     <title>Login | Petron Management System</title>
     <link rel="stylesheet" href="<?= htmlspecialchars($_asset_base) ?>/vendor/fontawesome/css/all.min.css">
-    <script src="<?= htmlspecialchars($_asset_base) ?>/js/security_frontend.js?v=2.0.2"></script>
+    <script src="<?= htmlspecialchars($_asset_base) ?>/js/security_frontend.js?v=1788169806"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body, div, span, label, p, h1, h2, h3, h4, section, button, nav, table, tr, td {
-            -webkit-user-select: none !important;
-            -moz-user-select: none !important;
-            -ms-user-select: none !important;
-            user-select: none !important;
+            -webkit-user-select: text !important;
+            -moz-user-select: text !important;
+            -ms-user-select: text !important;
+            user-select: text !important;
         }
         input, textarea, select {
             -webkit-user-select: text !important;
@@ -976,7 +976,7 @@ $_asset_base = $_login_base . '/assets';
             text-align: center;
             text-shadow: 0 1px 6px rgba(0,0,0,.9), 0 2px 12px rgba(0,0,0,.8);
             cursor: default;
-            user-select: none;
+            user-select: text;
             pointer-events: none;
         }
 
@@ -1163,7 +1163,7 @@ $_asset_base = $_login_base . '/assets';
             letter-spacing: 1.5px;
             white-space: nowrap;
             box-shadow: 0 0 12px rgba(59,130,246,.2) inset;
-            user-select: none;
+            user-select: text;
         }
         .captcha-equals {
             color: rgba(255,255,255,.7);

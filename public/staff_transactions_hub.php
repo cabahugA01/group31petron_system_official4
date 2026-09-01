@@ -360,118 +360,26 @@ try {
     };
 } catch (Exception $e) {}
 
-// ── Detect current shift period ─────────────────────────────────────────────
-// Priority order:
-//   1. Admin-assigned shift from users.assigned_shift (highest authority)
-//   2. Active labor session shift_period
-//   3. Time-based from shift_periods table
-//   4. First active shift in DB (last resort)
-// Overtime rule: if staff is still working past their assigned shift end time,
-//   their shift label STAYS the same (not re-assigned) — it counts as overtime.
-$merch_shift_key  = '';
-$merch_shift_name = '';
-$active_shift     = [];
+// ── Detect current shift period (STRICTLY REAL-TIME CLOCK DRIVEN) ─────────────
+// Shift 1: 6:00 AM – 2:00 PM (06:00:00 – 13:59:59)
+// Shift 2: 2:00 PM – 12:00 MN (14:00:00 – 05:59:59)
+date_default_timezone_set('Asia/Manila');
+$cur_hour = (int)date('G');
 
-// Helper: map users.assigned_shift enum → shift_periods.shift_key
-function mapAssignedShiftToKey(string $assigned): string {
-    $a = strtolower(trim($assigned));
-    if (strpos($a, '1') !== false || strpos($a, 'first') !== false)  return 'first';
-    if (strpos($a, '2') !== false || strpos($a, 'second') !== false) return 'second';
-    if (strpos($a, '3') !== false || strpos($a, 'third') !== false)  return 'third';
-    return '';
+if ($cur_hour >= 6 && $cur_hour < 14) {
+    $merch_shift_key  = 'first';
+    $merch_shift_name = 'Shift 1';
+} else {
+    $merch_shift_key  = 'second';
+    $merch_shift_name = 'Shift 2';
 }
 
-try {
-    // ── Priority 1: Admin-assigned shift from users table ──────────────────────
-    $assigned_raw = trim($me['assigned_shift'] ?? $me['shift_assignment'] ?? '');
-    $assigned_key = $assigned_raw !== '' ? mapAssignedShiftToKey($assigned_raw) : '';
+$active_shift = [
+    'shift_key'   => $merch_shift_key,
+    'shift_name'  => $merch_shift_name,
+    'shift_order' => ($merch_shift_key === 'first' ? 1 : 2)
+];
 
-    if ($assigned_key !== '') {
-        // Fetch full shift details from shift_periods
-        $sp_admin = $pdo->prepare("SELECT shift_key, shift_name, sort_order FROM shift_periods WHERE shift_key = ? AND is_active = 1 LIMIT 1");
-        $sp_admin->execute([$assigned_key]);
-        $sf_admin = $sp_admin->fetch(PDO::FETCH_ASSOC);
-
-        if ($sf_admin) {
-            $merch_shift_key  = $sf_admin['shift_key'];
-            $merch_shift_name = $sf_admin['shift_name'];
-            $active_shift     = [
-                'shift_key'   => $sf_admin['shift_key'],
-                'shift_name'  => $sf_admin['shift_name'],
-                'shift_order' => (int)($sf_admin['sort_order'] ?? 1),
-            ];
-        }
-    }
-
-    // ── Priority 2: Active labor session (if admin-assigned not resolved) ──────
-    if (empty($merch_shift_key)) {
-        $active_sess = $pdo->prepare(
-            "SELECT ls.id, ls.shift_period, ls.shift_name, sp.sort_order
-             FROM labor_sessions ls
-             LEFT JOIN shift_periods sp ON ls.shift_period = sp.shift_key
-             WHERE ls.user_id = ? AND ls.end_time IS NULL
-             ORDER BY ls.start_time DESC LIMIT 1"
-        );
-        $active_sess->execute([$me['id']]);
-        $active_row = $active_sess->fetch(PDO::FETCH_ASSOC);
-
-        if ($active_row && !empty($active_row['shift_period'])) {
-            $merch_shift_key  = $active_row['shift_period'];
-            $merch_shift_name = $active_row['shift_name'] ?: '';
-            $active_shift     = [
-                'shift_key'   => $active_row['shift_period'],
-                'shift_name'  => $active_row['shift_name'],
-                'shift_order' => (int)($active_row['sort_order'] ?? 1),
-            ];
-        }
-    }
-
-    // ── Priority 3: Time-based detection ──────────────────────────────────────
-    if (empty($merch_shift_key)) {
-        $ct      = date('H:i:s');
-        $sp_time = $pdo->prepare("SELECT shift_key, shift_name, sort_order FROM shift_periods WHERE is_active = 1 AND start_time <= ? AND end_time >= ? ORDER BY sort_order ASC LIMIT 1");
-        $sp_time->execute([$ct, $ct]);
-        $sf_time = $sp_time->fetch(PDO::FETCH_ASSOC);
-
-        if ($sf_time) {
-            $merch_shift_key  = $sf_time['shift_key'];
-            $merch_shift_name = $sf_time['shift_name'];
-            $active_shift     = [
-                'shift_key'   => $sf_time['shift_key'],
-                'shift_name'  => $sf_time['shift_name'],
-                'shift_order' => (int)($sf_time['sort_order'] ?? 1),
-            ];
-        }
-    }
-
-    // ── Priority 4: First active shift in DB ──────────────────────────────────
-    if (empty($merch_shift_key)) {
-        $sp_fb = $pdo->query("SELECT shift_key, shift_name, sort_order FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC LIMIT 1");
-        $sf_fb = $sp_fb ? $sp_fb->fetch(PDO::FETCH_ASSOC) : null;
-        if ($sf_fb) {
-            $merch_shift_key  = $sf_fb['shift_key'];
-            $merch_shift_name = $sf_fb['shift_name'];
-            $active_shift     = [
-                'shift_key'   => $sf_fb['shift_key'],
-                'shift_name'  => $sf_fb['shift_name'],
-                'shift_order' => (int)($sf_fb['sort_order'] ?? 1),
-            ];
-        }
-    }
-
-    // ── Sync active labor session with admin-assigned shift (self-healing) ─────
-    // If there is an active session whose shift_period differs from the admin-assigned shift,
-    // update it so future queries see the correct shift.
-    if (!empty($merch_shift_key) && !empty($assigned_key) && $merch_shift_key === $assigned_key) {
-        try {
-            $pdo->prepare(
-                "UPDATE labor_sessions SET shift_period = ?, shift_name = ?
-                 WHERE user_id = ? AND end_time IS NULL AND shift_period != ?"
-            )->execute([$merch_shift_key, $merch_shift_name, $me['id'], $merch_shift_key]);
-        } catch (Exception $e) {}
-    }
-} catch (Exception $e) {}
-// Fuel form uses the same shift
 $fuel_shift_key  = $merch_shift_key;
 $fuel_shift_name = $merch_shift_name;
 
@@ -2136,12 +2044,24 @@ if ($section === 'merchandise') {
 
 // ── Service types (for job order encode form) ─────────────────────────────────
 $jo_service_types = [];
-if ($section === 'merchandise') {
-    try {
-        $stmt = $pdo->query("SELECT service_key, service_name, service_price, min_price, max_price, price_description, pricing_notes, icon_class, color_class FROM job_order_service_types WHERE active = 1 ORDER BY sort_order, service_name");
-        $jo_service_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $jo_service_types = []; }
-}
+try {
+    $stmt = $pdo->query("
+        SELECT id, service_key AS `key`, service_name AS `name`, category,
+               service_price AS price, min_price AS min, max_price AS max,
+               price_description AS `desc`, pricing_notes AS notes,
+               icon_class AS icon, color_class AS color
+        FROM job_order_service_types
+        WHERE active = 1 AND (status IN ('approved', 'pending') OR status IS NULL OR status = '')
+        ORDER BY sort_order ASC, service_name ASC
+    ");
+    $jo_service_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($jo_service_types as &$st_item) {
+        $st_item['id']    = (int)$st_item['id'];
+        $st_item['price'] = (float)$st_item['price'];
+        $st_item['min']   = (float)$st_item['min'];
+        $st_item['max']   = (float)$st_item['max'];
+    }
+} catch (Exception $e) { $jo_service_types = []; }
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -5776,11 +5696,13 @@ setTimeout(function() {
                                            autocomplete="off"
                                            style="width:100%;padding-right:30px;"
                                            oninput="filterServiceTypes()"
-                                           onfocus="showServiceDropdown()">
+                                           onfocus="showServiceDropdown()"
+                                           onclick="showServiceDropdown()">
                                     <input type="hidden" id="joServiceTypeValue" value="">
                                     <i class="fas fa-chevron-down" 
+                                       onclick="showServiceDropdown(); document.getElementById('joServiceType').focus();"
                                        style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
-                                              color:#94a3b8;font-size:12px;pointer-events:none;"></i>
+                                              color:#94a3b8;font-size:12px;cursor:pointer;pointer-events:auto;"></i>
                                     <div id="joServiceTypeDropdown" 
                                          onmousedown="event.preventDefault()"
                                          style="display:none;position:absolute;top:100%;left:0;right:0;
@@ -6186,7 +6108,7 @@ setTimeout(function() {
                             <div class="txn-field">
                                 <label>Quantity</label>
                                 <input type="number" id="itemQty" class="txn-input"
-                                       min="1" value="1" placeholder="1"
+                                       min="1" value="" placeholder="—"
                                        oninput="this.value = this.value.replace(/[^0-9]/g, ''); syncItemQtyToCart(this.value);"
                                        onchange="syncItemQtyToCart(this.value)">
                             </div>
@@ -7057,6 +6979,7 @@ setTimeout(function() {
                     <input type="text" id="newServiceName" class="txn-input"
                            placeholder="e.g. Clutch Replacement, Radiator Flush…"
                            maxlength="100"
+                           oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&\/\.]/g, ''); resetServiceInputValidation(this);"
                            style="font-size:13px;"
                            autocomplete="off">
                     <div style="font-size:10px;color:#94a3b8;margin-top:4px;">
@@ -7069,7 +6992,7 @@ setTimeout(function() {
                     <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
                         Category <span style="color:#dc2626;">*</span>
                     </label>
-                    <select id="newServiceCategory" class="txn-select" style="font-size:13px;width:100%;">
+                    <select id="newServiceCategory" class="txn-select" onchange="resetServiceInputValidation(this);" style="font-size:13px;width:100%;">
                         <option value="Lubrication">Lubrication</option>
                         <option value="PMS">PMS</option>
                         <option value="Engine">Engine</option>
@@ -7098,6 +7021,7 @@ setTimeout(function() {
                            placeholder="0.00"
                            step="0.01"
                            min="0"
+                           oninput="resetServiceInputValidation(this);"
                            style="font-size:13px;"
                            required>
                 </div>
@@ -7110,6 +7034,7 @@ setTimeout(function() {
                     <input type="text" id="newServiceDuration" class="txn-input"
                            placeholder="e.g., 30 minutes, 1-2 hours..."
                            maxlength="50"
+                           oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\,]/g, ''); resetServiceInputValidation(this);"
                            style="font-size:13px;"
                            autocomplete="off">
                 </div>
@@ -7123,6 +7048,7 @@ setTimeout(function() {
                               placeholder="Additional details about this service (optional)..."
                               rows="2"
                               maxlength="255"
+                              oninput="resetServiceInputValidation(this);"
                               style="font-size:13px;resize:vertical;"
                               autocomplete="off"></textarea>
                 </div>
@@ -7136,6 +7062,7 @@ setTimeout(function() {
                               placeholder="Why do you need this service added? (e.g., 'Customer requested this service')"
                               rows="2"
                               maxlength="500"
+                              oninput="resetServiceInputValidation(this);"
                               style="font-size:13px;resize:vertical;"
                               autocomplete="off"></textarea>
                 </div>
@@ -7196,6 +7123,7 @@ setTimeout(function() {
                            id="newVehicleBrand" 
                            class="txn-input" 
                            placeholder="e.g. Toyota, Honda, Mitsubishi..."
+                           oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, ''); resetVehicleInputValidation(this);"
                            style="font-size:13px;"
                            autocomplete="off">
                 </div>
@@ -7209,6 +7137,7 @@ setTimeout(function() {
                            id="newVehicleModel" 
                            class="txn-input" 
                            placeholder="e.g. Vios, Civic, Montero..."
+                           oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/\.]/g, ''); resetVehicleInputValidation(this);"
                            style="font-size:13px;"
                            autocomplete="off">
                 </div>
@@ -7223,6 +7152,7 @@ setTimeout(function() {
                            class="txn-input" 
                            list="vehicleCategoryList"
                            placeholder="Type or select vehicle type..."
+                           oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/\&]/g, ''); resetVehicleInputValidation(this);"
                            style="font-size:13px;"
                            autocomplete="off">
                     <datalist id="vehicleCategoryList">
@@ -7242,7 +7172,7 @@ setTimeout(function() {
                     <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
                         Fuel Type <span style="color:#dc2626;">*</span>
                     </label>
-                    <select id="newVehicleFuelType" class="txn-select" style="font-size:13px;width:100%;">
+                    <select id="newVehicleFuelType" class="txn-select" onchange="resetVehicleInputValidation(this);" style="font-size:13px;width:100%;">
                         <option value="Gasoline" selected>Gasoline</option>
                         <option value="Diesel">Diesel</option>
                         <option value="LPG">LPG</option>
@@ -7260,6 +7190,7 @@ setTimeout(function() {
                               placeholder="Why do you need this vehicle type added? (e.g., 'Customer owns this model')"
                               rows="2"
                               maxlength="500"
+                              oninput="resetVehicleInputValidation(this);"
                               style="font-size:13px;resize:vertical;"
                               autocomplete="off"></textarea>
                 </div>
@@ -7323,6 +7254,7 @@ setTimeout(function() {
                            class="txn-input" 
                            list="productCategoryList"
                            placeholder="Type or select category..."
+                           oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&\/\.]/g, ''); resetProductInputValidation(this);"
                            style="font-size:13px;"
                            autocomplete="off">
                     <datalist id="productCategoryList">
@@ -7346,6 +7278,7 @@ setTimeout(function() {
                     <input type="text" id="newProductName" class="txn-input"
                            placeholder="e.g. Coca-Cola 500ml, Marlboro Red…"
                            maxlength="150"
+                           oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&\/\.\,\(\)]/g, ''); resetProductInputValidation(this);"
                            style="font-size:13px;"
                            autocomplete="off">
                     <div style="font-size:10px;color:#94a3b8;margin-top:4px;">
@@ -7361,6 +7294,7 @@ setTimeout(function() {
                     <input type="text" id="newProductSKU" class="txn-input"
                            placeholder="e.g. COKE-500ML"
                            maxlength="50"
+                           oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\-\_]/g, ''); resetProductInputValidation(this);"
                            style="font-size:13px;text-transform:uppercase;"
                            autocomplete="off">
                 </div>
@@ -7374,6 +7308,7 @@ setTimeout(function() {
                            list="productUnitList"
                            placeholder="e.g. pcs, bottle, pack, box..."
                            maxlength="30"
+                           oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, ''); resetProductInputValidation(this);"
                            style="font-size:13px;"
                            autocomplete="off">
                     <datalist id="productUnitList">
@@ -7399,6 +7334,7 @@ setTimeout(function() {
                            placeholder="0.00"
                            min="0"
                            step="0.01"
+                           oninput="resetProductInputValidation(this);"
                            style="font-size:13px;"
                            autocomplete="off">
                 </div>
@@ -7412,6 +7348,7 @@ setTimeout(function() {
                               placeholder="Why do you need this product added? (e.g., 'Customer is looking for this item')"
                               rows="2"
                               maxlength="500"
+                              oninput="resetProductInputValidation(this);"
                               style="font-size:13px;resize:vertical;"
                               autocomplete="off"></textarea>
                 </div>
@@ -7461,7 +7398,7 @@ setTimeout(function() {
         const redemptionValue  = <?= (float)$redemption_value ?>;
         const selectedCustomerIds = { jo: null, merch: null };
 
-        function onLoyaltyChange() {
+        window.onLoyaltyChange = function onLoyaltyChange() {
             const program = document.getElementById('loyaltyProgram')?.value || 'No Loyalty';
             const fieldsWrap = document.getElementById('loyaltyFields');
             const cardNoInput = document.getElementById('loyaltyCardNo');
@@ -7499,7 +7436,7 @@ setTimeout(function() {
             calcLoyaltyPoints();
         }
 
-        function calcLoyaltyPoints() {
+        window.calcLoyaltyPoints = function calcLoyaltyPoints() {
             const program = document.getElementById('loyaltyProgram')?.value || 'No Loyalty';
             const balanceInput = document.getElementById('loyaltyPointsBalance');
             const earnedInput = document.getElementById('loyaltyPointsEarned');
@@ -7788,6 +7725,8 @@ setTimeout(function() {
                 id: pid, name, sku: cb.dataset.sku, cat, size, price, stock, unit
             } : null;
             if (cb.checked) {
+                const qtyEl = document.getElementById('itemQty');
+                if (qtyEl && !qtyEl.value) qtyEl.value = 1;
                 const search = document.getElementById('productSearch');
                 if (search) search.value = name + (size ? ' · ' + size : '');
                 const skuEl   = document.getElementById('itemSku');
@@ -7836,6 +7775,8 @@ setTimeout(function() {
                 stock: parseInt(el.dataset.stock) || 0,
                 unit:  el.dataset.unit || 'Piece (pc)',
             };
+            const qtyInput = document.getElementById('itemQty');
+            if (qtyInput && !qtyInput.value) qtyInput.value = 1;
             const search = document.getElementById('productSearch');
             if (search) search.value = selectedProduct.name + (selectedProduct.size ? ' · ' + selectedProduct.size : '');
             const sku   = document.getElementById('itemSku');
@@ -7932,7 +7873,7 @@ setTimeout(function() {
             if (dd) dd.style.display = 'block';
         }
 
-        function hideMechanicDropdown() {
+        window.hideMechanicDropdown = function hideMechanicDropdown() {
             const dd = document.getElementById('joMechanicDropdown');
             if (dd) dd.style.display = 'none';
         }
@@ -8335,15 +8276,8 @@ setTimeout(function() {
                     });
                 }
                 updateServiceSelectionState();
-            hideServiceDropdown();
+                hideServiceDropdown();
             }
-        }
-        
-        // ── HTML escape helper ────────────────────────────────────────────────
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
         }
 
         // ── Fetch suggested parts from DB ─────────────────────────────────────
@@ -8368,7 +8302,6 @@ setTimeout(function() {
 
                 if (!data.success || !data.parts || data.parts.length === 0) {
                     partsWrap.style.display = 'none';
-                    // Cache empty parts list
                     window._joSuggestedParts = [];
                     return;
                 }
@@ -8533,8 +8466,15 @@ setTimeout(function() {
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || 'Failed to load service types');
 
-                // Cache for price/notes lookup and filtering
-                window.JO_SERVICE_TYPES = data.types;
+                // Inline seed from PHP so services are available 0ms at page load
+        if (!window.JO_SERVICE_TYPES || !window.JO_SERVICE_TYPES.length) {
+            window.JO_SERVICE_TYPES = null || [];
+        }
+
+        // Cache for price/notes lookup and filtering
+                if (data.success && Array.isArray(data.types) && data.types.length > 0) {
+                    window.JO_SERVICE_TYPES = data.types;
+                }
 
                 // Set placeholder
                 input.placeholder = 'Type to search service...';
@@ -8589,12 +8529,38 @@ setTimeout(function() {
             if (modal) modal.style.display = 'none';
         }
 
+        window.resetServiceInputValidation = function(el) {
+            if (!el) return;
+            el.style.borderColor = '';
+            el.style.boxShadow = '';
+            const box = document.getElementById('addServiceError');
+            if (box) box.style.display = 'none';
+        };
+
         function setAddServiceError(msg) {
             const box  = document.getElementById('addServiceError');
             const text = document.getElementById('addServiceErrorText');
             if (!box || !text) return;
             text.textContent = msg;
             box.style.display = msg ? 'flex' : 'none';
+        }
+
+        function highlightServiceError(fieldId, msg) {
+            const fields = ['newServiceName', 'newServiceCategory', 'newServicePrice', 'newServiceDuration', 'newServiceDescription', 'newServiceReason'];
+            fields.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.style.borderColor = '';
+                    el.style.boxShadow = '';
+                }
+            });
+            const target = document.getElementById(fieldId);
+            if (target) {
+                target.style.setProperty('border-color', '#dc2626', 'important');
+                target.style.setProperty('box-shadow', '0 0 0 3px rgba(220, 38, 38, 0.2)', 'important');
+                target.focus();
+            }
+            setAddServiceError(msg);
         }
 
         async function submitNewServiceType() {
@@ -8607,18 +8573,40 @@ setTimeout(function() {
             const btn      = document.getElementById('addServiceSubmitBtn');
 
             setAddServiceError('');
-            if (!name)  { setAddServiceError('Please enter the service name.'); return; }
-            if (name.length > 100) { setAddServiceError('Name is too long (max 100 characters).'); return; }
-            if (!price || isNaN(price) || parseFloat(price) < 0) { setAddServiceError('Please enter a valid positive price.'); return; }
-            if (!reason) { setAddServiceError('Please explain why you need this service added.'); return; }
-            if (reason.length < 10) { setAddServiceError('Please provide a more detailed reason (minimum 10 characters).'); return; }
+
+            if (!name || name.length < 3) {
+                highlightServiceError('newServiceName', 'Please enter a valid Service Name (minimum 3 characters).');
+                return;
+            }
+            if (name.length > 100) {
+                highlightServiceError('newServiceName', 'Name is too long (maximum 100 characters).');
+                return;
+            }
+            if (!category) {
+                highlightServiceError('newServiceCategory', 'Please select a Category.');
+                return;
+            }
+            if (price === '' || isNaN(price) || parseFloat(price) < 0) {
+                highlightServiceError('newServicePrice', 'Please enter a valid Default Service Fee (₱0.00 or higher).');
+                return;
+            }
+            if (!reason || reason.length < 5) {
+                highlightServiceError('newServiceReason', 'Please provide a detailed reason for request (minimum 5 characters).');
+                return;
+            }
 
             if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…'; }
 
             try {
+                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
                 const res  = await fetch('../backend/api/submit_master_data_request.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
                     credentials: 'same-origin',
                     body: JSON.stringify({
                         request_type: 'service_type',
@@ -9033,7 +9021,7 @@ setTimeout(function() {
         }
 
         // Called on oninput \u2014 only unlocks the field if it was locked (readonly), never clears values
-        function unlockCustomerIfNeeded(prefix) {
+        window.unlockCustomerIfNeeded = function unlockCustomerIfNeeded(prefix) {
             const fn = document.getElementById(prefix + 'FirstName');
             if (fn && fn.hasAttribute('readonly')) {
                 // User is editing a locked field \u2014 clear the selected customer and unlock
@@ -9255,7 +9243,7 @@ setTimeout(function() {
         }
 
         // ── NEW: Search customer by typing in First Name field ──────────────────
-        function searchCustomerByName(prefix) {
+        window.searchCustomerByName = function searchCustomerByName(prefix) {
             const firstNameInput = document.getElementById(prefix + 'FirstName');
             const resultsDiv = document.getElementById(prefix + 'FirstNameResults');
             
@@ -9424,7 +9412,7 @@ setTimeout(function() {
         });
 
         // ── Vehicle type change ───────────────────────────────────────────────
-        function onVehicleTypeChange() { /* reserved */ }
+        window.onVehicleTypeChange = function onVehicleTypeChange() { /* reserved */ }
 
         // ── Vehicle Type Custom Dropdown ──────────────────────────────────────
         let _vehicleTypesAll = []; // flat list: [{name, category}]
@@ -9433,10 +9421,10 @@ setTimeout(function() {
             filterVehicleDropdown(document.getElementById('joVehicleType')?.value || '');
             document.getElementById('vehicleTypeDropdown').style.display = 'block';
         }
-        function hideVehicleDropdown() {
+        window.hideVehicleDropdown = function hideVehicleDropdown() {
             document.getElementById('vehicleTypeDropdown').style.display = 'none';
         }
-        function filterVehicleDropdown(query) {
+        window.filterVehicleDropdown = function filterVehicleDropdown(query) {
             const dd  = document.getElementById('vehicleTypeDropdown');
             if (!dd) return;
             const q   = query.trim().toLowerCase();
@@ -9543,12 +9531,38 @@ setTimeout(function() {
             if (modal) modal.style.display = 'none';
         }
 
+        window.resetVehicleInputValidation = function(el) {
+            if (!el) return;
+            el.style.borderColor = '';
+            el.style.boxShadow = '';
+            const box = document.getElementById('addVehicleError');
+            if (box) box.style.display = 'none';
+        };
+
         function setAddVehicleError(msg) {
             const box  = document.getElementById('addVehicleError');
             const text = document.getElementById('addVehicleErrorText');
             if (!box || !text) return;
             text.textContent = msg;
             box.style.display = msg ? 'flex' : 'none';
+        }
+
+        function highlightVehicleError(fieldId, msg) {
+            const fields = ['newVehicleBrand', 'newVehicleModel', 'newVehicleType', 'newVehicleFuelType', 'newVehicleRemarks'];
+            fields.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.style.borderColor = '';
+                    el.style.boxShadow = '';
+                }
+            });
+            const target = document.getElementById(fieldId);
+            if (target) {
+                target.style.setProperty('border-color', '#dc2626', 'important');
+                target.style.setProperty('box-shadow', '0 0 0 3px rgba(220, 38, 38, 0.2)', 'important');
+                target.focus();
+            }
+            setAddVehicleError(msg);
         }
 
         async function submitNewVehicleType() {
@@ -9560,19 +9574,40 @@ setTimeout(function() {
             const btn     = document.getElementById('addVehicleSubmitBtn');
 
             setAddVehicleError('');
-            if (!brand)   { setAddVehicleError('Please enter the vehicle brand.'); return; }
-            if (!model)   { setAddVehicleError('Please enter the vehicle model.'); return; }
-            if (!type)    { setAddVehicleError('Please select or enter a vehicle type.'); return; }
-            if (!fuel)    { setAddVehicleError('Please select a fuel type.'); return; }
-            if (!remarks) { setAddVehicleError('Please enter remarks/reason for request.'); return; }
-            if (remarks.length < 5) { setAddVehicleError('Please provide a reason with at least 5 characters.'); return; }
+
+            if (!brand || brand.length < 2) {
+                highlightVehicleError('newVehicleBrand', 'Please enter a valid Vehicle Brand (e.g. Toyota, Honda).');
+                return;
+            }
+            if (!model || model.length < 1) {
+                highlightVehicleError('newVehicleModel', 'Please enter a valid Vehicle Model (e.g. Vios, Civic).');
+                return;
+            }
+            if (!type || type.length < 2) {
+                highlightVehicleError('newVehicleType', 'Please select or enter a Vehicle Type (e.g. Sedans, SUVs).');
+                return;
+            }
+            if (!fuel) {
+                highlightVehicleError('newVehicleFuelType', 'Please select a valid Fuel Type.');
+                return;
+            }
+            if (!remarks || remarks.length < 5) {
+                highlightVehicleError('newVehicleRemarks', 'Please enter remarks/reason for request (at least 5 characters).');
+                return;
+            }
 
             if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…'; }
 
             try {
+                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
                 const res  = await fetch('../backend/api/submit_master_data_request.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
                     credentials: 'same-origin',
                     body: JSON.stringify({
                         request_type: 'vehicle_type',
@@ -9640,6 +9675,14 @@ setTimeout(function() {
             if (modal) modal.style.display = 'none';
         }
 
+        window.resetProductInputValidation = function(el) {
+            if (!el) return;
+            el.style.borderColor = '';
+            el.style.boxShadow = '';
+            const box = document.getElementById('addProductError');
+            if (box) box.style.display = 'none';
+        };
+
         function setAddProductError(msg) {
             const box  = document.getElementById('addProductError');
             const text = document.getElementById('addProductErrorText');
@@ -9648,30 +9691,73 @@ setTimeout(function() {
             box.style.display = msg ? 'flex' : 'none';
         }
 
+        function highlightProductError(fieldId, msg) {
+            const fields = ['newProductCategory', 'newProductName', 'newProductSKU', 'newProductUnit', 'newProductPrice', 'newProductReason'];
+            fields.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.style.borderColor = '';
+                    el.style.boxShadow = '';
+                }
+            });
+            const target = document.getElementById(fieldId);
+            if (target) {
+                target.style.setProperty('border-color', '#dc2626', 'important');
+                target.style.setProperty('box-shadow', '0 0 0 3px rgba(220, 38, 38, 0.2)', 'important');
+                target.focus();
+            }
+            setAddProductError(msg);
+        }
+
         async function submitNewProduct() {
             const name     = (document.getElementById('newProductName')?.value     || '').trim();
             const category = (document.getElementById('newProductCategory')?.value || '').trim();
             const sku      = (document.getElementById('newProductSKU')?.value      || '').trim().toUpperCase();
             const unit     = (document.getElementById('newProductUnit')?.value     || '').trim();
-            const price    = parseFloat(document.getElementById('newProductPrice')?.value || 0);
+            const rawPrice = document.getElementById('newProductPrice')?.value || '';
+            const price    = parseFloat(rawPrice);
             const reason   = (document.getElementById('newProductReason')?.value   || '').trim();
             const btn      = document.getElementById('addProductSubmitBtn');
 
             setAddProductError('');
-            if (!category) { setAddProductError('Please enter or select a category.'); return; }
-            if (!name)     { setAddProductError('Please enter the product name.'); return; }
-            if (name.length > 150) { setAddProductError('Name is too long (max 150 characters).'); return; }
-            if (!unit)     { setAddProductError('Please enter the unit (e.g. pcs, bottle, pack).'); return; }
-            if (price <= 0) { setAddProductError('Please enter a valid price greater than zero.'); return; }
-            if (!reason)   { setAddProductError('Please explain why you need this product added.'); return; }
-            if (reason.length < 10) { setAddProductError('Please provide a more detailed reason (minimum 10 characters).'); return; }
+
+            if (!category || category.length < 2) {
+                highlightProductError('newProductCategory', 'Please select or enter a Category (e.g. Beverages, Lubricants).');
+                return;
+            }
+            if (!name || name.length < 2) {
+                highlightProductError('newProductName', 'Please enter a valid Product Name (minimum 2 characters).');
+                return;
+            }
+            if (name.length > 150) {
+                highlightProductError('newProductName', 'Product Name is too long (maximum 150 characters).');
+                return;
+            }
+            if (!unit || unit.length < 1) {
+                highlightProductError('newProductUnit', 'Please select or enter a Unit (e.g. pcs, bottle, pack).');
+                return;
+            }
+            if (rawPrice === '' || isNaN(price) || price <= 0) {
+                highlightProductError('newProductPrice', 'Please enter a valid Unit Price greater than ₱0.00.');
+                return;
+            }
+            if (!reason || reason.length < 5) {
+                highlightProductError('newProductReason', 'Please provide a detailed reason for request (minimum 5 characters).');
+                return;
+            }
 
             if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…'; }
 
             try {
+                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
                 const res  = await fetch('../backend/api/submit_master_data_request.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
                     credentials: 'same-origin',
                     body: JSON.stringify({
                         request_type: 'product',
@@ -9952,7 +10038,7 @@ setTimeout(function() {
             const price  = document.getElementById('itemUnitPrice');
             const stock  = document.getElementById('itemStock');
             if (search) search.value = '';
-            if (qty)    qty.value    = 1;
+            if (qty)    qty.value    = '';
             if (cat)    cat.value    = '';
             if (price)  price.value  = '';
             if (stock)  stock.value  = '';
@@ -10153,7 +10239,7 @@ setTimeout(function() {
         }
 
         var _secCheckDebounce = null;
-        function checkVehicleSecurityWarning() {
+        window.checkVehicleSecurityWarning = function checkVehicleSecurityWarning() {
             clearTimeout(_secCheckDebounce);
             _secCheckDebounce = setTimeout(function() {
                 const plate   = (document.getElementById('joVehiclePlate')?.value || '').trim();
@@ -10703,7 +10789,7 @@ setTimeout(function() {
         }
 
         // ── Payment panel ─────────────────────────────────────────────────────
-        function onPaymentChange() {
+        window.onPaymentChange = function onPaymentChange() {
             const method = document.getElementById('paymentMethod')?.value || '';
             const isEwallet = (method === 'GCash' || method === 'Maya');
 
@@ -10750,7 +10836,7 @@ setTimeout(function() {
             updateCheckoutBtn();
         }
 
-        function onCreditCustomerChange() {
+        window.onCreditCustomerChange = function onCreditCustomerChange() {
             const select = document.getElementById('creditCustomer');
             const compInput = document.getElementById('creditCompanyName');
             const accInput  = document.getElementById('creditAccountNumber');
@@ -10776,7 +10862,7 @@ setTimeout(function() {
             return id ? parseFloat(document.getElementById(id)?.value || 0) : 0;
         }
 
-        function onPaymentAmountInput() {
+        window.onPaymentAmountInput = function onPaymentAmountInput() {
             const method = document.getElementById('paymentMethod')?.value || '';
             if (method === 'Cash' || method === 'Credit Account' || !method) return;
             const amount = _getAmountPaid(method);
@@ -10789,7 +10875,7 @@ setTimeout(function() {
             updatePaymentStatusBadge();
         }
 
-        function computeChange() {
+        window.computeChange = function computeChange() {
             const grand    = getGrandTotal();
             const tendered = parseFloat(document.getElementById('amountTendered')?.value || 0);
             const changeWrap = document.getElementById('changeWrap');

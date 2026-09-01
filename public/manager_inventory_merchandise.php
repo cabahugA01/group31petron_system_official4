@@ -1192,6 +1192,70 @@ try {
 
 include __DIR__ . '/../partials/header.php';
 ?>
+
+<style>
+/* ── No-overlap fix for Merchandise Inventory Table ── */
+.mim-wrap, .main-content, .table-wrap, .table-responsive {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+}
+
+/* Force fixed layout so columns don't steal space from neighbors */
+table#mgrMerchTable, table.merch-tbl {
+    table-layout: fixed !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse !important;
+}
+
+/* All header and data cells: clip overflowing text, never let it spill */
+table#mgrMerchTable th,
+table#mgrMerchTable td,
+table.merch-tbl th,
+table.merch-tbl td {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    max-width: 0 !important; /* required for text-overflow to work in fixed-layout tables */
+}
+
+/* Product Name: allow wrapping onto 2 lines instead of overflowing */
+table#mgrMerchTable td:nth-child(3),
+table.merch-tbl td:nth-child(3) {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    max-width: 0 !important;
+}
+
+/* Approximate column widths that sum to 100% */
+table#mgrMerchTable colgroup col:nth-child(1),
+table.merch-tbl colgroup col:nth-child(1) { width: 5%; }   /* Batch ID */
+table#mgrMerchTable colgroup col:nth-child(2),
+table.merch-tbl colgroup col:nth-child(2) { width: 7%; }   /* SKU */
+table#mgrMerchTable colgroup col:nth-child(3),
+table.merch-tbl colgroup col:nth-child(3) { width: 17%; }  /* Product Name */
+table#mgrMerchTable colgroup col:nth-child(4),
+table.merch-tbl colgroup col:nth-child(4) { width: 9%; }   /* Category */
+table#mgrMerchTable colgroup col:nth-child(5),
+table.merch-tbl colgroup col:nth-child(5) { width: 5%; }   /* UOM */
+table#mgrMerchTable colgroup col:nth-child(6),
+table.merch-tbl colgroup col:nth-child(6) { width: 8%; }   /* Expiration Date */
+table#mgrMerchTable colgroup col:nth-child(7),
+table.merch-tbl colgroup col:nth-child(7) { width: 5%; }   /* Initial Stock */
+table#mgrMerchTable colgroup col:nth-child(8),
+table.merch-tbl colgroup col:nth-child(8) { width: 10%; }  /* Current Stock */
+table#mgrMerchTable colgroup col:nth-child(9),
+table.merch-tbl colgroup col:nth-child(9) { width: 5%; }   /* Reorder Level */
+table#mgrMerchTable colgroup col:nth-child(10),
+table.merch-tbl colgroup col:nth-child(10) { width: 8%; }  /* Status */
+table#mgrMerchTable colgroup col:nth-child(11),
+table.merch-tbl colgroup col:nth-child(11) { width: 9%; }  /* Last Updated */
+table#mgrMerchTable colgroup col:nth-child(12),
+table.merch-tbl colgroup col:nth-child(12) { width: 12%; } /* Actions */
+</style>
+
 <style>
 /* Header standardization */
 body { overflow-x: hidden; }
@@ -1542,7 +1606,10 @@ body { overflow-x: hidden; }
     </div>
     <div class="table-wrap" style="width:100%;overflow-x:auto;">
         <table class="table" id="mgrMerchTable" style="width:100%;">
-            <thead>
+        <colgroup>
+            <col><col><col><col><col><col><col><col><col><col><col><col>
+        </colgroup>
+<thead>
                 <tr>
                     <th>Batch ID</th>
                     <th>SKU</th>

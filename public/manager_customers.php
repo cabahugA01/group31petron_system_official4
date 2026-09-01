@@ -34,6 +34,104 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
+/* ABSOLUTE NO TEXT OVERLAPPING RULE */
+.cust-section, .table-wrap, .table-responsive, .table-card, .card {
+    overflow-x: auto !important;
+    width: 100% !important;
+}
+
+table.cust-table, #mgrMerchTable, table.pricing-table, table.tbl-requests, table.table {
+    table-layout: auto !important;
+    width: 100% !important;
+    min-width: 1050px !important;
+    border-collapse: collapse !important;
+}
+
+table th {
+    padding: 9px 8px !important;
+    font-size: 12.5px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.2px !important;
+    text-transform: uppercase !important;
+    white-space: nowrap !important;
+}
+
+table td {
+    padding: 9px 8px !important;
+    font-size: 13.5px !important;
+    line-height: 1.3 !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+}
+
+/* Customer ID Monospace Code */
+.cust-table td:first-child, .cust-table td code {
+    font-size: 12.5px !important;
+    font-weight: 800 !important;
+    font-family: monospace !important;
+    white-space: nowrap !important;
+}
+
+/* Customer Name High Legibility */
+.cust-table td:nth-child(2) strong {
+    font-size: 14px !important;
+    font-weight: 800 !important;
+    color: #002F6C !important;
+    white-space: nowrap !important;
+}
+
+/* Vehicles, Amounts, & Dates Never Overlap */
+td:nth-child(3), td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9), td:nth-child(10),
+th:nth-child(3), th:nth-child(4), th:nth-child(5), th:nth-child(6), th:nth-child(7), th:nth-child(8), th:nth-child(9), th:nth-child(10) {
+    white-space: nowrap !important;
+}
+
+/* Status Pill */
+.pill, .pill.active, .pill.inactive, .pill.archived, .pill.regular, .pill.credit, .status-pill, .badge {
+    white-space: nowrap !important;
+    display: inline-block !important;
+    padding: 3px 8px !important;
+    font-size: 11.5px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    border-radius: 5px !important;
+    line-height: 1.1 !important;
+}
+
+/* Action Buttons */
+.cust-actions button, .cust-table .btn-plain, .act-btn, .tbl-btn {
+    font-size: 11.5px !important;
+    font-weight: 700 !important;
+    height: 26px !important;
+    padding: 0 8px !important;
+    white-space: nowrap !important;
+    border-radius: 5px !important;
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<style>
 .cust-page { color:#0f172a; padding: 0 0 35px 0 !important; margin: 0 !important; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden !important; }
 .cust-head { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-top:0 !important; margin-bottom:25px !important; padding:0 !important; border:none !important; width:100%; }
 .cust-head h1 { margin:0; color:#002f70; font-size:24px !important; font-weight:700 !important; text-transform:uppercase !important; letter-spacing:0.5px !important; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important; display:flex; align-items:center; gap:10px; }
@@ -81,7 +179,7 @@ include __DIR__ . '/../partials/header.php';
 .btn-plain.muted:hover { background:#e2e8f0 !important; color:#0f172a; }
 
 /* Section & Table */
-.cust-section { background:#fff; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 2px 6px rgba(15,23,42,.04); margin-bottom:18px; overflow:hidden; }
+.cust-section { background:#fff; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 2px 6px rgba(15,23,42,.04); margin-bottom:18px; overflow-x:auto !important; }
 .cust-section-head { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 18px; border-bottom:1px solid #e2e8f0; background:#f8fafc; }
 .cust-section-head h2 { margin:0; color:#002f70; font-size:16px; font-weight:800; display:flex; align-items:center; gap:8px; }
 .cust-count { color:#64748b; font-weight:700; font-size:12px; }
@@ -105,12 +203,12 @@ include __DIR__ . '/../partials/header.php';
 .pill.corporate { background:#f0f9ff; color:#0369a1; }
 
 /* Modals - Framed between Top Header and Bottom Footer, Centered in Main Layout */
-.modal-backdrop { display:none; position:fixed; top:0; right:0; bottom:0; left:250px; background:rgba(15,23,42,.6); z-index:99999; align-items:center; justify-content:center; padding-top:70px; padding-bottom:50px; overflow:hidden; }
+.modal-backdrop { display:none; position:fixed; top:0; right:0; bottom:0; left:250px; background:rgba(15,23,42,.6); z-index:99999; align-items:center; justify-content:center; padding-top:70px; padding-bottom:50px; overflow-x:auto !important; }
 .modal-backdrop.open { display:flex; }
 @media (max-width: 991px) {
     .modal-backdrop { left:0 !important; }
 }
-.cust-modal { width:min(920px, calc(100% - 32px)); max-height:calc(100vh - 130px); background:#fff; border-radius:10px; border:1px solid #e2e8f0; box-shadow:0 20px 50px rgba(0,0,0,.25); display:flex; flex-direction:column; overflow:hidden; margin:auto !important; }
+.cust-modal { width:min(920px, calc(100% - 32px)); max-height:calc(100vh - 130px); background:#fff; border-radius:10px; border:1px solid #e2e8f0; box-shadow:0 20px 50px rgba(0,0,0,.25); display:flex; flex-direction:column; overflow-x:auto !important; margin:auto !important; }
 .cust-modal.sm { width:min(480px, 94vw); }
 .cust-modal > form { display:flex; flex-direction:column; min-height:0; flex:1 1 auto; }
 .modal-head { padding:14px 20px; border-bottom:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:space-between; align-items:center; flex:0 0 auto; }
@@ -118,7 +216,7 @@ include __DIR__ . '/../partials/header.php';
 .modal-close { border:0; background:transparent; font-size:22px; line-height:1; color:#64748b; cursor:pointer; }
 .modal-body { padding:18px 22px; overflow-y:auto; flex:1 1 auto; }
 .modal-actions { padding:12px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:flex-end; gap:8px; flex:0 0 auto; }
-body.modal-open { overflow:hidden; }
+body.modal-open { overflow-x:auto !important; }
 
 .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .form-title { grid-column:1 / -1; color:#002f70; font-weight:800; font-size:12px; text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:4px; margin-top:10px; margin-bottom:2px; }
@@ -294,7 +392,7 @@ button.remove-v-btn i {
                 <i class="fas fa-inbox"></i> Pending Customer Requests
             </button>
             <button class="cust-tab" id="tab-archived" onclick="switchCustTab('archived')">
-                <i class="fas fa-archive"></i> Archived Customers
+                <i class="fas fa-archive"></i> Archiveived Customers
             </button>
         </div>
     </div>
@@ -313,18 +411,7 @@ button.remove-v-btn i {
             <span class="cust-count" id="customerCount">0 records</span>
         </div>
         <table class="cust-table">
-            <colgroup>
-                <col style="width:10%">
-                <col style="width:16%">
-                <col style="width:10%">
-                <col style="width:14%">
-                <col style="width:8%">
-                <col style="width:8%">
-                <col style="width:10%">
-                <col style="width:10%">
-                <col style="width:6%">
-                <col style="width:8%">
-            </colgroup>
+            
             <thead>
                 <tr>
                     <th>Customer ID</th>
@@ -332,7 +419,7 @@ button.remove-v-btn i {
                     <th>Contact No.</th>
                     <th>Vehicles</th>
                     <th>Credit Limit</th>
-                    <th>Outstanding</th>
+                    <th style="white-space:nowrap !important;">Outstanding</th>
                     <th>Last Transaction</th>
                     <th>Customer Since</th>
                     <th>Status</th>
@@ -382,14 +469,7 @@ button.remove-v-btn i {
             <span class="cust-count" id="requestCount">0 pending</span>
         </div>
         <table class="cust-table">
-            <colgroup>
-                <col style="width:20%">
-                <col style="width:15%">
-                <col style="width:15%">
-                <col style="width:18%">
-                <col style="width:17%">
-                <col style="width:15%">
-            </colgroup>
+            
             <thead>
                 <tr>
                     <th>Customer Name</th>
@@ -439,17 +519,11 @@ button.remove-v-btn i {
     <!-- TAB 3: ARCHIVED CUSTOMERS -->
     <div class="cust-section" id="section-archived" style="display:none;">
         <div class="cust-section-head">
-            <h2><i class="fas fa-archive"></i> Archived Customers</h2>
+            <h2><i class="fas fa-archive"></i> Archiveived Customers</h2>
             <span class="cust-count" id="archivedCount">0 records</span>
         </div>
         <table class="cust-table">
-            <colgroup>
-                <col style="width:16%">
-                <col style="width:26%">
-                <col style="width:18%">
-                <col style="width:25%">
-                <col style="width:15%">
-            </colgroup>
+            
             <thead>
                 <tr>
                     <th>Customer ID</th>
@@ -872,12 +946,12 @@ button.remove-v-btn i {
                 </div>
 
                 <!-- AR History Table -->
-                <div class="view-box" style="overflow-x:auto;">
+                <div class="view-box" style="overflow-x: hidden;">
                     <h4 style="display:flex; align-items:center; justify-content:space-between;">
                         <span><i class="fas fa-list-alt" style="color:#002f70;"></i> AR History</span>
                         <span id="arRowCount" style="font-size:11px; font-weight:600; color:#64748b;"></span>
                     </h4>
-                    <table class="cust-table" style="margin-top:6px; min-width:800px;">
+                    <table class="cust-table" style="margin-top:6px; min-width: 0;">
                         <thead>
                             <tr>
                                 <th>Date</th>
@@ -901,7 +975,7 @@ button.remove-v-btn i {
 
             <!-- ═══ PANEL: PAYMENT HISTORY ════════════════════════════════════ -->
             <div class="view-panel" id="vpanel-payments">
-                <div class="view-box" style="overflow-x:auto;">
+                <div class="view-box" style="overflow-x: hidden;">
                     <h4 style="display:flex; align-items:center; justify-content:space-between;">
                         <span><i class="fas fa-receipt" style="color:#002f70;"></i> Payment History</span>
                         <span id="payHistCount" style="font-size:11px; font-weight:600; color:#64748b;"></span>
@@ -930,7 +1004,7 @@ button.remove-v-btn i {
         <div class="modal-actions">
             <button type="button" class="btn-plain muted" onclick="closeModal('customerViewModal')">Close</button>
             <button type="button" class="btn-plain primary" onclick="editFromCurrentView()"><i class="fas fa-edit"></i> Edit Customer</button>
-            <button type="button" id="vModalArchiveBtn" class="btn-plain danger" onclick="openArchiveFromView()"><i class="fas fa-archive"></i> Archive Customer</button>
+            <button type="button" id="vModalArchiveBtn" class="btn-plain danger" onclick="openArchiveFromView()"><i class="fas fa-archive"></i> Archiveive Customer</button>
         </div>
     </div>
 </div>
@@ -987,7 +1061,7 @@ button.remove-v-btn i {
 <div class="modal-backdrop" id="archiveModal">
     <div class="cust-modal sm">
         <div class="modal-head">
-            <h3><i class="fas fa-archive"></i> Archive Customer</h3>
+            <h3><i class="fas fa-archive"></i> Archiveive Customer</h3>
             <button type="button" class="modal-close" onclick="closeModal('archiveModal')">&times;</button>
         </div>
         <form id="archiveForm">
@@ -1248,10 +1322,10 @@ function custListRender() {
             <td><small style="color:#475569; font-weight:600;">${formatDateCell(c.registered_at)}</small></td>
             <td><span class="pill ${h(c.status)}">${h(c.status)}</span></td>
             <td style="text-align:center;">
-                <div style="display:flex; flex-direction:column; gap:4px; align-items:center;">
-                    <button type="button" class="btn-plain primary" style="height:30px; padding:0 8px; font-size:11px; width:80px;" onclick="viewCustomer(${c.id})"><i class="fas fa-eye"></i> View</button>
-                    <button type="button" class="btn-plain success" style="height:30px; padding:0 8px; font-size:11px; width:80px;" onclick="openCustomerForm('edit', ${c.id})"><i class="fas fa-edit"></i> Edit</button>
-                    <button type="button" class="btn-plain danger" style="height:30px; padding:0 8px; font-size:11px; width:80px;" onclick="openArchiveModal(${c.id})"><i class="fas fa-archive"></i> Archive</button>
+                <div style="display:flex; flex-direction:column; gap:3px; align-items:center;">
+                    <button type="button" class="btn-plain primary" style="height:26px; padding:0 8px; font-size:11.5px; width:66px;" onclick="viewCustomer(${c.id})"><i class="fas fa-eye"></i> View</button>
+                    <button type="button" class="btn-plain success" style="height:26px; padding:0 8px; font-size:11.5px; width:66px;" onclick="openCustomerForm('edit', ${c.id})"><i class="fas fa-edit"></i> Edit</button>
+                    <button type="button" class="btn-plain danger" style="height:26px; padding:0 8px; font-size:11.5px; width:66px;" onclick="openArchiveModal(${c.id})"><i class="fas fa-archive"></i> Archive</button>
                 </div>
             </td>
         </tr>
@@ -1768,7 +1842,7 @@ function viewCustomer(id) {
                     archiveBtn.onclick = function() { restoreCustomer(c.id); };
                 } else {
                     archiveBtn.className = 'btn-plain danger';
-                    archiveBtn.innerHTML = '<i class="fas fa-archive"></i> Archive Customer';
+                    archiveBtn.innerHTML = '<i class="fas fa-archive"></i> Archiveive Customer';
                     archiveBtn.onclick = function() { openArchiveFromView(); };
                 }
             }
@@ -1783,7 +1857,7 @@ function viewCustomer(id) {
                     const isVArchived = (v.status || '').toLowerCase() === 'archived';
                     const vBtn = isVArchived
                         ? `<button type="button" class="btn-plain success" style="height:26px; padding:0 8px; font-size:10px;" onclick="restoreVehicle(${v.id})"><i class="fas fa-undo"></i> Restore</button>`
-                        : `<button type="button" class="btn-plain danger" style="height:26px; padding:0 8px; font-size:10px;" onclick="archiveVehicle(${v.id})"><i class="fas fa-archive"></i> Archive</button>`;
+                        : `<button type="button" class="btn-plain danger" style="height:26px; padding:0 8px; font-size:10px;" onclick="archiveVehicle(${v.id})"><i class="fas fa-archive"></i> Archiveive</button>`;
                     const statusBadge = isVArchived
                         ? `<span class="pill archived">ARCHIVED</span>`
                         : `<span class="pill ${h(v.status || 'active')}">${h(v.status || 'active')}</span>`;
@@ -2032,7 +2106,7 @@ function renderARTable(rows, customerId) {
             <td style="font-size:12px; color:#475569;">${h(r.date || '—')}</td>
             <td><strong style="color:#002f70;">${h(r.reference || '—')}</strong></td>
             <td>${txIcon}<span style="font-size:11px; font-weight:700;">${h(r.tx_type)}</span></td>
-            <td style="font-size:12px; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${h(r.description)}">${h(r.description)}</td>
+            <td style="font-size:12px; max-width:180px; overflow-x:auto !important; text-overflow:ellipsis; white-space:nowrap;" title="${h(r.description)}">${h(r.description)}</td>
             <td style="text-align:right; font-weight:700;">${money(r.amount)}</td>
             <td style="text-align:right; color:#16a34a; font-weight:700;">${money(r.paid)}</td>
             <td style="text-align:right; color:${balNum > 0 ? '#dc2626' : '#16a34a'}; font-weight:800;">${money(balNum)}</td>
@@ -2079,11 +2153,11 @@ function renderARPaymentHistory(payments) {
         <tr>
             <td style="font-size:12px; color:#475569; white-space:nowrap;">${h(p.pay_date ? p.pay_date.split(' ')[0] : '—')}</td>
             <td><strong style="color:#002f70; font-size:12px;">${h(p.receipt_no || '—')}</strong></td>
-            <td style="font-size:11px; color:#475569; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${h(p.reference_no || '')}">${h(p.reference_no || '—')}</td>
+            <td style="font-size:11px; color:#475569; max-width:140px; overflow-x:auto !important; text-overflow:ellipsis; white-space:nowrap;" title="${h(p.reference_no || '')}">${h(p.reference_no || '—')}</td>
             <td><span style="display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:800; background:${mColor}22; color:${mColor}; border:1px solid ${mColor}44;">${h(p.payment_method || 'Cash')}</span></td>
             <td><span style="display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:800; background:${sColor}18; color:${sColor};">${h(sType)}</span></td>
             <td style="text-align:right; color:#16a34a; font-weight:800; font-size:13px;">${money(amt)}</td>
-            <td style="font-size:11px; color:#64748b; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${h(p.remarks || '')}">${h(p.remarks || '—')}</td>
+            <td style="font-size:11px; color:#64748b; max-width:140px; overflow-x:auto !important; text-overflow:ellipsis; white-space:nowrap;" title="${h(p.remarks || '')}">${h(p.remarks || '—')}</td>
         </tr>`;
     }).join('');
 

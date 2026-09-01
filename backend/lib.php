@@ -190,9 +190,6 @@ function get_shift_label($datetime) {
  * Shift 2: 2:00 PM – 12:00 MN (14:00:00 – 05:59:59)
  */
 function get_active_operational_shift($datetime = null): string {
-    if (!$datetime && isset($_SESSION['shift_period']) && !empty($_SESSION['shift_period'])) {
-        return $_SESSION['shift_period'];
-    }
     $time = $datetime ? (is_numeric($datetime) ? date('H:i:s', (int)$datetime) : date('H:i:s', strtotime($datetime))) : date('H:i:s');
     return ($time >= '06:00:00' && $time < '14:00:00') ? 'Shift 1' : 'Shift 2';
 }

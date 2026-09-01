@@ -276,7 +276,7 @@ if (isset($_GET['print_id'])) {
         <meta charset="UTF-8">
         <title>Inventory Sheet - <?= htmlspecialchars($item['product_name']) ?></title>
         <style>
-            body { font-family: 'Courier New', Courier, monospace; font-size: 13px; color: #000; padding: 20px; line-height: 1.5; }
+            body { font-family: 'Courier New', Courier, monospace; font-size: 15.5px; color: #000; padding: 20px; line-height: 1.5; }
             .print-wrap { max-width: 600px; margin: 0 auto; border: 1px dashed #aaa; padding: 20px; }
             .center { text-align: center; }
             .logo { font-weight: bold; font-size: 20px; color: #002F70; margin-bottom: 2px; }
@@ -285,11 +285,11 @@ if (isset($_GET['print_id'])) {
             .label { font-weight: bold; }
             .value { text-align: right; }
             .section { border-top: 1px dashed #000; margin-top: 15px; padding-top: 15px; }
-            .log-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+            .log-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
             .log-table th, .log-table td { border-bottom: 1px dotted #ccc; padding: 5px; text-align: left; }
             .log-table th { font-weight: bold; }
             .signatures { display: flex; justify-content: space-between; margin-top: 40px; }
-            .sig-line { border-top: 1px solid #000; width: 45%; text-align: center; padding-top: 5px; font-size: 11px; }
+            .sig-line { border-top: 1px solid #000; width: 45%; text-align: center; padding-top: 5px; font-size: 14px; }
             .var-pos { color: #16a34a; font-weight: bold; }
             .var-neg { color: #dc2626; font-weight: bold; }
             @media print {
@@ -332,9 +332,9 @@ if (isset($_GET['print_id'])) {
             <div class="center" style="margin-bottom: 20px;">
                 <div class="logo" style="letter-spacing: 1px;">PETRON CORPORATION</div>
                 <div style="font-weight: bold; font-size: 14px; margin-top: 4px;"><?= htmlspecialchars($station_name) ?></div>
-                <div style="font-size: 11px; color: #555;"><?= htmlspecialchars($station_address) ?></div>
+                <div style="font-size: 14px; color: #555;"><?= htmlspecialchars($station_address) ?></div>
                 <?php if ($station_contact): ?>
-                    <div style="font-size: 11px; color: #555;">Contact: <?= htmlspecialchars($station_contact) ?></div>
+                    <div style="font-size: 14px; color: #555;">Contact: <?= htmlspecialchars($station_contact) ?></div>
                 <?php endif; ?>
                 <div class="title" style="margin-top: 10px; font-size: 16px;">PRODUCT INVENTORY SHEET</div>
             </div>
@@ -357,7 +357,7 @@ if (isset($_GET['print_id'])) {
             <div class="section">
                 <div class="row"><span class="label">Unit Price:</span><span class="value">&#8369;<?= number_format($price, 2) ?></span></div>
                 <div class="row" style="font-size: 15px; font-weight: bold;"><span class="label">Inventory Value:</span><span class="value">&#8369;<?= number_format($value, 2) ?></span></div>
-                <div class="row"><span class="label">Last Updated:</span><span class="value"><?= date('M d, Y H:i', strtotime($item['last_updated'])) ?></span></div>
+                <div class="row"><span class="label">Last Updated:</span><span class="value"><?= date('M d, Y', strtotime($item['last_updated'])) ?></span></div>
             </div>
 
             <?php if (!empty($logs)): ?>
@@ -397,7 +397,7 @@ if (isset($_GET['print_id'])) {
                 </div>
             </div>
 
-            <div class="center section" style="font-size: 10px; color: #666; margin-top: 30px;">
+            <div class="center section" style="font-size: 15.5px; color: #666; margin-top: 30px;">
                 Petron Station Management System —¢ Official Inventory Slip
             </div>
         </div>
@@ -1007,6 +1007,407 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
+/* Absolute Zero Horizontal Scrollbar Layout - 100% Identical Manager & Admin */
+html, body, .mim-wrap, .main-content, .card, .tbl-card, .table-wrap, .table-responsive {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+    width: 100% !important;
+}
+
+.afto-tbl, #mgrMerchTable, #adminMerchTable {
+    table-layout: fixed !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse !important;
+}
+
+.afto-tbl th, #mgrMerchTable th, #adminMerchTable th {
+    background: #002F70 !important;
+    color: #ffffff !important;
+    padding: 6px 3px !important;
+    font-size: 10.5px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.2px !important;
+    text-transform: uppercase !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    border-bottom: 2px solid #001a3d !important;
+}
+
+.afto-tbl td, #mgrMerchTable td, #adminMerchTable td {
+    padding: 5px 3px !important;
+    font-size: 11px !important;
+    line-height: 1.2 !important;
+    vertical-align: middle !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    color: #334155 !important;
+    overflow: hidden !important;
+}
+
+/* SKU & Batch ID */
+.afto-tbl td:nth-child(1) code, .afto-tbl td:nth-child(2) code,
+#mgrMerchTable td:nth-child(1) code, #mgrMerchTable td:nth-child(2) code,
+.afto-tbl td:nth-child(1), .afto-tbl td:nth-child(2),
+#mgrMerchTable td:nth-child(1), #mgrMerchTable td:nth-child(2) {
+    font-family: monospace !important;
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    color: #002F70 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+/* Product Description: Wrap text cleanly onto 2 lines, NEVER overlap */
+.afto-tbl td:nth-child(3), #mgrMerchTable td:nth-child(3) {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    color: #002F6C !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+}
+
+/* Category, UOM, Dates */
+.afto-tbl td:nth-child(4), .afto-tbl td:nth-child(5), .afto-tbl td:nth-child(6), .afto-tbl td:nth-child(11),
+#mgrMerchTable td:nth-child(4), #mgrMerchTable td:nth-child(5), #mgrMerchTable td:nth-child(6), #mgrMerchTable td:nth-child(11) {
+    white-space: nowrap !important;
+    font-size: 10.5px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+/* Status Badge: Single Line High Contrast */
+.badge-lbl, .badge, .status-badge, .pstatus-badge {
+    white-space: nowrap !important;
+    display: inline-block !important;
+    padding: 2px 5px !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    border-radius: 4px !important;
+    text-transform: uppercase !important;
+}
+.bg-amber { background-color: #fef3c7 !important; color: #b45309 !important; }
+.bg-green { background-color: #dcfce7 !important; color: #15803d !important; }
+.bg-red   { background-color: #fee2e2 !important; color: #b91c1c !important; }
+.bg-gray  { background-color: #f1f5f9 !important; color: #475569 !important; }
+
+/* Action Buttons: Vertically Stacked High Visibility Buttons */
+.act-btn-wrap {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+}
+
+.act-btn, .act-btn-view, .act-btn-edit, a.act-btn, button.act-btn {
+    height: 20px !important;
+    padding: 0 4px !important;
+    font-size: 10.5px !important;
+    font-weight: 800 !important;
+    width: 56px !important;
+    min-width: 56px !important;
+    white-space: nowrap !important;
+    border-radius: 4px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 3px !important;
+    box-sizing: border-box !important;
+    line-height: 1.2 !important;
+    background: #ffffff !important;
+    border: 1.5px solid #cbd5e1 !important;
+    text-decoration: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.act-btn-view, button.act-btn-view, a.act-btn-view {
+    color: #16a34a !important;
+    border-color: #16a34a !important;
+    background: #ffffff !important;
+}
+
+.act-btn-view:hover {
+    background: #16a34a !important;
+    color: #ffffff !important;
+}
+
+.act-btn-edit, button.act-btn-edit, a.act-btn-edit {
+    color: #002F6C !important;
+    border-color: #002F6C !important;
+    background: #ffffff !important;
+}
+
+.act-btn-edit:hover {
+    background: #002F6C !important;
+    color: #ffffff !important;
+}
+</style>
+
+
+
+
+
+<style>
+/* Exact Admin & Manager Merchandise Inventory - ZERO HORIZONTAL SCROLLBAR (100% Fit) */
+html, body, .mim-wrap, .main-content, .card, .tbl-card, .table-wrap, .table-responsive {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+    width: 100% !important;
+}
+
+.afto-tbl, #mgrMerchTable, #adminMerchTable {
+    table-layout: fixed !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse !important;
+}
+
+.afto-tbl th, #mgrMerchTable th, #adminMerchTable th {
+    background: #002F70 !important;
+    color: #ffffff !important;
+    padding: 6px 3px !important;
+    font-size: 10.5px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.2px !important;
+    text-transform: uppercase !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    border-bottom: 2px solid #001a3d !important;
+}
+
+.afto-tbl td, #mgrMerchTable td, #adminMerchTable td {
+    padding: 5px 3px !important;
+    font-size: 11px !important;
+    line-height: 1.2 !important;
+    vertical-align: middle !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    color: #334155 !important;
+    overflow: hidden !important;
+}
+
+/* SKU & Batch ID */
+.afto-tbl td:nth-child(1) code, .afto-tbl td:nth-child(2) code,
+#mgrMerchTable td:nth-child(1) code, #mgrMerchTable td:nth-child(2) code {
+    font-family: monospace !important;
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    color: #002F70 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+/* Product Description: Wrap text cleanly onto 2 lines, NEVER overlap */
+.afto-tbl td:nth-child(3), #mgrMerchTable td:nth-child(3) {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    color: #002F6C !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+}
+
+/* Category, UOM, Dates */
+.afto-tbl td:nth-child(4), .afto-tbl td:nth-child(5), .afto-tbl td:nth-child(6), .afto-tbl td:nth-child(11),
+#mgrMerchTable td:nth-child(4), #mgrMerchTable td:nth-child(5), #mgrMerchTable td:nth-child(6), #mgrMerchTable td:nth-child(11) {
+    white-space: nowrap !important;
+    font-size: 10.5px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+/* Status Badge: Single Line */
+.badge-lbl, .badge, .status-badge, .pstatus-badge {
+    white-space: nowrap !important;
+    display: inline-block !important;
+    padding: 2px 5px !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    border-radius: 4px !important;
+    text-transform: uppercase !important;
+}
+.bg-amber { background-color: #fef3c7 !important; color: #b45309 !important; }
+.bg-green { background-color: #dcfce7 !important; color: #15803d !important; }
+.bg-red   { background-color: #fee2e2 !important; color: #b91c1c !important; }
+.bg-gray  { background-color: #f1f5f9 !important; color: #475569 !important; }
+
+/* Action Buttons: Vertically Stacked Compact Buttons */
+.act-btn-wrap {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+}
+
+.act-btn {
+    height: 20px !important;
+    padding: 0 4px !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    width: 54px !important;
+    min-width: 54px !important;
+    white-space: nowrap !important;
+    border-radius: 3px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2px !important;
+    box-sizing: border-box !important;
+    line-height: 1.2 !important;
+    background: #ffffff !important;
+    border: 1.5px solid #cbd5e1 !important;
+    text-decoration: none !important;
+}
+
+.act-btn-view { color: #16a34a !important; border-color: #16a34a !important; }
+.act-btn-view:hover { background: #16a34a !important; color: #ffffff !important; }
+.act-btn-edit { color: #002F6C !important; border-color: #002F6C !important; }
+.act-btn-edit:hover { background: #002F6C !important; color: #ffffff !important; }
+</style>
+
+
+<style>
+/* Clean Merchandise Inventory Table Layout Fix */
+.table-wrap, .table-responsive {
+    overflow-x: auto !important;
+    width: 100% !important;
+}
+
+#mgrMerchTable, table.pricing-table, table.table {
+    table-layout: auto !important;
+    width: 100% !important;
+    min-width: 1050px !important;
+    border-collapse: collapse !important;
+}
+
+#mgrMerchTable th {
+    padding: 10px 10px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
+    background: #002F70 !important;
+    color: #ffffff !important;
+}
+
+#mgrMerchTable td {
+    padding: 9px 10px !important;
+    font-size: 13.5px !important;
+    vertical-align: middle !important;
+}
+
+/* SKU & Batch ID */
+#mgrMerchTable td:nth-child(1), #mgrMerchTable td:nth-child(2) {
+    white-space: nowrap !important;
+    font-weight: 700 !important;
+    font-family: monospace !important;
+    font-size: 12.5px !important;
+}
+
+/* Product Description: Wrap long names cleanly */
+#mgrMerchTable td:nth-child(3) {
+    max-width: 240px !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    line-height: 1.3 !important;
+    font-weight: 700 !important;
+    color: #002F6C !important;
+}
+
+/* Category: Never Overlap */
+#mgrMerchTable td:nth-child(4) {
+    white-space: nowrap !important;
+    padding-left: 12px !important;
+    color: #475569 !important;
+    font-weight: 600 !important;
+}
+
+/* Unit, Expiration Date, Stock Levels */
+#mgrMerchTable td:nth-child(5), #mgrMerchTable td:nth-child(6), #mgrMerchTable td:nth-child(7), #mgrMerchTable td:nth-child(8), #mgrMerchTable td:nth-child(9), #mgrMerchTable td:nth-child(11) {
+    white-space: nowrap !important;
+}
+
+/* Status Badge: Single Line High Contrast */
+#mgrMerchTable td:nth-child(10), .badge, .status-badge, .pstatus-badge {
+    white-space: nowrap !important;
+    display: inline-block !important;
+    padding: 4px 10px !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    border-radius: 5px !important;
+}
+
+/* Actions Column: Clean Row Buttons */
+#mgrMerchTable td:last-child {
+    white-space: nowrap !important;
+}
+
+.act-btn-wrap {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 4px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+}
+
+.act-btn {
+    height: 28px !important;
+    padding: 0 8px !important;
+    font-size: 11.5px !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    border-radius: 5px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<style>
 /* == GLOBAL OVERFLOW FIX (ELIMINATE DOUBLE VERTICAL SCROLLBAR) == */
 html, body {
     overflow: hidden !important;
@@ -1022,7 +1423,7 @@ html, body {
     width: 100%;
 }
 .table-wrap {
-    overflow-x: auto !important;
+    overflow-x: hidden !important;
     overflow-y: visible !important;
     max-width: 100% !important;
     -webkit-overflow-scrolling: touch;
@@ -1054,7 +1455,7 @@ html, body {
     line-height: 1.2 !important;
 }
 .int-head .sub {
-    font-size: 13px;
+    font-size: 15.5px;
     color: #666;
     margin-top: 4px;
     text-transform: none !important;
@@ -1085,7 +1486,7 @@ html, body {
     flex-direction: column;
 }
 .afto-card-lbl {
-    font-size: 10px;
+    font-size: 15.5px;
     font-weight: 700;
     color: #64748b;
     text-transform: uppercase;
@@ -1130,7 +1531,7 @@ html, body {
     gap: 4px;
 }
 .afto-fg label {
-    font-size: 10px;
+    font-size: 15.5px;
     font-weight: 700;
     color: #475569;
     text-transform: uppercase;
@@ -1142,7 +1543,7 @@ html, body {
     padding: 6px 12px;
     border: 1px solid #cbd5e1;
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 15.5px;
     color: #1e293b;
     background: #ffffff;
     outline: none;
@@ -1162,7 +1563,7 @@ html, body {
 .afto-actions .flt-btn {
     height: 30px;
     padding: 0 10px;
-    font-size: 11px;
+    font-size: 14px;
 }
 
 .flt-btn {
@@ -1173,7 +1574,7 @@ html, body {
     padding: 0 16px;
     height: 36px;
     border-radius: 7px;
-    font-size: 13px;
+    font-size: 15.5px;
     font-weight: 600;
     cursor: pointer;
     text-decoration: none;
@@ -1195,15 +1596,15 @@ html, body {
 
 /* â”€â”€ Admin Custom Dropdown (always opens downward) â”€â”€ */
 .adm-cdd-wrap{position:relative;display:block;}
-.adm-cdd-trigger{display:flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#374151;background:#fff;cursor:pointer;user-select:none;white-space:nowrap;width:100%;box-sizing:border-box;}
+.adm-cdd-trigger{display:flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;color:#374151;background:#fff;cursor:pointer;user-select:none;white-space:nowrap;width:100%;box-sizing:border-box;}
 .adm-cdd-trigger:hover{border-color:#94a3b8;}
 .adm-cdd-wrap.adm-cdd-open .adm-cdd-trigger{border-color:#002F70;box-shadow:0 0 0 2px rgba(0,47,112,.1);}
-.adm-cdd-arrow{font-size:9px;color:#94a3b8;margin-left:auto;transition:transform .15s;flex-shrink:0;}
+.adm-cdd-arrow{font-size:14.5px;color:#94a3b8;margin-left:auto;transition:transform .15s;flex-shrink:0;}
 .adm-cdd-wrap.adm-cdd-open .adm-cdd-arrow{transform:rotate(180deg);}
 .adm-cdd-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
 .adm-cdd-menu{display:none;position:absolute;top:calc(100% + 3px);left:0;min-width:100%;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.13);z-index:9999;max-height:260px;overflow-y:auto;}
 .adm-cdd-wrap.adm-cdd-open .adm-cdd-menu{display:block;}
-.adm-cdd-item{padding:9px 14px;font-size:13px;color:#374151;cursor:pointer;white-space:nowrap;}
+.adm-cdd-item{padding:9px 14px;font-size:15.5px;color:#374151;cursor:pointer;white-space:nowrap;}
 .adm-cdd-item:hover{background:#f1f5f9;}
 .adm-cdd-item.adm-cdd-active{font-weight:700;color:#fff;background:#1a6fd4;}
 .adm-cdd-wrap{display:none!important;}
@@ -1211,15 +1612,15 @@ html, body {
 .fd-select-source{display:none!important;}
 .fd-select{position:relative;display:inline-block;min-width:130px;}
 .afto-filter .fd-select{width:100%;}
-.fd-select-trigger{display:flex;align-items:center;gap:8px;width:100%;height:36px;padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#1e293b;font-size:13px;font-family:inherit;cursor:pointer;box-sizing:border-box;white-space:nowrap;}
+.fd-select-trigger{display:flex;align-items:center;gap:8px;width:100%;height:36px;padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#1e293b;font-size:15.5px;font-family:inherit;cursor:pointer;box-sizing:border-box;white-space:nowrap;}
 .fd-select-trigger:hover{border-color:#94a3b8;}
 .fd-select.fd-open .fd-select-trigger{border-color:var(--petron-blue, #00264D);box-shadow:0 0 0 3px rgba(0,38,77,.1);}
 .fd-select-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:left;}
-.fd-select-arrow{font-size:10px;color:#94a3b8;margin-left:auto;transition:transform .15s;flex-shrink:0;}
+.fd-select-arrow{font-size:15.5px;color:#94a3b8;margin-left:auto;transition:transform .15s;flex-shrink:0;}
 .fd-select.fd-open .fd-select-arrow{transform:rotate(180deg);}
 .fd-select-menu{display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:100%;max-height:280px;overflow-y:auto;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.16);z-index:10000;}
 .fd-select.fd-open .fd-select-menu{display:block;}
-.fd-select-option{padding:9px 14px;font-size:13px;color:#1e293b;cursor:pointer;white-space:nowrap;}
+.fd-select-option{padding:9px 14px;font-size:15.5px;color:#1e293b;cursor:pointer;white-space:nowrap;}
 .fd-select-option:hover{background:#f1f5f9;}
 .fd-select-option.fd-active{font-weight:700;color:#fff;background:#1a6fd4;}
 
@@ -1230,7 +1631,7 @@ html, body {
     gap: 5px;
     padding: 6px 12px;
     border-radius: 5px;
-    font-size: 11px;
+    font-size: 14px;
     font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
@@ -1245,7 +1646,7 @@ html, body {
 .txn-btn-info:hover { background: #0284c7 !important; color: #fff !important; }
 .btn-cancel {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 0 16px; border-radius: 6px; font-size: 13px; font-weight: 600;
+    padding: 0 16px; border-radius: 6px; font-size: 15.5px; font-weight: 600;
     cursor: pointer; border: 1px solid #6b7280; background: white !important;
     color: #475569 !important; transition: all .15s; height: 36px;
 }
@@ -1285,7 +1686,7 @@ html, body {
     border-collapse: collapse !important;
     font-size: 10.5px !important;
     text-align: left;
-    table-layout: fixed !important;
+    table-layout: fixed !important; min-width: 0 !important;
 }
 .afto-tbl th {
     background: #002F70 !important;
@@ -1344,7 +1745,7 @@ html, body {
     color: #ffffff;
     text-transform: uppercase;
     letter-spacing: 0.2px;
-    font-size: 9px;
+    font-size: 14.5px;
     border-bottom: 2px solid #001a3d;
     white-space: nowrap;
 }
@@ -1360,7 +1761,7 @@ html, body {
     color: #334155;
     vertical-align: middle;
     white-space: nowrap;
-    font-size: 10px;
+    font-size: 15.5px;
     overflow: hidden;
     text-overflow: ellipsis;
 }
@@ -1388,7 +1789,7 @@ html, body {
     display: inline-block;
     padding: 3px 8px;
     border-radius: 12px;
-    font-size: 10px;
+    font-size: 15.5px;
     font-weight: 700;
     text-transform: uppercase;
     text-align: center;
@@ -1422,13 +1823,13 @@ html, body {
 .po-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 12px;
+    font-size: 14.5px;
 }
 .po-table th {
     background: #f1f5f9;
     color: #475569;
     text-transform: uppercase;
-    font-size: 10px;
+    font-size: 15.5px;
     font-weight: 700;
     padding: 8px 12px;
     text-align: left;
@@ -1442,7 +1843,7 @@ html, body {
 
 /* â”€â”€ Tab Navigation â”€â”€ */
 .tab-nav { display:flex; gap:0; border-bottom:2px solid #e2e8f0; margin-bottom:22px; }
-.tab-btn { padding:10px 24px; background:none; border:none; border-bottom:3px solid transparent; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+.tab-btn { padding:10px 24px; background:none; border:none; border-bottom:3px solid transparent; font-size:15.5px; font-weight:600; color:#64748b; cursor:pointer; margin-bottom:-2px; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
 .tab-btn.active { color:#002F70; border-bottom-color:#002F70; }
 .tab-btn:hover { color:#002F70 !important; background:#f8fafc !important; }
 
@@ -1488,7 +1889,7 @@ html, body {
     gap: 6px;
     padding: 5px 12px;
     border-radius: 6px;
-    font-size: 12px;
+    font-size: 14.5px;
     font-weight: 600;
     cursor: pointer;
     border: 1px solid #002F70 !important;
@@ -1618,7 +2019,7 @@ html, body {
        class="tab-btn <?= $active_tab === 'alerts' ? 'active' : '' ?>">
         <i class="fas fa-exclamation-triangle"></i> Stock Alerts
         <?php if (($kpi_low_stock + $kpi_out_of_stock) > 0): ?>
-            <span style="background:#dc2626 !important;color:#fff !important;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;line-height:1;"><?= ($kpi_low_stock + $kpi_out_of_stock) ?></span>
+            <span style="background:#dc2626 !important;color:#fff !important;border-radius:10px;padding:1px 8px;font-size:14px;font-weight:700;line-height:1;"><?= ($kpi_low_stock + $kpi_out_of_stock) ?></span>
         <?php endif; ?>
     </a>
 </div>
@@ -1727,12 +2128,12 @@ html, body {
 
     <div class="afto-fg">
         <label for="date_from">Updated From</label>
-        <input type="date" name="date_from" id="date_from" value="<?= htmlspecialchars($date_from) ?>" style="font-size: 11px;">
+        <input type="date" name="date_from" id="date_from" value="<?= htmlspecialchars($date_from) ?>" style="font-size: 14px;">
     </div>
 
     <div class="afto-fg">
         <label for="date_to">Updated To</label>
-        <input type="date" name="date_to" id="date_to" value="<?= htmlspecialchars($date_to) ?>" style="font-size: 11px;">
+        <input type="date" name="date_to" id="date_to" value="<?= htmlspecialchars($date_to) ?>" style="font-size: 14px;">
     </div>
     
     <div class="afto-actions">
@@ -1747,21 +2148,8 @@ html, body {
         <div class="tbl-title"><i class="fas fa-clipboard-list"></i> Merchandise Stock Records</div>
     </div>
     <div class="table-wrap" style="width:100%; overflow-x:hidden;">
-        <table class="afto-tbl" id="adminMerchTable" style="width:100%; max-width:100%; table-layout:fixed; border-collapse:collapse;">
-            <colgroup>
-                <col style="width: 5%;">  <!-- Batch ID -->
-                <col style="width: 8%;">  <!-- SKU -->
-                <col style="width: 20%;"> <!-- Product Name -->
-                <col style="width: 10%;"> <!-- Category -->
-                <col style="width: 6%;">  <!-- UOM -->
-                <col style="width: 8%;">  <!-- Expiration Date -->
-                <col style="width: 5%;">  <!-- Initial Stock -->
-                <col style="width: 11%;"> <!-- Current Stock -->
-                <col style="width: 5%;">  <!-- Reorder Level -->
-                <col style="width: 7%;">  <!-- Status -->
-                <col style="width: 7%;">  <!-- Last Updated -->
-                <col style="width: 8%;">  <!-- Actions -->
-            </colgroup>
+        <table class="afto-tbl" id="adminMerchTable" style="width:100%; max-width:100%; table-layout:auto; min-width: 0; border-collapse:collapse;">
+            
             <thead>
                 <tr>
                     <th>Batch ID</th>
@@ -1789,7 +2177,7 @@ html, body {
             <?php else: ?>
                 <?php foreach ($sorted_filtered as $cat_label => $items): ?>
                     <tr class="cat-header">
-                        <td colspan="12" style="text-align:center; font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:12px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px;">
+                        <td colspan="12" style="text-align:center; font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:14.5px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px;">
                             <strong><?= htmlspecialchars($cat_label) ?></strong>
                         </td>
                     </tr>
@@ -1845,7 +2233,7 @@ html, body {
     data-status="<?= htmlspecialchars(strtolower($badgeLbl)) ?>"
     data-status-key="<?= htmlspecialchars(strtolower($item['computed_status'])) ?>"
     data-date="<?= $item['last_updated'] ? date('Y-m-d', strtotime($item['last_updated'])) : '' ?>">
-                        <td><code style="font-size:11px;font-weight:700;color:#002F70;"><?= htmlspecialchars($batch_id) ?></code></td>
+                        <td><code style="font-size:14px;font-weight:700;color:#002F70;"><?= htmlspecialchars($batch_id) ?></code></td>
                         <td><code><?= htmlspecialchars($item['sku'] ?: '-') ?></code></td>
                         <td><strong><?= htmlspecialchars($item['name']) ?></strong></td>
                         <td class="align-center"><?= htmlspecialchars($item['category_name']) ?></td>
@@ -1856,11 +2244,11 @@ html, body {
                             <div class="fill-bar-wrap">
                                 <div class="fill-bar-inner" style="width:<?= min(100, round($fill_pct)) ?>%;background:<?= $status_color ?>;"></div>
                             </div>
-                            <span style="font-size:11px;font-weight:600;color:#334155;"><?= number_format($stock, 0) ?> <?= htmlspecialchars($item['unit']) ?></span>
+                            <span style="font-size:14px;font-weight:600;color:#334155;"><?= number_format($stock, 0) ?> <?= htmlspecialchars($item['unit']) ?></span>
                         </td>
                         <td class="align-right" style="font-weight:600;color:#ea580c;"><?= number_format($reorder, 0) ?></td>
                         <td class="align-center"><span class="badge-lbl <?= $badgeCls ?>"><?= htmlspecialchars($badgeLbl) ?></span></td>
-                        <td style="font-size:11px; color:#64748b;"><?= $updated ?></td>
+                        <td style="font-size:14px; color:#64748b;"><?= $updated ?></td>
                         <td class="align-center">
                             <div style="display:flex; flex-direction:column; gap:4px; align-items:center; justify-content:center; padding:2px 0;">
                                 <button type="button" class="act-btn act-btn-view"
@@ -1906,8 +2294,8 @@ html, body {
     <div class="tbl-hd">
         <div class="tbl-title"><i class="fas fa-exchange-alt"></i> Stock Movement Monitoring</div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <input type="text" id="adminMovSearchInput" placeholder="Search product, ref, user..." oninput="filterAdminMovTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:220px;">
-            <select id="adminMovTypeFilter" onchange="filterAdminMovTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;font-weight:600;color:#002F70;">
+            <input type="text" id="adminMovSearchInput" placeholder="Search product, ref, user..." oninput="filterAdminMovTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;width:220px;">
+            <select id="adminMovTypeFilter" onchange="filterAdminMovTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;font-weight:600;color:#002F70;">
                 <option value="">All Movement Types</option>
                 <option value="stock in">Stock In</option>
                 <option value="stock out">Stock Out</option>
@@ -1919,17 +2307,8 @@ html, body {
         </div>
     </div>
     <div class="table-wrap" style="overflow-x:hidden; width:100%;">
-        <table class="afto-tbl" id="adminMovTable" style="width:100%; table-layout:fixed;">
-            <colgroup>
-                <col style="width:11%;">  <!-- Date -->
-                <col style="width:10%;">  <!-- Reference -->
-                <col style="width:9%;">   <!-- Type -->
-                <col style="width:20%;">  <!-- Product -->
-                <col style="width:10%;">  <!-- Quantity -->
-                <col style="width:12%;">  <!-- Performed By -->
-                <col style="width:15%;">  <!-- Branch -->
-                <col style="width:13%;">  <!-- Remarks -->
-            </colgroup>
+        <table class="afto-tbl" id="adminMovTable" style="width:100%; table-layout:auto; min-width: 0;">
+            
             <thead>
                 <tr>
                     <th>Date</th>
@@ -1988,18 +2367,18 @@ html, body {
                     }
                 ?>
                 <tr class="mov-row" data-search="<?= strtolower(htmlspecialchars($log['product_name'] . ' ' . $ref_no . ' ' . ($log['user_name'] ?? '') . ' ' . $type_label)) ?>" data-type="<?= strtolower($type_label) ?>" data-raw-type="<?= strtolower(htmlspecialchars($log['movement_type'] ?? '')) ?>">
-                    <td style="font-size:11px;color:#64748b;white-space:nowrap;"><?= $m_date ?></td>
-                    <td><code style="font-size:11px;font-weight:700;color:#002F70;"><?= htmlspecialchars($ref_no) ?></code></td>
+                    <td style="font-size:14px;color:#64748b;white-space:nowrap;"><?= $m_date ?></td>
+                    <td><code style="font-size:14px;font-weight:700;color:#002F70;"><?= htmlspecialchars($ref_no) ?></code></td>
                     <td style="text-align:center;">
-                        <span style="<?= $badge_style ?>padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;white-space:nowrap;">
+                        <span style="<?= $badge_style ?>padding:3px 8px;border-radius:4px;font-size:15.5px;font-weight:700;text-transform:uppercase;white-space:nowrap;">
                             <?= $type_label ?>
                         </span>
                     </td>
-                    <td><strong><?= htmlspecialchars($log['product_name']) ?></strong><br><code style="font-size:9px;color:#94a3b8;"><?= htmlspecialchars($log['sku']) ?></code></td>
-                    <td style="text-align:right;font-weight:800;font-size:13px;color:<?= $qty_color ?>;"><?= $qty_text ?> <?= $unit ?></td>
-                    <td style="font-size:11px;font-weight:600;color:#334155;"><?= htmlspecialchars($log['user_name'] ?? 'System') ?></td>
-                    <td style="font-size:11px;color:#475569;"><?= $branch ?></td>
-                    <td style="font-size:11px;color:#475569;max-width:200px;"><?= htmlspecialchars($log['notes'] ?? '—') ?></td>
+                    <td><strong><?= htmlspecialchars($log['product_name']) ?></strong><br><code style="font-size:14.5px;color:#94a3b8;"><?= htmlspecialchars($log['sku']) ?></code></td>
+                    <td style="text-align:right;font-weight:800;font-size:15.5px;color:<?= $qty_color ?>;"><?= $qty_text ?> <?= $unit ?></td>
+                    <td style="font-size:14px;font-weight:600;color:#334155;"><?= htmlspecialchars($log['user_name'] ?? 'System') ?></td>
+                    <td style="font-size:14px;color:#475569;"><?= $branch ?></td>
+                    <td style="font-size:14px;color:#475569;max-width:200px;"><?= htmlspecialchars($log['notes'] ?? '—') ?></td>
                 </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
@@ -2023,28 +2402,28 @@ $total_alerts_count = count($alert_rows);
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:20px;">
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #fed7aa;display:flex;align-items:center;justify-content:space-between;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#ea580c;text-transform:uppercase;letter-spacing:.3px;">Low Stock Items</div>
+            <div style="font-size:14px;font-weight:700;color:#ea580c;text-transform:uppercase;letter-spacing:.3px;">Low Stock Items</div>
             <div style="font-size:24px;font-weight:800;color:#ea580c;margin-top:4px;"><?= number_format($kpi_low_stock) ?></div>
         </div>
         <div style="background:#fff7ed;color:#ea580c;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #fecaca;display:flex;align-items:center;justify-content:space-between;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.3px;">Critical Stock Items</div>
+            <div style="font-size:14px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.3px;">Critical Stock Items</div>
             <div style="font-size:24px;font-weight:800;color:#dc2626;margin-top:4px;"><?= number_format($kpi_critical_stock) ?></div>
         </div>
         <div style="background:#fef2f2;color:#dc2626;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-fire"></i></div>
     </div>
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #fecaca;display:flex;align-items:center;justify-content:space-between;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock</div>
+            <div style="font-size:14px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock</div>
             <div style="font-size:24px;font-weight:800;color:#991b1b;margin-top:4px;"><?= number_format($kpi_out_of_stock) ?></div>
         </div>
         <div style="background:#fef2f2;color:#991b1b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
     </div>
     <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
         <div>
-            <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.3px;">Total Active Alerts</div>
+            <div style="font-size:14px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.3px;">Total Active Alerts</div>
             <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?= number_format($total_alerts_count) ?></div>
         </div>
         <div style="background:#f0f4f8;color:#002F70;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-bell"></i></div>
@@ -2055,11 +2434,11 @@ $total_alerts_count = count($alert_rows);
     <div class="tbl-hd">
         <div class="tbl-title"><i class="fas fa-exclamation-triangle" style="color:#dc2626;"></i> Active Stock Alerts Catalog</div>
         <div style="display:flex;align-items:center;gap:10px;">
-            <input type="text" id="adminAlertSearchInput" placeholder="Search alert products..." oninput="filterAdminAlertTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:220px;">
+            <input type="text" id="adminAlertSearchInput" placeholder="Search alert products..." oninput="filterAdminAlertTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;width:220px;">
         </div>
     </div>
     <div class="table-wrap" style="overflow-x:hidden; width:100%;">
-        <table class="afto-tbl" id="adminAlertTable" style="width:100%; table-layout:fixed;">
+        <table class="afto-tbl" id="adminAlertTable" style="width:100%; table-layout:auto; min-width: 0;">
             <thead>
                 <tr>
                     <th style="width:10%;">SKU</th>
@@ -2084,14 +2463,14 @@ $total_alerts_count = count($alert_rows);
                     $item_json = htmlspecialchars(json_encode($item), ENT_QUOTES);
                 ?>
                 <tr class="alert-row" data-search="<?= strtolower(htmlspecialchars($item['name'] . ' ' . $item['sku'] . ' ' . ($item['category_name'] ?? ''))) ?>">
-                    <td><code style="font-size:11px;font-weight:700;color:#002F70;"><?= htmlspecialchars($item['sku']) ?></code></td>
+                    <td><code style="font-size:14px;font-weight:700;color:#002F70;"><?= htmlspecialchars($item['sku']) ?></code></td>
                     <td><strong><?= htmlspecialchars($item['name']) ?></strong></td>
                     <td style="color:#475569;font-weight:600;"><?= htmlspecialchars($item['category_name'] ?? 'General') ?></td>
-                    <td style="text-align:right;font-weight:800;font-size:13px;color:#002F70;"><?= number_format($stock, 0) ?> <?= $unit ?></td>
+                    <td style="text-align:right;font-weight:800;font-size:15.5px;color:#002F70;"><?= number_format($stock, 0) ?> <?= $unit ?></td>
                     <td style="text-align:right;font-weight:600;color:#ea580c;"><?= number_format($reorder, 0) ?> <?= $unit ?></td>
                     <td style="text-align:center;"><span class="badge-lbl <?= $st_cls ?>"><?= htmlspecialchars($st_lbl) ?></span></td>
                     <td style="text-align:center;">
-                        <button type="button" class="int-btn-outline" onclick='adminViewProduct(<?= $item_json ?>)' style="padding:4px 10px;font-size:11px;"><i class="fas fa-eye"></i> View</button>
+                        <button type="button" class="int-btn-outline" onclick='adminViewProduct(<?= $item_json ?>)' style="padding:4px 10px;font-size:14px;"><i class="fas fa-eye"></i> View</button>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -2113,7 +2492,7 @@ $total_alerts_count = count($alert_rows);
             </div>
         </div>
         <!-- Sub-tabs inside modal -->
-        <div style="display:flex;border-bottom:2px solid #e2e8f0;background:#f8fafc;flex-shrink:0;padding:0 16px;overflow-x:auto;white-space:nowrap;gap:4px;">
+        <div style="display:flex;border-bottom:2px solid #e2e8f0;background:#f8fafc;flex-shrink:0;padding:0 16px;overflow-x: hidden;white-space:nowrap;gap:4px;">
             <button type="button" class="modal-tab-btn active" id="vpmTab1" onclick="vpmSwitchTab(1)"><i class="fas fa-info-circle"></i> Product Information</button>
             <button type="button" class="modal-tab-btn" id="vpmTab2" onclick="vpmSwitchTab(2)"><i class="fas fa-chart-pie"></i> Inventory Summary</button>
             <button type="button" class="modal-tab-btn" id="vpmTab3" onclick="vpmSwitchTab(3)"><i class="fas fa-layer-group"></i> Batch Inventory (FIFO)</button>
@@ -2122,34 +2501,34 @@ $total_alerts_count = count($alert_rows);
         <div style="overflow-y:auto;flex:1;padding:22px;" id="vpmBody">
             <!-- SUB-TAB 1: Product Information -->
             <div id="vpmPane1">
-                <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-info-circle"></i> Product Details</div>
+                <div style="font-size:14px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-info-circle"></i> Product Details</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;margin-bottom:20px;">
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">SKU</div><div id="vpmSku" style="font-weight:700;color:#002F70;font-size:14px;"></div></div>
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Product Name</div><div id="vpmName" style="font-weight:800;color:#0f172a;font-size:15px;"></div></div>
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Category</div><div id="vpmCategory" style="font-weight:600;color:#334155;"></div></div>
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Brand</div><div id="vpmBrand" style="font-weight:600;color:#334155;"></div></div>
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Supplier</div><div id="vpmSupplier" style="font-weight:600;color:#334155;"></div></div>
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Unit of Measure</div><div id="vpmUnit" style="font-weight:600;color:#334155;"></div></div>
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Barcode</div><div id="vpmBarcode" style="font-family:monospace;font-weight:700;color:#475569;"></div></div>
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Status</div><div id="vpmStatus"></div></div>
+                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">SKU</div><div id="vpmSku" style="font-weight:700;color:#002F70;font-size:14px;"></div></div>
+                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Product Name</div><div id="vpmName" style="font-weight:800;color:#0f172a;font-size:15px;"></div></div>
+                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Category</div><div id="vpmCategory" style="font-weight:600;color:#334155;"></div></div>
+                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Brand</div><div id="vpmBrand" style="font-weight:600;color:#334155;"></div></div>
+                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Supplier</div><div id="vpmSupplier" style="font-weight:600;color:#334155;"></div></div>
+                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Unit of Measure</div><div id="vpmUnit" style="font-weight:600;color:#334155;"></div></div>
+                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Barcode</div><div id="vpmBarcode" style="font-family:monospace;font-weight:700;color:#475569;"></div></div>
+                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Status</div><div id="vpmStatus"></div></div>
                 </div>
             </div>
             <!-- SUB-TAB 2: Inventory Summary -->
             <div id="vpmPane2" style="display:none;">
-                <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-boxes"></i> Stock &amp; Valuation Summary</div>
+                <div style="font-size:14px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-boxes"></i> Stock &amp; Valuation Summary</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;margin-bottom:20px;">
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Current Stock</div><div id="vpmCurrentStock" style="font-weight:800;color:#002F70;font-size:18px;"></div></div>
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Available Stock</div><div id="vpmAvailableStock" style="font-weight:800;color:#16a34a;font-size:18px;"></div></div>
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Reorder Level</div><div id="vpmReorderLevel" style="font-weight:600;color:#d97706;"></div></div>
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Critical Level</div><div id="vpmCriticalLevel" style="font-weight:600;color:#dc2626;"></div></div>
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Unit Cost</div><div id="vpmCost" style="font-weight:600;color:#475569;"></div></div>
-                    <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Selling Price</div><div id="vpmPrice" style="font-weight:700;color:#16a34a;"></div></div>
-                    <div style="grid-column:span 2;"><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Total Inventory Value</div><div id="vpmInventoryValue" style="font-weight:800;color:#002F70;font-size:18px;"></div></div>
+                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Current Stock</div><div id="vpmCurrentStock" style="font-weight:800;color:#002F70;font-size:18px;"></div></div>
+                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Available Stock</div><div id="vpmAvailableStock" style="font-weight:800;color:#16a34a;font-size:18px;"></div></div>
+                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Reorder Level</div><div id="vpmReorderLevel" style="font-weight:600;color:#d97706;"></div></div>
+                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Critical Level</div><div id="vpmCriticalLevel" style="font-weight:600;color:#dc2626;"></div></div>
+                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Unit Cost</div><div id="vpmCost" style="font-weight:600;color:#475569;"></div></div>
+                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Selling Price</div><div id="vpmPrice" style="font-weight:700;color:#16a34a;"></div></div>
+                    <div style="grid-column:span 2;"><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Total Inventory Value</div><div id="vpmInventoryValue" style="font-weight:800;color:#002F70;font-size:18px;"></div></div>
                 </div>
             </div>
             <!-- SUB-TAB 3: Batch Inventory (FIFO) -->
             <div id="vpmPane3" style="display:none;">
-                <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-layer-group"></i> FIFO Batch Inventory Breakdown</div>
+                <div style="font-size:14px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-layer-group"></i> FIFO Batch Inventory Breakdown</div>
                 <div id="vpmFifoTable"><div style="text-align:center;padding:24px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</div></div>
             </div>
         </div>
@@ -2168,21 +2547,21 @@ $total_alerts_count = count($alert_rows);
                 <i class="fas fa-exchange-alt"></i> Stock Movement Details
             </div>
         </div>
-        <div style="padding:22px;font-size:13px;">
+        <div style="padding:22px;font-size:15.5px;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Date / Time</div><div id="vmmDate" style="font-weight:700;color:#0f172a;"></div></div>
-                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Movement Type</div><div id="vmmType"></div></div>
+                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Date / Time</div><div id="vmmDate" style="font-weight:700;color:#0f172a;"></div></div>
+                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Movement Type</div><div id="vmmType"></div></div>
             </div>
-            <div style="margin-bottom:12px;"><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Product Name</div><div id="vmmProduct" style="font-weight:700;color:#002F70;font-size:15px;"></div></div>
+            <div style="margin-bottom:12px;"><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Product Name</div><div id="vmmProduct" style="font-weight:700;color:#002F70;font-size:15px;"></div></div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Batch / Ref No.</div><div id="vmmRef" style="font-weight:600;color:#475569;"></div></div>
-                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Quantity</div><div id="vmmQty" style="font-weight:800;font-size:16px;"></div></div>
+                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Batch / Ref No.</div><div id="vmmRef" style="font-weight:600;color:#475569;"></div></div>
+                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Quantity</div><div id="vmmQty" style="font-weight:800;font-size:16px;"></div></div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Remaining Stock</div><div id="vmmRemaining" style="font-weight:700;color:#002F70;"></div></div>
-                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Performed By</div><div id="vmmBy" style="font-weight:600;color:#334155;"></div></div>
+                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Remaining Stock</div><div id="vmmRemaining" style="font-weight:700;color:#002F70;"></div></div>
+                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Performed By</div><div id="vmmBy" style="font-weight:600;color:#334155;"></div></div>
             </div>
-            <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Notes / Remarks</div><div id="vmmNotes" style="color:#64748b;font-style:italic;"></div></div>
+            <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Notes / Remarks</div><div id="vmmNotes" style="color:#64748b;font-style:italic;"></div></div>
         </div>
         <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;background:#f8fafc;">
             <button type="button" onclick="closeAdminViewMovModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;">Close</button>
@@ -2198,26 +2577,26 @@ $total_alerts_count = count($alert_rows);
                 <i class="fas fa-truck-loading"></i> Stock-In Record Details
             </div>
         </div>
-        <div style="padding:22px;font-size:13px;">
+        <div style="padding:22px;font-size:15.5px;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Stock-In No.</div><div id="vsimSiNo" style="font-weight:800;color:#002F70;font-size:15px;"></div></div>
-                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">PO Number</div><div id="vsimPo" style="font-weight:700;color:#0f172a;"></div></div>
+                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Stock-In No.</div><div id="vsimSiNo" style="font-weight:800;color:#002F70;font-size:15px;"></div></div>
+                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">PO Number</div><div id="vsimPo" style="font-weight:700;color:#0f172a;"></div></div>
             </div>
-            <div style="margin-bottom:12px;"><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Product Name</div><div id="vsimProduct" style="font-weight:700;color:#002F70;font-size:15px;"></div></div>
+            <div style="margin-bottom:12px;"><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Product Name</div><div id="vsimProduct" style="font-weight:700;color:#002F70;font-size:15px;"></div></div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Supplier</div><div id="vsimSupplier" style="font-weight:600;color:#334155;"></div></div>
-                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Delivery Date</div><div id="vsimDate" style="font-weight:600;color:#334155;"></div></div>
+                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Supplier</div><div id="vsimSupplier" style="font-weight:600;color:#334155;"></div></div>
+                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Delivery Date</div><div id="vsimDate" style="font-weight:600;color:#334155;"></div></div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;background:#f8fafc;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
-                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Received Qty</div><div id="vsimQty" style="font-weight:800;color:#002F70;font-size:15px;"></div></div>
-                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Unit Cost</div><div id="vsimCost" style="font-weight:700;color:#475569;"></div></div>
-                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Batch No.</div><div id="vsimBatch" style="font-weight:700;color:#475569;"></div></div>
+                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Received Qty</div><div id="vsimQty" style="font-weight:800;color:#002F70;font-size:15px;"></div></div>
+                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Unit Cost</div><div id="vsimCost" style="font-weight:700;color:#475569;"></div></div>
+                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Batch No.</div><div id="vsimBatch" style="font-weight:700;color:#475569;"></div></div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Received By</div><div id="vsimBy" style="font-weight:600;color:#334155;"></div></div>
-                <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Status</div><div id="vsimStatus"></div></div>
+                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Received By</div><div id="vsimBy" style="font-weight:600;color:#334155;"></div></div>
+                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Status</div><div id="vsimStatus"></div></div>
             </div>
-            <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Notes</div><div id="vsimNotes" style="color:#64748b;font-style:italic;"></div></div>
+            <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Notes</div><div id="vsimNotes" style="color:#64748b;font-style:italic;"></div></div>
         </div>
         <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;background:#f8fafc;">
             <button type="button" onclick="closeAdminViewSiModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;">Close</button>
@@ -2240,42 +2619,42 @@ $total_alerts_count = count($alert_rows);
 
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;">
                 <div class="form-group" style="grid-column: span 2;">
-                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Product Name <span style="color:red;">*</span></label>
-                    <input type="text" name="product_name" id="adminEditProdName" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#0f172a;">
+                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Product Name <span style="color:red;">*</span></label>
+                    <input type="text" name="product_name" id="adminEditProdName" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:600; color:#0f172a;">
                 </div>
                 <div class="form-group">
-                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Category</label>
-                    <input type="text" id="adminEditProdCategory" readonly style="width:100%; padding:8px 12px; border:1px solid #e2e8f0; border-radius:6px; font-size:13px; background:#f8fafc; color:#64748b;">
+                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Category</label>
+                    <input type="text" id="adminEditProdCategory" readonly style="width:100%; padding:8px 12px; border:1px solid #e2e8f0; border-radius:6px; font-size:15.5px; background:#f8fafc; color:#64748b;">
                 </div>
                 <div class="form-group">
-                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Unit of Measure <span style="color:red;">*</span></label>
-                    <input type="text" name="unit" id="adminEditProdUnit" required placeholder="e.g. pcs, Liter, Bottle" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#0f172a;">
+                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Unit of Measure <span style="color:red;">*</span></label>
+                    <input type="text" name="unit" id="adminEditProdUnit" required placeholder="e.g. pcs, Liter, Bottle" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:600; color:#0f172a;">
                 </div>
                 <div class="form-group">
-                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Reorder Level <span style="color:red;">*</span></label>
-                    <input type="number" name="reorder_level" id="adminEditProdReorder" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#ea580c;">
+                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Reorder Level <span style="color:red;">*</span></label>
+                    <input type="number" name="reorder_level" id="adminEditProdReorder" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:700; color:#ea580c;">
                 </div>
                 <div class="form-group">
-                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Critical Level <span style="color:red;">*</span></label>
-                    <input type="number" name="critical_level" id="adminEditProdCritical" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#dc2626;">
+                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Critical Level <span style="color:red;">*</span></label>
+                    <input type="number" name="critical_level" id="adminEditProdCritical" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:700; color:#dc2626;">
                 </div>
                 <div class="form-group">
-                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Max Capacity <span style="color:red;">*</span></label>
-                    <input type="number" name="capacity" id="adminEditProdCapacity" min="1" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#002F70;">
+                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Max Capacity <span style="color:red;">*</span></label>
+                    <input type="number" name="capacity" id="adminEditProdCapacity" min="1" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:700; color:#002F70;">
                 </div>
                 <div class="form-group">
-                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Selling Price (₱) <span style="color:red;">*</span></label>
-                    <input type="number" step="0.01" name="price" id="adminEditProdPrice" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:700; color:#16a34a;">
+                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Selling Price (₱) <span style="color:red;">*</span></label>
+                    <input type="number" step="0.01" name="price" id="adminEditProdPrice" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:700; color:#16a34a;">
                 </div>
                 <div class="form-group" style="grid-column: span 2;">
-                    <label style="display:block; font-size:12px; font-weight:700; color:#334155; margin-bottom:4px;">Unit Cost (₱)</label>
-                    <input type="number" step="0.01" name="cost" id="adminEditProdCost" min="0" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#475569;">
+                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Unit Cost (₱)</label>
+                    <input type="number" step="0.01" name="cost" id="adminEditProdCost" min="0" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:600; color:#475569;">
                 </div>
             </div>
 
             <div style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #e2e8f0; padding-top:16px;">
-                <button type="button" onclick="closeAdminEditModal()" style="padding:8px 20px; border:1.5px solid #00264D !important; background:#ffffff !important; color:#00264D !important; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">Cancel</button>
-                <button type="submit" class="ato-btn" style="background:#002F70 !important; color:#fff !important; padding:8px 20px; border:none; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;"><i class="fas fa-save"></i> Save Changes</button>
+                <button type="button" onclick="closeAdminEditModal()" style="padding:8px 20px; border:1.5px solid #00264D !important; background:#ffffff !important; color:#00264D !important; border-radius:6px; font-size:15.5px; font-weight:700; cursor:pointer;">Cancel</button>
+                <button type="submit" class="ato-btn" style="background:#002F70 !important; color:#fff !important; padding:8px 20px; border:none; border-radius:6px; font-size:15.5px; font-weight:700; cursor:pointer;"><i class="fas fa-save"></i> Save Changes</button>
             </div>
         </form>
     </div>
@@ -2381,10 +2760,10 @@ function adminViewProduct(item) {
     .then(function(res) { return res.json(); })
     .then(function(data) {
         if (!data.success || !data.deliveries || data.deliveries.length === 0) {
-            document.getElementById('vpmFifoTable').innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Batch ID</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Received Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Remaining Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Unit Cost</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Selling Price</th></tr></thead><tbody><tr><td colspan="6" style="text-align:center;padding:16px;color:#94a3b8;">No FIFO batch records found. Defaulting to main inventory pool.</td></tr></tbody></table>';
+            document.getElementById('vpmFifoTable').innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:14.5px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Batch ID</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Received Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Remaining Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Unit Cost</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Selling Price</th></tr></thead><tbody><tr><td colspan="6" style="text-align:center;padding:16px;color:#94a3b8;">No FIFO batch records found. Defaulting to main inventory pool.</td></tr></tbody></table>';
             return;
         }
-        var fHtml = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+        var fHtml = '<table style="width:100%;border-collapse:collapse;font-size:14.5px;">';
         fHtml += '<thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Batch ID</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Received Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Remaining Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Unit Cost</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Selling Price</th></tr></thead><tbody>';
         data.deliveries.forEach(function(d) {
             var dateStr = d.encoded_at ? new Date(d.encoded_at).toLocaleDateString() : '—';
@@ -2479,7 +2858,7 @@ function openSiModal(d) {
     document.getElementById('vsimCost').textContent = '₱' + d.unit_cost;
     document.getElementById('vsimBatch').textContent = d.batch;
     document.getElementById('vsimBy').textContent = d.received_by;
-    document.getElementById('vsimStatus').innerHTML = '<span style="background:#dcfce7;color:#15803d;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;">' + esc(d.status) + '</span>';
+    document.getElementById('vsimStatus').innerHTML = '<span style="background:#dcfce7;color:#15803d;padding:2px 7px;border-radius:4px;font-size:14px;font-weight:700;">' + esc(d.status) + '</span>';
     document.getElementById('vsimNotes').textContent = d.notes;
 
     modal.classList.add('open');

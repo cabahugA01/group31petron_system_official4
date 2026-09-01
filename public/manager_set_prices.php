@@ -429,8 +429,138 @@ if (isset($_GET['ajax_psp']) && $_GET['ajax_psp'] == '1') {
     exit;
 }
 
+
+
+
 include __DIR__ . '/../partials/header.php';
 ?>
+
+<style>
+/* ABSOLUTE NO TEXT OVERLAPPING RULE */
+.cust-section, .table-wrap, .table-responsive, .table-card, .card {
+    overflow-x: auto !important;
+    width: 100% !important;
+}
+
+table.cust-table, #mgrMerchTable, table.pricing-table, table.tbl-requests, table.table {
+    table-layout: auto !important;
+    width: 100% !important;
+    min-width: 1050px !important;
+    border-collapse: collapse !important;
+}
+
+table th {
+    padding: 9px 8px !important;
+    font-size: 12.5px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.2px !important;
+    text-transform: uppercase !important;
+    white-space: nowrap !important;
+}
+
+table td {
+    padding: 9px 8px !important;
+    font-size: 13.5px !important;
+    line-height: 1.3 !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+}
+
+/* Customer ID Monospace Code */
+.cust-table td:first-child, .cust-table td code {
+    font-size: 12.5px !important;
+    font-weight: 800 !important;
+    font-family: monospace !important;
+    white-space: nowrap !important;
+}
+
+/* Customer Name High Legibility */
+.cust-table td:nth-child(2) strong {
+    font-size: 14px !important;
+    font-weight: 800 !important;
+    color: #002F6C !important;
+    white-space: nowrap !important;
+}
+
+/* Vehicles, Amounts, & Dates Never Overlap */
+td:nth-child(3), td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9), td:nth-child(10),
+th:nth-child(3), th:nth-child(4), th:nth-child(5), th:nth-child(6), th:nth-child(7), th:nth-child(8), th:nth-child(9), th:nth-child(10) {
+    white-space: nowrap !important;
+}
+
+/* Status Pill */
+.pill, .pill.active, .pill.inactive, .pill.archived, .pill.regular, .pill.credit, .status-pill, .badge {
+    white-space: nowrap !important;
+    display: inline-block !important;
+    padding: 3px 8px !important;
+    font-size: 11.5px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    border-radius: 5px !important;
+    line-height: 1.1 !important;
+}
+
+/* Action Buttons */
+.cust-actions button, .cust-table .btn-plain, .act-btn, .tbl-btn {
+    font-size: 11.5px !important;
+    font-weight: 700 !important;
+    height: 26px !important;
+    padding: 0 8px !important;
+    white-space: nowrap !important;
+    border-radius: 5px !important;
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<style>
+/* Prevent Column Text Overlap CSS */
+.table-wrap, .table-responsive {
+    overflow-x: hidden !important;
+    width: 100% !important;
+}
+#mgrMerchTable, table.pricing-table, table.tbl-requests, table.table {
+    table-layout: auto !important;
+    min-width: 0 !important;
+    width: 100% !important;
+}
+#mgrMerchTable th, table.pricing-table th, table.tbl-requests th {
+    padding: 10px 10px !important;
+    white-space: nowrap !important;
+}
+#mgrMerchTable td, table.pricing-table td, table.tbl-requests td {
+    padding: 10px 10px !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+}
+.cat-cell, td:nth-child(4), th:nth-child(4) {
+    white-space: nowrap !important;
+}
+td:nth-child(6), th:nth-child(6) {
+    white-space: nowrap !important;
+}
+td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
+    white-space: nowrap !important;
+}
+.badge, .status-badge, .status-pill, .inv-stock-badge, .pstatus-badge {
+    white-space: nowrap !important;
+}
+</style>
+
+
+
+
 
 <style>
 body, html { overflow-x: hidden; max-width: 100%; }
@@ -479,7 +609,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
 .toolbar input[type="text"],
 .toolbar select {
     padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px;
-    font-size: 13px; color: #334155; background: #fff;
+    font-size: 15.5px; color: #334155; background: #fff;
 }
 .toolbar input[type="text"]:focus,
 .toolbar select:focus { outline: none; border-color: #002F6C; box-shadow: 0 0 0 2px rgba(0,47,108,.12); }
@@ -498,7 +628,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
     box-sizing: border-box !important;
 }
 #merchTable {
-    table-layout: fixed !important;
+    table-layout: auto !important; min-width: 0 !important;
 }
 .pricing-table th {
     background: #002F70 !important; 
@@ -522,7 +652,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
 
 /* Category header row */
 .cat-row td {
-    background: #f1f5f9 !important; font-weight: 700; font-size: 11px;
+    background: #f1f5f9 !important; font-weight: 700; font-size: 14px;
     text-transform: uppercase; letter-spacing: .5px; color: #475569;
     padding: 7px 12px; border-bottom: 1px solid #e2e8f0;
 }
@@ -543,7 +673,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
 
 .badge {
     display: inline-block; padding: 3px 9px; border-radius: 999px;
-    font-size: 11px; font-weight: 600; white-space: nowrap;
+    font-size: 14px; font-weight: 600; white-space: nowrap;
 }
 
 /* == MODAL STYLES (Transaction Module Design) == */
@@ -554,21 +684,21 @@ body, html { overflow-x: hidden; max-width: 100%; }
 .modal-head .modal-icon { width:34px; height:34px; background:#f1f5f9; border-radius:8px; display:flex; align-items:center; justify-content:center; margin-right:10px; }
 .modal-head .modal-icon i { color:#64748b; font-size:15px; }
 .modal-title { font-weight:700; font-size:14px; color:#1e293b; }
-.modal-subtitle { font-size:11px; color:#64748b; margin-top:1px; }
+.modal-subtitle { font-size:14px; color:#64748b; margin-top:1px; }
 .modal-close { background:#f1f5f9; border:none; color:#64748b; font-size:17px; cursor:pointer; width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; transition:background .15s; }
 .modal-close:hover { background:#e2e8f0; color:#475569; }
 .modal-body { padding:20px; overflow-y:auto; max-height:calc(90vh - 140px); }
-.modal-body label { font-size:13px; font-weight:600; color:#334155 !important; display:block; margin-bottom:6px; letter-spacing:.3px; }
-.modal-body .input { width:100%; padding:9px 12px; border:1.5px solid #d1d5db; border-radius:8px; font-size:13px; box-sizing:border-box; color:#1e293b; background:#fff; outline:none; transition:border-color .15s; }
+.modal-body label { font-size:15.5px; font-weight:600; color:#334155 !important; display:block; margin-bottom:6px; letter-spacing:.3px; }
+.modal-body .input { width:100%; padding:9px 12px; border:1.5px solid #d1d5db; border-radius:8px; font-size:15.5px; box-sizing:border-box; color:#1e293b; background:#fff; outline:none; transition:border-color .15s; }
 .modal-body .input:focus { border-color:#003d7a; }
 .modal-body textarea.input { resize:vertical; font-family:inherit; }
 .modal-body select.input { cursor:pointer; }
 .modal-actions { display:flex; justify-content:flex-end; gap:8px; padding:15px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; }
 .modal-info-box { background:#f0f7ff; border:1px solid #dbeafe; border-radius:8px; padding:12px; margin-bottom:20px; }
-.modal-info-box h4 { margin:0 0 10px 0; font-size:13px; color:#003d7a; font-weight:700; }
-.modal-info-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; font-size:12px; }
+.modal-info-box h4 { margin:0 0 10px 0; font-size:15.5px; color:#003d7a; font-weight:700; }
+.modal-info-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; font-size:14.5px; }
 .modal-info-grid div { display:flex; flex-direction:column; }
-.modal-info-grid strong { color:#374151; font-size:11px; margin-bottom:2px; }
+.modal-info-grid strong { color:#374151; font-size:14px; margin-bottom:2px; }
 
 /* Button styles */
 .flt-btn {
@@ -576,7 +706,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
     align-items: center;
     gap: 6px;
     padding: 9px 16px;
-    font-size: 13px;
+    font-size: 15.5px;
     font-weight: 600;
     border-radius: 8px;
     cursor: pointer;
@@ -695,8 +825,8 @@ body, html { overflow-x: hidden; max-width: 100%; }
      ══════════════════════════════════════════════════════════════════════════ -->
 <div id="tab-fuel" class="tab-panel <?php echo $active_tab === 'fuel' ? 'active' : ''; ?>">
     <div style="display:flex;align-items:center;justify-content:flex-start;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
-        <input type="text" id="fuelSearchInput" oninput="filterFuelTable()" placeholder="&#x1F50D; Search UGT or Fuel Type..." style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#334155;background:#fff;min-width:220px;">
-        <select id="fuelStatusFilter" onchange="filterFuelTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#334155;background:#fff;">
+        <input type="text" id="fuelSearchInput" oninput="filterFuelTable()" placeholder="&#x1F50D; Search UGT or Fuel Type..." style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;color:#334155;background:#fff;min-width:220px;">
+        <select id="fuelStatusFilter" onchange="filterFuelTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;color:#334155;background:#fff;">
             <option value="">All Statuses</option>
             <option value="Normal">Normal</option>
             <option value="Low">Low</option>
@@ -705,13 +835,13 @@ body, html { overflow-x: hidden; max-width: 100%; }
     </div>
 
     <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
-        <button onclick="openAddProductModal()" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:all 0.2s;">
+        <button onclick="openAddProductModal()" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:9px 18px;border-radius:6px;font-size:15.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:all 0.2s;">
             <i class="fas fa-plus-circle"></i> Add Product
         </button>
     </div>
 
     <div class="card" style="padding:0;overflow:hidden;">
-        <div class="table-wrap" style="overflow-x:auto;">
+        <div class="table-wrap" style="overflow-x: hidden;">
             <table class="pricing-table">
                 <thead>
                     <tr>
@@ -720,7 +850,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         <th style="text-align:right;">Price / Liter (&#8369;)</th>
                         <th style="text-align:right;">Current Volume (L)</th>
                         <th style="text-align:right;">Capacity (L)</th>
-                        <th style="text-align:right;">Critical Level (L)</th>
+                        
                         <th style="text-align:right;">Reorder Level (L)</th>
                         <th style="text-align:center;">Status</th>
                         <th style="text-align:center;">Last Updated</th>
@@ -730,7 +860,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                 <tbody>
                 <?php if (empty($fuel_products)): ?>
                     <tr>
-                        <td colspan="10" style="text-align:center;padding:28px;color:#94a3b8;">
+                        <td colspan="9" style="text-align:center;padding:28px;color:#94a3b8;">
                             <i class="fas fa-info-circle"></i> No fuel inventory records found for this station.
                         </td>
                     </tr>
@@ -776,7 +906,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         <td>
                             <strong style="color:#002F6C;">&#8369;<?php echo number_format((float)($f['price_per_liter'] ?? 0), 2); ?></strong>
                             <?php if (($f['approval_status'] ?? '') === 'pending'): ?>
-                                <div style="font-size:11px; color:#d97706; background:#fef3c7; padding:2px 6px; border-radius:4px; margin-top:4px; display:inline-block; font-weight:600;">
+                                <div style="font-size:14px; color:#d97706; background:#fef3c7; padding:2px 6px; border-radius:4px; margin-top:4px; display:inline-block; font-weight:600;">
                                     Pending: ₱<?php echo number_format($f['pending_price'], 2); ?>
                                 </div>
                             <?php endif; ?>
@@ -788,14 +918,14 @@ body, html { overflow-x: hidden; max-width: 100%; }
                             </div>
                         </td>
                         <td><?php echo number_format($capacity, 2); ?></td>
-                        <td><?php echo number_format($critical, 2); ?></td>
+                        
                         <td><strong style="color:#475569;"><?php echo number_format((float)$reorder, 2); ?></strong></td>
                         <td>
-                            <span class="badge <?php echo $status_class; ?>" style="<?php echo $badge_style; ?>display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;">
+                            <span class="badge <?php echo $status_class; ?>" style="<?php echo $badge_style; ?>display:inline-block;padding:3px 10px;border-radius:999px;font-size:14px;font-weight:700;">
                                 <?php echo htmlspecialchars($status_label); ?>
                             </span>
                         </td>
-                        <td class="muted" style="font-size:12px;">
+                        <td class="muted" style="font-size:14.5px;">
                             <?php echo $f['last_updated'] ? htmlspecialchars(date('M d, Y H:i', strtotime($f['last_updated']))) : '&mdash;'; ?>
                         </td>
                         <td>
@@ -819,7 +949,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                                         </button>
                                     <?php endif; ?>
                                 <?php else: ?>
-                                    <span style="font-size:11px;color:#94a3b8;font-style:italic;">No Actions</span>
+                                    <span style="font-size:14px;color:#94a3b8;font-style:italic;">No Actions</span>
                                 <?php endif; ?>
                             </div>
                         </td>
@@ -875,7 +1005,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
         </select>
     </div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
-        <button onclick="openAddMerchandiseModal()" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:all 0.2s;">
+        <button onclick="openAddMerchandiseModal()" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:9px 18px;border-radius:6px;font-size:15.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:all 0.2s;">
             <i class="fas fa-plus-circle"></i> Add Merchandise
         </button>
     </div>
@@ -888,19 +1018,8 @@ body, html { overflow-x: hidden; max-width: 100%; }
     <?php else: ?>
     <div class="card" style="padding:0;overflow:hidden;">
         <div class="table-wrap" style="overflow-x:hidden; width:100%;">
-            <table class="pricing-table" id="merchTable" style="width:100%; table-layout:fixed;">
-                <colgroup>
-                    <col style="width:90px;">   <!-- SKU / Code -->
-                    <col style="width:20%;">    <!-- Product Name -->
-                    <col style="width:130px;">  <!-- Category -->
-                    <col style="width:110px;">  <!-- Brand -->
-                    <col style="width:95px;">   <!-- UOM -->
-                    <col style="width:140px;">  <!-- Default Selling Price -->
-                    <col style="width:85px;">   <!-- Reorder Lvl -->
-                    <col style="width:85px;">   <!-- Critical Lvl -->
-                    <col style="width:105px;">  <!-- Status -->
-                    <col style="width:125px;">  <!-- Actions -->
-                </colgroup>
+            <table class="pricing-table" id="merchTable" style="width:100%; table-layout:auto; min-width: 0;">
+                
                 <thead>
                     <tr>
                         <th style="text-align:left;padding:10px 8px;">SKU / Code</th>
@@ -910,7 +1029,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         <th style="text-align:left;padding:10px 8px;">UOM</th>
                         <th style="text-align:right;padding:10px 8px;">Default Selling Price</th>
                         <th style="text-align:center;padding:10px 8px;">Reorder Lvl</th>
-                        <th style="text-align:center;padding:10px 8px;">Critical Lvl</th>
+                        
                         <th style="text-align:center;padding:10px 8px;">Status</th>
                         <th style="text-align:center;padding:10px 8px;">Actions</th>
                     </tr>
@@ -918,7 +1037,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                 <tbody id="merchBody">
                 <?php foreach ($merch_by_cat as $cat_label => $items): ?>
                     <tr class="cat-row" data-cat-header="<?php echo htmlspecialchars($cat_label); ?>">
-                        <td colspan="10">
+                        <td colspan="9">
                             <i class="fas fa-folder"></i>
                             <?php echo htmlspecialchars($cat_label); ?>
                             <span class="muted cat-count" style="font-weight:400;margin-left:6px;">(<?php echo count($items); ?> items)</span>
@@ -964,45 +1083,43 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         <?php if ($is_inactive): ?>style="opacity:0.6;background:#f8f9fa;"<?php endif; ?>>
                         <!-- SKU / Code -->
                         <td>
-                            <code style="font-size:11px;color:#4f46e5;background:#ede9fe;padding:2px 6px;border-radius:4px;font-weight:700;">
+                            <code style="font-size:14px;color:#4f46e5;background:#ede9fe;padding:2px 6px;border-radius:4px;font-weight:700;">
                                 <?php echo htmlspecialchars($item['sku'] ?? '—'); ?>
                             </code>
                         </td>
                         <!-- Product Name -->
                         <td>
-                            <strong style="color:#1e293b;font-size:13px;"><?php echo htmlspecialchars($item['product_name'] ?? ''); ?></strong>
+                            <strong style="color:#1e293b;font-size:15.5px;"><?php echo htmlspecialchars($item['product_name'] ?? ''); ?></strong>
                             <?php if ($is_inactive): ?>
-                                <span style="margin-left:5px;font-size:10px;background:#e2e8f0;color:#64748b;padding:1px 5px;border-radius:3px;font-weight:600;">INACTIVE</span>
+                                <span style="margin-left:5px;font-size:15.5px;background:#e2e8f0;color:#64748b;padding:1px 5px;border-radius:3px;font-weight:600;">INACTIVE</span>
                             <?php endif; ?>
                             <?php if (($item['approval_status'] ?? '') === 'pending'): ?>
-                                <div style="font-size:10px;color:#d97706;background:#fef3c7;padding:2px 5px;border-radius:3px;margin-top:2px;font-weight:600;display:inline-block;">Pending: ₱<?php echo number_format($item['pending_price'], 2); ?></div>
+                                <div style="font-size:15.5px;color:#d97706;background:#fef3c7;padding:2px 5px;border-radius:3px;margin-top:2px;font-weight:600;display:inline-block;">Pending: ₱<?php echo number_format($item['pending_price'], 2); ?></div>
                             <?php endif; ?>
                         </td>
                         <!-- Category -->
-                        <td style="font-size:12px;color:#334155;"><?php echo htmlspecialchars($cat_label); ?></td>
+                        <td style="font-size:14.5px;color:#334155;"><?php echo htmlspecialchars($cat_label); ?></td>
                         <!-- Brand -->
-                        <td style="font-size:12px;color:#64748b;"><?php echo $brand_display ?: '—'; ?></td>
+                        <td style="font-size:14.5px;color:#64748b;"><?php echo $brand_display ?: '—'; ?></td>
                         <!-- UOM -->
-                        <td style="font-size:12px;color:#334155;font-weight:500;"><?php echo htmlspecialchars($item['unit'] ?? 'pcs'); ?></td>
+                        <td style="font-size:14.5px;color:#334155;font-weight:500;"><?php echo htmlspecialchars($item['unit'] ?? 'pcs'); ?></td>
                         <!-- Default Selling Price -->
                         <td style="text-align:right;">
                             <?php if ($no_price): ?>
                                 <span class="badge badge-noprice">No Price Set</span>
                             <?php else: ?>
-                                <strong style="color:#002F6C;font-size:13px;">&#8369;<?php echo number_format($price, 2); ?></strong>
+                                <strong style="color:#002F6C;font-size:15.5px;">&#8369;<?php echo number_format($price, 2); ?></strong>
                             <?php endif; ?>
                         </td>
                         <!-- Reorder Level -->
                         <td style="text-align:center;">
-                            <span style="display:inline-block;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700;"><?php echo number_format($reorder_level); ?></span>
+                            <span style="display:inline-block;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:4px;padding:2px 8px;font-size:14.5px;font-weight:700;"><?php echo number_format($reorder_level); ?></span>
                         </td>
-                        <!-- Critical Level -->
-                        <td style="text-align:center;">
-                            <span style="display:inline-block;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700;"><?php echo number_format($critical_lvl); ?></span>
-                        </td>
+                        
+                        
                         <!-- Status -->
                         <!-- Status -->
-                        <td style="text-align:center;"><span class="badge <?php echo $st_class; ?>" style="<?php echo $style_attr; ?>display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;"><?php echo $st_label; ?></span></td>
+                        <td style="text-align:center;"><span class="badge <?php echo $st_class; ?>" style="<?php echo $style_attr; ?>display:inline-block;padding:3px 9px;border-radius:999px;font-size:14px;font-weight:700;"><?php echo $st_label; ?></span></td>
                         <!-- Actions -->
                         <td style="text-align:center;">
                             <div class="act-btn-wrap">
@@ -1050,8 +1167,8 @@ body, html { overflow-x: hidden; max-width: 100%; }
                 <strong style="font-size:15px;color:#002F6C;"><i class="fas fa-tools"></i> Service Management</strong>
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                <input type="text" id="svcSearchInput" oninput="filterServiceTable()" placeholder="&#x1F50D; Search services..." style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#334155;background:#fff;min-width:180px;">
-                <select id="serviceCategoryFilter" onchange="filterServiceTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#334155;background:#fff;">
+                <input type="text" id="svcSearchInput" oninput="filterServiceTable()" placeholder="&#x1F50D; Search services..." style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;color:#334155;background:#fff;min-width:180px;">
+                <select id="serviceCategoryFilter" onchange="filterServiceTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;color:#334155;background:#fff;">
                     <option value="">All Categories</option>
                     <option value="Lubrication">Lubrication</option>
                     <option value="Preventive Maintenance">Preventive Maintenance</option>
@@ -1069,7 +1186,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                     <option value="Others">Others</option>
                     <option value="Custom Services">Custom Services</option>
                 </select>
-                <select id="svcStatusFilter" onchange="filterServiceTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#334155;background:#fff;">
+                <select id="svcStatusFilter" onchange="filterServiceTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;color:#334155;background:#fff;">
                     <option value="">All Status</option>
                     <option value="1">Active</option>
                     <option value="0">Inactive</option>
@@ -1077,7 +1194,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
             </div>
         </div>
         <div style="padding:10px 20px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;justify-content:flex-end;">
-            <button onclick="openAddServiceModal()" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:all 0.2s;">
+            <button onclick="openAddServiceModal()" style="background:linear-gradient(135deg,#002F6C 0%,#004494 100%);color:#fff;border:none;padding:9px 18px;border-radius:6px;font-size:15.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 4px rgba(0,47,108,0.2);transition:all 0.2s;">
                 <i class="fas fa-plus-circle"></i> Add Service
             </button>
         </div>
@@ -1086,11 +1203,11 @@ body, html { overflow-x: hidden; max-width: 100%; }
             <div style="padding:40px;text-align:center;color:#94a3b8;">
                 <i class="fas fa-tools" style="font-size:36px;margin-bottom:12px;display:block;color:#cbd5e1;"></i>
                 <div style="font-size:15px;font-weight:600;color:#64748b;margin-bottom:4px;">No service types found</div>
-                <div style="font-size:13px;">Click <strong>Add Service</strong> to add your first service type.</div>
+                <div style="font-size:15.5px;">Click <strong>Add Service</strong> to add your first service type.</div>
             </div>
         <?php else: ?>
-        <div class="table-wrap" style="overflow-x:auto;">
-            <table class="pricing-table" style="min-width:1100px;">
+        <div class="table-wrap" style="overflow-x: hidden;">
+            <table class="pricing-table" style="min-width: 0;">
                 <thead>
                     <tr>
                         <th style="width:110px;">Code</th>
@@ -1144,52 +1261,52 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         data-active="<?php echo $isActive ? '1' : '0'; ?>"
                         data-name="<?php echo strtolower(htmlspecialchars($svc['service_name'])); ?>">
                         <td>
-                            <span style="font-family:monospace;font-size:11px;color:#0369a1;font-weight:700;background:#e0f2fe;padding:3px 7px;border-radius:5px;letter-spacing:0.3px;"><?php echo $svcCode; ?></span>
+                            <span style="font-family:monospace;font-size:14px;color:#0369a1;font-weight:700;background:#e0f2fe;padding:3px 7px;border-radius:5px;letter-spacing:0.3px;"><?php echo $svcCode; ?></span>
                         </td>
                         <td>
-                            <div style="font-weight:600;color:#1e293b;font-size:13px;"><?php echo $svcName; ?></div>
+                            <div style="font-weight:600;color:#1e293b;font-size:15.5px;"><?php echo $svcName; ?></div>
                             <?php if ($svcDesc): ?>
-                            <div style="font-size:11px;color:#94a3b8;margin-top:2px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo $svcDesc; ?>"><?php echo $svcDesc; ?></div>
+                            <div style="font-size:14px;color:#94a3b8;margin-top:2px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo $svcDesc; ?>"><?php echo $svcDesc; ?></div>
                             <?php endif; ?>
                         </td>
                         <td>
-                            <span style="background:#f0f7ff;color:#003d7a;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;"><?php echo $svcCat; ?></span>
+                            <span style="background:#f0f7ff;color:#003d7a;padding:3px 10px;border-radius:999px;font-size:14px;font-weight:600;white-space:nowrap;"><?php echo $svcCat; ?></span>
                         </td>
                         <td style="text-align:right;">
                             <div style="font-weight:700;color:#002F6C;font-size:14px;">&#8369;<?php echo number_format($svcFee, 2); ?></div>
                             <?php if ($hasPending && $pendSvcFee > 0): ?>
-                            <div style="font-size:10px;color:#d97706;background:#fef3c7;padding:2px 5px;border-radius:4px;margin-top:3px;font-weight:600;display:inline-block;white-space:nowrap;">
-                                <i class="fas fa-hourglass-half" style="font-size:9px;"></i> &#8369;<?php echo number_format($pendSvcFee, 2); ?>
+                            <div style="font-size:15.5px;color:#d97706;background:#fef3c7;padding:2px 5px;border-radius:4px;margin-top:3px;font-weight:600;display:inline-block;white-space:nowrap;">
+                                <i class="fas fa-hourglass-half" style="font-size:14.5px;"></i> &#8369;<?php echo number_format($pendSvcFee, 2); ?>
                             </div>
                             <?php endif; ?>
                         </td>
                         <td style="text-align:right;">
-                            <div style="font-weight:600;color:#0369a1;font-size:13px;">&#8369;<?php echo number_format($laborFee, 2); ?></div>
+                            <div style="font-weight:600;color:#0369a1;font-size:15.5px;">&#8369;<?php echo number_format($laborFee, 2); ?></div>
                             <?php if ($hasPending && $pendLabFee > 0): ?>
-                            <div style="font-size:10px;color:#d97706;background:#fef3c7;padding:2px 5px;border-radius:4px;margin-top:3px;font-weight:600;display:inline-block;white-space:nowrap;">
-                                <i class="fas fa-hourglass-half" style="font-size:9px;"></i> &#8369;<?php echo number_format($pendLabFee, 2); ?>
+                            <div style="font-size:15.5px;color:#d97706;background:#fef3c7;padding:2px 5px;border-radius:4px;margin-top:3px;font-weight:600;display:inline-block;white-space:nowrap;">
+                                <i class="fas fa-hourglass-half" style="font-size:14.5px;"></i> &#8369;<?php echo number_format($pendLabFee, 2); ?>
                             </div>
                             <?php endif; ?>
                         </td>
                         <td style="text-align:center;">
-                            <span style="color:#64748b;font-size:12px;white-space:nowrap;"><i class="fas fa-clock" style="color:#94a3b8;font-size:11px;"></i> <?php echo $durationStr; ?></span>
+                            <span style="color:#64748b;font-size:14.5px;white-space:nowrap;"><i class="fas fa-clock" style="color:#94a3b8;font-size:14px;"></i> <?php echo $durationStr; ?></span>
                         </td>
                         <td style="text-align:center;">
-                            <span style="color:#64748b;font-size:12px;"><i class="fas fa-user-cog" style="color:#94a3b8;font-size:11px;"></i> <?php echo $mechanics; ?></span>
+                            <span style="color:#64748b;font-size:14.5px;"><i class="fas fa-user-cog" style="color:#94a3b8;font-size:14px;"></i> <?php echo $mechanics; ?></span>
                         </td>
                         <td style="text-align:center;">
                             <?php if ($isActive): ?>
-                            <span style="background:#dcfce7;color:#15803d;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:700;display:inline-block;">Active</span>
+                            <span style="background:#dcfce7;color:#15803d;padding:4px 10px;border-radius:999px;font-size:14px;font-weight:700;display:inline-block;">Active</span>
                             <?php else: ?>
-                            <span style="background:#fee2e2;color:#b91c1c;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:700;display:inline-block;">Inactive</span>
+                            <span style="background:#fee2e2;color:#b91c1c;padding:4px 10px;border-radius:999px;font-size:14px;font-weight:700;display:inline-block;">Inactive</span>
                             <?php endif; ?>
                             <?php if ($hasPending): ?>
                             <div style="margin-top:4px;">
-                                <span style="background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:999px;font-size:10px;font-weight:700;white-space:nowrap;"><i class="fas fa-hourglass-half" style="font-size:9px;"></i> Pending</span>
+                                <span style="background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:999px;font-size:15.5px;font-weight:700;white-space:nowrap;"><i class="fas fa-hourglass-half" style="font-size:14.5px;"></i> Pending</span>
                             </div>
                             <?php endif; ?>
                         </td>
-                        <td style="text-align:center;font-size:12px;color:#94a3b8;white-space:nowrap;"><?php echo $updatedAt; ?></td>
+                        <td style="text-align:center;font-size:14.5px;color:#94a3b8;white-space:nowrap;"><?php echo $updatedAt; ?></td>
                         <td style="text-align:center;">
                             <div class="act-btn-wrap">
                                 <button onclick='openViewServiceModal(<?php echo $jsObj; ?>)' class="act-btn act-btn-view">
@@ -1373,20 +1490,20 @@ document.addEventListener('DOMContentLoaded', function() {
             <!-- Row 1: Fuel Name + UGT Number -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
                 <div>
-                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         Fuel Name <span style="color:#dc2626;">*</span>
                     </label>
                     <input type="text" id="newFuelName" maxlength="50" required
-                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"
+                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                            placeholder="e.g. Diesel, XCS Plus, Turbo Diesel">
                 </div>
                 <div>
-                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         UGT Number <span style="color:#dc2626;">*</span>
                     </label>
                     <select id="newUgtNo" required
-                            style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;background:#fff;"
+                            style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;background:#fff;"
                             onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
                         <option value="">Select UGT</option>
                         <?php
@@ -1433,20 +1550,20 @@ document.addEventListener('DOMContentLoaded', function() {
             <!-- Row 2: Price + Capacity -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
                 <div>
-                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         Selling Price Per Liter (₱) <span style="color:#dc2626;">*</span>
                     </label>
                     <input type="number" id="newPrice" step="0.01" min="0.01" required
-                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"
+                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                            placeholder="84.00">
                 </div>
                 <div>
-                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         Tank Capacity (Liters) <span style="color:#dc2626;">*</span>
                     </label>
                     <input type="number" id="newCapacity" step="1" min="1" required
-                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"
+                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                            placeholder="15000">
                 </div>
@@ -1455,20 +1572,20 @@ document.addEventListener('DOMContentLoaded', function() {
             <!-- Row 3: Critical Level + Reorder Level -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
                 <div>
-                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         Critical Level (Liters) <span style="color:#dc2626;">*</span>
                     </label>
                     <input type="number" id="newCriticalLevel" step="1" min="1" required
-                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"
+                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                            placeholder="2500">
                 </div>
                 <div>
-                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         Reorder Level (Liters) <span style="color:#dc2626;">*</span>
                     </label>
                     <input type="number" id="newReorderLevel" step="1" min="1" required
-                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"
+                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                            placeholder="5000">
                 </div>
@@ -1477,24 +1594,24 @@ document.addEventListener('DOMContentLoaded', function() {
             <!-- Row 4: Status + Remarks -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;align-items:start;">
                 <div>
-                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:6px;">
+                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:6px;">
                         Status <span style="color:#dc2626;">*</span>
                     </label>
                     <div style="display:flex;gap:18px;align-items:center;padding-top:4px;">
-                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:600;color:#166534;">
+                        <label style="display:flex;align-items:center;gap:6px;font-size:15.5px;cursor:pointer;font-weight:600;color:#166534;">
                             <input type="radio" name="newStatus" value="active" checked style="accent-color:#16a34a;"> Active
                         </label>
-                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:600;color:#991b1b;">
+                        <label style="display:flex;align-items:center;gap:6px;font-size:15.5px;cursor:pointer;font-weight:600;color:#991b1b;">
                             <input type="radio" name="newStatus" value="inactive" style="accent-color:#dc2626;"> Inactive
                         </label>
                     </div>
                 </div>
                 <div>
-                    <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         Remarks <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span>
                     </label>
                     <input type="text" id="newRemarks"
-                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;"
+                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                            placeholder="Optional notes or remarks...">
                 </div>
@@ -1503,11 +1620,11 @@ document.addEventListener('DOMContentLoaded', function() {
             <!-- Actions Footer -->
             <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:14px;">
                 <button type="button" onclick="closeAddProductModal()"
-                        style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">
+                        style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 18px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">
                     Cancel
                 </button>
                 <button type="submit"
-                        style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:8px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                        style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:8px 22px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
                     <i class="fas fa-check" style="color:#ffffff !important;"></i> Add Fuel Product
                 </button>
             </div>
@@ -1533,41 +1650,41 @@ document.addEventListener('DOMContentLoaded', function() {
       <!-- Row 1: UGT Number + Fuel Name -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">UGT Number</label>
-          <input type="text" id="editUgtNo" style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;color:#002F70;font-weight:800;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">UGT Number</label>
+          <input type="text" id="editUgtNo" style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;color:#002F70;font-weight:800;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
         </div>
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Fuel Name</label>
-          <input type="text" id="editFuelName" style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;color:#0f172a;font-weight:700;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Fuel Name</label>
+          <input type="text" id="editFuelName" style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;color:#0f172a;font-weight:700;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
         </div>
       </div>
 
       <!-- Row 2: Price Per Liter + Tank Capacity -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Price / Liter (₱) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="editPrice" step="0.01" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
-          <small style="font-size:10px;color:#d97706;display:block;margin-top:2px;"><i class="fas fa-info-circle"></i> Price changes require Admin approval.</small>
+          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Price / Liter (₱) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="editPrice" step="0.01" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
+          <small style="font-size:15.5px;color:#d97706;display:block;margin-top:2px;"><i class="fas fa-info-circle"></i> Price changes require Admin approval.</small>
         </div>
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Tank Capacity (L) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="editFuelCapacity" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
+          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Tank Capacity (L) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="editFuelCapacity" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
         </div>
       </div>
 
       <!-- Row 3: Reorder Level + Status -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;align-items:start;">
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Reorder Level (L) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="editFuelReorder" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
+          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Reorder Level (L) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="editFuelReorder" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
         </div>
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:6px;">Status <span style="color:#dc2626;">*</span></label>
+          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:6px;">Status <span style="color:#dc2626;">*</span></label>
           <div style="display:flex;gap:18px;align-items:center;padding-top:4px;">
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:600;color:#166534;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:15.5px;cursor:pointer;font-weight:600;color:#166534;">
               <input type="radio" id="editFuelStatusActive" name="editFuelStatus" value="active" checked style="accent-color:#16a34a;"> Active
             </label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;font-weight:600;color:#991b1b;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:15.5px;cursor:pointer;font-weight:600;color:#991b1b;">
               <input type="radio" id="editFuelStatusInactive" name="editFuelStatus" value="inactive" style="accent-color:#dc2626;"> Inactive
             </label>
           </div>
@@ -1576,14 +1693,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
       <!-- Row 4: Remarks -->
       <div style="margin-bottom:16px;">
-        <label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Remarks <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span></label>
-        <input type="text" id="editFuelRemarks" style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="Optional notes or remarks...">
+        <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Remarks <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span></label>
+        <input type="text" id="editFuelRemarks" style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="Optional notes or remarks...">
       </div>
 
       <!-- Actions -->
       <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:14px;">
-        <button type="button" onclick="closeEditPriceModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">Cancel</button>
-        <button type="submit" style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:8px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save" style="color:#ffffff !important;"></i> Save Changes</button>
+        <button type="button" onclick="closeEditPriceModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 18px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">Cancel</button>
+        <button type="submit" style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:8px 22px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save" style="color:#ffffff !important;"></i> Save Changes</button>
       </div>
     </form>
   </div>
@@ -1607,58 +1724,58 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h4 style="margin:0 0 14px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
                     <i class="fas fa-info-circle" style="color:#002F6C;"></i> Fuel Specification &amp; Overview
                 </h4>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(190px, 1fr));gap:14px;font-size:13px;width:100%;">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(190px, 1fr));gap:14px;font-size:15.5px;width:100%;">
                     <div>
-                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Fuel Name</strong>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Fuel Name</strong>
                         <span style="font-weight:700;color:#002F6C;font-size:14px;" id="viewFuelType">-</span>
                     </div>
                     <div>
-                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">UGT Number</strong>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">UGT Number</strong>
                         <span style="font-weight:700;color:#1e293b;" id="viewUgtNo">-</span>
                     </div>
                     <div>
-                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Current Price / Liter</strong>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Current Price / Liter</strong>
                         <span style="font-weight:700;color:#16a34a;font-size:14px;" id="viewCurrentPrice">₱0.00</span>
                     </div>
                     <div>
-                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Current Volume</strong>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Current Volume</strong>
                         <span style="font-weight:700;color:#002F6C;" id="viewStock">0.00 L</span>
                     </div>
                     <div>
-                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Available Capacity</strong>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Available Capacity</strong>
                         <span style="font-weight:700;color:#2563eb;" id="viewAvailableCapacity">0.00 L</span>
                     </div>
                     <div>
-                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Tank Capacity</strong>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Tank Capacity</strong>
                         <span style="font-weight:600;color:#334155;" id="viewCapacity">0.00 L</span>
                     </div>
                     <div>
-                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Critical Level</strong>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Critical Level</strong>
                         <span style="font-weight:600;color:#dc2626;" id="viewCriticalLevel">0.00 L</span>
                     </div>
                     <div>
-                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Reorder Level</strong>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Reorder Level</strong>
                         <span style="font-weight:600;color:#d97706;" id="viewReorderLevel">0.00 L</span>
                     </div>
                     <div>
-                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Stock Status</strong>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Stock Status</strong>
                         <span style="font-weight:600;" id="viewStatus">-</span>
                     </div>
                     <div>
-                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Product Status</strong>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Product Status</strong>
                         <span style="font-weight:600;" id="viewProductStatus">-</span>
                     </div>
                     <div>
-                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Price Request Status</strong>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Price Request Status</strong>
                         <span style="font-weight:600;color:#475569;" id="viewPriceRequestStatus">No Pending Request</span>
                     </div>
                     <div>
-                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Last Updated</strong>
-                        <span style="font-size:12px;color:#475569;" id="viewLastUpdated">-</span>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Last Updated</strong>
+                        <span style="font-size:14.5px;color:#475569;" id="viewLastUpdated">-</span>
                     </div>
                     <div>
-                        <strong style="display:block;font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Updated By</strong>
-                        <span style="font-size:12px;color:#475569;" id="viewUpdatedBy">-</span>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Updated By</strong>
+                        <span style="font-size:14.5px;color:#475569;" id="viewUpdatedBy">-</span>
                     </div>
                 </div>
             </div>
@@ -1668,10 +1785,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;">
                     <i class="fas fa-history" style="color:#002F6C;"></i> Price Change History
                 </h4>
-                <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box;">
-                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <div style="overflow-x: hidden;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box;">
+                    <table style="width:100%;border-collapse:collapse;font-size:14.5px;">
                         <thead>
-                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:11px;letter-spacing:0.3px;">
+                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:14px;letter-spacing:0.3px;">
                                 <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Effective Date</th>
                                 <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Price</th>
                                 <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Requested By</th>
@@ -1692,10 +1809,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;">
                     <i class="fas fa-sliders-h" style="color:#002F6C;"></i> Configuration Change History
                 </h4>
-                <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box;">
-                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <div style="overflow-x: hidden;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box;">
+                    <table style="width:100%;border-collapse:collapse;font-size:14.5px;">
                         <thead>
-                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:11px;letter-spacing:0.3px;">
+                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:14px;letter-spacing:0.3px;">
                                 <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Date</th>
                                 <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Field Changed</th>
                                 <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Old Value</th>
@@ -1715,10 +1832,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;">
                     <i class="fas fa-toggle-on" style="color:#002F6C;"></i> Status Change History
                 </h4>
-                <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box;">
-                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <div style="overflow-x: hidden;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box;">
+                    <table style="width:100%;border-collapse:collapse;font-size:14.5px;">
                         <thead>
-                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:11px;letter-spacing:0.3px;">
+                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:14px;letter-spacing:0.3px;">
                                 <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Date</th>
                                 <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Old Status</th>
                                 <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">New Status</th>
@@ -1736,7 +1853,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         <!-- Footer -->
         <div style="display:flex;justify-content:flex-end;padding:14px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;flex-shrink:0;">
-            <button type="button" onclick="closeViewFuelModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 20px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">
+            <button type="button" onclick="closeViewFuelModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 20px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">
                 <i class="fas fa-times"></i> Close
             </button>
         </div>
@@ -1753,7 +1870,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             <div>
                 <h3 style="margin:0;font-size:16px;font-weight:700;color:#fff;" id="confirmModalTitle">Confirm Action</h3>
-                <p style="margin:2px 0 0 0;font-size:12px;color:rgba(255,255,255,0.9);" id="confirmModalSubtitle">Please confirm your action</p>
+                <p style="margin:2px 0 0 0;font-size:14.5px;color:rgba(255,255,255,0.9);" id="confirmModalSubtitle">Please confirm your action</p>
             </div>
         </div>
         
@@ -1764,10 +1881,10 @@ document.addEventListener('DOMContentLoaded', function() {
         
         <!-- Footer -->
         <div style="display:flex;justify-content:flex-end;gap:10px;padding:16px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;">
-            <button type="button" onclick="closeConfirmModal()" style="background:#f1f5f9 !important;color:#0f172a !important;-webkit-text-fill-color:#0f172a !important;border:1px solid #cbd5e1;padding:9px 20px;border-radius:6px;font-size:13px;font-weight:700 !important;cursor:pointer;transition:all .2s;">
+            <button type="button" onclick="closeConfirmModal()" style="background:#f1f5f9 !important;color:#0f172a !important;-webkit-text-fill-color:#0f172a !important;border:1px solid #cbd5e1;padding:9px 20px;border-radius:6px;font-size:15.5px;font-weight:700 !important;cursor:pointer;transition:all .2s;">
                 <i class="fas fa-times" style="color:#0f172a !important;-webkit-text-fill-color:#0f172a !important;"></i> Cancel
             </button>
-            <button type="button" id="confirmModalBtn" onclick="confirmModalAction()" style="background:#dc2626 !important;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;border:none;padding:9px 24px;border-radius:6px;font-size:13px;font-weight:700 !important;cursor:pointer;transition:all .2s;box-shadow:0 2px 4px rgba(220,38,38,0.3);">
+            <button type="button" id="confirmModalBtn" onclick="confirmModalAction()" style="background:#dc2626 !important;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;border:none;padding:9px 24px;border-radius:6px;font-size:15.5px;font-weight:700 !important;cursor:pointer;transition:all .2s;box-shadow:0 2px 4px rgba(220,38,38,0.3);">
                 <i class="fas fa-check" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;"></i> Confirm
             </button>
         </div>
@@ -1837,24 +1954,24 @@ document.addEventListener('DOMContentLoaded', function() {
 
       <!-- Confirmation Notice -->
       <div style="background:#f0f7ff;border:1px solid #bae6fd;border-radius:8px;padding:14px 16px;margin-bottom:16px;">
-        <p style="margin:0 0 8px 0;font-size:13px;font-weight:700;color:#0369a1;">
+        <p style="margin:0 0 8px 0;font-size:15.5px;font-weight:700;color:#0369a1;">
           Restore this previous price as the current selling price?
         </p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-top:10px;background:#ffffff;padding:10px 12px;border-radius:6px;border:1px solid #e0f2fe;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:14.5px;margin-top:10px;background:#ffffff;padding:10px 12px;border-radius:6px;border:1px solid #e0f2fe;">
           <div>
-            <span style="color:#64748b;display:block;font-size:11px;">Fuel Product:</span>
-            <strong id="restoreFuelNameDisplay" style="color:#002F6C;font-size:13px;">-</strong>
+            <span style="color:#64748b;display:block;font-size:14px;">Fuel Product:</span>
+            <strong id="restoreFuelNameDisplay" style="color:#002F6C;font-size:15.5px;">-</strong>
           </div>
           <div>
-            <span style="color:#64748b;display:block;font-size:11px;">Historical Date:</span>
-            <strong id="restoreDateDisplay" style="color:#334155;font-size:12px;">-</strong>
+            <span style="color:#64748b;display:block;font-size:14px;">Historical Date:</span>
+            <strong id="restoreDateDisplay" style="color:#334155;font-size:14.5px;">-</strong>
           </div>
           <div>
-            <span style="color:#64748b;display:block;font-size:11px;">Current Price:</span>
+            <span style="color:#64748b;display:block;font-size:14px;">Current Price:</span>
             <strong id="restoreCurrentPriceDisplay" style="color:#dc2626;font-size:14px;">₱0.00</strong>
           </div>
           <div>
-            <span style="color:#64748b;display:block;font-size:11px;">Previous Price (To Restore):</span>
+            <span style="color:#64748b;display:block;font-size:14px;">Previous Price (To Restore):</span>
             <strong id="restoreTargetPriceDisplay" style="color:#16a34a;font-size:14px;">₱0.00</strong>
           </div>
         </div>
@@ -1862,18 +1979,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
       <!-- Optional Reason -->
       <div style="margin-bottom:18px;">
-        <label style="display:block;font-size:12px;font-weight:700;color:#334155;margin-bottom:6px;">
+        <label style="display:block;font-size:14.5px;font-weight:700;color:#334155;margin-bottom:6px;">
           Reason for Restoration <span style="color:#94a3b8;font-weight:400;">(Optional note for Admin)</span>
         </label>
-        <textarea id="restoreReason" rows="2" style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" placeholder="e.g. Restoring previous standard pricing following promotional period..."></textarea>
+        <textarea id="restoreReason" rows="2" style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" placeholder="e.g. Restoring previous standard pricing following promotional period..."></textarea>
       </div>
 
       <!-- Actions -->
       <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:14px;">
-        <button type="button" onclick="closeRestorePriceModal()" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;padding:8px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">
+        <button type="button" onclick="closeRestorePriceModal()" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;padding:8px 18px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">
           Cancel
         </button>
-        <button type="submit" style="background:#002F6C;color:#ffffff;border:none;padding:8px 20px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+        <button type="submit" style="background:#002F6C;color:#ffffff;border:none;padding:8px 20px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
           <i class="fas fa-paper-plane"></i> Submit Restoration Request
         </button>
       </div>
@@ -1894,37 +2011,37 @@ document.addEventListener('DOMContentLoaded', function() {
       <!-- Row 1: Product Name + SKU -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Product Name <span style="color:#dc2626;">*</span></label>
-          <input type="text" id="newMerchName" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coke 1.5L" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&]/g, '');">
+          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Product Name <span style="color:#dc2626;">*</span></label>
+          <input type="text" id="newMerchName" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coke 1.5L" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&]/g, '');">
         </div>
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">SKU / Product Code</label>
-          <input type="text" id="newMerchSku" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;font-family:monospace;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. ITEM-001 (auto if blank)" oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\-\_]/g, '');">
+          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">SKU / Product Code</label>
+          <input type="text" id="newMerchSku" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;font-family:monospace;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. ITEM-001 (auto if blank)" oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\-\_]/g, '');">
         </div>
       </div>
       <!-- Row 2: Category + Brand -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Category <span style="color:#dc2626;">*</span></label>
-          <input type="text" id="newMerchCategory" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Drinks/Food" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
+          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Category <span style="color:#dc2626;">*</span></label>
+          <input type="text" id="newMerchCategory" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Drinks/Food" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
         </div>
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Brand</label>
-          <input type="text" id="newMerchBrand" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coca-Cola, Petron" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
+          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Brand</label>
+          <input type="text" id="newMerchBrand" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coca-Cola, Petron" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
         </div>
       </div>
       <!-- Row 3: UOM + Barcode -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit of Measure (UOM)</label>
-          <input type="text" id="newMerchSize" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Bottle, Box, pcs, 500ml" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
+          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit of Measure (UOM)</label>
+          <input type="text" id="newMerchSize" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Bottle, Box, pcs, 500ml" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
         </div>
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Barcode <span style="color:#94a3b8;font-weight:400;text-transform:none;">(optional)</span></label>
+          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Barcode <span style="color:#94a3b8;font-weight:400;text-transform:none;">(optional)</span></label>
           <div style="position:relative;display:flex;align-items:center;">
             <i class="fas fa-barcode" style="position:absolute;left:10px;color:#64748b;font-size:16px;z-index:1;pointer-events:none;"></i>
             <input type="text" id="newMerchBarcode"
-              style="width:100%;padding:9px 11px 9px 34px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;font-family:monospace;"
+              style="width:100%;padding:9px 11px 9px 34px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;font-family:monospace;"
               onfocus="this.style.borderColor='#002F6C'"
               onblur="this.style.borderColor='#d1d5db'"
               placeholder="Scan barcode or type manually"
@@ -1934,36 +2051,33 @@ document.addEventListener('DOMContentLoaded', function() {
             <button type="button" id="newMerchBarcodeScanBtn"
               onclick="activateBarcodeScan('newMerchBarcode', 'add')"
               title="Click then scan with barcode gun"
-              style="position:absolute;right:6px;background:#002F6C;color:#fff;border:none;border-radius:5px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;">
+              style="position:absolute;right:6px;background:#002F6C;color:#fff;border:none;border-radius:5px;padding:4px 9px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;">
               <i class="fas fa-crosshairs"></i> Scan
             </button>
           </div>
-          <div id="newMerchBarcodeStatus" style="font-size:11px;margin-top:4px;min-height:16px;"></div>
+          <div id="newMerchBarcodeStatus" style="font-size:14px;margin-top:4px;min-height:16px;"></div>
         </div>
       </div>
       <!-- Row 4: Default Selling Price -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#002F6C;text-transform:uppercase;margin-bottom:4px;">Default Selling Price (&#8369;) <span style="color:#dc2626;">*</span></label>
+          <label style="display:block;font-size:14px;font-weight:700;color:#002F6C;text-transform:uppercase;margin-bottom:4px;">Default Selling Price (&#8369;) <span style="color:#dc2626;">*</span></label>
           <input type="number" id="newMerchPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:2px solid #002F6C;border-radius:7px;font-size:14px;font-weight:600;box-sizing:border-box;" onfocus="this.style.borderColor='#004494'" onblur="this.style.borderColor='#002F6C'" placeholder="0.00">
-          <small style="color:#64748b;font-size:11px;">Cost price will be set per delivery batch (Record Delivery)</small>
+          <small style="color:#64748b;font-size:14px;">Cost price will be set per delivery batch (Record Delivery)</small>
         </div>
         <div></div>
       </div>
       <!-- Row 5: Reorder Level + Critical Level -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:4px;">Reorder Level</label>
-          <input type="number" id="newMerchReorder" min="0" value="24" style="width:100%;padding:9px 11px;border:1.5px solid #fde68a;border-radius:7px;font-size:13px;background:#fffbeb;box-sizing:border-box;" onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#fde68a'" placeholder="24">
+          <label style="display:block;font-size:14px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:4px;">Reorder Level</label>
+          <input type="number" id="newMerchReorder" min="0" value="24" style="width:100%;padding:9px 11px;border:1.5px solid #fde68a;border-radius:7px;font-size:15.5px;background:#fffbeb;box-sizing:border-box;" onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#fde68a'" placeholder="24">
         </div>
-        <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;margin-bottom:4px;">Critical Level</label>
-          <input type="number" id="newMerchCritical" min="0" value="10" style="width:100%;padding:9px 11px;border:1.5px solid #fca5a5;border-radius:7px;font-size:13px;background:#fff1f2;box-sizing:border-box;" onfocus="this.style.borderColor='#ef4444'" onblur="this.style.borderColor='#fca5a5'" placeholder="10">
-        </div>
+        <input type="hidden" id="newMerchCritical" value="0">
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:16px;">
-        <button type="button" onclick="closeAddMerchandiseModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">Cancel</button>
-        <button type="submit" style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-check" style="color:#ffffff !important;"></i> Add Product</button>
+        <button type="button" onclick="closeAddMerchandiseModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:9px 18px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">Cancel</button>
+        <button type="submit" style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:9px 22px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-check" style="color:#ffffff !important;"></i> Add Product</button>
       </div>
     </form>
   </div>
@@ -1983,15 +2097,15 @@ document.addEventListener('DOMContentLoaded', function() {
       <!-- Row 1: Product Name + SKU -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Product Name <span style="color:#dc2626;">*</span></label>
-          <input type="text" id="editMerchName" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&]/g, '');">
+          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Product Name <span style="color:#dc2626;">*</span></label>
+          <input type="text" id="editMerchName" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&]/g, '');">
         </div>
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Barcode <span style="color:#94a3b8;font-weight:400;text-transform:none;">(optional)</span></label>
+          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Barcode <span style="color:#94a3b8;font-weight:400;text-transform:none;">(optional)</span></label>
           <div style="position:relative;display:flex;align-items:center;">
             <i class="fas fa-barcode" style="position:absolute;left:10px;color:#64748b;font-size:16px;z-index:1;pointer-events:none;"></i>
             <input type="text" id="editMerchBarcode"
-              style="width:100%;padding:9px 11px 9px 34px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;font-family:monospace;"
+              style="width:100%;padding:9px 11px 9px 34px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;font-family:monospace;"
               onfocus="this.style.borderColor='#002F6C'"
               onblur="this.style.borderColor='#d1d5db'"
               placeholder="Scan barcode or type manually"
@@ -2001,45 +2115,45 @@ document.addEventListener('DOMContentLoaded', function() {
             <button type="button" id="editMerchBarcodeScanBtn"
               onclick="activateBarcodeScan('editMerchBarcode', 'edit')"
               title="Click then scan with barcode gun"
-              style="position:absolute;right:6px;background:#002F6C;color:#fff;border:none;border-radius:5px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;">
+              style="position:absolute;right:6px;background:#002F6C;color:#fff;border:none;border-radius:5px;padding:4px 9px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;">
               <i class="fas fa-crosshairs"></i> Scan
             </button>
           </div>
-          <div id="editMerchBarcodeStatus" style="font-size:11px;margin-top:4px;min-height:16px;"></div>
+          <div id="editMerchBarcodeStatus" style="font-size:14px;margin-top:4px;min-height:16px;"></div>
         </div>
       </div>
       <!-- Row 2: Category + Brand -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Category <span style="color:#dc2626;">*</span></label>
-          <input type="text" id="editMerchCategory" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
+          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Category <span style="color:#dc2626;">*</span></label>
+          <input type="text" id="editMerchCategory" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
         </div>
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Brand</label>
-          <input type="text" id="editMerchBrand" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coca-Cola, Petron" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
+          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Brand</label>
+          <input type="text" id="editMerchBrand" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coca-Cola, Petron" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
         </div>
       </div>
       <!-- Row 3: UOM + SKU -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit of Measure (UOM)</label>
-          <input type="text" id="editMerchSize" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Bottle, Box, pcs" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
+          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit of Measure (UOM)</label>
+          <input type="text" id="editMerchSize" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Bottle, Box, pcs" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
         </div>
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">SKU / Product Code <span style="color:#94a3b8;font-weight:400;text-transform:none;">(read-only)</span></label>
-          <input type="text" id="editMerchSku" readonly style="width:100%;padding:9px 11px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:13px;background:#f8fafc;color:#4f46e5;font-weight:700;box-sizing:border-box;font-family:monospace;">
+          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">SKU / Product Code <span style="color:#94a3b8;font-weight:400;text-transform:none;">(read-only)</span></label>
+          <input type="text" id="editMerchSku" readonly style="width:100%;padding:9px 11px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:15.5px;background:#f8fafc;color:#4f46e5;font-weight:700;box-sizing:border-box;font-family:monospace;">
         </div>
       </div>
       <!-- Row 4: Default Selling Price -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#002F6C;text-transform:uppercase;margin-bottom:4px;">Default Selling Price (&#8369;) <span style="color:#dc2626;">*</span></label>
+          <label style="display:block;font-size:14px;font-weight:700;color:#002F6C;text-transform:uppercase;margin-bottom:4px;">Default Selling Price (&#8369;) <span style="color:#dc2626;">*</span></label>
           <input type="number" id="editMerchPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:2px solid #002F6C;border-radius:7px;font-size:14px;font-weight:600;box-sizing:border-box;" onfocus="this.style.borderColor='#004494'" onblur="this.style.borderColor='#002F6C'" placeholder="0.00" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
-          <small style="color:#64748b;font-size:11px;">Cost price is managed per delivery batch</small>
+          <small style="color:#64748b;font-size:14px;">Cost price is managed per delivery batch</small>
         </div>
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Status</label>
-          <select id="editMerchStatus" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:13px;">
+          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Status</label>
+          <select id="editMerchStatus" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;">
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
@@ -2048,17 +2162,14 @@ document.addEventListener('DOMContentLoaded', function() {
       <!-- Row 5: Reorder Level + Critical Level -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:4px;">Reorder Level</label>
-          <input type="number" id="editMerchReorder" min="0" style="width:100%;padding:9px 11px;border:1.5px solid #fde68a;border-radius:7px;font-size:13px;background:#fffbeb;box-sizing:border-box;" onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#fde68a'" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+          <label style="display:block;font-size:14px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:4px;">Reorder Level</label>
+          <input type="number" id="editMerchReorder" min="0" style="width:100%;padding:9px 11px;border:1.5px solid #fde68a;border-radius:7px;font-size:15.5px;background:#fffbeb;box-sizing:border-box;" onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#fde68a'" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
         </div>
-        <div>
-          <label style="display:block;font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;margin-bottom:4px;">Critical Level</label>
-          <input type="number" id="editMerchCritical" min="0" style="width:100%;padding:9px 11px;border:1.5px solid #fca5a5;border-radius:7px;font-size:13px;background:#fff1f2;box-sizing:border-box;" onfocus="this.style.borderColor='#ef4444'" onblur="this.style.borderColor='#fca5a5'" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
-        </div>
+        <input type="hidden" id="editMerchCritical" value="0">
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:16px;">
-        <button type="button" onclick="closeEditMerchPriceModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">Cancel</button>
-        <button type="submit" style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:9px 22px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save" style="color:#ffffff !important;"></i> Save Changes</button>
+        <button type="button" onclick="closeEditMerchPriceModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:9px 18px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">Cancel</button>
+        <button type="submit" style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:9px 22px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save" style="color:#ffffff !important;"></i> Save Changes</button>
       </div>
     </form>
   </div>
@@ -2084,7 +2195,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h4 style="margin:0 0 14px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
                     <i class="fas fa-info-circle"></i> Product Specification &amp; Overview
                 </h4>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;font-size:13px;">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;font-size:15.5px;">
                     <div><span style="color:#64748b;font-weight:600;">SKU / Code:</span><br><code id="vm_sku" style="font-weight:800;color:#4f46e5;">-</code></div>
                     <div><span style="color:#64748b;font-weight:600;">Barcode:</span><br><strong id="vm_barcode">-</strong></div>
                     <div><span style="color:#64748b;font-weight:600;">Product Name:</span><br><strong id="vm_name" style="color:#0f172a;">-</strong></div>
@@ -2092,7 +2203,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div><span style="color:#64748b;font-weight:600;">Brand:</span><br><strong id="vm_brand">-</strong></div>
                     <div><span style="color:#64748b;font-weight:600;">Unit (UOM):</span><br><strong id="vm_unit">-</strong></div>
                     <div><span style="color:#64748b;font-weight:600;">Current Selling Price:</span><br><strong id="vm_price" style="color:#002F6C;font-size:15px;">-</strong></div>
-                    <div><span style="color:#64748b;font-weight:600;">Current Cost Price:</span><br><strong id="vm_cost" style="color:#16a34a;font-size:14px;">-</strong> <small style="color:#94a3b8;font-size:10px;">(from latest approved Stock-In)</small></div>
+                    <div><span style="color:#64748b;font-weight:600;">Current Cost Price:</span><br><strong id="vm_cost" style="color:#16a34a;font-size:14px;">-</strong> <small style="color:#94a3b8;font-size:15.5px;">(from latest approved Stock-In)</small></div>
                     <div><span style="color:#64748b;font-weight:600;">Total Stock (All Batches):</span><br><strong id="vm_stock" style="font-size:14px;">-</strong></div>
                     <div><span style="color:#64748b;font-weight:600;">Batch Count:</span><br><strong id="vm_batch_count">-</strong></div>
                     <div><span style="color:#64748b;font-weight:600;">Reorder Level:</span><br><strong id="vm_reorder">-</strong></div>
@@ -2106,7 +2217,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <i class="fas fa-layer-group" style="color:#0284c7;"></i> Batch Summary <small style="color:#64748b;font-weight:400;">(Read Only)</small>
                 </h4>
                 <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-                    <table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;">
+                    <table style="width:100%;border-collapse:collapse;font-size:14.5px;text-align:left;">
                         <thead>
                             <tr style="background:#f1f5f9;color:#334155;font-weight:700;">
                                 <th style="padding:8px 12px;">Batch No.</th>
@@ -2128,7 +2239,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <i class="fas fa-history" style="color:#4f46e5;"></i> Price History
                 </h4>
                 <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-                    <table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;">
+                    <table style="width:100%;border-collapse:collapse;font-size:14.5px;text-align:left;">
                         <thead>
                             <tr style="background:#f1f5f9;color:#334155;font-weight:700;">
                                 <th style="padding:8px 12px;">Date</th>
@@ -2153,7 +2264,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <i class="fas fa-sliders-h" style="color:#d97706;"></i> Configuration History
                 </h4>
                 <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-                    <table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;">
+                    <table style="width:100%;border-collapse:collapse;font-size:14.5px;text-align:left;">
                         <thead>
                             <tr style="background:#f1f5f9;color:#334155;font-weight:700;">
                                 <th style="padding:8px 12px;">Date</th>
@@ -2176,7 +2287,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <i class="fas fa-power-off" style="color:#dc2626;"></i> Status History
                 </h4>
                 <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-                    <table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;">
+                    <table style="width:100%;border-collapse:collapse;font-size:14.5px;text-align:left;">
                         <thead>
                             <tr style="background:#f1f5f9;color:#334155;font-weight:700;">
                                 <th style="padding:8px 12px;">Date</th>
@@ -2196,7 +2307,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         <!-- Footer -->
         <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:12px 24px;display:flex;justify-content:flex-end;flex-shrink:0;">
-            <button onclick="closeViewMerchModal()" style="background:#00264D !important;color:#fff !important;border:none;padding:8px 20px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">Close</button>
+            <button onclick="closeViewMerchModal()" style="background:#00264D !important;color:#fff !important;border:none;padding:8px 20px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">Close</button>
         </div>
     </div>
 </div>
@@ -2232,15 +2343,15 @@ document.addEventListener('DOMContentLoaded', function() {
       <div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
           <div style="grid-column:1/-1;">
-            <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Name <span style="color:#dc2626;">*</span></label>
+            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Name <span style="color:#dc2626;">*</span></label>
             <input type="text" id="addSvcName" required placeholder="e.g. Change Oil - Mineral"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;font-weight:500;box-sizing:border-box;"
+              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;font-weight:500;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&]/g, '');">
           </div>
           <div style="grid-column:1/-1;">
-            <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Category <span style="color:#dc2626;">*</span></label>
-            <select id="addSvcCategory" required onchange="toggleCustomCategoryInput('add')" style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;"
+            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Category <span style="color:#dc2626;">*</span></label>
+            <select id="addSvcCategory" required onchange="toggleCustomCategoryInput('add')" style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
               <option value="">-- Select Category --</option>
               <option value="Lubrication">Lubrication</option>
@@ -2261,49 +2372,49 @@ document.addEventListener('DOMContentLoaded', function() {
             <!-- Custom Category Input -->
             <div id="addSvcCustomWrap" style="display:none;margin-top:8px;">
               <input type="text" id="addSvcCustomCategory" placeholder="Type custom category name (e.g. Car Audio & Accessories)..."
-                style="width:100%;padding:9px 12px;border:1.5px solid #0284c7;border-radius:8px;font-size:13px;background:#f0f9ff;box-sizing:border-box;color:#0369a1;font-weight:600;"
+                style="width:100%;padding:9px 12px;border:1.5px solid #0284c7;border-radius:8px;font-size:15.5px;background:#f0f9ff;box-sizing:border-box;color:#0369a1;font-weight:600;"
                 oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
             </div>
           </div>
           <div>
-            <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Fee (₱) <span style="color:#dc2626;">*</span></label>
+            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Fee (₱) <span style="color:#dc2626;">*</span></label>
             <input type="number" id="addSvcServiceFee" step="0.01" min="0" required placeholder="0.00"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;"
+              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
-            <small style="color:#94a3b8;font-size:11px;">Parts/materials fee</small>
+            <small style="color:#94a3b8;font-size:14px;">Parts/materials fee</small>
           </div>
           <div>
-            <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Labor Fee (₱) <span style="color:#dc2626;">*</span></label>
+            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Labor Fee (₱) <span style="color:#dc2626;">*</span></label>
             <input type="number" id="addSvcLaborFee" step="0.01" min="0" required placeholder="0.00"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;"
+              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
-            <small style="color:#94a3b8;font-size:11px;">Mechanic labor fee</small>
+            <small style="color:#94a3b8;font-size:14px;">Mechanic labor fee</small>
           </div>
           <div>
-            <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins)</label>
+            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins)</label>
             <input type="number" id="addSvcDuration" min="5" max="480" step="5" value="60" placeholder="60"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;"
+              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
           </div>
           <div>
-            <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics</label>
+            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics</label>
             <input type="number" id="addSvcMechanics" min="1" max="10" value="1" placeholder="1"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;"
+              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
           </div>
           <div style="grid-column:1/-1;">
-            <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Description <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
+            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Description <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
             <textarea id="addSvcDescription" rows="2" placeholder="Brief description of the service..."
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box;"
+              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;resize:vertical;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"></textarea>
           </div>
         </div>
       </div>
       <!-- Footer Actions -->
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:14px;border-top:1px solid #e2e8f0;margin-top:auto;">
-        <button type="button" onclick="closeAddServiceModal()" style="background:#f1f5f9 !important;color:#0f172a !important;border:1px solid #cbd5e1 !important;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
-        <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
+        <button type="button" onclick="closeAddServiceModal()" style="background:#f1f5f9 !important;color:#0f172a !important;border:1px solid #cbd5e1 !important;padding:10px 20px;border-radius:8px;font-size:15.5px;font-weight:600;cursor:pointer;">Cancel</button>
+        <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
           <i class="fas fa-check-circle"></i> Add Service
         </button>
       </div>
@@ -2321,10 +2432,10 @@ document.addEventListener('DOMContentLoaded', function() {
       <h3 style="margin:0;font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
         <i class="fas fa-edit"></i> Edit Service
       </h3>
-      <div id="editSvcCodeDisplay" style="font-size:12px;color:rgba(255,255,255,.7);margin-top:3px;font-family:monospace;"></div>
+      <div id="editSvcCodeDisplay" style="font-size:14.5px;color:rgba(255,255,255,.7);margin-top:3px;font-family:monospace;"></div>
     </div>
     <!-- Approval Notice -->
-    <div id="editSvcApprovalNotice" style="display:none;flex-shrink:0;background:#fef3c7;border-bottom:1px solid #fde68a;padding:10px 22px;font-size:12px;color:#92400e;display:flex;align-items:center;gap:8px;">
+    <div id="editSvcApprovalNotice" style="display:none;flex-shrink:0;background:#fef3c7;border-bottom:1px solid #fde68a;padding:10px 22px;font-size:14.5px;color:#92400e;display:flex;align-items:center;gap:8px;">
       <i class="fas fa-exclamation-triangle"></i>
       <span><strong>Fee changes require Admin approval.</strong> Non-fee fields (name, category, duration, etc.) will save immediately.</span>
     </div>
@@ -2334,15 +2445,15 @@ document.addEventListener('DOMContentLoaded', function() {
         <input type="hidden" id="editSvcId">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
           <div style="grid-column:1/-1;">
-            <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Name <span style="color:#dc2626;">*</span></label>
+            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Name <span style="color:#dc2626;">*</span></label>
             <input type="text" id="editSvcName" required
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;font-weight:500;box-sizing:border-box;"
+              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;font-weight:500;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&]/g, '');">
           </div>
           <div style="grid-column:1/-1;">
-            <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Category <span style="color:#dc2626;">*</span></label>
-            <select id="editSvcCategory" required onchange="toggleCustomCategoryInput('edit')" style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;"
+            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Category <span style="color:#dc2626;">*</span></label>
+            <select id="editSvcCategory" required onchange="toggleCustomCategoryInput('edit')" style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
               <option value="">-- Select Category --</option>
               <option value="Lubrication">Lubrication</option>
@@ -2363,50 +2474,50 @@ document.addEventListener('DOMContentLoaded', function() {
             <!-- Custom Category Input -->
             <div id="editSvcCustomWrap" style="display:none;margin-top:8px;">
               <input type="text" id="editSvcCustomCategory" placeholder="Type custom category name..."
-                style="width:100%;padding:9px 12px;border:1.5px solid #0284c7;border-radius:8px;font-size:13px;background:#f0f9ff;box-sizing:border-box;color:#0369a1;font-weight:600;"
+                style="width:100%;padding:9px 12px;border:1.5px solid #0284c7;border-radius:8px;font-size:15.5px;background:#f0f9ff;box-sizing:border-box;color:#0369a1;font-weight:600;"
                 oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
             </div>
           </div>
           <div>
-            <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Fee (₱) <span style="color:#dc2626;">*</span></label>
+            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Fee (₱) <span style="color:#dc2626;">*</span></label>
             <input type="number" id="editSvcServiceFee" step="0.01" min="0" required placeholder="0.00"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;"
+              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="checkSvcFeeChange()">
-            <small style="color:#94a3b8;font-size:11px;">Parts/materials fee</small>
+            <small style="color:#94a3b8;font-size:14px;">Parts/materials fee</small>
           </div>
           <div>
-            <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Labor Fee (₱) <span style="color:#dc2626;">*</span></label>
+            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Labor Fee (₱) <span style="color:#dc2626;">*</span></label>
             <input type="number" id="editSvcLaborFee" step="0.01" min="0" required placeholder="0.00"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;"
+              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="checkSvcFeeChange()">
-            <small style="color:#94a3b8;font-size:11px;">Mechanic labor fee</small>
+            <small style="color:#94a3b8;font-size:14px;">Mechanic labor fee</small>
           </div>
           <div>
-            <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins)</label>
+            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins)</label>
             <input type="number" id="editSvcDuration" min="5" max="480" step="5"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;"
+              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="this.value = this.value.replace(/[^0-9]/g, '');">
           </div>
           <div>
-            <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics</label>
+            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics</label>
             <input type="number" id="editSvcMechanics" min="1" max="10"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;"
+              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="this.value = this.value.replace(/[^0-9]/g, '');">
           </div>
           <div style="grid-column:1/-1;">
-            <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Description</label>
+            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Description</label>
             <textarea id="editSvcDescription" rows="2"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box;"
+              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;resize:vertical;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&\:\;'\"]/g, '');"></textarea>
           </div>
           <div>
-            <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Status</label>
-            <select id="editSvcActive" style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;">
+            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Status</label>
+            <select id="editSvcActive" style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;">
               <option value="1">Active</option>
               <option value="0">Inactive</option>
             </select>
@@ -2415,8 +2526,8 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
       <!-- Footer Actions -->
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:14px;border-top:1px solid #e2e8f0;margin-top:auto;">
-        <button type="button" onclick="closeEditServiceModal()" style="background:#f1f5f9 !important;color:#0f172a !important;border:1px solid #cbd5e1;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
-        <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
+        <button type="button" onclick="closeEditServiceModal()" style="background:#f1f5f9 !important;color:#0f172a !important;border:1px solid #cbd5e1;padding:10px 20px;border-radius:8px;font-size:15.5px;font-weight:600;cursor:pointer;">Cancel</button>
+        <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
           <i class="fas fa-save"></i> Save Changes
         </button>
       </div>
@@ -2434,50 +2545,50 @@ document.addEventListener('DOMContentLoaded', function() {
       <h3 style="margin:0;font-size:17px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
         <i class="fas fa-tools"></i> Service Details
       </h3>
-      <div id="viewSvcCodeDisplay" style="font-size:12px;color:rgba(255,255,255,.75);margin-top:5px;font-family:monospace;letter-spacing:0.5px;"></div>
+      <div id="viewSvcCodeDisplay" style="font-size:14.5px;color:rgba(255,255,255,.75);margin-top:5px;font-family:monospace;letter-spacing:0.5px;"></div>
     </div>
     <!-- Scrollable Content Body -->
     <div style="flex:1 1 auto;overflow-y:auto;padding:22px;">
       <!-- Info Grid -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
         <div style="grid-column:1/-1;background:#f8fafc;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Service Name</div>
+          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Service Name</div>
           <div id="viewSvcName" style="font-size:16px;font-weight:700;color:#1e293b;"></div>
-          <div id="viewSvcDesc" style="font-size:12px;color:#64748b;margin-top:4px;"></div>
+          <div id="viewSvcDesc" style="font-size:14.5px;color:#64748b;margin-top:4px;"></div>
         </div>
         <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Category</div>
-          <div id="viewSvcCategory" style="font-size:13px;font-weight:600;color:#003d7a;"></div>
+          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Category</div>
+          <div id="viewSvcCategory" style="font-size:15.5px;font-weight:600;color:#003d7a;"></div>
         </div>
         <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Status</div>
+          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Status</div>
           <div id="viewSvcStatus"></div>
         </div>
         <div style="background:#e8f5e9;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Service Fee</div>
+          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Service Fee</div>
           <div id="viewSvcServiceFee" style="font-size:20px;font-weight:800;color:#002F6C;"></div>
         </div>
         <div style="background:#e0f2fe;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Labor Fee</div>
+          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Labor Fee</div>
           <div id="viewSvcLaborFee" style="font-size:20px;font-weight:800;color:#0369a1;"></div>
         </div>
         <div style="background:#f0fdf4;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Total Fee</div>
+          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Total Fee</div>
           <div id="viewSvcTotalFee" style="font-size:20px;font-weight:800;color:#15803d;"></div>
         </div>
         <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Duration</div>
+          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Duration</div>
           <div id="viewSvcDuration" style="font-size:14px;font-weight:600;color:#334155;"></div>
         </div>
         <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Required Mechanics</div>
+          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Required Mechanics</div>
           <div id="viewSvcMechanics" style="font-size:14px;font-weight:600;color:#334155;"></div>
         </div>
       </div>
 
       <!-- Fee History -->
       <div style="border-top:1px solid #e2e8f0;padding-top:18px;">
-        <div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+        <div style="font-size:15.5px;font-weight:700;color:#334155;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
           <i class="fas fa-history" style="color:#0369a1;"></i> Fee Change History
         </div>
         <div id="viewSvcHistory" style="min-height:60px;">
@@ -2487,7 +2598,7 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
     <!-- Footer (Fixed Bottom) -->
     <div style="flex-shrink:0;padding:14px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;align-items:center;background:#f8fafc;border-radius:0 0 14px 14px;">
-      <button type="button" onclick="closeViewServiceModal()" style="background:#f1f5f9 !important;color:#0f172a !important;border:1px solid #cbd5e1;padding:9px 28px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Close</button>
+      <button type="button" onclick="closeViewServiceModal()" style="background:#f1f5f9 !important;color:#0f172a !important;border:1px solid #cbd5e1;padding:9px 28px;border-radius:8px;font-size:15.5px;font-weight:600;cursor:pointer;">Close</button>
     </div>
   </div>
 </div>
@@ -2601,8 +2712,8 @@ function showCustomAlert(message, type, callback) {
             <i class="fas ${iconClass}"></i>
         </div>
         <div style="flex:1;min-width:0;">
-            <h4 style="font-size:13px;font-weight:800;color:#0f172a;margin:0 0 3px 0;line-height:1.2;">${titleText}</h4>
-            <p style="font-size:12px;font-weight:500;color:#475569;margin:0;line-height:1.35;">${message}</p>
+            <h4 style="font-size:15.5px;font-weight:800;color:#0f172a;margin:0 0 3px 0;line-height:1.2;">${titleText}</h4>
+            <p style="font-size:14.5px;font-weight:500;color:#475569;margin:0;line-height:1.35;">${message}</p>
         </div>
         ${isError ? '<button type="button" onclick="this.parentElement.remove();" style="background:none;border:none;color:#94a3b8;font-size:18px;line-height:1;cursor:pointer;padding:0 2px;margin-top:-2px;">&times;</button>' : ''}
     `;
@@ -2820,7 +2931,7 @@ safeAddListener('addProductForm', 'submit', function(e) {
         showCustomAlert('Tank Capacity must be greater than Reorder Level.', 'error');
         return;
     }
-    if (reorder <= critical) {
+    if (false) {
         showCustomAlert('Reorder Level must be greater than Critical Level.', 'error');
         return;
     }
@@ -2921,8 +3032,8 @@ function viewFuelDetails(fuelId) {
                 // Product Status (Active / Inactive)
                 var prodStatus = (fuel.status || 'active').toLowerCase();
                 var prodBadge = prodStatus === 'active' 
-                    ? '<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;">Active</span>' 
-                    : '<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;">Inactive</span>';
+                    ? '<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:12px;font-size:14.5px;font-weight:700;">Active</span>' 
+                    : '<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:12px;font-size:14.5px;font-weight:700;">Inactive</span>';
                 document.getElementById('viewProductStatus').innerHTML = prodBadge;
 
                 // Price Request Status
@@ -2943,19 +3054,19 @@ function viewFuelDetails(fuelId) {
                         
                         var actionCell = '';
                         if (isCurrent) {
-                            actionCell = '<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;"><i class="fas fa-check"></i> Current</span>';
+                            actionCell = '<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:12px;font-size:14px;font-weight:700;"><i class="fas fa-check"></i> Current</span>';
                         } else {
                             var safeFuelName = (fuel.fuel_type || '').replace(/'/g, "\\'");
                             var safeDate = (h.created_at || '').replace(/'/g, "\\'");
-                            actionCell = '<button type="button" onclick="openRestorePriceModal(' + fuel.id + ', \'' + safeFuelName + '\', ' + curPrice + ', ' + targetPrice + ', \'' + safeDate + '\')" style="background:#002F6C !important;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;border:none;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700 !important;cursor:pointer;display:inline-flex;align-items:center;gap:4px;box-shadow:0 2px 4px rgba(0,47,108,0.2);"><i class="fas fa-undo" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;"></i> Restore</button>';
+                            actionCell = '<button type="button" onclick="openRestorePriceModal(' + fuel.id + ', \'' + safeFuelName + '\', ' + curPrice + ', ' + targetPrice + ', \'' + safeDate + '\')" style="background:#002F6C !important;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;border:none;padding:5px 12px;border-radius:6px;font-size:14px;font-weight:700 !important;cursor:pointer;display:inline-flex;align-items:center;gap:4px;box-shadow:0 2px 4px rgba(0,47,108,0.2);"><i class="fas fa-undo" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;"></i> Restore</button>';
                         }
 
                         var stLower = (h.status || 'Approved').toLowerCase();
-                        var statusBadge = '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">Approved</span>';
+                        var statusBadge = '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:14px;font-weight:700;">Approved</span>';
                         if (stLower === 'pending') {
-                            statusBadge = '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">Pending</span>';
+                            statusBadge = '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:14px;font-weight:700;">Pending</span>';
                         } else if (stLower === 'rejected') {
-                            statusBadge = '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">Rejected</span>';
+                            statusBadge = '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:14px;font-weight:700;">Rejected</span>';
                         }
 
                         var row = document.createElement('tr');
@@ -3006,12 +3117,12 @@ function viewFuelDetails(fuelId) {
                             var newSt = (sh.new_status || (sh.status === 'Deactivated' ? 'Inactive' : (sh.status === 'Activated' ? 'Active' : 'Inactive'))).toLowerCase();
                             
                             var oldBadge = oldSt === 'active'
-                                ? '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">Active</span>'
-                                : '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">Inactive</span>';
+                                ? '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:14px;font-weight:700;">Active</span>'
+                                : '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:14px;font-weight:700;">Inactive</span>';
                             
                             var newBadge = newSt === 'active'
-                                ? '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">Active</span>'
-                                : '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">Inactive</span>';
+                                ? '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:14px;font-weight:700;">Active</span>'
+                                : '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:14px;font-weight:700;">Inactive</span>';
                             
                             var reasonTxt = sh.reason ? sh.reason : '-';
 
@@ -3477,13 +3588,13 @@ function viewMerchandiseDetails(id) {
         var stLower = (p.status || 'active').toLowerCase();
         var stColor = stLower === 'active' ? '#16a34a' : '#dc2626';
         var stBg = stLower === 'active' ? '#dcfce7' : '#fee2e2';
-        document.getElementById('vm_status').innerHTML = '<span style="background:' + stBg + ';color:' + stColor + ';padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;">' + (p.status || 'Active') + '</span>';
+        document.getElementById('vm_status').innerHTML = '<span style="background:' + stBg + ';color:' + stColor + ';padding:2px 10px;border-radius:20px;font-size:14px;font-weight:700;">' + (p.status || 'Active') + '</span>';
 
         // Batches
         var bb = document.getElementById('vm_batches_body');
         if (data.batches && data.batches.length > 0) {
             bb.innerHTML = data.batches.map(function(b) {
-                var stBadge = b.status === 'active' ? '<span style="background:#dcfce7;color:#16a34a;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;">Active</span>' : '<span style="background:#fee2e2;color:#dc2626;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;">' + b.status + '</span>';
+                var stBadge = b.status === 'active' ? '<span style="background:#dcfce7;color:#16a34a;padding:1px 7px;border-radius:10px;font-size:14px;font-weight:700;">Active</span>' : '<span style="background:#fee2e2;color:#dc2626;padding:1px 7px;border-radius:10px;font-size:14px;font-weight:700;">' + b.status + '</span>';
                 return '<tr style="border-top:1px solid #f1f5f9;">' +
                     '<td style="padding:8px 12px;font-family:monospace;font-weight:700;color:#0284c7;">' + (b.batch_number || '—') + '</td>' +
                     '<td style="padding:8px 12px;font-weight:700;">' + parseFloat(b.remaining_qty || 0).toLocaleString() + '</td>' +
@@ -3502,19 +3613,19 @@ function viewMerchandiseDetails(id) {
                 var statusBg = h.status === 'approved' ? '#dcfce7' : h.status === 'rejected' ? '#fee2e2' : '#fef3c7';
                 var actionBtn = '';
                 if (h.status === 'approved' && idx > 0) {
-                    actionBtn = '<button onclick="restoreMerchPrice(' + (p.id || id) + ',' + h.old_price + ')" style="background:#4f46e5;color:#fff;border:none;padding:3px 10px;border-radius:5px;font-size:11px;cursor:pointer;font-weight:700;"><i class=\'fas fa-undo\'></i> Restore</button>';
+                    actionBtn = '<button onclick="restoreMerchPrice(' + (p.id || id) + ',' + h.old_price + ')" style="background:#4f46e5;color:#fff;border:none;padding:3px 10px;border-radius:5px;font-size:14px;cursor:pointer;font-weight:700;"><i class=\'fas fa-undo\'></i> Restore</button>';
                 } else if (h.status === 'approved' && idx === 0) {
-                    actionBtn = '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">Current</span>';
+                    actionBtn = '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:10px;font-size:15.5px;font-weight:700;">Current</span>';
                 } else if (h.status === 'pending') {
-                    actionBtn = '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">Awaiting Approval</span>';
+                    actionBtn = '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:15.5px;font-weight:700;">Awaiting Approval</span>';
                 }
                 return '<tr style="border-top:1px solid #f1f5f9;">' +
-                    '<td style="padding:8px 12px;font-size:11px;color:#64748b;">' + (h.created_at || '—') + '</td>' +
+                    '<td style="padding:8px 12px;font-size:14px;color:#64748b;">' + (h.created_at || '—') + '</td>' +
                     '<td style="padding:8px 12px;">₱' + parseFloat(h.old_price || 0).toFixed(2) + '</td>' +
                     '<td style="padding:8px 12px;font-weight:700;color:#002F6C;">₱' + parseFloat(h.new_price || 0).toFixed(2) + '</td>' +
-                    '<td style="padding:8px 12px;font-size:11px;">' + (h.requested_by_name || '—') + '</td>' +
-                    '<td style="padding:8px 12px;font-size:11px;">' + (h.approved_by_name || '—') + '</td>' +
-                    '<td style="padding:8px 12px;"><span style="background:' + statusBg + ';color:' + statusColor + ';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">' + (h.status || '—') + '</span></td>' +
+                    '<td style="padding:8px 12px;font-size:14px;">' + (h.requested_by_name || '—') + '</td>' +
+                    '<td style="padding:8px 12px;font-size:14px;">' + (h.approved_by_name || '—') + '</td>' +
+                    '<td style="padding:8px 12px;"><span style="background:' + statusBg + ';color:' + statusColor + ';padding:2px 8px;border-radius:10px;font-size:15.5px;font-weight:700;">' + (h.status || '—') + '</span></td>' +
                     '<td style="padding:8px 12px;text-align:center;">' + actionBtn + '</td></tr>';
             }).join('');
         } else {
@@ -3526,11 +3637,11 @@ function viewMerchandiseDetails(id) {
         if (data.config_history && data.config_history.length > 0) {
             cb.innerHTML = data.config_history.map(function(h) {
                 return '<tr style="border-top:1px solid #f1f5f9;">' +
-                    '<td style="padding:8px 12px;font-size:11px;color:#64748b;">' + (h.created_at || '—') + '</td>' +
+                    '<td style="padding:8px 12px;font-size:14px;color:#64748b;">' + (h.created_at || '—') + '</td>' +
                     '<td style="padding:8px 12px;font-weight:700;">' + (h.field_name || '—') + '</td>' +
                     '<td style="padding:8px 12px;color:#dc2626;">' + (h.old_value || '—') + '</td>' +
                     '<td style="padding:8px 12px;color:#16a34a;font-weight:700;">' + (h.new_value || '—') + '</td>' +
-                    '<td style="padding:8px 12px;font-size:11px;">' + (h.changed_by_name || '—') + '</td></tr>';
+                    '<td style="padding:8px 12px;font-size:14px;">' + (h.changed_by_name || '—') + '</td></tr>';
             }).join('');
         } else {
             cb.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:#94a3b8;">No configuration changes recorded</td></tr>';
@@ -3541,10 +3652,10 @@ function viewMerchandiseDetails(id) {
         if (data.status_history && data.status_history.length > 0) {
             sb.innerHTML = data.status_history.map(function(h) {
                 return '<tr style="border-top:1px solid #f1f5f9;">' +
-                    '<td style="padding:8px 12px;font-size:11px;color:#64748b;">' + (h.created_at || '—') + '</td>' +
+                    '<td style="padding:8px 12px;font-size:14px;color:#64748b;">' + (h.created_at || '—') + '</td>' +
                     '<td style="padding:8px 12px;color:#64748b;">' + (h.old_status || '—') + '</td>' +
                     '<td style="padding:8px 12px;font-weight:700;">' + (h.new_status || '—') + '</td>' +
-                    '<td style="padding:8px 12px;font-size:11px;">' + (h.changed_by_name || '—') + '</td></tr>';
+                    '<td style="padding:8px 12px;font-size:14px;">' + (h.changed_by_name || '—') + '</td></tr>';
             }).join('');
         } else {
             sb.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:12px;color:#94a3b8;">No status changes recorded</td></tr>';
@@ -3782,22 +3893,22 @@ function viewProductBatches(productId, productName) {
                 var isFirst = firstActive && b.status === 'active';
                 if (isFirst) firstActive = false;
                 var bNum = b.batch_number || ('B' + String(b.id).padStart(4,'0'));
-                var fifo = isFirst ? '<span style="background:#16a34a;color:#fff;font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700;margin-left:4px;">NEXT FIFO</span>' : '';
+                var fifo = isFirst ? '<span style="background:#16a34a;color:#fff;font-size:15.5px;padding:1px 5px;border-radius:3px;font-weight:700;margin-left:4px;">NEXT FIFO</span>' : '';
                 var statusBadge = b.status === 'active'
-                    ? '<span style="background:#dcfce7;color:#166534;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;">Active</span>'
-                    : '<span style="background:#f1f5f9;color:#64748b;padding:2px 7px;border-radius:4px;font-size:11px;">Depleted</span>';
+                    ? '<span style="background:#dcfce7;color:#166534;padding:2px 7px;border-radius:4px;font-size:14px;font-weight:600;">Active</span>'
+                    : '<span style="background:#f1f5f9;color:#64748b;padding:2px 7px;border-radius:4px;font-size:14px;">Depleted</span>';
                 return '<tr style="border-bottom:1px solid #f1f5f9;">'
-                    + '<td style="padding:8px 10px;"><code style="color:#4f46e5;background:#ede9fe;padding:2px 6px;border-radius:3px;font-size:12px;">' + bNum + '</code>' + fifo + '</td>'
+                    + '<td style="padding:8px 10px;"><code style="color:#4f46e5;background:#ede9fe;padding:2px 6px;border-radius:3px;font-size:14.5px;">' + bNum + '</code>' + fifo + '</td>'
                     + '<td style="padding:8px 10px;text-align:right;">' + parseInt(b.quantity_received||0) + '</td>'
                     + '<td style="padding:8px 10px;text-align:right;font-weight:700;">' + parseInt(b.remaining_qty||0) + '</td>'
                     + '<td style="padding:8px 10px;text-align:right;color:#64748b;">&#8369;' + parseFloat(b.unit_cost||0).toFixed(2) + '</td>'
-                    + '<td style="padding:8px 10px;font-size:11px;color:#64748b;">' + (b.date_received||'—').substring(0,10) + '</td>'
+                    + '<td style="padding:8px 10px;font-size:14px;color:#64748b;">' + (b.date_received||'—').substring(0,10) + '</td>'
                     + '<td style="padding:8px 10px;text-align:center;">' + statusBadge + '</td>'
                     + '</tr>';
             }).join('');
             document.getElementById('viewBatchesContent').innerHTML =
-                '<div style="overflow-x:auto;">'
-                + '<table style="width:100%;border-collapse:collapse;font-size:13px;">'
+                '<div style="overflow-x: hidden;">'
+                + '<table style="width:100%;border-collapse:collapse;font-size:15.5px;">'
                 + '<thead><tr style="background:#002F6C;color:#fff;">'
                 + '<th style="padding:10px;text-align:left;">Batch No.</th>'
                 + '<th style="padding:10px;text-align:right;">Received Qty</th>'
@@ -4150,8 +4261,8 @@ function openViewServiceModal(svc) {
     var statusEl = document.getElementById('viewSvcStatus');
     if (statusEl) {
         statusEl.innerHTML = svc.active
-            ? '<span style="background:#dcfce7;color:#15803d;padding:5px 14px;border-radius:999px;font-size:12px;font-weight:700;">Active</span>'
-            : '<span style="background:#fee2e2;color:#b91c1c;padding:5px 14px;border-radius:999px;font-size:12px;font-weight:700;">Inactive</span>';
+            ? '<span style="background:#dcfce7;color:#15803d;padding:5px 14px;border-radius:999px;font-size:14.5px;font-weight:700;">Active</span>'
+            : '<span style="background:#fee2e2;color:#b91c1c;padding:5px 14px;border-radius:999px;font-size:14.5px;font-weight:700;">Inactive</span>';
     }
 
     // Open modal
@@ -4166,16 +4277,16 @@ function openViewServiceModal(svc) {
     .then(function(data) {
         if (!histEl) return;
         if (!data.success || !data.history || data.history.length === 0) {
-            histEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-size:13px;"><i class="fas fa-history" style="font-size:22px;display:block;margin-bottom:8px;"></i>No fee change history yet.</div>';
+            histEl.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px;font-size:15.5px;"><i class="fas fa-history" style="font-size:22px;display:block;margin-bottom:8px;"></i>No fee change history yet.</div>';
             return;
         }
         var rows = data.history.map(function(h) {
             var statusBadge = {
-                'pending':  '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;">Pending</span>',
-                'approved': '<span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;">Approved</span>',
-                'rejected': '<span style="background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;">Rejected</span>',
-                'direct':   '<span style="background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;">Direct</span>',
-            }[h.approval_status] || '<span style="color:#64748b;font-size:10px;">' + escHtml(h.approval_status || '') + '</span>';
+                'pending':  '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:999px;font-size:15.5px;font-weight:700;">Pending</span>',
+                'approved': '<span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:999px;font-size:15.5px;font-weight:700;">Approved</span>',
+                'rejected': '<span style="background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:999px;font-size:15.5px;font-weight:700;">Rejected</span>',
+                'direct':   '<span style="background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:999px;font-size:15.5px;font-weight:700;">Direct</span>',
+            }[h.approval_status] || '<span style="color:#64748b;font-size:15.5px;">' + escHtml(h.approval_status || '') + '</span>';
 
             var changeType = {
                 'service_fee': '<i class="fas fa-tag" style="color:#002F6C;"></i> Service Fee',
@@ -4188,10 +4299,10 @@ function openViewServiceModal(svc) {
 
             var oldNew = '';
             if (h.old_service_fee != null && h.new_service_fee != null) {
-                oldNew += '<div style="font-size:11px;color:#64748b;">Svc Fee: <span style="text-decoration:line-through;color:#dc2626;">₱' + parseFloat(h.old_service_fee).toFixed(2) + '</span> → <strong style="color:#16a34a;">₱' + parseFloat(h.new_service_fee).toFixed(2) + '</strong></div>';
+                oldNew += '<div style="font-size:14px;color:#64748b;">Svc Fee: <span style="text-decoration:line-through;color:#dc2626;">₱' + parseFloat(h.old_service_fee).toFixed(2) + '</span> → <strong style="color:#16a34a;">₱' + parseFloat(h.new_service_fee).toFixed(2) + '</strong></div>';
             }
             if (h.old_labor_fee != null && h.new_labor_fee != null) {
-                oldNew += '<div style="font-size:11px;color:#64748b;">Labor Fee: <span style="text-decoration:line-through;color:#dc2626;">₱' + parseFloat(h.old_labor_fee).toFixed(2) + '</span> → <strong style="color:#16a34a;">₱' + parseFloat(h.new_labor_fee).toFixed(2) + '</strong></div>';
+                oldNew += '<div style="font-size:14px;color:#64748b;">Labor Fee: <span style="text-decoration:line-through;color:#dc2626;">₱' + parseFloat(h.old_labor_fee).toFixed(2) + '</span> → <strong style="color:#16a34a;">₱' + parseFloat(h.new_labor_fee).toFixed(2) + '</strong></div>';
             }
 
             var who   = h.changed_by_name || ((h.first_name || '') + ' ' + (h.last_name || '')).trim() || 'System';
@@ -4199,21 +4310,21 @@ function openViewServiceModal(svc) {
 
             return '<div style="padding:10px 0;border-bottom:1px solid #f1f5f9;display:flex;gap:12px;align-items:flex-start;">'
                 + '<div style="flex:1;">'
-                    + '<div style="font-size:12px;font-weight:600;color:#334155;display:flex;align-items:center;gap:6px;">' + changeType + '</div>'
+                    + '<div style="font-size:14.5px;font-weight:600;color:#334155;display:flex;align-items:center;gap:6px;">' + changeType + '</div>'
                     + (oldNew ? '<div style="margin-top:4px;">' + oldNew + '</div>' : '')
-                    + (h.notes ? '<div style="font-size:11px;color:#94a3b8;margin-top:3px;">' + escHtml(h.notes) + '</div>' : '')
+                    + (h.notes ? '<div style="font-size:14px;color:#94a3b8;margin-top:3px;">' + escHtml(h.notes) + '</div>' : '')
                 + '</div>'
                 + '<div style="text-align:right;flex-shrink:0;">'
                     + statusBadge
-                    + '<div style="font-size:10px;color:#94a3b8;margin-top:3px;">' + escHtml(who) + '</div>'
-                    + '<div style="font-size:10px;color:#cbd5e1;">' + escHtml(when) + '</div>'
+                    + '<div style="font-size:15.5px;color:#94a3b8;margin-top:3px;">' + escHtml(who) + '</div>'
+                    + '<div style="font-size:15.5px;color:#cbd5e1;">' + escHtml(when) + '</div>'
                 + '</div>'
                 + '</div>';
         }).join('');
         histEl.innerHTML = '<div style="max-height:240px;overflow-y:auto;padding-right:4px;">' + rows + '</div>';
     })
     .catch(function() {
-        if (histEl) histEl.innerHTML = '<div style="text-align:center;color:#dc2626;padding:16px;font-size:13px;">Failed to load history.</div>';
+        if (histEl) histEl.innerHTML = '<div style="text-align:center;color:#dc2626;padding:16px;font-size:15.5px;">Failed to load history.</div>';
     });
 }
 
@@ -4290,10 +4401,10 @@ function activateService(id, serviceName) {
       <h3 id="statusNotificationTitle" style="margin:0;font-size:17px;font-weight:800;color:#166534;">Success</h3>
     </div>
     <div style="padding:16px 22px 22px 22px;">
-      <p id="statusNotificationMessage" style="margin:0 0 20px 0;font-size:13px;color:#334155;line-height:1.5;font-weight:500;">
+      <p id="statusNotificationMessage" style="margin:0 0 20px 0;font-size:15.5px;color:#334155;line-height:1.5;font-weight:500;">
         Action completed successfully.
       </p>
-      <button type="button" id="statusNotificationBtn" onclick="closeStatusNotificationModal()" style="background:#002F6C;color:#ffffff;border:none;padding:10px 28px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(0,47,108,0.25);width:100%;transition:all 0.15s ease;">
+      <button type="button" id="statusNotificationBtn" onclick="closeStatusNotificationModal()" style="background:#002F6C;color:#ffffff;border:none;padding:10px 28px;border-radius:8px;font-size:15.5px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(0,47,108,0.25);width:100%;transition:all 0.15s ease;">
         OK
       </button>
     </div>
