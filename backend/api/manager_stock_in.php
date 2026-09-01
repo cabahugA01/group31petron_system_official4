@@ -14,8 +14,8 @@ if (!$me) {
 }
 
 $role = role_key($me['role'] ?? '');
-if (!in_array($role, ['manager', 'superadmin', 'developer'], true)) {
-    stock_in_json(['success' => false, 'message' => 'Access denied'], 403);
+if (!in_array($role, ['manager', 'admin', 'superadmin', 'developer'], true)) {
+    stock_in_json(['success' => false, 'message' => 'Access denied: Manager or Administrator role required.'], 403);
 }
 
 $station_id = (int)user_station_id();

@@ -8,6 +8,23 @@ $me    = current_user();
 $msg   = '';
 $error = '';
 
+// ── Load dynamic security policy from system_settings (never hardcoded) ──
+$sec_min_pass_len    = 8;
+$sec_req_upper       = true;
+$sec_req_numbers     = true;
+$sec_req_special     = true;
+try {
+    $secQ = $pdo->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('min_password_length','require_uppercase','require_numbers','require_special_chars') AND station_id=0");
+    foreach ($secQ->fetchAll(PDO::FETCH_ASSOC) as $sr) {
+        switch ($sr['setting_key']) {
+            case 'min_password_length':  $sec_min_pass_len = max(6, (int)$sr['setting_value']); break;
+            case 'require_uppercase':    $sec_req_upper    = ((int)$sr['setting_value'] === 1);  break;
+            case 'require_numbers':      $sec_req_numbers  = ((int)$sr['setting_value'] === 1);  break;
+            case 'require_special_chars':$sec_req_special  = ((int)$sr['setting_value'] === 1);  break;
+        }
+    }
+} catch (Exception $e) { /* keep fallback defaults */ }
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $current_password = $_POST['current_password'] ?? '';
@@ -16,7 +33,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (empty($current_password))                        throw new Exception('Current password is required.');
         if (empty($new_password))                            throw new Exception('New password is required.');
-        if (strlen($new_password) < 8)                       throw new Exception('New password must be at least 8 characters.');
+        if (strlen($new_password) < $sec_min_pass_len)       throw new Exception("New password must be at least {$sec_min_pass_len} characters long.");
+        if ($sec_req_upper && !preg_match('/[A-Z]/', $new_password)) throw new Exception('New password must contain at least one uppercase letter (A-Z).');
+        if ($sec_req_numbers && !preg_match('/[0-9]/', $new_password)) throw new Exception('New password must contain at least one number (0-9).');
+        if ($sec_req_special && !preg_match('/[!@#$%^&*(),.?":{}|<>\-_]/', $new_password)) throw new Exception('New password must contain at least one special character (!@#$%^&* etc.).');
         if ($new_password !== $confirm_password)             throw new Exception('New passwords do not match.');
         if ($current_password === $new_password)             throw new Exception('New password must be different from current password.');
 
@@ -417,7 +437,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
                 <ul class="cp-req-list">
                     <li class="cp-req" id="req-len">
                         <span class="cp-req-dot"><i class="fas fa-check"></i></span>
-                        At least 8 characters long
+                        At least <?= (int)$sec_min_pass_len ?> characters long
                     </li>
                     <li class="cp-req" id="req-diff">
                         <span class="cp-req-dot"><i class="fas fa-check"></i></span>
@@ -427,14 +447,24 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
                         <span class="cp-req-dot"><i class="fas fa-check"></i></span>
                         Both passwords match
                     </li>
+                    <?php if ($sec_req_upper): ?>
                     <li class="cp-req" id="req-upper">
                         <span class="cp-req-dot"><i class="fas fa-check"></i></span>
-                        Contains uppercase letter (recommended)
+                        Contains uppercase letter (A-Z)
                     </li>
+                    <?php endif; ?>
+                    <?php if ($sec_req_numbers): ?>
                     <li class="cp-req" id="req-num">
                         <span class="cp-req-dot"><i class="fas fa-check"></i></span>
-                        Contains a number (recommended)
+                        Contains a number (0-9)
                     </li>
+                    <?php endif; ?>
+                    <?php if ($sec_req_special): ?>
+                    <li class="cp-req" id="req-special">
+                        <span class="cp-req-dot"><i class="fas fa-check"></i></span>
+                        Contains special character (!@#$%^&*)
+                    </li>
+                    <?php endif; ?>
                 </ul>
             </div>
 
@@ -453,6 +483,13 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 </div><!-- /cp-page -->
 
 <script>
+window.SYSTEM_SECURITY_CONFIG = {
+    min_password_length: <?= (int)$sec_min_pass_len ?>,
+    require_uppercase: <?= $sec_req_upper ? 'true' : 'false' ?>,
+    require_numbers: <?= $sec_req_numbers ? 'true' : 'false' ?>,
+    require_special_chars: <?= $sec_req_special ? 'true' : 'false' ?>
+};
+
 /* ── Toggle password visibility ── */
 function toggleEye(inputId, iconId) {
     var inp  = document.getElementById(inputId);
@@ -474,9 +511,10 @@ function checkStrength() {
     var lbl  = document.getElementById('strengthLabel');
     if (!fill || !lbl) return;
 
+    var minLen = window.SYSTEM_SECURITY_CONFIG ? window.SYSTEM_SECURITY_CONFIG.min_password_length : 8;
     var score = 0;
-    if (val.length >= 8)              score++;
-    if (val.length >= 12)             score++;
+    if (val.length >= minLen)          score++;
+    if (val.length >= minLen + 4)      score++;
     if (/[A-Z]/.test(val))            score++;
     if (/[0-9]/.test(val))            score++;
     if (/[^A-Za-z0-9]/.test(val))     score++;
@@ -496,12 +534,14 @@ function checkReqs() {
     var np  = document.getElementById('new_password').value;
     var cp  = document.getElementById('confirm_password').value;
     var cur = document.getElementById('current_password').value;
+    var cfg = window.SYSTEM_SECURITY_CONFIG || { min_password_length: 8, require_uppercase: true, require_numbers: true, require_special_chars: true };
 
-    setReq('req-len',   np.length >= 8);
-    setReq('req-diff',  np.length > 0 && cur.length > 0 && np !== cur);
-    setReq('req-match', np.length > 0 && cp.length > 0 && np === cp);
-    setReq('req-upper', /[A-Z]/.test(np));
-    setReq('req-num',   /[0-9]/.test(np));
+    setReq('req-len',     np.length >= cfg.min_password_length);
+    setReq('req-diff',    np.length > 0 && cur.length > 0 && np !== cur);
+    setReq('req-match',   np.length > 0 && cp.length > 0 && np === cp);
+    setReq('req-upper',   /[A-Z]/.test(np));
+    setReq('req-num',     /[0-9]/.test(np));
+    setReq('req-special', /[!@#$%^&*(),.?":{}|<>\_\-]/.test(np));
 
     /* Visual feedback on confirm field */
     var conf = document.getElementById('confirm_password');
@@ -572,15 +612,31 @@ document.getElementById('cpForm').addEventListener('submit', function(e) {
     var cur = (document.getElementById('current_password')?.value || '').trim();
     var np  = (document.getElementById('new_password')?.value || '').trim();
     var cp  = (document.getElementById('confirm_password')?.value || '').trim();
+    var cfg = window.SYSTEM_SECURITY_CONFIG || { min_password_length: 8, require_uppercase: true, require_numbers: true, require_special_chars: true };
 
     if (!cur) {
         e.preventDefault();
         highlightCpError('current_password', 'Please enter your current password.');
         return false;
     }
-    if (!np || np.length < 8) {
+    if (!np || np.length < cfg.min_password_length) {
         e.preventDefault();
-        highlightCpError('new_password', 'New password must be at least 8 characters long.');
+        highlightCpError('new_password', 'New password must be at least ' + cfg.min_password_length + ' characters long.');
+        return false;
+    }
+    if (cfg.require_uppercase && !/[A-Z]/.test(np)) {
+        e.preventDefault();
+        highlightCpError('new_password', 'New password must contain at least one uppercase letter (A-Z).');
+        return false;
+    }
+    if (cfg.require_numbers && !/[0-9]/.test(np)) {
+        e.preventDefault();
+        highlightCpError('new_password', 'New password must contain at least one number (0-9).');
+        return false;
+    }
+    if (cfg.require_special_chars && !/[!@#$%^&*(),.?":{}|<>\_\-]/.test(np)) {
+        e.preventDefault();
+        highlightCpError('new_password', 'New password must contain at least one special character (!@#$%^&* etc.).');
         return false;
     }
     if (np === cur) {

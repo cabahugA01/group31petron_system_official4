@@ -195,8 +195,12 @@ try {
     $fuel_type = (string)$fuel_data['fuel_type'];
     $previous_reading = posted_decimal('previous_reading', (float)$fuel_data['fallback_previous_reading']);
     $current_level = (float)$fuel_data['current_level'];
-    $calibration = posted_decimal('calibration', (float)$fuel_data['default_calibration']);
-    $price_per_liter = posted_decimal('price_per_liter', (float)$fuel_data['default_price_per_liter']);
+    // Authoritative database price enforcement (cannot be tampered via DevTools)
+    $db_price = (float)($fuel_data['default_price_per_liter'] ?? 0);
+    if ($db_price <= 0 && function_exists('get_authoritative_item_price')) {
+        $db_price = get_authoritative_item_price($pdo, $fuel_type, 'fuel');
+    }
+    $price_per_liter = ($db_price > 0) ? $db_price : posted_decimal('price_per_liter', 0.00);
     $present_reading = posted_decimal('present_reading');
 
     if ($present_reading <= 0) {

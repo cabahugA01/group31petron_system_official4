@@ -18,12 +18,22 @@ try {
         exit;
     }
     
-    // Get current user (manager)
-    $managerId = current_user()['id'] ?? null;
+    // Get current user & role
+    $me = current_user();
+    if (!$me || empty($me['id'])) {
+        http_response_code(401);
+        echo json_encode(['success' => false, 'message' => 'Authentication required']);
+        exit;
+    }
+
+    $managerId = (int)$me['id'];
+    $myRole    = role_key($me['role'] ?? 'staff');
     $stationId = user_station_id();
-    
-    if (!$managerId) {
-        echo json_encode(['success' => false, 'message' => 'Manager authentication required']);
+
+    // Enforce server-side role check (DevTools tampering cannot bypass this)
+    if (!in_array($myRole, ['manager', 'admin', 'superadmin'], true)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Forbidden: Only managers and administrators can approve/reject stock requests.']);
         exit;
     }
     
@@ -34,6 +44,13 @@ try {
     
     if (!$request) {
         echo json_encode(['success' => false, 'message' => 'Request not found or already processed']);
+        exit;
+    }
+
+    // Enforce branch isolation for non-superadmins
+    if ($myRole !== 'superadmin' && !empty($request['station_id']) && (int)$request['station_id'] !== (int)$stationId) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Forbidden: Branch access mismatch.']);
         exit;
     }
     

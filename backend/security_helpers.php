@@ -206,8 +206,19 @@ if (!function_exists('enforce_server_security')) {
             @session_start();
         }
 
-        // 1. Session & Inactivity Timeout (5 minutes = 300s)
-        $timeout = 300;
+        // 1. Session & Inactivity Timeout (Dynamically loaded from system_settings)
+        $timeout = 1800; // 30 minutes fallback default
+        try {
+            if ($pdo) {
+                $stStmt = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'session_timeout' AND station_id = 0 LIMIT 1");
+                $stStmt->execute();
+                $stVal = $stStmt->fetchColumn();
+                if ($stVal !== false && is_numeric($stVal) && (int)$stVal > 0) {
+                    $timeout = max(300, (int)$stVal * 60); // minimum 5 mins
+                }
+            }
+        } catch (Exception $e) {}
+
         if (empty($_SESSION['user']) || empty($_SESSION['user_id'])) {
             sec_reject_request(401, 'Unauthorized access. Please log in.');
         }
@@ -217,7 +228,7 @@ if (!function_exists('enforce_server_security')) {
             if ($inactive >= $timeout) {
                 $_SESSION = [];
                 session_destroy();
-                sec_reject_request(401, 'Session expired due to 5 minutes of inactivity.');
+                sec_reject_request(401, 'Session expired due to inactivity. Please log in again.');
             }
         }
         $_SESSION['last_activity'] = time();
@@ -301,42 +312,45 @@ if (!function_exists('get_authoritative_item_price')) {
     function get_authoritative_item_price($pdo, $product_id, $product_type = 'merchandise') {
         if (!$pdo || empty($product_id)) return 0.00;
 
+        // 1. Check inventory_products table
         try {
-            // 1. Check inventory_products table
             $stmt = $pdo->prepare("SELECT unit_price FROM inventory_products WHERE id = ? OR sku = ? LIMIT 1");
             $stmt->execute([$product_id, $product_id]);
             $p = $stmt->fetchColumn();
             if ($p !== false && $p !== null && (float)$p > 0) {
                 return (float)$p;
             }
+        } catch (Exception $e) {}
 
-            // 2. Check products table
-            $stmt = $pdo->prepare("SELECT price FROM products WHERE id = ? OR sku = ? LIMIT 1");
+        // 2. Check products table (unit_price or price)
+        try {
+            $stmt = $pdo->prepare("SELECT unit_price FROM products WHERE id = ? OR sku = ? LIMIT 1");
             $stmt->execute([$product_id, $product_id]);
             $p = $stmt->fetchColumn();
             if ($p !== false && $p !== null && (float)$p > 0) {
                 return (float)$p;
             }
+        } catch (Exception $e) {}
 
-            // 3. Check fuel_types table
-            $stmt = $pdo->prepare("SELECT COALESCE(price_per_liter, price) as unit_price FROM fuel_types WHERE id = ? OR name = ? LIMIT 1");
+        // 3. Check fuel_types table (price_per_liter)
+        try {
+            $stmt = $pdo->prepare("SELECT price_per_liter FROM fuel_types WHERE id = ? OR name = ? LIMIT 1");
             $stmt->execute([$product_id, $product_id]);
             $p = $stmt->fetchColumn();
             if ($p !== false && $p !== null && (float)$p > 0) {
                 return (float)$p;
             }
+        } catch (Exception $e) {}
 
-            // 4. Check services table
+        // 4. Check services table
+        try {
             $stmt = $pdo->prepare("SELECT price FROM services WHERE id = ? OR name = ? LIMIT 1");
             $stmt->execute([$product_id, $product_id]);
             $p = $stmt->fetchColumn();
             if ($p !== false && $p !== null && (float)$p > 0) {
                 return (float)$p;
             }
-
-        } catch (Exception $e) {
-            error_log("Failed to fetch authoritative price: " . $e->getMessage());
-        }
+        } catch (Exception $e) {}
 
         return 0.00;
     }

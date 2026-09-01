@@ -294,6 +294,7 @@ foreach ($current_inventory_raw as $item) {
     <title>Manager Fuel Delivery - Petron POS</title>
     <link href="../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="../assets/vendor/bootstrap-icons/bootstrap-icons.css">
+    <script src="../assets/js/security_frontend.js?v=2.0.4"></script>
     <style>
         .stock-good { color: #28a745; }
         .stock-medium { color: #ffc107; }

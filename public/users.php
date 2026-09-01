@@ -74,6 +74,38 @@ function generateEmployeeID($pdo, $role) {
     return $prefix . '-' . str_pad($num, 3, '0', STR_PAD_LEFT);
 }
 
+// ── Load dynamic security policy from system_settings (never hardcoded) ──
+$sec_min_pass_len    = 8;
+$sec_req_upper       = true;
+$sec_req_numbers     = true;
+$sec_req_special     = true;
+try {
+    $secQ = $pdo->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('min_password_length','require_uppercase','require_numbers','require_special_chars') AND station_id=0");
+    foreach ($secQ->fetchAll(PDO::FETCH_ASSOC) as $sr) {
+        switch ($sr['setting_key']) {
+            case 'min_password_length':  $sec_min_pass_len = max(6, (int)$sr['setting_value']); break;
+            case 'require_uppercase':    $sec_req_upper    = ((int)$sr['setting_value'] === 1);  break;
+            case 'require_numbers':      $sec_req_numbers  = ((int)$sr['setting_value'] === 1);  break;
+            case 'require_special_chars':$sec_req_special  = ((int)$sr['setting_value'] === 1);  break;
+        }
+    }
+} catch (Exception $e) { /* keep fallback defaults */ }
+
+function check_user_password_policy(string $password, int $min_len, bool $req_upper, bool $req_num, bool $req_special): void {
+    if (strlen($password) < $min_len) {
+        throw new Exception("Password must be at least {$min_len} characters long.");
+    }
+    if ($req_upper && !preg_match('/[A-Z]/', $password)) {
+        throw new Exception('Password must contain at least one uppercase letter (A-Z).');
+    }
+    if ($req_num && !preg_match('/[0-9]/', $password)) {
+        throw new Exception('Password must contain at least one number (0-9).');
+    }
+    if ($req_special && !preg_match('/[!@#$%^&*(),.?":{}|<>\-_]/', $password)) {
+        throw new Exception('Password must contain at least one special character (!@#$%^&* etc.).');
+    }
+}
+
 $msg = '';
 
 // ── AJAX HANDLER FOR EMPLOYEE DETAILS & DOCUMENTS ─────────────────────────
@@ -204,7 +236,7 @@ $is_error = false;
 // --- ACTION HANDLER (Admin / Superadmin only) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-    
+
     if ($my_role === 'manager') {
         $msg = "Managers have read-only access to user lists and cannot perform modifications.";
         $is_error = true;
@@ -329,21 +361,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $employee_id_input = generateEmployeeID($pdo, $role);
 
-                // ── 7. PASSWORD & CONFIRM PASSWORD Rules ──
+                // ── 7. PASSWORD & CONFIRM PASSWORD Rules (DB-driven policy) ──
                 if (empty($raw_password)) {
-                    $password = generateSecurePassword();
+                    $password = generateSecurePassword(max(12, $sec_min_pass_len));
                 } else {
                     if ($raw_password !== $confirm_password) {
                         throw new Exception('Passwords do not match. Please ensure both passwords are identical.');
                     }
-                    $sym_re = '/[!@#$%^&*(),.?\":{}|<>_\-]/';
-                    if (strlen($raw_password) < 8 ||
-                        !preg_match('/[A-Z]/', $raw_password) ||
-                        !preg_match('/[a-z]/', $raw_password) ||
-                        !preg_match('/[0-9]/', $raw_password) ||
-                        !preg_match($sym_re, $raw_password)) {
-                        throw new Exception('Password must be ≥8 characters long with uppercase, lowercase, number, and special symbol.');
-                    }
+                    check_user_password_policy($raw_password, $sec_min_pass_len, $sec_req_upper, $sec_req_numbers, $sec_req_special);
                     $password = $raw_password;
                 }
 
@@ -407,6 +432,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // AUTOMATIC EMAIL CREDENTIALS SENDING
                 $full_name_for_email = trim($first_name_input . ' ' . $last_name_input);
                 $email_sent = false;
+                $email_error_detail = '';
                 if (!empty($email)) {
                     try {
                         $email_sent = (bool)sendAdminCredentialsEmail(
@@ -415,16 +441,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         );
                     } catch (Exception $mailEx) {
                         $email_sent = false;
+                        $email_error_detail = $mailEx->getMessage();
+                        error_log("User credentials email FAILED for $email — " . $email_error_detail);
                     }
                 }
 
                 log_activity($pdo, $me['id'], 'Add User',
-                    "Created user '$username' ($role)" . ($email_sent ? " (Email sent to $email)" : '') . ($assigned_shift ? " Shift:$assigned_shift" : '') . ($employee_id_input ? " EmpID:$employee_id_input" : ''));
+                    "Created user '$username' ($role)" . ($email_sent ? " (Email sent to $email)" : " (Email NOT sent to $email)") . ($employee_id_input ? " EmpID:$employee_id_input" : ''));
 
                 if ($email_sent) {
-                    $msg = "User <strong>" . htmlspecialchars($full_name_for_email) . "</strong> created successfully. Login credentials and setup instructions have been automatically emailed to <strong>" . htmlspecialchars($email) . "</strong>.";
+                    $msg = "User <strong>" . htmlspecialchars($full_name_for_email) . "</strong> created successfully! ✅ Login credentials have been automatically emailed to <strong>" . htmlspecialchars($email) . "</strong>.";
                 } else {
-                    $msg = "User <strong>" . htmlspecialchars($full_name_for_email) . "</strong> created successfully. Initial Temp Password: <strong>" . htmlspecialchars($password) . "</strong> (Share manually with employee).";
+                    $msg = "User <strong>" . htmlspecialchars($full_name_for_email) . "</strong> created successfully. ⚠️ Email could not be sent automatically. Initial Temp Password: <strong>" . htmlspecialchars($password) . "</strong> — please share this manually with the employee.";
+                    $is_error = false; // User was created, just email failed — show as warning not error
                 }
             }
             
@@ -534,19 +563,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id = (int)$_POST['user_id'];
                 $new_pass = trim($_POST['new_password'] ?? '');
                 if (empty($new_pass)) {
-                    $new_pass = generateSecurePassword();
+                    $new_pass = generateSecurePassword(max(12, $sec_min_pass_len));
                 } else {
                     if (in_array(strtolower($new_pass), ['n/a', 'none', 'null', '-'], true)) {
                         throw new Exception('Password cannot be N/A or a placeholder value.');
                     }
-                    $sym_re = '/[!@#$%^&*(),.?\":{}|<>_\-]/';
-                    if (strlen($new_pass) < 8 ||
-                        !preg_match('/[A-Z]/', $new_pass) ||
-                        !preg_match('/[a-z]/', $new_pass) ||
-                        !preg_match('/[0-9]/', $new_pass) ||
-                        !preg_match($sym_re, $new_pass)) {
-                        throw new Exception('Password must be ≥8 characters long with uppercase, lowercase, number, and special symbol.');
-                    }
+                    check_user_password_policy($new_pass, $sec_min_pass_len, $sec_req_upper, $sec_req_numbers, $sec_req_special);
                 }
 
                 if ($my_role !== 'superadmin') {
@@ -732,6 +754,20 @@ if ($my_station_id) {
     $station_name = $stn_stmt->fetchColumn() ?: 'Station #' . $my_station_id;
 }
 
+// ── Check active Manager count per station (for role dropdown enforcement) ──
+$station_manager_count = 0;
+$station_manager_name  = '';
+if ($my_station_id) {
+    try {
+        $mgr_chk = $pdo->prepare("SELECT COUNT(*), CONCAT(first_name,' ',last_name) AS mgr_name FROM users WHERE LOWER(role)='manager' AND station_id=? AND LOWER(status) NOT IN ('disabled','archived','inactive') LIMIT 1");
+        $mgr_chk->execute([$my_station_id]);
+        $mgr_row = $mgr_chk->fetch(PDO::FETCH_NUM);
+        $station_manager_count = (int)($mgr_row[0] ?? 0);
+        $station_manager_name  = trim((string)($mgr_row[1] ?? ''));
+    } catch (Exception $e) {}
+}
+$manager_slot_taken = ($station_manager_count >= 1);
+
 // Get UI Config
 try {
     $station_ui_config = StationManager::getStationUIConfig($my_role, $my_station_id, $station_name);
@@ -756,6 +792,38 @@ if (isset($_GET['ajax_um']) && $_GET['ajax_um'] == '1') {
             'total'    => count($all_users)
         ]
     ]);
+    exit;
+}
+
+// ── AJAX: Check role slot availability for a given station (Superadmin use) ──
+if (isset($_GET['ajax_check_slots']) && !empty($_GET['station_id'])) {
+    header('Content-Type: application/json');
+    $chk_stn = (int)$_GET['station_id'];
+    try {
+        // Manager count
+        $mgrQ = $pdo->prepare("SELECT COUNT(*), CONCAT(first_name,' ',last_name) FROM users WHERE LOWER(role)='manager' AND station_id=? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
+        $mgrQ->execute([$chk_stn]);
+        $mgrRow = $mgrQ->fetch(PDO::FETCH_NUM);
+        $mgrCount = (int)($mgrRow[0] ?? 0);
+        $mgrName  = trim((string)($mgrRow[1] ?? ''));
+
+        // Admin count
+        $admQ = $pdo->prepare("SELECT COUNT(*), CONCAT(first_name,' ',last_name) FROM users WHERE LOWER(role)='admin' AND station_id=? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
+        $admQ->execute([$chk_stn]);
+        $admRow = $admQ->fetch(PDO::FETCH_NUM);
+        $admCount = (int)($admRow[0] ?? 0);
+        $admName  = trim((string)($admRow[1] ?? ''));
+
+        echo json_encode([
+            'success'       => true,
+            'manager_taken' => $mgrCount >= 1,
+            'manager_name'  => $mgrName,
+            'admin_taken'   => $admCount >= 1,
+            'admin_name'    => $admName,
+        ]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
     exit;
 }
 
@@ -1647,7 +1715,7 @@ setTimeout(function() {
                     </div>
                     <div class="form-group">
                         <label class="lbl">Role <span style="color:#dc2626;">*</span></label>
-                        <select name="role" id="user_role_add" class="inp" required onchange="toggleShiftField('add')">
+                        <select name="role" id="user_role_add" class="inp" required onchange="toggleShiftField('add');onRoleChangeAddUser(this)">
                             <option value="">Select role</option>
                             <?php if ($my_role === 'superadmin'): ?>
                                 <option value="staff">Staff</option>
@@ -1655,9 +1723,24 @@ setTimeout(function() {
                                 <option value="admin">Admin</option>
                             <?php elseif ($my_role === 'admin'): ?>
                                 <option value="staff">Staff</option>
-                                <option value="manager">Manager</option>
+                                <option value="manager" <?= $manager_slot_taken ? 'disabled' : '' ?>>
+                                    Manager<?= $manager_slot_taken ? ' (Slot Full — 1 already assigned)' : '' ?>
+                                </option>
                             <?php endif; ?>
                         </select>
+                        <?php if ($my_role === 'admin'): ?>
+                        <div id="manager_slot_badge" style="margin-top:6px; font-size:11.5px; font-weight:700; padding:5px 10px; border-radius:6px; display:inline-flex; align-items:center; gap:6px;
+                            <?= $manager_slot_taken
+                                ? 'background:#fef2f2; color:#dc2626; border:1px solid #fca5a5;'
+                                : 'background:#f0fdf4; color:#16a34a; border:1px solid #86efac;' ?>">
+                            <i class="fas <?= $manager_slot_taken ? 'fa-times-circle' : 'fa-check-circle' ?>"></i>
+                            <?php if ($manager_slot_taken): ?>
+                                Manager slot full — <?= htmlspecialchars($station_manager_name ?: 'Someone') ?> is already the Manager of this branch. Only 1 Manager per branch is allowed.
+                            <?php else: ?>
+                                Manager slot available — This branch has no Manager yet. You can assign one.
+                            <?php endif; ?>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -1666,7 +1749,7 @@ setTimeout(function() {
                     <?php if ($my_role === 'superadmin'): ?>
                     <div class="form-group" id="station_field_group_add">
                         <label class="lbl">Station Assignment <span style="color:#dc2626;">*</span></label>
-                        <select name="station_id" id="add_station_id" class="inp" required>
+                        <select name="station_id" id="add_station_id" class="inp" required onchange="onStationChangeCheckSlots(this.value)">
                             <option value="">Select station</option>
                             <?php 
                             $stns = $pdo->query("SELECT id, name FROM stations WHERE status='active' ORDER BY name")->fetchAll();
@@ -1675,6 +1758,9 @@ setTimeout(function() {
                             }
                             ?>
                         </select>
+                        <div id="sa_slot_badge" style="margin-top:6px; font-size:11.5px; font-weight:700; padding:5px 10px; border-radius:6px; display:none; align-items:center; gap:6px; background:#f0f9ff; color:#0369a1; border:1px solid #7dd3fc;">
+                            <i class="fas fa-info-circle"></i> <span id="sa_slot_badge_text">Select a station to check role availability.</span>
+                        </div>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -1922,6 +2008,30 @@ setTimeout(function() {
 </div>
 
 <script>
+window.SYSTEM_SECURITY_CONFIG = {
+    min_password_length: <?= (int)$sec_min_pass_len ?>,
+    require_uppercase: <?= $sec_req_upper ? 'true' : 'false' ?>,
+    require_numbers: <?= $sec_req_numbers ? 'true' : 'false' ?>,
+    require_special_chars: <?= $sec_req_special ? 'true' : 'false' ?>
+};
+
+function validatePasswordString(val) {
+    const cfg = window.SYSTEM_SECURITY_CONFIG || { min_password_length: 8, require_uppercase: true, require_numbers: true, require_special_chars: true };
+    if (val.length < cfg.min_password_length) {
+        return `Password must be at least ${cfg.min_password_length} characters long.`;
+    }
+    if (cfg.require_uppercase && !/[A-Z]/.test(val)) {
+        return 'Password must contain at least one uppercase letter (A-Z).';
+    }
+    if (cfg.require_numbers && !/[0-9]/.test(val)) {
+        return 'Password must contain at least one number (0-9).';
+    }
+    if (cfg.require_special_chars && !/[!@#$%^&*(),.?":{}|<>\_\-]/.test(val)) {
+        return 'Password must contain at least one special character (!@#$%^&* etc.).';
+    }
+    return null;
+}
+
 function toggleShiftField(context) {
     const roleSelect = document.getElementById(context === 'add' ? 'user_role_add' : 'user_role_edit');
     const shiftGroup = document.getElementById(context === 'add' ? 'shift_field_group_add' : 'shift_field_group_edit');
@@ -2108,6 +2218,25 @@ function validateAddForm() {
         return false;
     }
 
+    // 6b. Role slot enforcement (client-side guard — applies to both Admin and Superadmin)
+    if (role === 'manager' || role === 'admin') {
+        const selectedOption = roleEl ? roleEl.options[roleEl.selectedIndex] : null;
+        if (selectedOption && selectedOption.disabled) {
+            const slotLabel = role === 'admin' ? 'Admin' : 'Manager';
+            alert(`Cannot create a ${slotLabel} for this branch. The ${slotLabel} slot is already filled (Only 1 ${slotLabel} per branch is allowed). Please archive or reassign the existing ${slotLabel} first.`);
+            if (roleEl) roleEl.focus();
+            return false;
+        }
+    }
+
+    // 6c. Superadmin must pick a station before submitting
+    const stationSel = document.getElementById('add_station_id');
+    if (stationSel && !stationSel.value) {
+        alert('Please select a Station before creating this user.');
+        stationSel.focus();
+        return false;
+    }
+
     // 7. PASSWORD & CONFIRM PASSWORD (Optional if empty, confirm required if manually entered)
     if (pass !== '') {
         if (conf === '') {
@@ -2118,6 +2247,12 @@ function validateAddForm() {
         if (pass !== conf) {
             alert('Passwords do not match. Please ensure both passwords are identical.');
             if (confEl) confEl.focus();
+            return false;
+        }
+        const passErr = validatePasswordString(pass);
+        if (passErr) {
+            alert(passErr);
+            if (passEl) passEl.focus();
             return false;
         }
     }
@@ -2198,17 +2333,9 @@ function validateResetForm() {
         if (field) field.focus();
         return false;
     }
-    if (val.length < 8) {
-        alert('Password must be at least 8 characters long.');
-        if (field) field.focus();
-        return false;
-    }
-    const hasUpper = /[A-Z]/.test(val);
-    const hasLower = /[a-z]/.test(val);
-    const hasNum   = /[0-9]/.test(val);
-    const hasSym   = /[!@#$%^&*(),.?":{}|<>\_\-]/.test(val);
-    if (!hasUpper || !hasLower || !hasNum || !hasSym) {
-        alert('Password must contain at least one uppercase letter, one lowercase letter, one number, and one special symbol (!@#$%^&*).');
+    const passErr = validatePasswordString(val);
+    if (passErr) {
+        alert(passErr);
         if (field) field.focus();
         return false;
     }
@@ -2253,6 +2380,93 @@ function openAddModal() {
     setTimeout(function() {
         toggleShiftField('add');
     }, 150);
+}
+
+// ── Manager slot badge visibility on role change (Admin view) ──
+function onRoleChangeAddUser(selectEl) {
+    const badge = document.getElementById('manager_slot_badge');
+    if (!badge) return;
+    if (selectEl.value === 'manager') {
+        badge.style.display = 'inline-flex';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+// ── Superadmin: Check role slot availability when station changes ──
+function onStationChangeCheckSlots(stationId) {
+    const roleSelect  = document.getElementById('user_role_add');
+    const badge       = document.getElementById('sa_slot_badge');
+    const badgeText   = document.getElementById('sa_slot_badge_text');
+
+    if (!stationId || !roleSelect) return;
+
+    // Reset role options first
+    const opts = roleSelect.options;
+    for (let i = 0; i < opts.length; i++) {
+        opts[i].disabled = false;
+        // Strip any previous "(Slot Full)" suffix
+        opts[i].text = opts[i].text.replace(/\s*\(Slot Full.*?\)/gi, '').trim();
+    }
+
+    if (badge) { badge.style.display = 'inline-flex'; }
+    if (badgeText) { badgeText.textContent = 'Checking slot availability...'; }
+
+    fetch('users.php?ajax_check_slots=1&station_id=' + encodeURIComponent(stationId), { cache: 'no-store' })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) return;
+
+            let messages = [];
+
+            // Update Manager option
+            const mgrOpt = Array.from(opts).find(o => o.value === 'manager');
+            if (mgrOpt) {
+                if (data.manager_taken) {
+                    mgrOpt.disabled = true;
+                    mgrOpt.text = 'Manager (Slot Full — 1 already assigned)';
+                    messages.push('⛔ Manager slot taken by: ' + (data.manager_name || 'existing user'));
+                } else {
+                    mgrOpt.disabled = false;
+                    mgrOpt.text = 'Manager';
+                    messages.push('✅ Manager slot available');
+                }
+            }
+
+            // Update Admin option
+            const admOpt = Array.from(opts).find(o => o.value === 'admin');
+            if (admOpt) {
+                if (data.admin_taken) {
+                    admOpt.disabled = true;
+                    admOpt.text = 'Admin (Slot Full — 1 already assigned)';
+                    messages.push('⛔ Admin slot taken by: ' + (data.admin_name || 'existing user'));
+                } else {
+                    admOpt.disabled = false;
+                    admOpt.text = 'Admin';
+                    messages.push('✅ Admin slot available');
+                }
+            }
+
+            // If currently selected option is now disabled, reset selection
+            const curOpt = opts[roleSelect.selectedIndex];
+            if (curOpt && curOpt.disabled) {
+                roleSelect.selectedIndex = 0;
+                toggleShiftField('add');
+            }
+
+            if (badge && badgeText) {
+                badge.style.display = 'inline-flex';
+                badgeText.textContent = messages.join('  |  ');
+
+                const allGood = !data.manager_taken && !data.admin_taken;
+                badge.style.background = allGood ? '#f0fdf4' : '#fff7ed';
+                badge.style.color      = allGood ? '#16a34a' : '#c2410c';
+                badge.style.border     = allGood ? '1px solid #86efac' : '1px solid #fdba74';
+            }
+        })
+        .catch(() => {
+            if (badgeText) badgeText.textContent = 'Could not load slot info.';
+        });
 }
 
 function openEditModal(user) {

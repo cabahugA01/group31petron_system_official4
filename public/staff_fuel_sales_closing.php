@@ -28,21 +28,26 @@ $report_date = $_GET['date'] ?? date('Y-m-d');
 $shift       = $_GET['shift'] ?? 'Second Shift';
 ?>
 
-<div class="main-content" style="padding: 24px; background: #f8fafc; min-height: 100vh;">
+<div class="main-content" style="padding: 20px; background: #f8fafc; min-height: 100vh; box-sizing: border-box; overflow-x: hidden;">
     <style>
         .closing-container {
-            max-width: 1280px;
+            width: 100%;
+            max-width: 100%;
             margin: 0 auto;
             padding-bottom: 12px;
+            box-sizing: border-box;
+            overflow-x: hidden;
         }
         .txn-section-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
         }
         .txn-section-title h1 {
-            font-size: 24px;
+            font-size: 22px;
             font-weight: 800;
             color: #002F70;
             margin: 0 0 4px 0;
@@ -54,11 +59,13 @@ $shift       = $_GET['shift'] ?? 'Second Shift';
         }
         .closing-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-            margin-bottom: 24px;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 20px;
+            width: 100%;
+            box-sizing: border-box;
         }
-        @media (max-width: 1024px) {
+        @media (max-width: 900px) {
             .closing-grid { grid-template-columns: 1fr; }
         }
         .closing-card {
@@ -66,18 +73,21 @@ $shift       = $_GET['shift'] ?? 'Second Shift';
             border-radius: 12px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.08);
             border: 1px solid #e2e8f0;
-            padding: 20px;
+            padding: 16px;
+            box-sizing: border-box;
+            min-width: 0;  /* prevent grid blowout */
+            overflow: hidden;
         }
         .closing-card.full-width {
             grid-column: 1 / -1;
         }
         .closing-card-header {
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 700;
             color: #002F70;
             border-bottom: 2px solid #f1f5f9;
             padding-bottom: 10px;
-            margin-bottom: 16px;
+            margin-bottom: 14px;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -94,17 +104,20 @@ $shift       = $_GET['shift'] ?? 'Second Shift';
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
+            gap: 8px;
         }
         .form-row-custom label {
-            font-size: 13px;
+            font-size: 12.5px;
             font-weight: 600;
             color: #334155;
             flex: 1;
+            min-width: 0;
         }
         .form-row-custom input {
-            width: 180px;
-            padding: 8px 12px;
+            width: 160px;
+            min-width: 80px;
+            padding: 7px 10px;
             border: 1px solid #cbd5e1;
             border-radius: 6px;
             text-align: right;
@@ -112,6 +125,8 @@ $shift       = $_GET['shift'] ?? 'Second Shift';
             font-weight: 600;
             color: #0f172a;
             transition: all 0.15s ease-in-out;
+            box-sizing: border-box;
+            flex-shrink: 0;
         }
         .form-row-custom input:focus {
             outline: none;
@@ -129,7 +144,7 @@ $shift       = $_GET['shift'] ?? 'Second Shift';
             margin-top: 12px;
         }
         .form-row-custom.total-row label {
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 700;
             color: #002F70;
         }
@@ -148,6 +163,7 @@ $shift       = $_GET['shift'] ?? 'Second Shift';
             width: 100%;
             border-collapse: collapse;
             font-size: 12px;
+            table-layout: fixed;
         }
         .closing-table th {
             background: #002F70;
@@ -156,11 +172,13 @@ $shift       = $_GET['shift'] ?? 'Second Shift';
             padding: 8px 10px;
             text-align: left;
             border: 1px solid #001f4d;
+            word-break: break-word;
         }
         .closing-table td {
-            padding: 8px 10px;
+            padding: 7px 10px;
             border: 1px solid #e2e8f0;
             color: #1e293b;
+            word-break: break-word;
         }
         .closing-table tr:nth-child(even) {
             background: #f8fafc;
@@ -170,6 +188,10 @@ $shift       = $_GET['shift'] ?? 'Second Shift';
             background: #e8f0fe;
             border-top: 2px solid #002F70;
             color: #002F70;
+        }
+        .table-scroll-wrap {
+            width: 100%;
+            overflow-x: auto;
         }
         .action-bar {
             display: flex;
@@ -182,10 +204,11 @@ $shift       = $_GET['shift'] ?? 'Second Shift';
             background: transparent;
             border: none;
             box-shadow: none;
+            flex-wrap: wrap;
         }
         .btn-closing {
-            padding: 12px 28px;
-            font-size: 14px;
+            padding: 10px 22px;
+            font-size: 13px;
             font-weight: 700;
             border-radius: 8px;
             cursor: pointer;
@@ -195,6 +218,7 @@ $shift       = $_GET['shift'] ?? 'Second Shift';
             gap: 8px;
             transition: all 0.2s;
             text-decoration: none;
+            white-space: nowrap;
         }
         .btn-save { background: #002F70; color: #ffffff; box-shadow: 0 2px 6px rgba(0,47,112,0.3); }
         .btn-save:hover { background: #001f4d; box-shadow: 0 4px 12px rgba(0,47,112,0.4); }
@@ -228,7 +252,7 @@ $shift       = $_GET['shift'] ?? 'Second Shift';
                     <div class="closing-card-header">
                         <span><i class="fas fa-gas-pump me-1"></i> Meter Reading</span>
                     </div>
-                    <div style="overflow-x:auto;">
+                    <div class="table-scroll-wrap">
                         <table class="closing-table" id="fuelSalesSummaryTable">
                             <thead>
                                 <tr>

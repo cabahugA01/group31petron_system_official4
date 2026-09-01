@@ -63,7 +63,7 @@ function require_login(){
   }
 
   // ── Dynamic Session Timeout from system_settings ──
-  $timeout = 300; // fallback default = 5 minutes in seconds
+  $timeout = 1800; // fallback default = 30 minutes in seconds
   try {
     global $pdo;
     if (!isset($pdo) || !$pdo) {
@@ -73,7 +73,8 @@ function require_login(){
     $stmtTmt->execute();
     $storedTimeout = $stmtTmt->fetchColumn();
     if ($storedTimeout !== false && is_numeric($storedTimeout) && (int)$storedTimeout > 0) {
-      $timeout = (int)$storedTimeout * 60; // stored in minutes, convert to seconds
+      $timeoutMinutes = max(5, (int)$storedTimeout); // Enforce minimum 5 minutes to prevent accidental lockouts
+      $timeout = $timeoutMinutes * 60; // convert minutes to seconds
     }
   } catch (Exception $e) {
     // keep fallback default

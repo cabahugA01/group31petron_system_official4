@@ -124,13 +124,30 @@ try {
         $transaction_type = 'merchandise';
     }
     
-    // ========== CALCULATE TOTALS ==========
+    // ========== CALCULATE TOTALS WITH AUTHORITATIVE DATABASE PRICES ==========
     
     $merchandise_total = 0;
-    foreach ($cart_items as $item) {
-        $qty = (int)($item['quantity'] ?? 0);
+    foreach ($cart_items as $idx => $item) {
+        $qty = max(1, (int)($item['quantity'] ?? 1));
+        $prod_id = $item['product_id'] ?? $item['id'] ?? null;
+        
         $price = (float)($item['unit_price'] ?? 0);
+        if ($prod_id && function_exists('get_authoritative_item_price')) {
+            $db_price = get_authoritative_item_price($pdo, $prod_id, 'merchandise');
+            if ($db_price > 0) {
+                $price = $db_price;
+                $cart_items[$idx]['unit_price'] = $db_price;
+            }
+        }
         $merchandise_total += $qty * $price;
+    }
+    
+    // Also re-verify service fee from DB if service selected
+    if (!empty($service_type) && function_exists('get_authoritative_item_price')) {
+        $db_service_fee = get_authoritative_item_price($pdo, $service_type, 'service');
+        if ($db_service_fee > 0) {
+            $service_fee = $db_service_fee;
+        }
     }
     
     $grand_total = $service_fee + $merchandise_total;

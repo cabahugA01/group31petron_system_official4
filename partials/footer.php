@@ -418,8 +418,6 @@
     btn.innerHTML = '<i class="fas fa-arrow-down" style="pointer-events: none !important; display: block !important;"></i>';
     document.body.appendChild(btn);
     
-    // Debug log
-    console.log('Scroll button created with inline clickability styles');
   })();
   </script>
 
@@ -559,7 +557,6 @@
         btn.addEventListener('click', function (e) {
             e.preventDefault();
             e.stopPropagation();
-            console.log('Scroll button clicked!');
             doScroll();
         }, false);
         
@@ -571,7 +568,6 @@
             }
             if (btn.style.pointerEvents !== 'auto' || btn.style.zIndex !== '2147483647') {
                 btn.style.cssText = 'pointer-events: auto !important; cursor: pointer !important; z-index: 2147483647 !important; position: fixed !important; opacity: 1 !important; visibility: visible !important; display: flex !important;';
-                console.log('<i class="fas fa-exclamation-triangle"></i> Scroll button styles reset - reapplied maximum priority clickability');
             }
         }, 500); // Check every 500ms
 

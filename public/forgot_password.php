@@ -116,6 +116,7 @@ $footer_text = "&copy; {$current_year} {$system_name}. All Rights Reserved.";
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Forgot Password | Petron Management System</title>
     <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">
+    <script src="../assets/js/security_frontend.js?v=2.0.4"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 

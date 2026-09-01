@@ -64,26 +64,40 @@ if (empty($token) || empty($email)) {
     }
 }
 
+// ── Load dynamic security policy from system_settings (never hardcoded) ──
+$sec_min_pass_len    = 8;
+$sec_req_upper       = true;
+$sec_req_numbers     = true;
+$sec_req_special     = true;
+try {
+    $secQ = $pdo->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('min_password_length','require_uppercase','require_numbers','require_special_chars') AND station_id=0");
+    foreach ($secQ->fetchAll(PDO::FETCH_ASSOC) as $sr) {
+        switch ($sr['setting_key']) {
+            case 'min_password_length':  $sec_min_pass_len = max(6, (int)$sr['setting_value']); break;
+            case 'require_uppercase':    $sec_req_upper    = ((int)$sr['setting_value'] === 1);  break;
+            case 'require_numbers':      $sec_req_numbers  = ((int)$sr['setting_value'] === 1);  break;
+            case 'require_special_chars':$sec_req_special  = ((int)$sr['setting_value'] === 1);  break;
+        }
+    }
+} catch (Exception $e) { /* keep fallback defaults */ }
+
 // Handle password reset form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
     $password = $_POST['password_hash'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
     
     $password_errors = [];
-    if (strlen($password) < 8) {
-        $password_errors[] = "Password must be at least 8 characters long.";
+    if (strlen($password) < $sec_min_pass_len) {
+        $password_errors[] = "Password must be at least {$sec_min_pass_len} characters long.";
     }
-    if (!preg_match('/[A-Z]/', $password)) {
-        $password_errors[] = "Password must contain at least one uppercase letter.";
+    if ($sec_req_upper && !preg_match('/[A-Z]/', $password)) {
+        $password_errors[] = "Password must contain at least one uppercase letter (A-Z).";
     }
-    if (!preg_match('/[a-z]/', $password)) {
-        $password_errors[] = "Password must contain at least one lowercase letter.";
+    if ($sec_req_numbers && !preg_match('/[0-9]/', $password)) {
+        $password_errors[] = "Password must contain at least one number (0-9).";
     }
-    if (!preg_match('/[0-9]/', $password)) {
-        $password_errors[] = "Password must contain at least one number.";
-    }
-    if (!preg_match('/[!@#$%^&*(),.?":{}|<>]/', $password)) {
-        $password_errors[] = "Password must contain at least one special character.";
+    if ($sec_req_special && !preg_match('/[!@#$%^&*(),.?":{}|<>\-_]/', $password)) {
+        $password_errors[] = "Password must contain at least one special character (!@#$%^&* etc.).";
     }
     
     if ($password !== $confirm_password) {
@@ -129,6 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create New Password | Petron Management System</title>
     <link rel="stylesheet" href="../assets/vendor/fontawesome/css/all.min.css">
+    <script src="../assets/js/security_frontend.js?v=2.0.4"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -499,7 +514,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
                     <div class="input-wrap">
                         <i class="fas fa-lock input-icon"></i>
                         <input type="password" name="password_hash" id="password_hash" class="field-input"
-                               placeholder="Enter new password" required autofocus minlength="8" autocomplete="new-password">
+                               placeholder="Enter new password" required autofocus minlength="<?= (int)$sec_min_pass_len ?>" autocomplete="new-password">
                         <button type="button" class="pw-toggle" id="pwToggle1" aria-label="Show or hide password">
                             <i class="fas fa-eye" id="pwIcon1"></i>
                         </button>
@@ -511,14 +526,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
                     <div class="input-wrap">
                         <i class="fas fa-check-double input-icon"></i>
                         <input type="password" name="confirm_password" id="confirm_password" class="field-input"
-                               placeholder="Confirm new password" required minlength="8" autocomplete="new-password">
+                               placeholder="Confirm new password" required minlength="<?= (int)$sec_min_pass_len ?>" autocomplete="new-password">
                         <button type="button" class="pw-toggle" id="pwToggle2" aria-label="Show or hide confirm password">
                             <i class="fas fa-eye" id="pwIcon2"></i>
                         </button>
                     </div>
                 </div>
 
-                <button type="submit" class="btn-login">
+                <button type="submit" class="btn-login" id="btnSubmitReset">
                     <i class="fas fa-save"></i>
                     <span>RESET PASSWORD</span>
                 </button>
@@ -539,6 +554,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
     </div>
 
     <script>
+    window.SYSTEM_SECURITY_CONFIG = {
+        min_password_length: <?= (int)$sec_min_pass_len ?>,
+        require_uppercase: <?= $sec_req_upper ? 'true' : 'false' ?>,
+        require_numbers: <?= $sec_req_numbers ? 'true' : 'false' ?>,
+        require_special_chars: <?= $sec_req_special ? 'true' : 'false' ?>
+    };
+
     document.addEventListener('DOMContentLoaded', function() {
         function setupPasswordToggle(toggleBtnId, inputId, iconId) {
             var btn = document.getElementById(toggleBtnId);

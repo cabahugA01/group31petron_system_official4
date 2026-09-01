@@ -602,8 +602,8 @@ input:checked + .ss-slider:before {
                 </div>
                 <div class="ss-grid-3" style="margin-bottom:16px;">
                     <div class="ss-form-group">
-                        <label for="ss_session_timeout">Session Timeout (minutes)</label>
-                        <input type="number" id="ss_session_timeout" class="ss-form-control" value="30" min="5" max="1440">
+                        <label for="ss_session_timeout">Session Timeout (minutes) <small style="color:#64748b; font-weight:400;">(min: 5)</small></label>
+                        <input type="number" id="ss_session_timeout" class="ss-form-control" value="30" min="5" max="1440" title="Minimum 5 minutes. Sessions shorter than 5 minutes may cause users to be logged out unexpectedly.">
                     </div>
                     <div class="ss-form-group">
                         <label for="ss_min_password_length">Minimum Password Length</label>
@@ -1229,10 +1229,10 @@ async function saveAllSystemSettings() {
 
     // Basic numeric validation
     const numericFields = [
-        { id: 'ss_session_timeout',        label: 'Session Timeout',          min: 1,  max: 1440 },
+        { id: 'ss_session_timeout',        label: 'Session Timeout',          min: 5,  max: 1440 },
         { id: 'ss_min_password_length',    label: 'Min Password Length',      min: 4,  max: 64   },
-        { id: 'ss_max_login_attempts',     label: 'Max Login Attempts',       min: 1,  max: 20   },
-        { id: 'ss_dashboard_auto_refresh', label: 'Dashboard Auto Refresh',   min: 0,  max: 3600 },
+        { id: 'ss_max_login_attempts',     label: 'Max Login Attempts',       min: 3,  max: 20   },
+        { id: 'ss_dashboard_auto_refresh', label: 'Dashboard Auto Refresh',   min: 5,  max: 3600 },
         { id: 'ss_banner_duration',        label: 'Banner Duration',          min: 1,  max: 60   },
     ];
     for (const f of numericFields) {

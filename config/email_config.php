@@ -388,6 +388,9 @@ function sendAdminCredentialsEmail($to_email, $full_name, $station_name, $userna
         $mail->Password   = $email_config['password_hash'];
         $mail->SMTPSecure = $email_config['encryption'];
         $mail->Port       = $email_config['port'];
+        $mail->Timeout    = 30;  // 30s SMTP connection timeout
+        $mail->SMTPKeepAlive = false;
+        $mail->CharSet    = 'UTF-8';
 
         $mail->setFrom($email_config['from_email'], $email_config['from_name']);
         $mail->addAddress($to_email);

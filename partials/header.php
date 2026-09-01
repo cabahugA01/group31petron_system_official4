@@ -572,19 +572,32 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_customer_management.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/vendor/fontawesome/css/all.min.css">
   <script src="<?php echo $app_base_path; ?>/assets/js/security_frontend.js?v=1788169806"></script>
-    <!-- GLOBAL TEXT VISIBILITY FIX & PROTECTED UI CSS -->
+    <!-- GLOBAL PROTECTED UI & TEXT SELECTION SHIELD -->
     <style>
-        .protected-ui, .card, .table-responsive, table:not(.allow-select) {
+        /* Prevent accidental scraping / text-highlighting on UI chrome & navigational elements */
+        .sidebar, .top-header, .navbar, .card-header, .stat-card, .badge, .badge-tag, .btn, button, th, .no-select, .protected-ui {
+            -webkit-user-select: none !important;
+            -moz-user-select: none !important;
+            -ms-user-select: none !important;
+            user-select: none !important;
+        }
+
+        /* Guarantee 100% normal selection, typing, cut, copy & paste inside all form controls */
+        input, textarea, select, [contenteditable="true"], .allow-select, .allow-copy, code, pre, .selectable-text {
             -webkit-user-select: text !important;
             -moz-user-select: text !important;
             -ms-user-select: text !important;
             user-select: text !important;
         }
-        input, textarea, select, [contenteditable="true"], .allow-select {
-            -webkit-user-select: text !important;
-            -moz-user-select: text !important;
-            -ms-user-select: text !important;
-            user-select: text !important;
+
+        /* Prevent image scraping / drag-and-drop tampering of branding */
+        img, .brand-logo, .petron-logo {
+            -webkit-user-drag: none;
+            -khtml-user-drag: none;
+            -moz-user-drag: none;
+            -o-user-drag: none;
+            user-drag: none;
+            pointer-events: auto;
         }
     </style>
     <style>

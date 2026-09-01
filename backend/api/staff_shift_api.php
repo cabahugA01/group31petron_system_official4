@@ -41,8 +41,14 @@ function getShiftPeriods($pdo) {
 }
 
 function clockIn($pdo) {
-    $staff_id = $_POST['staff_id'] ?? 0;
-    $station_id = $_POST['station_id'] ?? 0;
+    $me = current_user();
+    if (!$me || empty($me['id'])) {
+        echo json_encode(['error' => 'Authentication required. Please log in.']);
+        return;
+    }
+    
+    $staff_id = (int)$me['id'];
+    $station_id = (int)user_station_id();
     
     if (!$staff_id || !$station_id) {
         echo json_encode(['error' => 'Staff ID and Station ID required']);
@@ -127,12 +133,13 @@ function clockIn($pdo) {
 }
 
 function clockOut($pdo) {
-    $staff_id = $_POST['staff_id'] ?? 0;
-    
-    if (!$staff_id) {
-        echo json_encode(['error' => 'Staff ID required']);
+    $me = current_user();
+    if (!$me || empty($me['id'])) {
+        echo json_encode(['error' => 'Authentication required. Please log in.']);
         return;
     }
+    
+    $staff_id = (int)$me['id'];
     
     // Get active session
     $stmt = $pdo->prepare("
@@ -187,12 +194,13 @@ function clockOut($pdo) {
 }
 
 function getActiveSession($pdo) {
-    $staff_id = $_GET['staff_id'] ?? 0;
-    
-    if (!$staff_id) {
-        echo json_encode(['error' => 'Staff ID required']);
+    $me = current_user();
+    if (!$me || empty($me['id'])) {
+        echo json_encode(['error' => 'Authentication required']);
         return;
     }
+    
+    $staff_id = (int)$me['id'];
     
     $stmt = $pdo->prepare("
         SELECT ass.*, sp.name as shift_name, sp.start_time, sp.end_time,

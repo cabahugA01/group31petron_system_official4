@@ -1,0 +1,40 @@
+﻿# ==============================================================================
+# Petron Station Management System — Master Web Security Configuration
+# ==============================================================================
+
+# 1. Disable directory listing across the entire application
+<IfModule mod_autoindex.c>
+    Options -Indexes
+</IfModule>
+
+# 2. Prevent direct browser access to sensitive files and extensions
+<FilesMatch "(?i)\.(env|sql|bak|old|log|json|ini|yml|yaml|sh|lock|git|svn|htaccess|htpasswd|md)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order Deny,Allow
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# 3. Block access to hidden files and directories (starting with a dot)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule "(^|/)\.(?!well-known)" - [F]
+</IfModule>
+
+# 4. Protect sensitive internal directories from direct browser navigation
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(config|backups|database|sessions|scratch|partials|includes|templates|app)/ - [F,L]
+</IfModule>
+
+# 5. Security HTTP Headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+</IfModule>
