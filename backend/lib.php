@@ -1,6 +1,28 @@
 <?php
 require_once __DIR__ . '/security_helpers.php';
 
+if (!function_exists('is_system_in_maintenance_mode')) {
+    function is_system_in_maintenance_mode() {
+        global $pdo;
+        if (!isset($pdo) || !$pdo) {
+            try {
+                require_once __DIR__ . '/../public/db_connect.php';
+            } catch (Exception $e) {
+                return false;
+            }
+        }
+        try {
+            $stmt = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'maintenance_mode' AND station_id = 0 LIMIT 1");
+            $stmt->execute();
+            $val = $stmt->fetchColumn();
+            return ($val === '1' || $val === 1 || $val === 'true');
+        } catch (Exception $e) {
+            return false;
+        }
+    }
+}
+
+
 // Simple JSON-based storage helpers (no DB required)
 function data_path($file){ return __DIR__ . '/../data/' . $file; }
 
@@ -40,11 +62,59 @@ function require_login(){
     session_start();
   }
 
-  $timeout = 300; // 5 minutes inactivity timeout (300 seconds)
+  // ── Dynamic Session Timeout from system_settings ──
+  $timeout = 300; // fallback default = 5 minutes in seconds
+  try {
+    global $pdo;
+    if (!isset($pdo) || !$pdo) {
+      require_once __DIR__ . '/../public/db_connect.php';
+    }
+    $stmtTmt = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'session_timeout' AND station_id = 0 LIMIT 1");
+    $stmtTmt->execute();
+    $storedTimeout = $stmtTmt->fetchColumn();
+    if ($storedTimeout !== false && is_numeric($storedTimeout) && (int)$storedTimeout > 0) {
+      $timeout = (int)$storedTimeout * 60; // stored in minutes, convert to seconds
+    }
+  } catch (Exception $e) {
+    // keep fallback default
+  }
   $script = $_SERVER['SCRIPT_NAME'] ?? '';
   $root = rtrim(dirname($script), '/\\');
   if($root === '' || $root === '.') $root = '/';
   $loginUrl = rtrim($root, '/') . '/login.php';
+
+  // ── Maintenance Mode Gatekeeper ──
+  if (is_system_in_maintenance_mode()) {
+    $session_user = $_SESSION['user'] ?? null;
+    $user_role = '';
+    if ($session_user) {
+      $rRaw = $session_user['role'] ?? '';
+      $user_role = function_exists('role_key') ? role_key($rRaw) : strtolower(trim($rRaw));
+    }
+    // Only Superadmin & Developer are permitted during maintenance mode
+    if (!in_array($user_role, ['superadmin', 'developer'])) {
+      $_SESSION = [];
+      if (ini_get('session.use_cookies') && !headers_sent()) {
+        $p = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], $p['secure'], $p['httponly']);
+      }
+      if (session_status() === PHP_SESSION_ACTIVE) {
+        session_destroy();
+      }
+
+      if (strpos($script, '/backend/') !== false || strpos($script, '/api/') !== false) {
+        json_response(['ok' => false, 'maintenance' => true, 'error' => 'System is under maintenance'], 503);
+      }
+
+      if (!headers_sent()) {
+        header('Location: ' . $loginUrl . '?maintenance=1');
+      } else {
+        echo '<script>window.location.href="' . htmlspecialchars($loginUrl . '?maintenance=1') . '";</script>';
+      }
+      exit;
+    }
+  }
+
 
   // Re-verify session user from database if DB connection exists
   if (!empty($_SESSION['user']) && function_exists('validate_server_session_user')) {

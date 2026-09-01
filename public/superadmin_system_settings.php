@@ -456,7 +456,7 @@ input:checked + .ss-slider:before {
 
         <!-- Panel Header -->
         <div class="ss-panel-header">
-            <h1>System Settings</h1>
+            <h1><i class="fas fa-sliders-h" style="margin-right:8px;"></i>System Settings</h1>
         </div>
 
         <!-- Station Selection -->
@@ -589,8 +589,8 @@ input:checked + .ss-slider:before {
                         </select>
                     </div>
                     <div class="ss-form-group">
-                        <label for="ss_dashboard_auto_refresh">Dashboard Auto Refresh (seconds)</label>
-                        <input type="number" id="ss_dashboard_auto_refresh" class="ss-form-control" value="30" min="5" max="300">
+                        <label for="ss_dashboard_auto_refresh">Auto Refresh Interval (seconds)</label>
+                        <input type="number" id="ss_dashboard_auto_refresh" class="ss-form-control" value="10" min="5" max="300" title="Auto refresh interval in seconds (default 10s)">
                     </div>
                 </div>
             </div>
@@ -705,12 +705,13 @@ input:checked + .ss-slider:before {
                 </div>
             </div>
 
-            <!-- Maintenance Settings (Recommended) -->
+                        <!-- Maintenance Settings (Enhanced with Timer & Message) -->
             <div class="ss-card" id="section_maintenance">
                 <div class="ss-card-title">
                     <i class="fas fa-tools"></i> Maintenance Settings
                 </div>
-                <div class="ss-grid-3">
+                
+                <div class="ss-grid-3" style="margin-bottom: 16px;">
                     <div class="ss-toggle-wrapper" style="align-self:center;">
                         <span class="ss-toggle-label">Maintenance Mode</span>
                         <label class="ss-switch">
@@ -732,6 +733,45 @@ input:checked + .ss-slider:before {
                         <input type="text" id="ss_last_system_update" class="ss-form-control" value="2026-08-06 22:30:00" readonly style="background:#f8fafc; font-family:monospace;">
                     </div>
                 </div>
+
+                <!-- Timer & Expected End Time -->
+                <div class="ss-form-group" style="margin-bottom: 16px;">
+                    <label for="ss_maintenance_end_time" style="display:flex; justify-content:space-between; align-items:center;">
+                        <span><i class="fas fa-clock" style="color:#002F6C; margin-right:4px;"></i> Estimated Maintenance Completion Time (Timer)</span>
+                        <span id="maintTimerBadge" style="font-size:11px; font-weight:700; color:#d97706; text-transform:none;">Set target date & time or use quick presets below</span>
+                    </label>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <input type="datetime-local" id="ss_maintenance_end_time" class="ss-form-control" style="width:260px;" onchange="updateMaintenanceTimerPreview()">
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <button type="button" class="ss-btn ss-btn-light" style="padding:6px 12px; font-size:12px;" onclick="addMaintenanceMinutes(15)">+15 Mins</button>
+                            <button type="button" class="ss-btn ss-btn-light" style="padding:6px 12px; font-size:12px;" onclick="addMaintenanceMinutes(30)">+30 Mins</button>
+                            <button type="button" class="ss-btn ss-btn-light" style="padding:6px 12px; font-size:12px;" onclick="addMaintenanceMinutes(60)">+1 Hour</button>
+                            <button type="button" class="ss-btn ss-btn-light" style="padding:6px 12px; font-size:12px;" onclick="addMaintenanceMinutes(120)">+2 Hours</button>
+                            <button type="button" class="ss-btn ss-btn-light" style="padding:6px 12px; font-size:12px;" onclick="addMaintenanceMinutes(240)">+4 Hours</button>
+                            <button type="button" class="ss-btn ss-btn-light" style="padding:6px 12px; font-size:12px; color:#dc2626;" onclick="clearMaintenanceTimer()">Clear Timer</button>
+                        </div>
+                    </div>
+
+                    <!-- Live Countdown Preview Box -->
+                    <div id="maintTimerPreviewBox" style="background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:12px 16px; margin-top:10px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <i class="fas fa-stopwatch" style="font-size:22px; color:#d97706;"></i>
+                            <div>
+                                <div style="font-size:11px; font-weight:700; color:#b45309; text-transform:uppercase; letter-spacing:0.4px;">Live Countdown Timer Preview</div>
+                                <div id="maintCountdownPreview" style="font-size:17px; font-weight:800; color:#92400e; font-family:monospace;">No timer configured</div>
+                            </div>
+                        </div>
+                        <div id="maintTargetTimePreview" style="font-size:12px; font-weight:600; color:#78350f;">Target: None</div>
+                    </div>
+                </div>
+
+                <!-- Custom Banner Message -->
+                <div class="ss-form-group" style="margin-bottom: 14px;">
+                    <label for="ss_maintenance_message"><i class="fas fa-bullhorn" style="color:#002F6C; margin-right:4px;"></i> Maintenance Banner Message (Displayed to users on login screen)</label>
+                    <textarea id="ss_maintenance_message" class="ss-form-control" rows="3" placeholder="Enter message displayed to users on the maintenance banner..." style="resize:vertical;">The system is currently undergoing scheduled maintenance to improve performance and stability. Please check back shortly.</textarea>
+                </div>
+
+                
             </div>
 
             <!-- Action Footer Bar (at bottom of form data) -->
@@ -915,7 +955,7 @@ function populateFormFields(s) {
     document.getElementById('ss_accent_color').value = accentCol;
     document.getElementById('ss_accent_color_hex').value = accentCol.toUpperCase();
     document.getElementById('ss_sidebar_mode').value = s.sidebar_mode || 'Expanded';
-    document.getElementById('ss_dashboard_auto_refresh').value = s.dashboard_auto_refresh || '30';
+    document.getElementById('ss_dashboard_auto_refresh').value = s.dashboard_auto_refresh || '10';
     document.getElementById('ss_session_timeout').value = s.session_timeout || '30';
     document.getElementById('ss_min_password_length').value = s.min_password_length || '8';
     document.getElementById('ss_max_login_attempts').value = s.max_login_attempts || '5';
@@ -929,7 +969,14 @@ function populateFormFields(s) {
     document.getElementById('ss_default_orientation').value = s.default_orientation || 'Portrait';
     document.getElementById('ss_show_company_logo_reports').checked = s.show_company_logo_reports == '1';
     document.getElementById('ss_show_report_footer').checked = s.show_report_footer == '1';
-    document.getElementById('ss_maintenance_mode').checked = s.maintenance_mode == '1';
+    document.getElementById('ss_maintenance_mode').checked = (s.maintenance_mode == '1');
+    if (document.getElementById('ss_maintenance_message')) {
+        document.getElementById('ss_maintenance_message').value = s.maintenance_message || 'The system is currently undergoing scheduled maintenance to improve performance and stability. Please check back shortly.';
+    }
+    if (document.getElementById('ss_maintenance_end_time')) {
+        document.getElementById('ss_maintenance_end_time').value = s.maintenance_end_time ? s.maintenance_end_time.replace(' ', 'T').substring(0, 16) : '';
+        updateMaintenanceTimerPreview();
+    }
     // Sync system_status select
     const statusSel = document.getElementById('ss_system_status');
     if (statusSel) statusSel.value = s.system_status || 'Online';
@@ -1091,6 +1138,72 @@ async function removeLogo() {
 }
 
 // ── Maintenance Mode ↔ System Status sync ─────────────────────────────────
+
+// ── Maintenance Timer & Presets Helper Functions ─────────────────────────
+function updateMaintenanceTimerPreview() {
+    const endInput = document.getElementById('ss_maintenance_end_time');
+    const previewEl = document.getElementById('maintCountdownPreview');
+    const targetEl = document.getElementById('maintTargetTimePreview');
+    if (!endInput || !previewEl || !targetEl) return;
+
+    const val = endInput.value;
+    if (!val) {
+        previewEl.textContent = 'No timer configured';
+        targetEl.textContent = 'Target: None';
+        return;
+    }
+
+    const targetDate = new Date(val);
+    if (isNaN(targetDate.getTime())) {
+        previewEl.textContent = 'Invalid date';
+        targetEl.textContent = '';
+        return;
+    }
+
+    const now = new Date();
+    const diff = targetDate.getTime() - now.getTime();
+
+    const options = { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true };
+    targetEl.textContent = 'Target: ' + targetDate.toLocaleString('en-US', options);
+
+    if (diff <= 0) {
+        previewEl.textContent = 'Timer Expired (Concluding shortly)';
+        previewEl.style.color = '#dc2626';
+    } else {
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const secs = Math.floor((diff % (1000 * 60)) / 1000);
+        previewEl.textContent = String(hours).padStart(2, '0') + 'h ' + String(mins).padStart(2, '0') + 'm ' + String(secs).padStart(2, '0') + 's remaining';
+        previewEl.style.color = '#92400e';
+    }
+}
+
+function addMaintenanceMinutes(minutes) {
+    const endInput = document.getElementById('ss_maintenance_end_time');
+    if (!endInput) return;
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + minutes);
+
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const mins = String(now.getMinutes()).padStart(2, '0');
+
+    endInput.value = `${year}-${month}-${day}T${hours}:${mins}`;
+    updateMaintenanceTimerPreview();
+}
+
+function clearMaintenanceTimer() {
+    const endInput = document.getElementById('ss_maintenance_end_time');
+    if (endInput) {
+        endInput.value = '';
+        updateMaintenanceTimerPreview();
+    }
+}
+
+setInterval(updateMaintenanceTimerPreview, 1000);
+
 function onMaintenanceModeChange(isChecked) {
     const statusSel = document.getElementById('ss_system_status');
     if (!statusSel) return;
@@ -1171,6 +1284,8 @@ async function saveAllSystemSettings() {
             maintenance_mode: document.getElementById('ss_maintenance_mode').checked ? '1' : '0',
             system_status: document.getElementById('ss_system_status').value,
             last_system_update: nowStr,
+            maintenance_message: document.getElementById('ss_maintenance_message') ? document.getElementById('ss_maintenance_message').value.trim() : '',
+            maintenance_end_time: document.getElementById('ss_maintenance_end_time') && document.getElementById('ss_maintenance_end_time').value ? document.getElementById('ss_maintenance_end_time').value.replace('T', ' ') + ':00' : '',
         }
     };
 
@@ -1256,6 +1371,7 @@ function autoRefreshSuperadminSystemSettings() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshSuperadminSystemSettings, 15000);
+// ── STRICT 10-SECOND AUTO REFRESH INTERVAL ──
+setInterval(autoRefreshSuperadminSystemSettings, 10000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

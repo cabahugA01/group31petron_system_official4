@@ -9,6 +9,19 @@ require_once __DIR__ . '/../public/db_connect.php';
 require_login();
 $user = $_SESSION['user'];
 
+// ── Load session_timeout from system_settings for client-side idle tracker ──
+$header_session_timeout_seconds = 300; // fallback 5 minutes
+try {
+    $hst_stmt = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'session_timeout' AND station_id = 0 LIMIT 1");
+    $hst_stmt->execute();
+    $hst_val = $hst_stmt->fetchColumn();
+    if ($hst_val !== false && is_numeric($hst_val) && (int)$hst_val > 0) {
+        $header_session_timeout_seconds = (int)$hst_val * 60; // convert minutes → seconds
+    }
+} catch (Exception $e) {
+    // keep fallback
+}
+
 // Get current page ID from filename (only if not already set by the calling page)
 if (!isset($page_id)) {
     $page_id = basename($_SERVER['PHP_SELF'], '.php');
@@ -6463,3 +6476,195 @@ require_once __DIR__ . '/rbac_menu.php';
 })();
 </script>
 
+
+
+<?php
+// ── Maintenance Mode Check for Header ──
+$global_maint_active = false;
+$global_maint_end_time = '';
+$global_maint_msg = '';
+try {
+    $hm_stmt = $pdo->prepare("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('maintenance_mode', 'maintenance_end_time', 'maintenance_message') AND station_id = 0");
+    $hm_stmt->execute();
+    $hm_rows = $hm_stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+    if (!empty($hm_rows['maintenance_mode']) && ($hm_rows['maintenance_mode'] === '1' || $hm_rows['maintenance_mode'] == 1)) {
+        $global_maint_active = true;
+    }
+    $global_maint_end_time = $hm_rows['maintenance_end_time'] ?? '';
+    $global_maint_msg = $hm_rows['maintenance_message'] ?? 'Maintenance active';
+} catch (Exception $e) {}
+?>
+
+<?php if ($global_maint_active && in_array($role, ['superadmin', 'developer'])): ?>
+<!-- Sticky Maintenance Banner for Superadmin -->
+<div id="superadminMaintenanceRibbon" style="background: linear-gradient(90deg, #b45309 0%, #d97706 100%); color: #ffffff; padding: 9px 18px; font-size: 12.5px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 999999; box-shadow: 0 2px 10px rgba(0,0,0,0.18);">
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <i class="fas fa-tools" style="color: #fef3c7; font-size: 15px;"></i>
+        <span><strong>MAINTENANCE MODE ACTIVE:</strong> Non-superadmin users are locked out of the system.</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 14px;">
+        <?php if (!empty($global_maint_end_time)): ?>
+        <div style="background: rgba(0,0,0,0.25); padding: 3px 10px; border-radius: 6px; font-family: monospace; font-size: 12px;">
+            <i class="fas fa-stopwatch" style="margin-right:4px;"></i> <span id="saHeaderTimer" data-endtime="<?= htmlspecialchars($global_maint_end_time) ?>">Calculating...</span>
+        </div>
+        <?php endif; ?>
+        <a href="<?= htmlspecialchars($public_base_url) ?>/superadmin_system_settings.php" style="background: #ffffff; color: #92400e; padding: 4px 12px; border-radius: 6px; text-decoration: none; font-size: 11.5px; font-weight: 800; display: inline-flex; align-items: center; gap: 5px;">
+            <i class="fas fa-cog"></i> Settings
+        </a>
+    </div>
+</div>
+<script>
+(function() {
+    const timer = document.getElementById('saHeaderTimer');
+    if (!timer) return;
+    const endStr = timer.getAttribute('data-endtime');
+    if (!endStr) return;
+    function update() {
+        const target = new Date(endStr.replace(/-/g, '/'));
+        const now = new Date();
+        const diff = target.getTime() - now.getTime();
+        if (diff <= 0) {
+            timer.textContent = 'Expired';
+            return;
+        }
+        const h = Math.floor(diff / (1000 * 60 * 60));
+        const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const s = Math.floor((diff % (1000 * 60)) / 1000);
+        timer.textContent = String(h).padStart(2,'0') + 'h ' + String(m).padStart(2,'0') + 'm ' + String(s).padStart(2,'0') + 's';
+    }
+    update();
+    setInterval(update, 1000);
+})();
+</script>
+<?php endif; ?>
+
+<script>
+// ── Client-Side Session Idle Timeout Tracker ──
+(function initSessionIdleTracker() {
+    const TIMEOUT_MS   = <?= (int)$header_session_timeout_seconds * 1000 ?>;  // from DB setting
+    const WARNING_BEFORE_MS = 60000; // Show warning 60 seconds before timeout
+    const loginUrl     = '<?= htmlspecialchars($public_base_url) ?>/login.php?timeout=1';
+
+    let idleTimer    = null;
+    let warnTimer    = null;
+    let warningShown = false;
+
+    function resetTimers() {
+        clearTimeout(idleTimer);
+        clearTimeout(warnTimer);
+        warningShown = false;
+
+        // Remove warning modal if user becomes active again
+        const existingWarn = document.getElementById('sessionTimeoutWarning');
+        if (existingWarn) existingWarn.remove();
+
+        // Show warning before actual timeout
+        const warnAt = TIMEOUT_MS - WARNING_BEFORE_MS;
+        if (warnAt > 0) {
+            warnTimer = setTimeout(showWarning, warnAt);
+        }
+
+        // Force redirect on actual timeout
+        idleTimer = setTimeout(() => {
+            window.location.href = loginUrl;
+        }, TIMEOUT_MS);
+    }
+
+    function showWarning() {
+        if (warningShown || document.getElementById('sessionTimeoutWarning')) return;
+        warningShown = true;
+
+        const remainSec = Math.ceil(WARNING_BEFORE_MS / 1000);
+        const overlay = document.createElement('div');
+        overlay.id = 'sessionTimeoutWarning';
+        overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,10,40,0.72); z-index:9999998; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px);';
+        overlay.innerHTML = `
+            <div style="background:#ffffff; border-radius:16px; padding:28px 26px; max-width:400px; width:90%; text-align:center; box-shadow:0 16px 50px rgba(0,0,0,0.35); border:2px solid #f59e0b;">
+                <div style="background:#fef3c7; color:#d97706; width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; margin:0 auto 16px;">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <h3 style="font-size:16px; font-weight:800; color:#002F6C; margin:0 0 8px; text-transform:uppercase;">Session Expiring Soon</h3>
+                <p style="font-size:13px; color:#475569; line-height:1.6; margin:0 0 16px;">
+                    Your session will expire in <span id="stCountdown" style="font-weight:800; color:#d97706;">${remainSec}</span> second(s) due to inactivity.
+                </p>
+                <button onclick="document.getElementById('sessionTimeoutWarning').remove(); window.sessionIdleReset && window.sessionIdleReset();"
+                    style="background:linear-gradient(135deg,#002F6C,#0050b3); color:#fff; border:none; border-radius:10px; padding:10px 24px; font-size:13.5px; font-weight:700; cursor:pointer; width:100%;">
+                    <i class="fas fa-check-circle"></i> &nbsp;Stay Logged In
+                </button>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        // Countdown inside warning
+        let secs = remainSec;
+        const countEl = overlay.querySelector('#stCountdown');
+        const tick = setInterval(() => {
+            secs--;
+            if (countEl) countEl.textContent = secs;
+            if (secs <= 0) clearInterval(tick);
+        }, 1000);
+    }
+
+    // Expose reset function globally so the "Stay Logged In" button can call it
+    window.sessionIdleReset = resetTimers;
+
+    // Track user activity events
+    ['mousemove', 'keydown', 'click', 'scroll', 'touchstart', 'pointerdown'].forEach(evt => {
+        document.addEventListener(evt, resetTimers, { passive: true });
+    });
+
+    // Initialize
+    resetTimers();
+})();
+</script>
+
+<script>
+// ── Real-Time Auto-Logout Polling for Regular Users during Maintenance ──
+(function initMaintenanceHeartbeat() {
+    const userRole = <?= json_encode($role) ?>;
+    // Only poll for regular users (admin, manager, staff)
+    if (userRole === 'superadmin' || userRole === 'developer') return;
+
+    const checkUrl = '<?= htmlspecialchars($public_base_url) ?>/../backend/api/maintenance_status.php';
+
+    function checkStatus() {
+        fetch(checkUrl, { cache: 'no-store' })
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.maintenance_mode) {
+                    // Maintenance mode activated! Show alert and redirect immediately
+                    showMaintenanceKickoutModal();
+                }
+            })
+            .catch(() => {});
+    }
+
+    function showMaintenanceKickoutModal() {
+        if (document.getElementById('maintKickoutOverlay')) return;
+        const overlay = document.createElement('div');
+        overlay.id = 'maintKickoutOverlay';
+        overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,10,30,0.85); z-index:9999999; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(8px);';
+        overlay.innerHTML = `
+            <div style="background:#ffffff; border-radius:18px; padding:32px 28px; max-width:440px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,0.4); border:2px solid #f59e0b;">
+                <div style="background:#fef3c7; color:#d97706; width:64px; height:64px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:28px; margin:0 auto 18px;">
+                    <i class="fas fa-tools fa-spin" style="--fa-animation-duration:4s;"></i>
+                </div>
+                <h3 style="font-size:18px; font-weight:800; color:#002F6C; margin:0 0 10px; text-transform:uppercase;">System Maintenance Mode</h3>
+                <p style="font-size:13.5px; color:#475569; line-height:1.6; margin:0 0 20px;">
+                    The system is currently undergoing scheduled maintenance. You are being logged out now.
+                </p>
+                <div style="font-size:13px; font-weight:700; color:#d97706; display:flex; align-items:center; justify-content:center; gap:8px;">
+                    <i class="fas fa-circle-notch fa-spin"></i> Redirecting to login page...
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        setTimeout(() => {
+            window.location.href = '<?= htmlspecialchars($public_base_url) ?>/login.php?maintenance=1';
+        }, 1800);
+    }
+
+    // Check every 10 seconds
+    setInterval(checkStatus, 10000);
+})();
+</script>

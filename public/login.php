@@ -53,6 +53,26 @@ if (empty($_SESSION['csrf_token']) || $_SERVER['REQUEST_METHOD'] === 'GET') {
 }
 
 
+
+// ── Check Maintenance Mode Settings ──
+$is_maintenance = false;
+$maint_msg = "The system is currently undergoing scheduled maintenance to improve performance and stability. Please check back shortly.";
+$maint_end_time = "";
+try {
+    $stmtM = $pdo->prepare("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('maintenance_mode', 'maintenance_message', 'maintenance_end_time') AND station_id = 0");
+    $stmtM->execute();
+    $mRows = $stmtM->fetchAll(PDO::FETCH_KEY_PAIR);
+    if (!empty($mRows['maintenance_mode']) && ($mRows['maintenance_mode'] === '1' || $mRows['maintenance_mode'] == 1 || $mRows['maintenance_mode'] === 'true')) {
+        $is_maintenance = true;
+    }
+    if (!empty($mRows['maintenance_message'])) {
+        $maint_msg = $mRows['maintenance_message'];
+    }
+    if (!empty($mRows['maintenance_end_time'])) {
+        $maint_end_time = $mRows['maintenance_end_time'];
+    }
+} catch (Exception $e) {}
+
 // Configuration variables
 $system_name = "Petron Station & Service Center Management System";
 $current_year = date("Y");
@@ -84,8 +104,19 @@ $login_success = false;
 $dashboard_url = '';
 $is_locked_out = false;
 $lockout_remaining_sec = 0;
-$lockout_duration = 5; // 5 seconds lockout
-$max_attempts = 5;
+$lockout_duration = 30; // 30 seconds lockout after max attempts
+// ── Dynamic Max Login Attempts from system_settings ──
+$max_attempts = 5; // fallback default
+try {
+    $stmtMLA = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'max_login_attempts' AND station_id = 0 LIMIT 1");
+    $stmtMLA->execute();
+    $storedMax = $stmtMLA->fetchColumn();
+    if ($storedMax !== false && is_numeric($storedMax) && (int)$storedMax > 0) {
+        $max_attempts = (int)$storedMax;
+    }
+} catch (Exception $e) {
+    // keep fallback default
+}
 
 // Check if currently locked out on page load / session
 if (!empty($_SESSION['login_fail_count']) && $_SESSION['login_fail_count'] >= $max_attempts) {
@@ -336,6 +367,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if ($valid_login) {
+
+                // ── Check Maintenance Mode Role Restriction ──
+                $u_role = role_key($user['role'] ?? '');
+                if ($is_maintenance && !in_array($u_role, ['superadmin', 'developer'])) {
+                    $error = "⚠️ The system is currently undergoing maintenance. Only Super Administrators can log in at this time.";
+                    $valid_login = false;
+                    generate_strong_captcha();
+                    $captcha_question = $_SESSION['captcha_question'];
+                }
+
                 // Successful Password Verification - Log in directly (NO OTP)
                 try {
                     $tables = $pdo->query("SHOW TABLES LIKE 'login_attempts'")->fetchAll();
@@ -1755,6 +1796,40 @@ $_asset_base = $_login_base . '/assets';
                 </script>
                 <?php else: ?>
 
+                
+                <!-- Maintenance Mode Banner with Live Countdown Timer -->
+                <?php if (!empty($is_maintenance) || isset($_GET['maintenance'])): ?>
+                <div class="maint-banner-card" role="alert" style="background: linear-gradient(135deg, rgba(245,158,11,0.22) 0%, rgba(180,83,9,0.35) 100%); border: 1.5px solid #f59e0b; border-radius: 16px; padding: 18px 20px; margin: 18px 0; color: #ffffff; box-shadow: 0 6px 24px rgba(245,158,11,0.25);">
+                    <div style="display:flex; align-items:flex-start; gap:14px;">
+                        <div style="background:#f59e0b; color:#ffffff; width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; box-shadow:0 0 16px rgba(245,158,11,0.6);">
+                            <i class="fas fa-tools"></i>
+                        </div>
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-size:14.5px; font-weight:800; color:#fbbf24; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:4px; text-shadow: 0 1px 4px rgba(0,0,0,0.5);">
+                                System Under Maintenance
+                            </div>
+                            <div style="font-size:12.5px; color:#fef3c7; line-height:1.55; margin-bottom:12px; text-shadow: 0 1px 3px rgba(0,0,0,0.4);">
+                                <?= htmlspecialchars($maint_msg) ?>
+                            </div>
+                            <?php if (!empty($maint_end_time)): ?>
+                            <div style="background:rgba(0,0,0,0.45); border:1px solid rgba(251,191,36,0.45); border-radius:10px; padding:10px 14px; display:inline-flex; align-items:center; gap:10px; margin-bottom:10px;">
+                                <i class="fas fa-stopwatch" style="color:#fbbf24; font-size:18px;"></i>
+                                <div>
+                                    <div style="font-size:10px; font-weight:700; color:#fde68a; text-transform:uppercase; letter-spacing:0.5px;">Estimated Completion</div>
+                                    <div id="loginMaintCountdown" style="font-size:16px; font-weight:800; color:#ffffff; font-family:monospace; letter-spacing:1px;" data-endtime="<?= htmlspecialchars($maint_end_time) ?>">
+                                        Calculating remaining time...
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+                            <div style="font-size:11.5px; color:#fde68a; font-weight:600; display:flex; align-items:center; gap:6px; opacity:0.95;">
+                                <i class="fas fa-lock"></i> Regular access is temporarily restricted. Super Administrators can log in below.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
+
                 <!-- Inactivity Timeout Banner -->
                 <?php if (!empty($timeout_msg)): ?>
                 <div class="alert-info" role="alert" style="display:flex;align-items:center;gap:12px;padding:14px 18px;background:rgba(0,47,108,0.55);border:1.5px solid rgba(147,197,253,0.6);border-radius:14px;color:#dbeafe;font-size:13.5px;font-weight:600;margin:16px 0;line-height:1.45;box-shadow:0 4px 14px rgba(0,0,0,0.25);">
@@ -2307,6 +2382,40 @@ document.addEventListener('DOMContentLoaded', function() {
         reveals.forEach(function(el) { el.classList.add('visible'); });
     }
 });
+</script>
+
+
+<script>
+// ── Live Countdown Timer for Login Maintenance Banner ──
+(function initLoginMaintenanceTimer() {
+    const timerEl = document.getElementById('loginMaintCountdown');
+    if (!timerEl) return;
+    const endTimeStr = timerEl.getAttribute('data-endtime');
+    if (!endTimeStr) return;
+
+    function update() {
+        const target = new Date(endTimeStr.replace(/-/g, '/'));
+        const now = new Date();
+        const diff = target.getTime() - now.getTime();
+
+        if (isNaN(target.getTime()) || diff <= 0) {
+            timerEl.textContent = 'Maintenance concluding shortly...';
+            timerEl.style.color = '#fbbf24';
+            return;
+        }
+
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+        timerEl.textContent = String(hours).padStart(2, '0') + 'h ' + 
+                              String(minutes).padStart(2, '0') + 'm ' + 
+                              String(seconds).padStart(2, '0') + 's';
+    }
+
+    update();
+    setInterval(update, 1000);
+})();
 </script>
 
 </body>

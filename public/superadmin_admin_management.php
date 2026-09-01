@@ -101,6 +101,157 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <style>
+/* ── SuperAdmin Admin Management: Zero Horizontal Scrollbar & 100% Screen Fit ── */
+.am-page, .am-table-wrap {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+    width: 100% !important;
+}
+
+.am-table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse !important;
+}
+
+.am-table thead th {
+    background: #002F70 !important;
+    color: #ffffff !important;
+    padding: 8px 6px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+.am-table tbody td {
+    padding: 7px 6px !important;
+    font-size: 11.5px !important;
+    vertical-align: middle !important;
+    border-bottom: 1px solid #f0f0f0 !important;
+    overflow: hidden !important;
+}
+
+/* Specific Column Styling */
+.am-table td:nth-child(1) { text-align: center; color: #888; font-size: 11px; }
+.am-table td:nth-child(2), .am-table td:nth-child(3) {
+    font-weight: 600;
+    color: #1a1a1a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.am-table td:nth-child(4) {
+    font-size: 11.5px;
+    color: #555;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.am-table td:nth-child(5) {
+    white-space: normal !important;
+    word-break: break-word !important;
+    line-height: 1.25;
+}
+.am-table td:nth-child(6) { text-align: center; }
+.am-table td:nth-child(7) {
+    font-size: 11px;
+    color: #666;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+.am-table td:nth-child(8) { text-align: center; }
+
+/* Badges */
+.badge-active {
+    background: rgba(40,167,69,.12) !important;
+    color: #1a7a35 !important;
+    border: 1px solid rgba(40,167,69,.25) !important;
+    padding: 2px 7px !important;
+    border-radius: 12px !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    display: inline-block !important;
+}
+.badge-inactive {
+    background: rgba(204,0,0,.1) !important;
+    color: #cc0000 !important;
+    border: 1px solid rgba(204,0,0,.2) !important;
+    padding: 2px 7px !important;
+    border-radius: 12px !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    display: inline-block !important;
+}
+
+/* Action Buttons: Compact Stacked */
+.am-actions-wrap {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 3px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+}
+
+.am-btn-action {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    padding: 0 4px !important;
+    height: 22px !important;
+    width: 78px !important;
+    min-width: 78px !important;
+    border-radius: 4px !important;
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    text-decoration: none !important;
+    box-sizing: border-box !important;
+    white-space: nowrap !important;
+    line-height: 1 !important;
+    background: #ffffff !important;
+    border: 1.5px solid transparent !important;
+}
+
+.am-btn-action.am-edit {
+    color: #00264D !important;
+    border-color: #00264D !important;
+}
+.am-btn-action.am-edit:hover {
+    background: #00264D !important;
+    color: #ffffff !important;
+}
+
+.am-btn-action.am-deact {
+    color: #dc2626 !important;
+    border-color: #dc2626 !important;
+}
+.am-btn-action.am-deact:hover {
+    background: #dc2626 !important;
+    color: #ffffff !important;
+}
+
+.am-btn-action.am-activate {
+    color: #16a34a !important;
+    border-color: #16a34a !important;
+}
+.am-btn-action.am-activate:hover {
+    background: #16a34a !important;
+    color: #ffffff !important;
+}
+</style>
+
+
+<style>
 /* â”€â”€ Admin Management Page Styles - Updated v2.1 - June 15, 2026 â”€â”€ */
 .am-page { padding: 0 !important; }
 .am-page-head { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-top: 0 !important; margin-bottom: 25px !important; padding: 0 !important; border: none !important; width: 100%; }
@@ -414,7 +565,17 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
 
 <!-- Table -->
 <div class="am-table-wrap">
-    <table class="am-table" id="adminTable">
+        <table class="am-table" id="adminTable">
+        <colgroup>
+            <col style="width: 4%;">
+            <col style="width: 13%;">
+            <col style="width: 12%;">
+            <col style="width: 19%;">
+            <col style="width: 24%;">
+            <col style="width: 8%;">
+            <col style="width: 10%;">
+            <col style="width: 10%;">
+        </colgroup>
         <thead>
             <tr>
                 <th>#</th>
@@ -486,23 +647,25 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
                     <span style="color:#bbb;">Never</span>
                 <?php endif; ?>
             </td>
-            <td style="text-align:center;white-space:nowrap;">
+            <td style="text-align:center;">
                 <?php 
                 $admin_user_id = $adm['id'] ?? 0;
                 $admin_display_name = $first_name . ' ' . $last_name;
                 ?>
-                <button class="am-btn am-btn-edit" onclick="openEditModal(<?php echo htmlspecialchars(json_encode($adm)); ?>)" title="Edit">
-                    <i class="fas fa-pen"></i> Edit
-                </button>
-                <?php if (strtolower($adm['status']) === 'active'): ?>
-                <button class="am-btn am-btn-deact" onclick="confirmDeactivate(<?php echo (int)$admin_user_id; ?>, '<?php echo htmlspecialchars(addslashes($admin_display_name)); ?>')" title="Deactivate">
-                    <i class="fas fa-ban"></i> Deactivate
-                </button>
-                <?php else: ?>
-                <button class="am-btn am-btn-activate" onclick="confirmActivate(<?php echo (int)$admin_user_id; ?>, '<?php echo htmlspecialchars(addslashes($admin_display_name)); ?>')" title="Activate">
-                    <i class="fas fa-check-circle"></i> Activate
-                </button>
-                <?php endif; ?>
+                <div class="am-actions-wrap">
+                    <button type="button" class="am-btn-action am-edit" onclick="openEditModal(<?php echo htmlspecialchars(json_encode($adm)); ?>)" title="Edit">
+                        <i class="fas fa-pen"></i> Edit
+                    </button>
+                    <?php if (strtolower($adm['status']) === 'active'): ?>
+                    <button type="button" class="am-btn-action am-deact" onclick="confirmDeactivate(<?php echo (int)$admin_user_id; ?>, '<?php echo htmlspecialchars(addslashes($admin_display_name)); ?>')" title="Deactivate">
+                        <i class="fas fa-ban"></i> Deactivate
+                    </button>
+                    <?php else: ?>
+                    <button type="button" class="am-btn-action am-activate" onclick="confirmActivate(<?php echo (int)$admin_user_id; ?>, '<?php echo htmlspecialchars(addslashes($admin_display_name)); ?>')" title="Activate">
+                        <i class="fas fa-check-circle"></i> Activate
+                    </button>
+                    <?php endif; ?>
+                </div>
             </td>
         </tr>
         <?php endforeach; ?>

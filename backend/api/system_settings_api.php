@@ -155,6 +155,9 @@ try {
                 'maintenance_mode'             => 'maintenance',
                 'system_status'                => 'maintenance',
                 'last_system_update'           => 'maintenance',
+                'maintenance_message'          => 'maintenance',
+                'maintenance_end_time'         => 'maintenance',
+                'maintenance_duration_minutes' => 'maintenance',
             ];
 
             foreach ($settings as $key => $value) {
@@ -207,7 +210,7 @@ try {
                 'theme'                        => 'Light',
                 'system_accent_color'          => '#002F6C',
                 'sidebar_mode'                 => 'Expanded',
-                'dashboard_auto_refresh'       => '30',
+                'dashboard_auto_refresh'       => '10',
                 'session_timeout'              => '30',
                 'min_password_length'          => '8',
                 'max_login_attempts'           => '5',
@@ -256,7 +259,7 @@ try {
                     ['theme',                        'Light', 'appearance'],
                     ['system_accent_color',          '#002F6C', 'appearance'],
                     ['sidebar_mode',                 'Expanded', 'appearance'],
-                    ['dashboard_auto_refresh',       '30', 'appearance'],
+                    ['dashboard_auto_refresh',       '10', 'appearance'],
                     ['session_timeout',              '30', 'security'],
                     ['min_password_length',          '8', 'security'],
                     ['max_login_attempts',           '5', 'security'],
@@ -273,6 +276,9 @@ try {
                     ['maintenance_mode',             '0', 'maintenance'],
                     ['system_status',                'Online', 'maintenance'],
                     ['last_system_update',           '2026-08-06 22:30:00', 'maintenance'],
+                    ['maintenance_message',          'The system is currently undergoing scheduled maintenance to improve performance and stability. Please check back shortly.', 'maintenance'],
+                    ['maintenance_end_time',         '', 'maintenance'],
+                    ['maintenance_duration_minutes', '60', 'maintenance'],
                 ];
 
                 foreach ($defaults as [$k, $v, $c]) {
