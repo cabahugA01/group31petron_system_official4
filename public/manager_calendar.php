@@ -1065,16 +1065,19 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
             </div>
         </div>
 
-        <!-- Events Color Legend -->
+        <!-- Events Color Legend (Clickable to Filter) -->
         <div style="padding: 12px; border-bottom: 1px solid #dadce0;">
-            <div style="font-size: 12px; font-weight: 600; color: #3c4043; margin-bottom: 8px;"><i class="fas fa-palette"></i> EVENT TYPES</div>
+            <div style="font-size: 12px; font-weight: 600; color: #3c4043; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                <span><i class="fas fa-palette"></i> EVENT TYPES</span>
+                <span onclick="filterByLegendType('')" style="font-size: 10px; color: #1a73e8; cursor: pointer; font-weight: 500;" title="Clear filter">Show All</span>
+            </div>
             <div style="display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: #3c4043;">
-                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #33b679; font-size: 14px;"><i class="fas fa-circle text-success"></i></span> <span>Job Orders</span></div>
-                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #039be5; font-size: 14px;"><i class="fas fa-circle text-primary"></i></span> <span>Customer Appointments</span></div>
-                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #f6bf26; font-size: 14px;"><i class="fas fa-circle" style="color:#f97316;"></i></span> <span>Preventive Maintenance</span></div>
-                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #8e24aa; font-size: 14px;"><i class="fas fa-circle" style="color:#8b5cf6;"></i></span> <span>Staff Shifts</span></div>
-                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #e67c73; font-size: 14px;"><i class="fas fa-circle text-warning"></i></span> <span>Merchandise Deliveries</span></div>
-                <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #795548; font-size: 14px;"><i class="fas fa-circle" style="color:#b45309;"></i></span> <span>Fuel Deliveries</span></div>
+                <div onclick="filterByLegendType('job_order')" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 3px 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'"><span style="color: #33b679; font-size: 14px;"><i class="fas fa-circle text-success"></i></span> <span style="font-weight: 500;">Job Orders</span></div>
+                <div onclick="filterByLegendType('customer_appointment')" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 3px 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'"><span style="color: #039be5; font-size: 14px;"><i class="fas fa-circle text-primary"></i></span> <span style="font-weight: 500;">Customer Appointments</span></div>
+                <div onclick="filterByLegendType('pms')" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 3px 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'"><span style="color: #f6bf26; font-size: 14px;"><i class="fas fa-circle" style="color:#f97316;"></i></span> <span style="font-weight: 500;">Preventive Maintenance</span></div>
+                <div onclick="filterByLegendType('staff_shift')" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 3px 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'"><span style="color: #8e24aa; font-size: 14px;"><i class="fas fa-circle" style="color:#8b5cf6;"></i></span> <span style="font-weight: 500;">Staff Shifts</span></div>
+                <div onclick="filterByLegendType('merchandise_delivery')" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 3px 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'"><span style="color: #e67c73; font-size: 14px;"><i class="fas fa-circle text-warning"></i></span> <span style="font-weight: 500;">Merchandise Deliveries</span></div>
+                <div onclick="filterByLegendType('fuel_delivery')" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 3px 6px; border-radius: 4px;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'"><span style="color: #795548; font-size: 14px;"><i class="fas fa-circle" style="color:#b45309;"></i></span> <span style="font-weight: 500;">Fuel Deliveries</span></div>
             </div>
         </div>
 
@@ -1336,8 +1339,8 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                         if ($is_today) $day_class .= ' today';
                         if ($is_other_month) $day_class .= ' other-month';
                     ?>
-                    <div class="<?= $day_class ?>">
-                        <div class="cal-day-num" onclick="clickDay('<?= $date ?>')"><?= $day_num ?></div>
+                    <div class="<?= $day_class ?>" data-date="<?= $date ?>" onclick="clickDay('<?= $date ?>')" style="cursor: pointer;">
+                        <div class="cal-day-num"><?= $day_num ?></div>
                         <div class="cal-events">
                             <?php 
                             $display_limit = 4;
@@ -1357,9 +1360,12 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                             ?>
                             <div class="cal-event" 
                                  data-staff="<?= $staff_id ?>"
+                                 data-type="<?= htmlspecialchars($event_type) ?>"
+                                 data-status="<?= htmlspecialchars($status) ?>"
+                                 data-date="<?= $date ?>"
                                  style="background: <?= $event_color ?>22; border-left-color: <?= $event_color ?>;" 
                                  title="<?= htmlspecialchars($event['staff_name'] ?? '') ?> - <?= htmlspecialchars($event['work_description'] ?? $event['type_name']) ?>"
-                                 onclick="clickEvent('<?= htmlspecialchars($event_id) ?>', '<?= htmlspecialchars($event_type) ?>', '<?= htmlspecialchars($event['target_url'] ?? '#') ?>')">
+                                 onclick="event.stopPropagation(); clickEvent('<?= htmlspecialchars($event_id) ?>', '<?= htmlspecialchars($event_type) ?>', '<?= htmlspecialchars($event['target_url'] ?? '#') ?>')">
                                 <?php if ($time_str): ?>
                                 <span class="cal-event-time"><?= $time_str ?></span>
                                 <?php endif; ?>
@@ -1369,7 +1375,7 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                             </div>
                             <?php endforeach; ?>
                             <?php if (count($day_events) > $display_limit): ?>
-                            <div class="cal-more" onclick="clickDay('<?= $date ?>')">+<?= count($day_events) - $display_limit ?> more</div>
+                            <div class="cal-more" onclick="event.stopPropagation(); clickDay('<?= $date ?>')">+<?= count($day_events) - $display_limit ?> more</div>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -1398,15 +1404,24 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                         $is_today = ($date === $today_str);
                         $day_events = $month_events[$date] ?? [];
                     ?>
-                    <div class="cal-day <?= $is_today ? 'today' : '' ?>">
+                    <div class="cal-day <?= $is_today ? 'today' : '' ?>" data-date="<?= $date ?>" onclick="clickDay('<?= $date ?>')" style="cursor: pointer;">
                         <div class="cal-day-num"><?= $week_date->format('j') ?></div>
                         <div class="cal-events">
                             <?php foreach($day_events as $event):
                                 $event_color = $event['color'] ?? '#757575';
+                                $status = strtolower($event['status'] ?? 'pending');
                                 $time_str = !empty($event['start_time']) && $event['start_time'] != '00:00:00' ? date('g:ia', strtotime($event['start_time'])) . ' ' : '';
+                                $event_id = $event['id'] ?? '';
+                                $event_type = $event['type_key'] ?? '';
+                                $staff_id = $event['staff_encoder_id'] ?? '';
                             ?>
-                            <div class="cal-event" style="background: <?= $event_color ?>22; border-left-color: <?= $event_color ?>;" 
-                                 onclick="clickEvent('<?= htmlspecialchars($event['id'] ?? '') ?>', '<?= htmlspecialchars($event['type_key'] ?? '') ?>')">
+                            <div class="cal-event" 
+                                 data-staff="<?= $staff_id ?>"
+                                 data-type="<?= htmlspecialchars($event_type) ?>"
+                                 data-status="<?= htmlspecialchars($status) ?>"
+                                 data-date="<?= $date ?>"
+                                 style="background: <?= $event_color ?>22; border-left-color: <?= $event_color ?>;" 
+                                 onclick="event.stopPropagation(); clickEvent('<?= htmlspecialchars($event_id) ?>', '<?= htmlspecialchars($event_type) ?>', '<?= htmlspecialchars($event['target_url'] ?? '#') ?>')">
                                 <?php if ($time_str): ?><span class="cal-event-time"><?= $time_str ?></span><?php endif; ?>
                                 <span class="cal-event-text"><?= htmlspecialchars($event['work_description'] ?? $event['type_name']) ?></span>
                             </div>
@@ -1661,13 +1676,9 @@ function closeModal() {
 const allCalendarEvents = <?= json_encode($month_events) ?>;
 const activeStaffList = <?= json_encode($staff_list) ?>;
 
-// Click on event
+// Click on event — Always opens comprehensive Details & Action Modal
 function clickEvent(eventId, eventType, targetUrl) {
-    if (targetUrl && targetUrl !== '#') {
-        window.location.href = targetUrl;
-        return;
-    }
-    const match = eventId.match(/\d+$/);
+    const match = eventId ? eventId.toString().match(/\d+$/) : null;
     const numericId = match ? match[0] : eventId;
     
     // Find the event in allCalendarEvents
@@ -1676,7 +1687,7 @@ function clickEvent(eventId, eventType, targetUrl) {
         const evts = allCalendarEvents[date];
         const matchEvt = evts.find(e => e.id.toString() === eventId.toString());
         if (matchEvt) {
-            foundEvent = matchEvt;
+            foundEvent = JSON.parse(JSON.stringify(matchEvt));
             break;
         }
     }
@@ -1694,6 +1705,10 @@ function clickEvent(eventId, eventType, targetUrl) {
             })
             .catch(e => alert('Error loading event'));
         return;
+    }
+
+    if (targetUrl && targetUrl !== '#') {
+        foundEvent.target_url = targetUrl;
     }
 
     // Show manager details & validation modal
@@ -2011,10 +2026,79 @@ function closeDetailsModal() {
     document.getElementById('detailsModal').style.display = 'none';
 }
 
-// Click on day
+// Click on day — Shows Day Overview modal with all events or directly opens Create Event modal
 function clickDay(date) {
-    if (confirm('Create event on ' + date + '?')) {
+    const dayEvts = (allCalendarEvents && allCalendarEvents[date]) ? allCalendarEvents[date] : [];
+    if (dayEvts.length > 0) {
+        showDayOverviewModal(date, dayEvts);
+    } else {
         showEventModal(date);
+    }
+}
+
+function showDayOverviewModal(date, events) {
+    const modal = document.getElementById('dayOverviewModal');
+    if (!modal) {
+        showEventModal(date);
+        return;
+    }
+    const dObj = new Date(date + 'T00:00:00');
+    const dateFormatted = dObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    
+    document.getElementById('dayOverviewTitle').textContent = dateFormatted;
+    document.getElementById('dayOverviewSubtitle').textContent = events.length + ' scheduled event(s) and operational task(s)';
+    
+    const listEl = document.getElementById('dayOverviewList');
+    listEl.innerHTML = events.map(evt => {
+        const color = evt.color || '#0284c7';
+        const st = (evt.status || 'pending').toUpperCase();
+        let badgeBg = '#fef3c7', badgeColor = '#b45309';
+        if (st === 'COMPLETED' || st === 'VERIFIED' || st === 'APPROVED') { badgeBg = '#dcfce7'; badgeColor = '#15803d'; }
+        else if (st === 'CANCELLED' || st === 'REJECTED') { badgeBg = '#fee2e2'; badgeColor = '#b91c1c'; }
+        
+        let timeStr = '';
+        if (evt.start_time && evt.start_time !== '00:00:00') {
+            timeStr = evt.start_time.substring(0, 5) + (evt.end_time && evt.end_time !== '00:00:00' ? ' - ' + evt.end_time.substring(0, 5) : '');
+        }
+
+        return `
+            <div style="background:#fff; border:1px solid #e2e8f0; border-left:4px solid ${color}; border-radius:8px; padding:12px 14px; box-shadow:0 1px 3px rgba(0,0,0,0.04); display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                <div style="flex:1; min-width:0;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                        <span style="font-weight:700; font-size:13px; color:#0f172a;">${evt.work_description || evt.type_name}</span>
+                        <span style="background:${badgeBg}; color:${badgeColor}; font-size:10px; font-weight:700; padding:2px 7px; border-radius:4px;">${st}</span>
+                    </div>
+                    <div style="font-size:11.5px; color:#64748b; display:flex; gap:14px; flex-wrap:wrap;">
+                        ${timeStr ? `<span><i class="far fa-clock" style="color:#0284c7;"></i> ${timeStr}</span>` : ''}
+                        <span><i class="far fa-user" style="color:#64748b;"></i> ${evt.staff_name || 'Staff'}</span>
+                        <span><i class="fas fa-tag" style="color:#64748b;"></i> ${evt.type_name || 'Event'}</span>
+                    </div>
+                </div>
+                <button type="button" onclick="closeDayOverviewModal(); clickEvent('${evt.id}', '${evt.type_key || ''}', '${evt.target_url || '#'}');" style="padding:7px 12px; background:#002F70; color:#fff; border:none; border-radius:6px; font-size:11.5px; font-weight:600; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:5px;">
+                    <i class="fas fa-cog"></i> Manage
+                </button>
+            </div>
+        `;
+    }).join('');
+
+    document.getElementById('dayOverviewAddBtn').onclick = function() {
+        closeDayOverviewModal();
+        showEventModal(date);
+    };
+
+    modal.style.display = 'flex';
+}
+
+function closeDayOverviewModal() {
+    const modal = document.getElementById('dayOverviewModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function filterByLegendType(typeKey) {
+    const sel = document.getElementById('filterEventType');
+    if (sel) {
+        sel.value = typeKey;
+        filterCalendarEvents();
     }
 }
 
@@ -2116,8 +2200,9 @@ function filterCalendarEvents() {
     allEvents.forEach(evt => {
         const text = (evt.innerText || evt.getAttribute('title') || '').toLowerCase();
         const staff = evt.getAttribute('data-staff') || '';
-        const dayContainer = evt.closest('.cal-day');
-        const dayNum = dayContainer ? dayContainer.querySelector('.cal-day-num')?.innerText : '';
+        const evtType = (evt.getAttribute('data-type') || '').toLowerCase();
+        const evtStatus = (evt.getAttribute('data-status') || '').toLowerCase();
+        const evtDate = evt.getAttribute('data-date') || '';
         
         let match = true;
 
@@ -2129,16 +2214,38 @@ function filterCalendarEvents() {
             match = false;
         }
 
+        if (statusVal) {
+            if (statusVal === 'pending' && !['pending', 'unvalidated', 'reviewed', 'in progress', 'in_progress'].includes(evtStatus) && !text.includes('pending')) match = false;
+            else if (statusVal === 'approved' && !['approved', 'in progress', 'in_progress', 'processing'].includes(evtStatus) && !text.includes('approved')) match = false;
+            else if (statusVal === 'completed' && !['completed', 'verified', 'complete', 'delivered'].includes(evtStatus) && !text.includes('completed') && !text.includes('verified')) match = false;
+        }
+
         if (typeVal) {
-            if (typeVal === 'job_order' && !text.includes('job order') && !text.includes('jo#') && !text.includes('service')) match = false;
+            if (typeVal === 'job_order' && evtType !== 'job_order' && !text.includes('job order') && !text.includes('jo#')) match = false;
             else if (typeVal === 'pms' && !text.includes('pms') && !text.includes('preventive') && !text.includes('maintenance')) match = false;
-            else if (typeVal === 'staff_shift' && !text.includes('shift')) match = false;
-            else if (typeVal === 'merchandise_delivery' && !text.includes('delivery') && !text.includes('supplier')) match = false;
-            else if (typeVal === 'fuel_delivery' && !text.includes('fuel delivery') && !text.includes('diesel') && !text.includes('unl')) match = false;
-            else if (typeVal === 'customer_appointment' && !text.includes('appointment') && !text.includes('customer')) match = false;
+            else if (typeVal === 'staff_shift' && evtType !== 'staff_shift' && !text.includes('shift')) match = false;
+            else if (typeVal === 'merchandise_delivery' && evtType !== 'merchandise_delivery' && !text.includes('delivery')) match = false;
+            else if (typeVal === 'fuel_delivery' && evtType !== 'fuel_delivery' && !text.includes('fuel delivery')) match = false;
+            else if (typeVal === 'customer_appointment' && evtType !== 'customer_appointment' && !text.includes('appointment')) match = false;
+        }
+
+        if (dateVal && evtDate && evtDate !== dateVal) {
+            match = false;
         }
 
         evt.style.display = match ? 'flex' : 'none';
+    });
+
+    // Highlight date cell if dateVal selected
+    document.querySelectorAll('.cal-day').forEach(d => {
+        const dDate = d.getAttribute('data-date') || '';
+        if (dateVal && dDate === dateVal) {
+            d.style.boxShadow = 'inset 0 0 0 2.5px #002F70';
+            d.style.background = '#f0f9ff';
+        } else {
+            d.style.boxShadow = '';
+            d.style.background = '';
+        }
     });
 }
 
@@ -2331,6 +2438,30 @@ function handleEventTypeChange() {
     }
 }
 </script>
+
+<!-- Day Overview Modal -->
+<div id="dayOverviewModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: #fff; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); width: 92%; max-width: 540px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden;">
+        <div style="padding: 18px 22px; border-bottom: 1px solid #dadce0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc;">
+            <div>
+                <h2 id="dayOverviewTitle" style="margin: 0; font-size: 18px; color: #002F70; font-weight: 700;">Day Schedule</h2>
+                <div id="dayOverviewSubtitle" style="font-size: 12px; color: #64748b; margin-top: 2px;"></div>
+            </div>
+            <button onclick="closeDayOverviewModal()" style="background: none; border: none; font-size: 24px; color: #64748b; cursor: pointer; line-height: 1;">&times;</button>
+        </div>
+        <div id="dayOverviewList" style="padding: 20px 22px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px;">
+            <!-- Filled dynamically -->
+        </div>
+        <div style="padding: 14px 22px; border-top: 1px solid #dadce0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc;">
+            <button type="button" id="dayOverviewAddBtn" style="padding: 9px 16px; border: none; background: #002F70; color: #fff; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-plus"></i> Add Event on this Day
+            </button>
+            <button type="button" onclick="closeDayOverviewModal()" style="padding: 9px 16px; border: 1px solid #cbd5e1; background: #fff; color: #334155; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                Close
+            </button>
+        </div>
+    </div>
+</div>
 
 <!-- Details Modal -->
 <div id="detailsModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">

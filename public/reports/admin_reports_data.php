@@ -160,7 +160,7 @@ if (!function_exists('getAdminReportData')) {
                      INNER JOIN (
                          SELECT MAX(id) AS max_id
                          FROM fuel_transactions
-                         WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
+                         WHERE DATE(COALESCE(transaction_date, created_at)) BETWEEN :date_from AND :date_to
                            {$st_clause('fuel_transactions')}
                            AND LOWER(COALESCE(status, '')) IN ('verified','approved','adjusted','validated','completed')
                          GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
@@ -192,7 +192,7 @@ if (!function_exists('getAdminReportData')) {
                         INNER JOIN (
                             SELECT MAX(id) AS max_id
                             FROM fuel_transactions
-                            WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
+                            WHERE DATE(COALESCE(transaction_date, created_at)) BETWEEN :date_from AND :date_to
                               {$st_clause('fuel_transactions')}
                               AND LOWER(COALESCE(status, '')) IN ('verified','approved','adjusted','validated','completed')
                             GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
@@ -217,7 +217,7 @@ if (!function_exists('getAdminReportData')) {
                      INNER JOIN (
                          SELECT MAX(id) AS max_id
                          FROM fuel_transactions
-                         WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
+                         WHERE DATE(COALESCE(transaction_date, created_at)) BETWEEN :date_from AND :date_to
                            {$st_clause('fuel_transactions')}
                            AND LOWER(COALESCE(status, '')) IN ('verified','approved','adjusted','validated','completed')
                          GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
@@ -241,7 +241,7 @@ if (!function_exists('getAdminReportData')) {
                         INNER JOIN (
                             SELECT MAX(id) AS max_id
                             FROM fuel_transactions
-                            WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
+                            WHERE DATE(COALESCE(transaction_date, created_at)) BETWEEN :date_from AND :date_to
                               {$st_clause('fuel_transactions')}
                               AND LOWER(COALESCE(status, '')) IN ('verified','approved','adjusted','validated','completed')
                             GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
@@ -393,7 +393,7 @@ if (!function_exists('getAdminReportData')) {
                          INNER JOIN (
                              SELECT MAX(id) AS max_id
                              FROM fuel_transactions
-                             WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
+                             WHERE DATE(COALESCE(transaction_date, created_at)) BETWEEN :date_from AND :date_to
                                {$st_clause('fuel_transactions')}
                                AND LOWER(COALESCE(status, '')) IN ('verified','approved','adjusted','validated','completed')
                              GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at)), COALESCE(shift_period, shift_name, shift_id)
@@ -411,7 +411,7 @@ if (!function_exists('getAdminReportData')) {
                          INNER JOIN (
                              SELECT MAX(id) AS max_id
                              FROM fuel_transactions
-                             WHERE (DATE(transaction_date) BETWEEN :date_from AND :date_to OR (transaction_date IS NULL AND DATE(created_at) BETWEEN :date_from AND :date_to))
+                             WHERE DATE(COALESCE(transaction_date, created_at)) BETWEEN :date_from AND :date_to
                                {$st_clause('fuel_transactions')}
                                AND LOWER(COALESCE(status, '')) IN ('verified','approved','adjusted','validated','completed')
                              GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at)), COALESCE(shift_period, shift_name, shift_id)
