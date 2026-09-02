@@ -121,11 +121,15 @@
                 }
             });
 
-            // 1. Check for POS Cart array (Job Order & Merchandise)
-            const currentCart = (typeof window.getPetronCart === 'function') ? window.getPetronCart() : (window.cart || window.activeCart);
-            if (Array.isArray(currentCart) && currentCart.length > 0) {
-                data._cart = currentCart;
-                hasMeaningfulContent = true;
+            // POS Cart should NEVER be persisted across reloads for transaction module
+            const isTxnPage = window.location.pathname.includes('transactions_hub') || window.location.pathname.includes('staff_transactions') || window.location.pathname.includes('pos.php');
+            if (!isTxnPage) {
+                // 1. Check for POS Cart array (Job Order & Merchandise)
+                const currentCart = (typeof window.getPetronCart === 'function') ? window.getPetronCart() : (window.cart || window.activeCart);
+                if (Array.isArray(currentCart) && currentCart.length > 0) {
+                    data._cart = currentCart;
+                    hasMeaningfulContent = true;
+                }
             }
 
             // 2. Custom job order items
@@ -195,8 +199,9 @@
                 if (wrap) wrap.style.display = 'block';
             }
 
-            // 1. Restore POS Cart array (Job Order & Merchandise)
-            if (data._cart && Array.isArray(data._cart) && data._cart.length > 0) {
+            // 1. Restore POS Cart array (Job Order & Merchandise) - disabled on transaction module
+            const isTxnPage = window.location.pathname.includes('transactions_hub') || window.location.pathname.includes('staff_transactions') || window.location.pathname.includes('pos.php');
+            if (!isTxnPage && data._cart && Array.isArray(data._cart) && data._cart.length > 0) {
                 if (typeof window.setPetronCart === 'function') {
                     window.setPetronCart(data._cart);
                 } else {
@@ -306,6 +311,8 @@
          * Flush all active draft modules on the page immediately
          */
         flushAll: function() {
+            const isTxnPage = window.location.pathname.includes('transactions_hub') || window.location.pathname.includes('staff_transactions') || window.location.pathname.includes('pos.php');
+            if (isTxnPage) return;
             const self = this;
             this.activeContainers.forEach(function(item) {
                 self.saveNow(item.moduleKey, item.container, item.options, true);
@@ -316,6 +323,13 @@
          * Check for existing draft on page load and automatically restore it silently
          */
         checkForDraft: function(moduleKey, container, options) {
+            // Skip draft checking for POS transaction & cart modules on transaction pages
+            const isTxnModule = !moduleKey || moduleKey.startsWith('pos_merchandise') || moduleKey.includes('job_order') || moduleKey.includes('merchandise_transaction');
+            const isTxnPage = window.location.pathname.includes('transactions_hub') || window.location.pathname.includes('staff_transactions') || window.location.pathname.includes('pos.php');
+            if (isTxnModule && isTxnPage) {
+                return;
+            }
+
             const self = this;
             const storageKey = `petron_draft_${USER_ID}_${moduleKey}`;
 
@@ -384,21 +398,26 @@
             const pathname = window.location.pathname.split('/').pop().replace(/\.php$/, '');
             const searchParams = new URLSearchParams(window.location.search);
             const section = searchParams.get('section') || searchParams.get('tab') || searchParams.get('active_tab') || '';
+            const isTxnPage = (pathname === 'staff_transactions_hub' || pathname === 'staff_transactions' || pathname === 'pos' || pathname === 'transactions');
 
             // Clean up any residual banner elements
             document.querySelectorAll('[id^="draftBanner_"], .petron-draft-status-badge').forEach(function(b) { b.remove(); });
 
-            // 1. Explicit data-draft-module containers
-            document.querySelectorAll('[data-draft-module]').forEach(function(el) {
-                const mod = el.getAttribute('data-draft-module');
-                if (mod) self.init(mod, el);
-            });
+            // 1. Explicit data-draft-module containers (skip on txn page)
+            if (!isTxnPage) {
+                document.querySelectorAll('[data-draft-module]').forEach(function(el) {
+                    const mod = el.getAttribute('data-draft-module');
+                    if (mod) self.init(mod, el);
+                });
+            }
 
-            // 2. Transactions Hub: Job Order & Merchandise / POS encoding section
-            const merchJoSection = document.querySelector('#merchandiseSection, #joCard, #cartCard, .txn-grid');
-            if (merchJoSection && !merchJoSection.hasAttribute('data-petron-draft-module')) {
-                const merchModuleKey = 'pos_merchandise_joborder' + (section ? '_' + section : '');
-                self.init(merchModuleKey, merchJoSection.closest('.txn-container') || document.body);
+            // 2. Transactions Hub: Job Order & Merchandise / POS encoding section (Skipped on transaction pages to guarantee clean empty cart)
+            if (!isTxnPage) {
+                const merchJoSection = document.querySelector('#merchandiseSection, #joCard, #cartCard, .txn-grid');
+                if (merchJoSection && !merchJoSection.hasAttribute('data-petron-draft-module')) {
+                    const merchModuleKey = 'pos_merchandise_joborder' + (section ? '_' + section : '');
+                    self.init(merchModuleKey, merchJoSection.closest('.txn-container') || document.body);
+                }
             }
 
             // 3. Fuel Meter Readings encoding grid / table

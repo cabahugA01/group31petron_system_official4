@@ -2740,7 +2740,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    setInterval(refreshManagerDashboard, 15000);
+    setInterval(refreshManagerDashboard, 10000);
 });
 </script>
 

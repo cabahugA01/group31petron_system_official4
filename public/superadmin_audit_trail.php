@@ -1225,6 +1225,6 @@ function autoRefreshSuperadminAuditTrail() {
 }
 
 // Start 10-second background auto-refresh for all Audit Trail operations
-setInterval(autoRefreshSuperadminAuditTrail, 15000);
+setInterval(autoRefreshSuperadminAuditTrail, 10000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -1916,7 +1916,7 @@ function autoRefreshAdminOversight() {
 })();
 
 // Start auto-refresh timer (2 seconds)
-setInterval(autoRefreshAdminOversight, 15000);
+setInterval(autoRefreshAdminOversight, 10000);
 
 function atoExport(format) {
     const table = document.querySelector('.ato-table');

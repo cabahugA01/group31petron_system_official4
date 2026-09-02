@@ -286,7 +286,8 @@ try {
         SELECT 
             msi.id,
             CONCAT('SI-', LPAD(msi.id, 5, '0')) AS stock_in_no,
-            m
+            msi.product_id,
+            msi.product_name,
             msi.qty_received,
             COALESCE(NULLIF(msi.batch_ref, ''), CONCAT('BATCH-', LPAD(msi.id, 4, '0'))) AS batch_no,
             msi.encoded_at AS date_received,
@@ -400,25 +401,29 @@ body,html{overflow-x:hidden;max-width:100%;}
 .mv-none{color:#94a3b8;}
 
 /* ── Table ── */
-.table-wrap{overflow-x:hidden;width:100%;-webkit-overflow-scrolling:touch;}
-#merchTable{width:100%!important;border-collapse:collapse;table-layout:auto;}
-#merchTable thead th{background:#002F70;color:#fff;padding:8px 5px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.2px;white-space:nowrap;}
-#merchTable tbody td{padding:6px 5px;font-size:11.5px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
+.table-wrap{overflow-x:auto !important;width:100% !important;-webkit-overflow-scrolling:touch;}
+.table-wrap::-webkit-scrollbar{height:7px;}
+.table-wrap::-webkit-scrollbar-track{background:#f1f5f9;border-radius:4px;}
+.table-wrap::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px;}
+.table-wrap::-webkit-scrollbar-thumb:hover{background:#94a3b8;}
+#merchTable{width:100%!important;min-width:1320px;border-collapse:collapse;table-layout:fixed !important;}
+#merchTable thead th{background:#002F70;color:#fff;padding:9px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;vertical-align:middle;box-sizing:border-box;line-height:1.2;text-align:left;white-space:nowrap;}
+#merchTable tbody td{padding:8px 6px;font-size:11.5px;border-bottom:1px solid #f1f5f9;vertical-align:middle;box-sizing:border-box;line-height:1.2;}
 #merchTable tbody tr:hover td{background:#f8faff;}
 @media(max-width:768px){
   .inv-card-body{padding:12px;}
 }
-.mi-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:13000;align-items:center;justify-content:center;padding:40px 16px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.mi-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:13000;align-items:center;justify-content:center;padding:24px 16px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 .mi-overlay.open{display:flex !important;}
-.mi-box{background:#fff;border-radius:14px;padding:0;width:600px;max-width:calc(100vw - 32px);display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.3);animation:miIn .2s ease;overflow:hidden;position:relative;max-height:90vh;}
-.mi-box.wide{width:700px;max-width:calc(100vw - 32px);}
+.mi-box{background:#fff;border-radius:14px;padding:0;width:720px;max-width:calc(100vw - 32px);display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.3);animation:miIn .2s ease;overflow:hidden;position:relative;max-height:85vh;}
+.mi-box.wide{width:880px;max-width:calc(100vw - 32px);}
 @keyframes miIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
-.mi-head{display:flex;justify-content:space-between;align-items:center;padding:20px 28px;border-bottom:2px solid #e9ecef;flex-shrink:0;background:#fff;position:relative;z-index:1;}
-.mi-title{font-size:1.05rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;}
-.mi-close{background:none;border:none;font-size:22px;cursor:pointer;color:#adb5bd;padding:0;line-height:1;}
-.mi-close:hover{color:#333;}
-.mi-body{padding:28px;overflow-y:auto;flex:1;position:relative;min-height:0;}
-.mi-foot{display:flex;gap:10px;justify-content:flex-end;align-items:center;padding:16px 28px;border-top:1px solid #e9ecef;flex-shrink:0;background:#fff;position:relative;z-index:2;pointer-events:auto;}
+.mi-head{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1.5px solid #e9ecef;flex-shrink:0;background:#fff;position:relative;z-index:1;}
+.mi-title{font-size:1.15rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;}
+.mi-close{background:none;border:none;font-size:24px;cursor:pointer;color:#94a3b8;padding:0 4px;line-height:1;transition:color .15s;}
+.mi-close:hover{color:#0f172a;}
+.mi-body{padding:20px 24px;overflow-y:auto;overflow-x:hidden !important;flex:1;position:relative;min-height:0;box-sizing:border-box;}
+.mi-foot{display:flex;gap:10px;justify-content:flex-end;align-items:center;padding:14px 24px;border-top:1.5px solid #e9ecef;flex-shrink:0;background:#fff;position:relative;z-index:2;pointer-events:auto;}
 .mi-foot button{pointer-events:auto;cursor:pointer;}
 .mi-info{background:#e8f4fd;border-left:4px solid #002F70;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#002F70;line-height:1.6;}
 
@@ -727,20 +732,34 @@ body.modal-open .main {
         <!-- Table -->
         <div class="table-wrap">
             <table id="merchTable">
+                <colgroup>
+                    <col style="width:115px;">  <!-- Batch ID -->
+                    <col style="width:105px;">  <!-- SKU -->
+                    <col style="width:200px;">  <!-- Product Name -->
+                    <col style="width:130px;">  <!-- Category -->
+                    <col style="width:70px;">   <!-- UOM -->
+                    <col style="width:95px;">   <!-- Expiration Date -->
+                    <col style="width:80px;">   <!-- Initial Stock -->
+                    <col style="width:110px;">  <!-- Current Stock -->
+                    <col style="width:80px;">   <!-- Reorder Level -->
+                    <col style="width:115px;">  <!-- Status -->
+                    <col style="width:90px;">   <!-- Last Updated -->
+                    <col style="width:130px;">  <!-- Actions -->
+                </colgroup>
                 <thead>
                     <tr>
-                        <th>Batch ID</th>
-                        <th>SKU</th>
-                        <th>Product Name</th>
-                        <th style="text-align:center;">Category</th>
-                        <th style="text-align:center;">UOM</th>
-                        <th style="text-align:center;">Expiration Date</th>
-                        <th style="text-align:right;">Initial Stock</th>
-                        <th>Current Stock</th>
-                        <th style="text-align:right;">Reorder Level</th>
-                        <th style="text-align:center;">Status</th>
-                        <th>Last Updated</th>
-                        <th style="text-align:center;">Actions</th>
+                        <th style="padding:9px 6px;">Batch ID</th>
+                        <th style="padding:9px 6px;">SKU</th>
+                        <th style="padding:9px 6px;">Product Name</th>
+                        <th style="padding:9px 6px; text-align:center;">Category</th>
+                        <th style="padding:9px 6px; text-align:center;">UOM</th>
+                        <th style="padding:9px 6px; text-align:center;">Exp. Date</th>
+                        <th style="padding:9px 6px; text-align:right;">Initial</th>
+                        <th style="padding:9px 6px; text-align:center;">Current Stock</th>
+                        <th style="padding:9px 6px; text-align:right;">Reorder</th>
+                        <th style="padding:9px 6px; text-align:center;">Status</th>
+                        <th style="padding:9px 6px; text-align:center;">Updated</th>
+                        <th style="padding:9px 6px; text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="merchTableBody">
@@ -795,30 +814,30 @@ body.modal-open .main {
                         data-stock="<?php echo $it['stock']; ?>"
                         data-updated="<?php echo htmlspecialchars($it['last_updated']); ?>"
                         data-idx="<?php echo htmlspecialchars(json_encode($it)); ?>">
-                        <td><code style="font-size:11px;font-weight:700;color:#002F70;"><?php echo htmlspecialchars($batch_id); ?></code></td>
-                        <td><code style="font-size:11px;font-weight:600;"><?php echo htmlspecialchars($it['sku']); ?></code></td>
-                        <td style="white-space:normal;"><strong><?php echo htmlspecialchars($it['name']); ?></strong></td>
-                        <td style="text-align:center;"><?php echo htmlspecialchars($it['category']); ?></td>
-                        <td style="text-align:center;font-weight:600;color:#475569;"><?php echo htmlspecialchars($it['unit']); ?></td>
-                        <td style="text-align:center;font-weight:600;color:<?php echo $exp_date !== 'N/A' ? '#0f172a' : '#94a3b8'; ?>;"><?php echo htmlspecialchars($exp_date); ?></td>
-                        <td style="text-align:right; font-weight:700; color:#0f172a;"><?php echo number_format($initial_qty); ?></td>
-                        <td>
-                            <div class="fill-bar-wrap">
+                        <td style="padding:8px 6px;"><code style="font-size:10.5px;font-weight:700;color:#002F70;"><?php echo htmlspecialchars($batch_id); ?></code></td>
+                        <td style="padding:8px 6px;"><code style="font-size:10.5px;font-weight:600;"><?php echo htmlspecialchars($it['sku']); ?></code></td>
+                        <td style="padding:8px 6px;white-space:normal;line-height:1.2;word-break:break-word;"><strong style="font-size:11.5px;color:#0f172a;"><?php echo htmlspecialchars($it['name']); ?></strong></td>
+                        <td style="padding:8px 6px;text-align:center;font-size:11px;line-height:1.15;word-break:break-word;color:#475569;"><?php echo htmlspecialchars($it['category']); ?></td>
+                        <td style="padding:8px 6px;text-align:center;font-size:11px;font-weight:600;color:#475569;"><?php echo htmlspecialchars($it['unit']); ?></td>
+                        <td style="padding:8px 6px;text-align:center;font-size:11px;font-weight:600;white-space:nowrap;color:<?php echo $exp_date !== 'N/A' ? '#0f172a' : '#94a3b8'; ?>;"><?php echo htmlspecialchars($exp_date); ?></td>
+                        <td style="padding:8px 6px;text-align:right;font-size:11.5px;font-weight:700;color:#0f172a;"><?php echo number_format($initial_qty); ?></td>
+                        <td style="padding:8px 6px;text-align:center;">
+                            <div class="fill-bar-wrap" style="height:5px;margin-bottom:3px;">
                                 <div class="fill-bar-inner" style="width:<?php echo min(100, round($it['fill_pct'])); ?>%;background:<?php echo $display_color; ?>;"></div>
                             </div>
-                            <span style="font-size:11px;font-weight:600;color:#334155;"><?php echo number_format($it['stock']); ?> <?php echo htmlspecialchars($it['unit']); ?></span>
+                            <span style="font-size:10.5px;font-weight:700;color:#334155;"><?php echo number_format($it['stock']); ?> <?php echo htmlspecialchars($it['unit']); ?></span>
                         </td>
-                        <td style="text-align:right; font-weight:600; color:#ea580c;"><?php echo number_format($it['reorder'] ?? 24); ?></td>
-                        <td style="text-align:center;">
-                            <span class="status-badge" style="background:<?php echo $display_color; ?>20;color:<?php echo $display_color; ?>;border:1px solid <?php echo $display_color; ?>40;">
+                        <td style="padding:8px 6px;text-align:right;font-size:11.5px;font-weight:600;color:#ea580c;"><?php echo number_format($it['reorder'] ?? 24); ?></td>
+                        <td style="padding:8px 6px;text-align:center;">
+                            <span class="status-badge" style="background:<?php echo $display_color; ?>20;color:<?php echo $display_color; ?>;border:1px solid <?php echo $display_color; ?>40;font-size:10px;padding:3px 6px;font-weight:700;white-space:nowrap;">
                                 <?php echo htmlspecialchars($display_status); ?>
                             </span>
                         </td>
-                        <td style="font-size:11px;color:#64748b;"><?php echo $ts; ?></td>
-                        <td style="text-align:center;">
-                            <div style="display:inline-flex; gap:6px; align-items:center; justify-content:center;">
-                                <button type="button" class="txn-btn primary sm" onclick='viewDetails(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)'><i class="fas fa-eye"></i> View</button>
-                                <button type="button" class="txn-btn warning sm" onclick='openAdjustmentModal(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)' style="background:#16a34a!important; border-color:#16a34a!important; color:#fff!important;"><i class="fas fa-edit"></i> Adjustment</button>
+                        <td style="padding:8px 6px;text-align:center;font-size:10.5px;color:#64748b;white-space:nowrap;"><?php echo $ts; ?></td>
+                        <td style="padding:8px 6px;text-align:center;">
+                            <div style="display:flex;gap:4px;align-items:center;justify-content:center;flex-wrap:nowrap;">
+                                <button type="button" class="txn-btn primary sm" onclick='viewDetails(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)' style="padding:3px 7px;font-size:10.5px;height:26px;min-height:26px;gap:3px;font-weight:600;border-radius:4px;" title="View Details"><i class="fas fa-eye" style="font-size:9.5px;"></i> View</button>
+                                <button type="button" class="txn-btn warning sm" onclick='openAdjustmentModal(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)' style="background:#16a34a!important;border-color:#16a34a!important;color:#fff!important;padding:3px 7px;font-size:10.5px;height:26px;min-height:26px;gap:3px;font-weight:600;border-radius:4px;" title="Adjust Stock"><i class="fas fa-edit" style="font-size:9.5px;"></i> Adjust</button>
                             </div>
                         </td>
                     </tr>
@@ -931,6 +950,7 @@ body.modal-open .main {
     <div class="mi-box">
         <div class="mi-head">
             <div class="mi-title"><i class="fas fa-eye"></i> Product Details</div>
+            <button type="button" class="mi-close" onclick="closeVd()">&times;</button>
         </div>
         <div class="mi-body">
             <div id="vdContent"></div>
@@ -1261,7 +1281,7 @@ document.getElementById('sortBy').addEventListener('change', function() {
 });
 
 // ── Tabs Navigation Switcher ─────────────────────────────────
-function switchInvTab(tab) {
+window.switchInvTab = function switchInvTab(tab) {
     var btnOv  = document.getElementById('tab-overview');
     var btnStk = document.getElementById('tab-stockin');
     var btnAlt = document.getElementById('tab-alerts');
@@ -1289,12 +1309,18 @@ function switchInvTab(tab) {
         if (btnAlt) btnAlt.classList.add('active');
         if (secAlt) secAlt.style.display = 'block';
     }
-}
+};
+var switchInvTab = window.switchInvTab;
 
 
 // ── View Details ──────────────────────────────────────────────
 function viewDetails(it) {
     var lastUpdatedStr = it.last_updated ? (new Date(it.last_updated)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+    var batchId = (it.batches && it.batches[0] && it.batches[0].batch_id) ? it.batches[0].batch_id : ('B' + String(it.id).padStart(3, '0'));
+    var expDate = it.expiration_date || (it.batches && it.batches[0] && it.batches[0].date ? (new Date(it.batches[0].date)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A');
+    var initialQty = (parseInt(it.stock_in, 10) > 0) ? parseInt(it.stock_in, 10) : (parseInt(it.capacity, 10) || 480);
+    var fillPct = Math.min(100, Math.round(it.fill_pct || 0));
+
     var matchingStockIns = (window.stockInListData || []).filter(function(sin) {
         return parseInt(sin.product_id || 0) === parseInt(it.id) || (sin.product_name && sin.product_name.toLowerCase() === (it.name || '').toLowerCase());
     });
@@ -1302,41 +1328,52 @@ function viewDetails(it) {
     if (matchingStockIns.length > 0) {
         stockInRows = matchingStockIns.slice(0, 10).map(function(sin) {
             var dStr = sin.date_received ? (new Date(sin.date_received)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-            return '<tr>' +
-                '<td style="padding:6px 8px; font-weight:700; color:#002F70;">' + escHtml(sin.stock_in_no || ('SI-' + String(sin.id).padStart(5, '0'))) + '</td>' +
-                '<td style="padding:6px 8px; text-align:center; font-size:11px; color:#64748b;">' + escHtml(dStr) + '</td>' +
-                '<td style="padding:6px 8px; text-align:right; font-weight:700; color:#16a34a;">+' + Number(sin.qty_received || 0).toLocaleString() + '</td>' +
-                '</tr>';
+            return '<div style="display:grid; grid-template-columns: 1fr 1fr 1fr; border-bottom:1px solid #e2e8f0; padding:10px 14px; font-size:12px; align-items:center; box-sizing:border-box; width:100%;">' +
+                '<div style="font-weight:700; color:#002F70; word-break:break-all;"><code style="color:#002F70; font-weight:700;">' + escHtml(sin.stock_in_no || ('SI-' + String(sin.id).padStart(5, '0'))) + '</code></div>' +
+                '<div style="text-align:center; font-size:12px; color:#475569; font-weight:600;">' + escHtml(dStr) + '</div>' +
+                '<div style="text-align:right; font-weight:800; color:#16a34a; font-size:12.5px;">+' + Number(sin.qty_received || 0).toLocaleString() + ' ' + escHtml(it.unit) + '</div>' +
+                '</div>';
         }).join('');
     } else {
-        stockInRows = '<tr><td colspan="3" style="text-align:center; color:#94a3b8; padding:12px;">No recent stock-in history available.</td></tr>';
+        stockInRows = '<div style="text-align:center; color:#64748b; padding:18px 14px; font-size:12px; font-weight:600; background:#f8fafc; line-height:1.5; box-sizing:border-box; width:100%;"><i class="fas fa-info-circle" style="color:#002F70; margin-right:6px;"></i> No recent stock-in history recorded for this product.</div>';
     }
 
     document.getElementById('vdContent').innerHTML =
-        '<h4 style="margin:0 0 10px; color:#002F70; font-size:12px; font-weight:700; text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:4px;"><i class="fas fa-info-circle"></i> Product Information</h4>' +
-        '<div class="vd-grid">' +
-        vdRow('SKU', '<code>' + escHtml(it.sku || '—') + '</code>') +
-        vdRow('Product Name', '<strong>' + escHtml(it.name) + '</strong>') +
-        vdRow('Category', escHtml(it.category)) +
-        vdRow('Brand', escHtml(it.brand || 'Petron')) +
-        vdRow('Unit of Measure (UOM)', escHtml(it.unit)) +
-        vdRow('Barcode', '<code>' + escHtml(it.barcode || '—') + '</code>') +
+        '<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:16px 18px; margin-bottom:16px; box-sizing:border-box; width:100%;">' +
+        '  <h4 style="margin:0 0 12px; color:#002F70; font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; display:flex; align-items:center; gap:8px; border-bottom:1.5px solid #cbd5e1; padding-bottom:6px;"><i class="fas fa-info-circle"></i> Product Information</h4>' +
+        '  <div class="vd-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px 20px; margin-bottom:0; width:100%; box-sizing:border-box;">' +
+        vdRow('Batch ID', '<code style="font-size:12px; font-weight:700; color:#002F70;">' + escHtml(batchId) + '</code>') +
+        vdRow('SKU', '<code style="font-size:12px; font-weight:700; color:#1e293b;">' + escHtml(it.sku || '—') + '</code>') +
+        vdRow('Product Name', '<strong style="font-size:13px; color:#0f172a;">' + escHtml(it.name) + '</strong>') +
+        vdRow('Barcode', '<code style="font-size:12px; font-weight:600; color:#475569;">' + escHtml(it.barcode || '—') + '</code>') +
+        vdRow('Category', '<span style="font-size:12.5px; font-weight:600; color:#334155;">' + escHtml(it.category) + '</span>') +
+        vdRow('Brand', '<span style="font-size:12.5px; font-weight:600; color:#334155;">' + escHtml(it.brand || 'Petron') + '</span>') +
+        vdRow('Unit of Measure (UOM)', '<span style="font-size:12.5px; font-weight:600; color:#334155;">' + escHtml(it.unit) + '</span>') +
+        vdRow('Expiration Date', '<span style="font-size:12.5px; font-weight:700; color:' + (expDate !== 'N/A' ? '#0f172a' : '#94a3b8') + ';">' + escHtml(expDate) + '</span>') +
+        '  </div>' +
         '</div>' +
-        '<h4 style="margin:16px 0 10px; color:#002F70; font-size:12px; font-weight:700; text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:4px;"><i class="fas fa-cubes"></i> Stock Information</h4>' +
-        '<div class="vd-grid">' +
-        vdRow('Current Stock', '<strong style="font-size:16px; color:#0f172a;">' + Number(it.stock).toLocaleString() + '</strong> ' + escHtml(it.unit)) +
-        vdRow('Reorder Level', '<strong style="color:#dc2626;">' + Number(it.reorder).toLocaleString() + '</strong> ' + escHtml(it.unit)) +
-        vdRow('Status', '<span class="status-badge" style="background:' + it.color + '20; color:' + it.color + '; border:1px solid ' + it.color + '40;">' + escHtml(it.status) + '</span>') +
+
+        '<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:16px 18px; margin-bottom:16px; box-sizing:border-box; width:100%;">' +
+        '  <h4 style="margin:0 0 12px; color:#002F70; font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; display:flex; align-items:center; gap:8px; border-bottom:1.5px solid #cbd5e1; padding-bottom:6px;"><i class="fas fa-cubes"></i> Stock & Inventory Details</h4>' +
+        '  <div class="vd-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px 20px; margin-bottom:0; width:100%; box-sizing:border-box;">' +
+        vdRow('Initial Stock', '<strong style="font-size:13.5px; color:#0f172a;">' + Number(initialQty).toLocaleString() + '</strong> ' + escHtml(it.unit)) +
+        vdRow('Current Stock', '<strong style="font-size:15px; color:#16a34a;">' + Number(it.stock).toLocaleString() + '</strong> ' + escHtml(it.unit)) +
+        vdRow('Reorder Level', '<strong style="font-size:13.5px; color:#ea580c;">' + Number(it.reorder).toLocaleString() + '</strong> ' + escHtml(it.unit)) +
+        vdRow('Stock Status', '<span class="status-badge" style="background:' + it.color + '20; color:' + it.color + '; border:1.5px solid ' + it.color + '40; font-size:11px; padding:3px 10px; font-weight:800; text-transform:uppercase;">' + escHtml(it.status) + '</span>') +
+        vdRow('Fill Level', '<div style="margin-top:4px;"><div style="background:#e2e8f0; border-radius:4px; height:7px; overflow:hidden; width:100%; max-width:140px; margin-bottom:3px;"><div style="width:' + fillPct + '%; background:' + it.color + '; height:100%; border-radius:4px;"></div></div><span style="font-size:11px; font-weight:700; color:#475569;">' + fillPct + '% capacity</span></div>') +
+        vdRow('Last Updated', '<span style="font-size:12px; font-weight:600; color:#64748b;">' + escHtml(lastUpdatedStr) + '</span>') +
+        '  </div>' +
         '</div>' +
-        '<h4 style="margin:16px 0 8px; color:#002F70; font-size:12px; font-weight:700; text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:4px;"><i class="fas fa-arrow-down"></i> Recent Stock-In (Read-Only Reference)</h4>' +
-        '<table style="width:100%; border-collapse:collapse; font-size:11.5px; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden;">' +
-        '<thead><tr style="background:#002F70; color:#fff;">' +
-        '<th style="padding:6px 8px; text-align:left;">Stock-In No.</th>' +
-        '<th style="padding:6px 8px; text-align:center;">Date Received</th>' +
-        '<th style="padding:6px 8px; text-align:right;">Quantity Received</th>' +
-        '</tr></thead>' +
-        '<tbody>' + stockInRows + '</tbody>' +
-        '</table>';
+
+        '<div style="background:#ffffff; border:1.5px solid #cbd5e1; border-radius:10px; overflow:hidden; width:100%; box-sizing:border-box;">' +
+        '  <div style="background:#002F70; color:#fff; padding:10px 16px; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; display:flex; align-items:center; gap:8px;"><i class="fas fa-arrow-down"></i> Recent Stock-In (Read-Only Reference)</div>' +
+        '  <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; background:#f1f5f9; color:#002F70; border-bottom:1.5px solid #cbd5e1; padding:10px 14px; font-size:11.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.3px; width:100%; box-sizing:border-box;">' +
+        '    <div style="text-align:left;">Stock-In No.</div>' +
+        '    <div style="text-align:center;">Date Received</div>' +
+        '    <div style="text-align:right;">Qty Received</div>' +
+        '  </div>' +
+        '  <div style="width:100%; box-sizing:border-box;">' + stockInRows + '</div>' +
+        '</div>';
 
     document.getElementById('vdModal').classList.add('open');
     document.body.classList.add('modal-open');
@@ -2017,17 +2054,17 @@ function submitAdjustmentForm(e) {
 </script>
 
 <!-- ══ INVENTORY ADJUSTMENT MODAL ══ -->
-<div class="modal-overlay" id="staffAdjustmentModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:15000; align-items:center; justify-content:center; padding:90px 20px 50px 20px; box-sizing:border-box;">
-    <div class="modal-box" style="background:#fff; border-radius:14px; width:95%; max-width:580px; max-height:calc(100vh - 160px); margin:auto; box-shadow:0 20px 50px rgba(0,0,0,0.35); overflow:hidden; display:flex; flex-direction:column;">
-        <div style="background:linear-gradient(135deg,#002F70,#001838); padding:20px 24px; color:#fff; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
-            <div style="font-size:17px; font-weight:700; display:flex; align-items:center; gap:10px;"><i class="fas fa-edit" style="color:#fd7e14;"></i> Request Inventory Adjustment</div>
+<div class="modal-overlay" id="staffAdjustmentModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:15000; align-items:center; justify-content:center; padding:24px 16px; box-sizing:border-box; overflow-y:auto;">
+    <div class="modal-box" style="background:#fff; border-radius:14px; width:100%; max-width:580px; max-height:85vh; margin:auto; box-shadow:0 20px 50px rgba(0,0,0,0.35); overflow:hidden; display:flex; flex-direction:column; position:relative;">
+        <div style="background:linear-gradient(135deg,#002F70,#001838); padding:16px 22px; color:#fff; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
+            <div style="font-size:16px; font-weight:700; display:flex; align-items:center; gap:10px;"><i class="fas fa-edit" style="color:#fd7e14;"></i> Request Inventory Adjustment</div>
             <button type="button" onclick="closeAdjustmentModal()" style="background:none; border:none; color:#fff; font-size:24px; cursor:pointer; line-height:1; padding:0 4px;">&times;</button>
         </div>
         
         <form id="adjustmentForm" onsubmit="submitAdjustmentForm(event)" style="display:flex; flex-direction:column; flex:1; overflow:hidden; margin:0;">
             <input type="hidden" id="adj_product_id" name="product_id">
             
-            <div style="padding:22px 24px; overflow-y:auto; flex:1; max-height:calc(100vh - 280px);">
+            <div style="padding:20px 24px; overflow-y:auto; overflow-x:hidden !important; flex:1; max-height:calc(85vh - 130px); box-sizing:border-box;">
                 <!-- Product Information (Auto Fetch / Readonly) -->
                 <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:18px;">
                     <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">
@@ -2170,7 +2207,7 @@ function submitAdjustmentForm(e) {
             console.warn('Merchandise inventory auto-fetch notice:', e);
         });
     }
-    setInterval(autoRefreshMerchandiseInventory, 15000);
+    setInterval(autoRefreshMerchandiseInventory, 10000);
 })();
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

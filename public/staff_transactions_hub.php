@@ -1340,7 +1340,6 @@ if ($section === 'merchandise') {
 
         $jo_action   = $_POST['jo_action'];
         $jo_id       = (int)($_POST['jo_id'] ?? 0);
-        // Whitelist jo_source to prevent spoofed table names
         $jo_src_raw  = $_POST['jo_source'] ?? 'job_orders';
         $jo_src      = in_array($jo_src_raw, ['job_orders','merchandise_transactions'])
                         ? $jo_src_raw : 'job_orders';
@@ -1354,12 +1353,11 @@ if ($section === 'merchandise') {
                     $amount_now   = round((float)($_POST['settle_amount'] ?? 0), 2);
                     $pay_method   = trim($_POST['settle_method'] ?? 'Cash');
                     $remarks      = trim($_POST['settle_remarks'] ?? '');
-                    $mark_complete = !empty($_POST['mark_complete_on_settle']); // also flip to Completed
+                    $mark_complete = !empty($_POST['mark_complete_on_settle']);
 
                     if ($jo_src === 'merchandise_transactions') {
-                        // Fetch current totals
-                        $row = $pdo->prepare("SELECT id, transaction_id, total_amount, COALESCE(amount_paid,0) AS amount_paid, COALESCE(balance_due, total_amount) AS balance_due, customer_name FROM merchandise_transactions WHERE id=? AND station_id=? LIMIT 1");
-                        $row->execute([$jo_id, $station_id]);
+                        $row = $pdo->prepare("SELECT id, transaction_id, total_amount, COALESCE(amount_paid,0) AS amount_paid, COALESCE(balance_due, total_amount) AS balance_due, customer_name FROM merchandise_transactions WHERE id=? AND (station_id=? OR ?=0) LIMIT 1");
+                        $row->execute([$jo_id, $station_id, $station_id]);
                         $cur = $row->fetch(PDO::FETCH_ASSOC);
                         if ($cur) {
                             $total       = (float)$cur['total_amount'];
@@ -1371,29 +1369,25 @@ if ($section === 'merchandise') {
                             $sets = "payment_status=?, ar_status=?, amount_paid=?, balance_due=?, payment_method=?, updated_at=NOW()";
                             $params = [$new_status, $new_ar_stat, $new_paid, $new_balance, $pay_method];
                             if ($mark_complete || $new_balance <= 0.009) { $sets .= ", workflow_status='Completed'"; }
-                            $pdo->prepare("UPDATE merchandise_transactions SET $sets WHERE id=? AND station_id=?")->execute(array_merge($params, [$jo_id, $station_id]));
+                            $pdo->prepare("UPDATE merchandise_transactions SET $sets WHERE id=? AND (station_id=? OR ?=0)")->execute(array_merge($params, [$jo_id, $station_id, $station_id]));
 
-                            // Sync customer_accounts_receivable table
                             try {
-                                $ar_stmt = $pdo->prepare("
+                                $pdo->prepare("
                                     UPDATE customer_accounts_receivable 
                                     SET amount_paid = amount_paid + ?, 
                                         outstanding_balance = ?, 
                                         status = IF(? <= 0.009, 'Settled', 'Active'),
                                         updated_at = NOW()
-                                    WHERE (transaction_db_id = ? OR transaction_id = ?) AND station_id = ?
-                                ");
-                                $ar_stmt->execute([$amount_now, $new_balance, $new_balance, $jo_id, $cur['transaction_id'] ?? '', $station_id]);
+                                    WHERE (transaction_db_id = ? OR transaction_id = ?) AND (station_id = ? OR ?=0)
+                                ")->execute([$amount_now, $new_balance, $new_balance, $jo_id, $cur['transaction_id'] ?? '', $station_id, $station_id]);
                             } catch (Exception $ar_err) {}
 
-                            // Audit log
                             try { $pdo->prepare("INSERT INTO payment_audit_log (record_id, record_source, staff_id, station_id, amount_paid, payment_method, balance_due, payment_status, remarks, logged_at) VALUES (?,?,?,?,?,?,?,?,?,NOW())")->execute([$jo_id,'merchandise_transactions',$me['id'],$station_id,$amount_now,$pay_method,$new_balance,$new_status,$remarks]); } catch(Exception $ae){}
                             $_SESSION['success'] = $new_status === 'Paid' ? 'Payment fully settled. Balance: ₱0.00.' : 'Partial payment recorded. Balance due: ₱' . number_format($new_balance, 2) . '.';
                         }
                     } else {
-                        // job_orders table
-                        $row = $pdo->prepare("SELECT COALESCE(total_cost,estimated_cost,0) AS total_amount, COALESCE(amount_paid,0) AS amount_paid, COALESCE(balance_due, COALESCE(total_cost,estimated_cost,0)) AS balance_due FROM job_orders WHERE id=? AND station_id=? LIMIT 1");
-                        $row->execute([$jo_id, $station_id]);
+                        $row = $pdo->prepare("SELECT COALESCE(total_cost,estimated_cost,0) AS total_amount, COALESCE(amount_paid,0) AS amount_paid, COALESCE(balance_due, COALESCE(total_cost,estimated_cost,0)) AS balance_due FROM job_orders WHERE id=? AND (station_id=? OR ?=0) LIMIT 1");
+                        $row->execute([$jo_id, $station_id, $station_id]);
                         $cur = $row->fetch(PDO::FETCH_ASSOC);
                         if ($cur) {
                             $total       = (float)$cur['total_amount'];
@@ -1404,8 +1398,7 @@ if ($section === 'merchandise') {
                             $sets = "payment_status=?, amount_paid=?, balance_due=?, payment_method=?, updated_at=NOW()";
                             $params = [$new_status, $new_paid, $new_balance, $pay_method];
                             if ($mark_complete) { $sets .= ", status='Completed'"; }
-                            $pdo->prepare("UPDATE job_orders SET $sets WHERE id=? AND station_id=?")->execute(array_merge($params, [$jo_id, $station_id]));
-                            // Audit log
+                            $pdo->prepare("UPDATE job_orders SET $sets WHERE id=? AND (station_id=? OR ?=0)")->execute(array_merge($params, [$jo_id, $station_id, $station_id]));
                             try { $pdo->prepare("INSERT INTO payment_audit_log (record_id, record_source, staff_id, station_id, amount_paid, payment_method, balance_due, payment_status, remarks, logged_at) VALUES (?,?,?,?,?,?,?,?,?,NOW())")->execute([$jo_id,'job_orders',$me['id'],$station_id,$amount_now,$pay_method,$new_balance,$new_status,$remarks]); } catch(Exception $ae){}
                             $_SESSION['success'] = $new_status === 'Paid' ? 'Payment fully settled. Balance: ₱0.00.' : 'Partial payment recorded. Balance due: ₱' . number_format($new_balance, 2) . '.';
                         }
@@ -1417,36 +1410,53 @@ if ($section === 'merchandise') {
                 }
 
                 if ($jo_src === 'merchandise_transactions') {
-                    // Record lives in merchandise_transactions — use workflow_status column
                     if ($jo_action === 'set_in_progress') {
-                        $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='In Progress', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='In Progress', updated_at=NOW() WHERE id=? AND (station_id=? OR ?=0)")
+                            ->execute([$jo_id, $station_id, $station_id]);
+                        try {
+                            $pdo->prepare("UPDATE job_orders SET status='In Progress', updated_at=NOW() WHERE (job_order_id = ? OR id = (SELECT job_order_db_id FROM merchandise_transactions WHERE id = ?)) AND (station_id=? OR ?=0)")
+                                ->execute([$jo_id, $jo_id, $station_id, $station_id]);
+                        } catch (Exception $je) {}
                         $_SESSION['success'] = 'Job Order marked as In Progress.';
                     } elseif ($jo_action === 'set_completed') {
-                        $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='Completed', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='Completed', updated_at=NOW() WHERE id=? AND (station_id=? OR ?=0)")
+                            ->execute([$jo_id, $station_id, $station_id]);
+                        try {
+                            $pdo->prepare("UPDATE job_orders SET status='Completed', updated_at=NOW() WHERE (job_order_id = ? OR id = (SELECT job_order_db_id FROM merchandise_transactions WHERE id = ?)) AND (station_id=? OR ?=0)")
+                                ->execute([$jo_id, $jo_id, $station_id, $station_id]);
+                        } catch (Exception $je) {}
                         $_SESSION['success'] = 'Job Order marked as Completed.';
                     } elseif ($jo_action === 'release_job_order' || $jo_action === 'set_released') {
-                        $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='Released', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='Released', updated_at=NOW() WHERE id=? AND (station_id=? OR ?=0)")
+                            ->execute([$jo_id, $station_id, $station_id]);
+                        try {
+                            $pdo->prepare("UPDATE job_orders SET status='Released', updated_at=NOW() WHERE (job_order_id = ? OR id = (SELECT job_order_db_id FROM merchandise_transactions WHERE id = ?)) AND (station_id=? OR ?=0)")
+                                ->execute([$jo_id, $jo_id, $station_id, $station_id]);
+                        } catch (Exception $je) {}
                         $_SESSION['success'] = 'Vehicle marked as Released to customer.';
                     } elseif ($jo_action === 'set_paid') {
-                        $pdo->prepare("UPDATE merchandise_transactions SET payment_status='Paid', balance_due=0, updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $pdo->prepare("UPDATE merchandise_transactions SET payment_status='Paid', balance_due=0, updated_at=NOW() WHERE id=? AND (station_id=? OR ?=0)")
+                            ->execute([$jo_id, $station_id, $station_id]);
+                        try {
+                            $pdo->prepare("UPDATE job_orders SET payment_status='Paid', balance_due=0, updated_at=NOW() WHERE (job_order_id = ? OR id = (SELECT job_order_db_id FROM merchandise_transactions WHERE id = ?)) AND (station_id=? OR ?=0)")
+                                ->execute([$jo_id, $jo_id, $station_id, $station_id]);
+                        } catch (Exception $je) {}
                         $_SESSION['success'] = 'Payment recorded as Paid.';
                     } elseif ($jo_action === 'set_due_date') {
-                        // ── Receivables: set/update due date ──────────────────────────────────
                         $raw_due = trim($_POST['due_date'] ?? '');
                         $parsed  = DateTime::createFromFormat('Y-m-d', $raw_due);
                         if ($parsed && $parsed->format('Y-m-d') === $raw_due) {
-                            $pdo->prepare("UPDATE merchandise_transactions SET due_date=?, updated_at=NOW() WHERE id=? AND station_id=?")
-                                ->execute([$raw_due, $jo_id, $station_id]);
+                            $pdo->prepare("UPDATE merchandise_transactions SET due_date=?, updated_at=NOW() WHERE id=? AND (station_id=? OR ?=0)")
+                                ->execute([$raw_due, $jo_id, $station_id, $station_id]);
                             $_SESSION['success'] = 'Due date set to ' . $raw_due . '.';
                         } else {
                             $_SESSION['error'] = 'Invalid due date format. Use YYYY-MM-DD.';
                         }
                     } elseif ($jo_action === 'save_staff_remark') {
-                        // ── Validation Notes: save staff remark ───────────────────────────────
                         if (in_array($role, ['staff','cashier','pump_attendant'])) {
                             $remark_text = trim($_POST['remark_text'] ?? '');
-                            $pdo->prepare("UPDATE merchandise_transactions SET staff_remarks=?, updated_at=NOW() WHERE id=? AND station_id=?")
-                                ->execute([$remark_text, $jo_id, $station_id]);
+                            $pdo->prepare("UPDATE merchandise_transactions SET staff_remarks=?, updated_at=NOW() WHERE id=? AND (station_id=? OR ?=0)")
+                                ->execute([$remark_text, $jo_id, $station_id, $station_id]);
                             $_SESSION['success'] = 'Staff remark saved.';
                         }
                     } elseif ($jo_action === 'update_status') {
@@ -1463,8 +1473,12 @@ if ($section === 'merchandise') {
                                     $sets .= ", staff_remarks=?";
                                     $params[] = 'Rejected: ' . $rej_remarks;
                                 }
-                                $pdo->prepare("UPDATE merchandise_transactions SET $sets WHERE id=? AND station_id=?")
-                                    ->execute(array_merge($params, [$jo_id, $station_id]));
+                                $pdo->prepare("UPDATE merchandise_transactions SET $sets WHERE id=? AND (station_id=? OR ?=0)")
+                                    ->execute(array_merge($params, [$jo_id, $station_id, $station_id]));
+                                try {
+                                    $pdo->prepare("UPDATE job_orders SET status=?, updated_at=NOW() WHERE (job_order_id = ? OR id = (SELECT job_order_db_id FROM merchandise_transactions WHERE id = ?)) AND (station_id=? OR ?=0)")
+                                        ->execute([$new_status, $jo_id, $jo_id, $station_id, $station_id]);
+                                } catch (Exception $je) {}
                                 $_SESSION['success'] = 'Status updated to ' . htmlspecialchars($new_status) . '.';
                             }
                         } else {
@@ -1479,6 +1493,17 @@ if ($section === 'merchandise') {
                         $mech_name = trim($_POST['mechanic_name'] ?? '');
                         $est_cost  = round(max(0, (float)($_POST['estimated_cost'] ?? 0)), 2);
                         $est_duration = isset($_POST['estimated_duration']) && $_POST['estimated_duration'] !== '' ? (int)$_POST['estimated_duration'] : null;
+
+                        if ($cust_name === '' || $svc_type === '') {
+                            $cur_row = $pdo->prepare("SELECT customer_name, job_order_service FROM merchandise_transactions WHERE id=?");
+                            $cur_row->execute([$jo_id]);
+                            $cr = $cur_row->fetch(PDO::FETCH_ASSOC);
+                            if ($cr) {
+                                if ($cust_name === '') $cust_name = $cr['customer_name'] ?: 'Walk-in Customer';
+                                if ($svc_type === '') $svc_type = $cr['job_order_service'] ?: 'General Service';
+                            }
+                        }
+
                         if ($cust_name !== '' && $svc_type !== '') {
                             $pdo->prepare("
                                 UPDATE merchandise_transactions
@@ -1488,11 +1513,11 @@ if ($section === 'merchandise') {
                                     job_order_service = ?,
                                     remarks = ?,
                                     job_order_mechanic_name = ?,
-                                    total_amount = ?,
+                                    total_amount = IF(? > 0, ?, total_amount),
                                     job_order_estimated_duration = ?,
                                     updated_at = NOW()
-                                WHERE id = ? AND station_id = ?
-                            ")->execute([$cust_name, $veh_plate, $veh_type, $svc_type, $svc_desc, $mech_name, $est_cost, $est_duration, $jo_id, $station_id]);
+                                WHERE id = ? AND (station_id = ? OR ? = 0)
+                            ")->execute([$cust_name, $veh_plate, $veh_type, $svc_type, $svc_desc, $mech_name, $est_cost, $est_cost, $est_duration, $jo_id, $station_id, $station_id]);
                             $_SESSION['success'] = 'Job order details adjusted successfully.';
                         } else {
                             $_SESSION['error'] = 'Customer name and service type are required.';
@@ -1500,34 +1525,52 @@ if ($section === 'merchandise') {
                     }
                 } else {
                     if ($jo_action === 'set_in_progress') {
-                        $pdo->prepare("UPDATE job_orders SET status='In Progress', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $pdo->prepare("UPDATE job_orders SET status='In Progress', updated_at=NOW() WHERE id=? AND (station_id=? OR ?=0)")
+                            ->execute([$jo_id, $station_id, $station_id]);
+                        try {
+                            $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='In Progress', updated_at=NOW() WHERE (job_order_db_id = ? OR id = ?) AND (station_id=? OR ?=0)")
+                                ->execute([$jo_id, $jo_id, $station_id, $station_id]);
+                        } catch (Exception $mte) {}
                         $_SESSION['success'] = 'Job Order marked as In Progress.';
                     } elseif ($jo_action === 'set_completed') {
-                        $pdo->prepare("UPDATE job_orders SET status='Completed', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $pdo->prepare("UPDATE job_orders SET status='Completed', updated_at=NOW() WHERE id=? AND (station_id=? OR ?=0)")
+                            ->execute([$jo_id, $station_id, $station_id]);
+                        try {
+                            $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='Completed', updated_at=NOW() WHERE (job_order_db_id = ? OR id = ?) AND (station_id=? OR ?=0)")
+                                ->execute([$jo_id, $jo_id, $station_id, $station_id]);
+                        } catch (Exception $mte) {}
                         $_SESSION['success'] = 'Job Order marked as Completed.';
                     } elseif ($jo_action === 'release_job_order' || $jo_action === 'set_released') {
-                        $pdo->prepare("UPDATE job_orders SET status='Released', updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $pdo->prepare("UPDATE job_orders SET status='Released', updated_at=NOW() WHERE id=? AND (station_id=? OR ?=0)")
+                            ->execute([$jo_id, $station_id, $station_id]);
+                        try {
+                            $pdo->prepare("UPDATE merchandise_transactions SET workflow_status='Released', updated_at=NOW() WHERE (job_order_db_id = ? OR id = ?) AND (station_id=? OR ?=0)")
+                                ->execute([$jo_id, $jo_id, $station_id, $station_id]);
+                        } catch (Exception $mte) {}
                         $_SESSION['success'] = 'Vehicle marked as Released to customer.';
                     } elseif ($jo_action === 'set_paid') {
-                        $pdo->prepare("UPDATE job_orders SET payment_status='Paid', balance_due=0, updated_at=NOW() WHERE id=? AND station_id=?")->execute([$jo_id, $station_id]);
+                        $pdo->prepare("UPDATE job_orders SET payment_status='Paid', balance_due=0, updated_at=NOW() WHERE id=? AND (station_id=? OR ?=0)")
+                            ->execute([$jo_id, $station_id, $station_id]);
+                        try {
+                            $pdo->prepare("UPDATE merchandise_transactions SET payment_status='Paid', balance_due=0, updated_at=NOW() WHERE (job_order_db_id = ? OR id = ?) AND (station_id=? OR ?=0)")
+                                ->execute([$jo_id, $jo_id, $station_id, $station_id]);
+                        } catch (Exception $mte) {}
                         $_SESSION['success'] = 'Payment recorded as Paid.';
                     } elseif ($jo_action === 'set_due_date') {
-                        // ── Receivables: set/update due date ──────────────────────────────────
                         $raw_due = trim($_POST['due_date'] ?? '');
                         $parsed  = DateTime::createFromFormat('Y-m-d', $raw_due);
                         if ($parsed && $parsed->format('Y-m-d') === $raw_due) {
-                            $pdo->prepare("UPDATE job_orders SET due_date=?, updated_at=NOW() WHERE id=? AND station_id=?")
-                                ->execute([$raw_due, $jo_id, $station_id]);
+                            $pdo->prepare("UPDATE job_orders SET due_date=?, updated_at=NOW() WHERE id=? AND (station_id=? OR ?=0)")
+                                ->execute([$raw_due, $jo_id, $station_id, $station_id]);
                             $_SESSION['success'] = 'Due date set to ' . $raw_due . '.';
                         } else {
                             $_SESSION['error'] = 'Invalid due date format. Use YYYY-MM-DD.';
                         }
                     } elseif ($jo_action === 'save_staff_remark') {
-                        // ── Validation Notes: save staff remark ───────────────────────────────
                         if (in_array($role, ['staff','cashier','pump_attendant'])) {
                             $remark_text = trim($_POST['remark_text'] ?? '');
-                            $pdo->prepare("UPDATE job_orders SET notes=?, updated_at=NOW() WHERE id=? AND station_id=?")
-                                ->execute([$remark_text, $jo_id, $station_id]);
+                            $pdo->prepare("UPDATE job_orders SET notes=?, updated_at=NOW() WHERE id=? AND (station_id=? OR ?=0)")
+                                ->execute([$remark_text, $jo_id, $station_id, $station_id]);
                             $_SESSION['success'] = 'Staff remark saved.';
                         }
                     } elseif ($jo_action === 'update_status') {
@@ -1544,8 +1587,12 @@ if ($section === 'merchandise') {
                                     $sets .= ", notes=?";
                                     $params[] = 'Rejected: ' . $rej_remarks;
                                 }
-                                $pdo->prepare("UPDATE job_orders SET $sets WHERE id=? AND station_id=?")
-                                    ->execute(array_merge($params, [$jo_id, $station_id]));
+                                $pdo->prepare("UPDATE job_orders SET $sets WHERE id=? AND (station_id=? OR ?=0)")
+                                    ->execute(array_merge($params, [$jo_id, $station_id, $station_id]));
+                                try {
+                                    $pdo->prepare("UPDATE merchandise_transactions SET workflow_status=?, updated_at=NOW() WHERE (job_order_db_id = ? OR id = ?) AND (station_id=? OR ?=0)")
+                                        ->execute([$new_status, $jo_id, $jo_id, $station_id, $station_id]);
+                                } catch (Exception $mte) {}
                                 $_SESSION['success'] = 'Status updated to ' . htmlspecialchars($new_status) . '.';
                             }
                         } else {
@@ -1560,6 +1607,17 @@ if ($section === 'merchandise') {
                         $mech_name = trim($_POST['mechanic_name'] ?? '');
                         $est_cost  = round(max(0, (float)($_POST['estimated_cost'] ?? 0)), 2);
                         $est_duration = isset($_POST['estimated_duration']) && $_POST['estimated_duration'] !== '' ? (int)$_POST['estimated_duration'] : null;
+
+                        if ($cust_name === '' || $svc_type === '') {
+                            $cur_row = $pdo->prepare("SELECT customer_name, service_type FROM job_orders WHERE id=?");
+                            $cur_row->execute([$jo_id]);
+                            $cr = $cur_row->fetch(PDO::FETCH_ASSOC);
+                            if ($cr) {
+                                if ($cust_name === '') $cust_name = $cr['customer_name'] ?: 'Walk-in Customer';
+                                if ($svc_type === '') $svc_type = $cr['service_type'] ?: 'General Service';
+                            }
+                        }
+
                         if ($cust_name !== '' && $svc_type !== '') {
                             $pdo->prepare("
                                 UPDATE job_orders
@@ -1569,11 +1627,11 @@ if ($section === 'merchandise') {
                                     service_type = ?,
                                     description = ?,
                                     mechanic_name = ?,
-                                    estimated_cost = ?,
+                                    estimated_cost = IF(? > 0, ?, estimated_cost),
                                     estimated_duration = ?,
                                     updated_at = NOW()
-                                WHERE id = ? AND station_id = ?
-                            ")->execute([$cust_name, $veh_plate, $veh_type, $svc_type, $svc_desc, $mech_name, $est_cost, $est_duration, $jo_id, $station_id]);
+                                WHERE id = ? AND (station_id = ? OR ? = 0)
+                            ")->execute([$cust_name, $veh_plate, $veh_type, $svc_type, $svc_desc, $mech_name, $est_cost, $est_cost, $est_duration, $jo_id, $station_id, $station_id]);
                             $_SESSION['success'] = 'Job order details adjusted successfully.';
                         } else {
                             $_SESSION['error'] = 'Customer name and service type are required.';
@@ -3752,29 +3810,29 @@ setTimeout(function() {
             endforeach; // End fuel type loop
             ?>
 
-            <div class="fet-wrap" style="overflow:hidden;">
-                <table class="fet" style="width:100%;border-collapse:collapse;table-layout:fixed;">
+            <div class="fet-wrap" style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
+                <table class="fet" style="width:100%; min-width:1150px; border-collapse:collapse;">
                     <colgroup>
-                        <col style="width:16%;"><!-- NAME -->
+                        <col style="width:17%;"><!-- NAME -->
                         <col style="width:14%;"><!-- BEGINNING -->
                         <col style="width:14%;"><!-- ENDING -->
                         <col style="width:12%;"><!-- CALIBRATION -->
-                        <col style="width:14%;"><!-- PRICE / LITER -->
+                        <col style="width:13%;"><!-- PRICE / LITER -->
                         <col style="width:15%;"><!-- NET VOLUME SOLD -->
                         <col style="width:15%;"><!-- TOTAL AMOUNT -->
                     </colgroup>
                     <thead>
                         <tr style="background:#002F70;">
-                            <th rowspan="2" style="border:1px solid #001f4d;padding:12px;vertical-align:middle;font-weight:700;font-size:13px;color:#fff;">NAME</th>
-                            <th colspan="6" style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:14px;font-weight:700;color:#fff;">METER READING</th>
+                            <th rowspan="2" style="border:1px solid #001f4d;padding:14px 12px;vertical-align:middle;font-weight:800;font-size:14.5px;color:#fff;">NAME</th>
+                            <th colspan="6" style="border:1px solid #001f4d;padding:10px 12px;text-align:center;font-size:15px;font-weight:800;color:#fff;letter-spacing:0.5px;">METER READING</th>
                         </tr>
                         <tr style="background:#002F70;">
-                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;" title="Auto-fetched if previous record exists, or manual input for first shift.">BEGINNING<br><span style="font-size:9px;font-weight:400;color:#86efac;">(Auto / Manual)</span></th>
-                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">ENDING <span style="color:#f87171;">*</span><br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Required)</span></th>
-                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">CALIBRATION<br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Default 0.00)</span></th>
-                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">PRICE / LITER<br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Auto)</span></th>
-                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">NET VOLUME SOLD<br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Auto)</span></th>
-                            <th style="border:1px solid #001f4d;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#fff;">TOTAL AMOUNT<br><span style="font-size:9px;font-weight:400;color:#93c5fd;">(Auto)</span></th>
+                            <th style="border:1px solid #001f4d;padding:10px 8px;text-align:center;font-size:13px;font-weight:800;color:#fff;" title="Auto-fetched if previous record exists, or manual input for first shift.">BEGINNING<br><span style="font-size:11px;font-weight:600;color:#86efac;">(Auto / Manual)</span></th>
+                            <th style="border:1px solid #001f4d;padding:10px 8px;text-align:center;font-size:13px;font-weight:800;color:#fff;">ENDING <span style="color:#f87171;">*</span><br><span style="font-size:11px;font-weight:600;color:#93c5fd;">(Required)</span></th>
+                            <th style="border:1px solid #001f4d;padding:10px 8px;text-align:center;font-size:13px;font-weight:800;color:#fff;">CALIBRATION<br><span style="font-size:11px;font-weight:600;color:#93c5fd;">(Default 0.00)</span></th>
+                            <th style="border:1px solid #001f4d;padding:10px 8px;text-align:center;font-size:13px;font-weight:800;color:#fff;">PRICE / LITER<br><span style="font-size:11px;font-weight:600;color:#93c5fd;">(Auto)</span></th>
+                            <th style="border:1px solid #001f4d;padding:10px 8px;text-align:center;font-size:13px;font-weight:800;color:#fff;">NET VOLUME SOLD<br><span style="font-size:11px;font-weight:600;color:#93c5fd;">(Auto)</span></th>
+                            <th style="border:1px solid #001f4d;padding:10px 8px;text-align:center;font-size:13px;font-weight:800;color:#fff;">TOTAL AMOUNT<br><span style="font-size:11px;font-weight:600;color:#93c5fd;">(Auto)</span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -3875,18 +3933,18 @@ setTimeout(function() {
                     ?>
                     <tr id="fuelRow_<?= $ft_id ?>" style="border-bottom:1px solid #e2e8f0;">
                         <!-- NAME Column (plain text, no icon) -->
-                        <td style="border:1px solid #e2e8f0;padding:10px;">
-                            <span style="font-weight:700;font-size:12px;color:#1e293b;"><?= $display_name ?></span>
+                        <td style="border:1px solid #e2e8f0;padding:12px 10px;">
+                            <span style="font-weight:800;font-size:14px;color:#002F70;"><?= $display_name ?></span>
                         </td>
 
                         <!-- BEGINNING Column — Auto-fetched (Read-only) if previous record exists, or Manual Input (Editable) for first shift -->
-                        <td style="border:1px solid #e2e8f0;padding:6px;">
+                        <td style="border:1px solid #e2e8f0;padding:8px 6px;">
                             <?php if ($has_prev_reading): ?>
                                 <input type="text"
                                        form="fuelForm_<?= $ft_id ?>"
                                        name="beginning_reading"
                                        id="beginning_<?= $ft_id ?>"
-                                       style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;border:1px solid #86efac;border-radius:4px;text-align:right;background:#f0fdf4;font-weight:700;color:#15803d;cursor:not-allowed;"
+                                       style="width:100%;box-sizing:border-box;padding:10px 10px;font-size:14.5px;border:1.5px solid #86efac;border-radius:6px;text-align:right;background:#f0fdf4;font-weight:700;font-family:monospace;color:#15803d;cursor:not-allowed;"
                                        value="<?= number_format((float)$pump_prev_reading, 2, '.', ',') ?>"
                                        readonly
                                        title="Auto-fetched from previous meter reading (<?= number_format((float)$pump_prev_reading, 2, '.', ',') ?>). Read-only."
@@ -3897,9 +3955,9 @@ setTimeout(function() {
                                        form="fuelForm_<?= $ft_id ?>"
                                        name="beginning_reading"
                                        id="beginning_<?= $ft_id ?>"
-                                       style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;border:1px solid #3b82f6;border-radius:4px;text-align:right;background:#ffffff;font-weight:600;color:#1e293b;"
+                                       style="width:100%;box-sizing:border-box;padding:10px 10px;font-size:14.5px;border:1.5px solid #3b82f6;border-radius:6px;text-align:right;background:#ffffff;font-weight:700;font-family:monospace;color:#1e293b;"
                                        value=""
-                                       placeholder="Enter beginning reading..."
+                                       placeholder="0.00"
                                        autocomplete="off"
                                        oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
                                        onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')"
@@ -3911,12 +3969,12 @@ setTimeout(function() {
                         </td>
 
                         <!-- ENDING Column * -->
-                        <td style="border:1px solid #e2e8f0;padding:6px;">
+                        <td style="border:1px solid #e2e8f0;padding:8px 6px;">
                             <input type="text"
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="ending_reading"
                                    id="ending_<?= $ft_id ?>"
-                                   style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;border:2px solid #3b82f6;border-radius:4px;text-align:right;font-weight:700;"
+                                   style="width:100%;box-sizing:border-box;padding:10px 10px;font-size:14.5px;border:2px solid #2563eb;border-radius:6px;text-align:right;font-weight:800;font-family:monospace;color:#0f172a;"
                                    value="<?= htmlspecialchars($saved_ending_val) ?>"
                                    placeholder="0.00"
                                    required
@@ -3929,12 +3987,12 @@ setTimeout(function() {
                         </td>
 
                         <!-- CALIBRATION Column (Default = 0.00) -->
-                        <td style="border:1px solid #e2e8f0;padding:6px;">
+                        <td style="border:1px solid #e2e8f0;padding:8px 6px;">
                             <input type="text"
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="calibration"
                                    id="cal_<?= $ft_id ?>"
-                                   style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;text-align:right;"
+                                   style="width:100%;box-sizing:border-box;padding:10px 10px;font-size:14px;border:1.5px solid #cbd5e1;border-radius:6px;text-align:right;font-weight:600;font-family:monospace;color:#334155;"
                                    value="<?= htmlspecialchars($saved_calib_val) ?>"
                                    placeholder="0.00"
                                    autocomplete="off"
@@ -3947,9 +4005,9 @@ setTimeout(function() {
                         </td>
 
                         <!-- PRICE / LITER Column (Auto — read-only, from fuel_inventory) -->
-                        <td style="border:1px solid #e2e8f0;padding:6px;background:#f8fafc;">
+                        <td style="border:1px solid #e2e8f0;padding:8px 6px;background:#f8fafc;">
                             <span id="price_display_<?= $ft_id ?>"
-                                  style="display:block;width:100%;box-sizing:border-box;padding:8px;font-size:13px;font-weight:700;color:#334155;text-align:right;">
+                                  style="display:block;width:100%;box-sizing:border-box;padding:10px 10px;font-size:14.5px;font-weight:800;color:#334155;text-align:right;font-family:monospace;">
                                 ₱<?= number_format($price_per_liter, 2) ?>
                             </span>
                             <input type="hidden"
@@ -3960,10 +4018,10 @@ setTimeout(function() {
                         </td>
 
                         <!-- NET VOLUME SOLD Column (Auto-calculated: (Ending - Beginning) - Calibration) -->
-                        <td style="border:1px solid #e2e8f0;padding:6px;background:#f0fdf4;">
+                        <td style="border:1px solid #e2e8f0;padding:8px 6px;background:#f0fdf4;">
                             <input type="text"
                                    id="volume_<?= $ft_id ?>"
-                                   style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;background:transparent;border:1px solid #86efac;border-radius:4px;text-align:right;font-weight:700;color:#15803d;"
+                                   style="width:100%;box-sizing:border-box;padding:10px 10px;font-size:14.5px;background:transparent;border:1.5px solid #86efac;border-radius:6px;text-align:right;font-weight:800;font-family:monospace;color:#15803d;"
                                    value="0.00"
                                    readonly
                                    title="Net Volume Sold = (Ending - Beginning) - Calibration">
@@ -3975,10 +4033,10 @@ setTimeout(function() {
                         </td>
 
                         <!-- TOTAL AMOUNT Column (Auto-calculated: Net Volume × Price/Liter) -->
-                        <td style="border:1px solid #e2e8f0;padding:6px;background:#eff6ff;">
+                        <td style="border:1px solid #e2e8f0;padding:8px 6px;background:#eff6ff;">
                             <input type="text"
                                    id="amount_<?= $ft_id ?>"
-                                   style="width:100%;box-sizing:border-box;padding:8px;font-size:12px;background:transparent;border:1px solid #93c5fd;border-radius:4px;text-align:right;font-weight:800;color:#1d4ed8;"
+                                   style="width:100%;box-sizing:border-box;padding:10px 10px;font-size:15px;background:transparent;border:1.5px solid #93c5fd;border-radius:6px;text-align:right;font-weight:900;font-family:monospace;color:#1d4ed8;"
                                    value="₱0.00"
                                    readonly
                                    title="Total Amount = Net Volume Sold × Price per Liter">
@@ -4210,63 +4268,63 @@ setTimeout(function() {
             <!-- Summary Cards Row -->
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px; padding:20px 20px 0 20px; background:#ffffff;">
                 <!-- Card 1: Transactions Encoded -->
-                <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:18px; display:flex; align-items:center; gap:16px; transition: transform 0.2s, box-shadow 0.2s; cursor:default;" 
-                     onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.05)';" 
+                <div style="background:#ffffff; border:1.5px solid #e2e8f0; border-radius:12px; padding:20px; display:flex; align-items:center; gap:18px; transition: transform 0.2s, box-shadow 0.2s; cursor:default;" 
+                     onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)';" 
                      onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
-                    <div style="background:#eff6ff; color:#2563eb; width:48px; height:48px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;">
+                    <div style="background:#eff6ff; color:#2563eb; width:54px; height:54px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;">
                         <i class="fas fa-file-invoice"></i>
                     </div>
                     <div>
-                        <div id="summary_encoded_count" style="font-size:26px; font-weight:800; color:#0f172a; line-height:1.2; font-family:var(--font-sans, sans-serif);">0</div>
-                        <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.8px; margin-top:2px;">Transactions Encoded</div>
+                        <div id="summary_encoded_count" style="font-size:32px; font-weight:800; color:#0f172a; line-height:1.1; font-family:var(--font-sans, sans-serif);">0</div>
+                        <div style="font-size:13px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.6px; margin-top:4px;">Transactions Encoded</div>
                     </div>
                 </div>
 
                 <!-- Card 2: Pending Manager Validation -->
-                <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:18px; display:flex; align-items:center; gap:16px; transition: transform 0.2s, box-shadow 0.2s; cursor:default;"
-                     onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.05)';" 
+                <div style="background:#ffffff; border:1.5px solid #e2e8f0; border-radius:12px; padding:20px; display:flex; align-items:center; gap:18px; transition: transform 0.2s, box-shadow 0.2s; cursor:default;"
+                     onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)';" 
                      onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
-                    <div style="background:#fffbeb; color:#d97706; width:48px; height:48px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;">
+                    <div style="background:#fffbeb; color:#d97706; width:54px; height:54px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;">
                         <i class="fas fa-clock"></i>
                     </div>
                     <div>
-                        <div id="summary_pending_count" style="font-size:26px; font-weight:800; color:#0f172a; line-height:1.2; font-family:var(--font-sans, sans-serif);">0</div>
-                        <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.8px; margin-top:2px;">Pending Validation</div>
+                        <div id="summary_pending_count" style="font-size:32px; font-weight:800; color:#0f172a; line-height:1.1; font-family:var(--font-sans, sans-serif);">0</div>
+                        <div style="font-size:13px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.6px; margin-top:4px;">Pending Validation</div>
                     </div>
                 </div>
             </div>
 
             <!-- Filters & Export Control Bar -->
-            <div style="background:#ffffff; padding:16px 20px; display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:16px; border-bottom:1px solid #e2e8f0;">
+            <div style="background:#ffffff; padding:18px 20px; display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:18px; border-bottom:1px solid #e2e8f0;">
                 <!-- Local Filter Inputs -->
-                <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:center;">
+                <div style="display:flex; flex-wrap:wrap; gap:20px; align-items:center;">
                     <!-- From Date Filter -->
                     <div style="display:flex; flex-direction:column; gap:6px;">
-                        <label for="subtab_date_from" style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.5px;">
-                            <i class="fas fa-calendar-alt" style="color:var(--petron-blue); margin-right:4px;"></i>From Date
+                        <label for="subtab_date_from" style="font-size:13px; font-weight:800; color:#1e293b; text-transform:uppercase; letter-spacing:0.5px;">
+                            <i class="fas fa-calendar-alt" style="color:var(--petron-blue); margin-right:5px;"></i>From Date
                         </label>
                         <input type="date" id="subtab_date_from" value="<?= date('Y-m-01') ?>" onchange="loadTodayEntries();"
-                               style="padding:8px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; color:#0f172a; outline:none; background:#ffffff; height:38px; box-sizing:border-box; transition:border-color 0.15s ease-in-out;"
+                               style="padding:9px 14px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:14px; font-weight:600; color:#0f172a; outline:none; background:#ffffff; height:42px; box-sizing:border-box; transition:border-color 0.15s ease-in-out;"
                                onfocus="this.style.borderColor='var(--petron-blue)'" onblur="this.style.borderColor='#cbd5e1'">
                     </div>
 
                     <!-- To Date Filter -->
                     <div style="display:flex; flex-direction:column; gap:6px;">
-                        <label for="subtab_date_to" style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.5px;">
-                            <i class="fas fa-calendar-alt" style="color:var(--petron-blue); margin-right:4px;"></i>To Date
+                        <label for="subtab_date_to" style="font-size:13px; font-weight:800; color:#1e293b; text-transform:uppercase; letter-spacing:0.5px;">
+                            <i class="fas fa-calendar-alt" style="color:var(--petron-blue); margin-right:5px;"></i>To Date
                         </label>
                         <input type="date" id="subtab_date_to" value="<?= date('Y-m-d') ?>" onchange="loadTodayEntries();"
-                               style="padding:8px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; color:#0f172a; outline:none; background:#ffffff; height:38px; box-sizing:border-box; transition:border-color 0.15s ease-in-out;"
+                               style="padding:9px 14px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:14px; font-weight:600; color:#0f172a; outline:none; background:#ffffff; height:42px; box-sizing:border-box; transition:border-color 0.15s ease-in-out;"
                                onfocus="this.style.borderColor='var(--petron-blue)'" onblur="this.style.borderColor='#cbd5e1'">
                     </div>
 
                     <!-- Shift Filter -->
                     <div style="display:flex; flex-direction:column; gap:6px;">
-                        <label for="subtab_shift" style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.5px;">
-                            <i class="fas fa-clock" style="color:var(--petron-blue); margin-right:4px;"></i>Filter by Shift
+                        <label for="subtab_shift" style="font-size:13px; font-weight:800; color:#1e293b; text-transform:uppercase; letter-spacing:0.5px;">
+                            <i class="fas fa-clock" style="color:var(--petron-blue); margin-right:5px;"></i>Filter by Shift
                         </label>
                         <select id="subtab_shift" onchange="loadTodayEntries();"
-                                style="padding:8px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; color:#0f172a; outline:none; background:#ffffff; height:38px; box-sizing:border-box; cursor:pointer; transition:border-color 0.15s ease-in-out;"
+                                style="padding:9px 14px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:14px; font-weight:600; color:#0f172a; outline:none; background:#ffffff; height:42px; box-sizing:border-box; cursor:pointer; transition:border-color 0.15s ease-in-out;"
                                 onfocus="this.style.borderColor='var(--petron-blue)'" onblur="this.style.borderColor='#cbd5e1'">
                             <option value="">All Shifts</option>
                             <option value="first">First Shift (6 AM–2 PM)</option>
@@ -4993,7 +5051,7 @@ setTimeout(function() {
         }
 
         // Run silent background refresh every 10 seconds
-        setInterval(autoRefreshMeterReadingHistory, 15000);
+        setInterval(autoRefreshMeterReadingHistory, 10000);
         
         function renderTodayEntriesTable() {
             const body = document.getElementById('todayEntriesBody');
@@ -5064,7 +5122,7 @@ setTimeout(function() {
             function badge(s) {
                 const k = (s||'').toLowerCase().trim();
                 const c = statusMap[k] || {color:'#64748b',label:s||'—'};
-                return `<span style="background:${c.color}15; color:${c.color}; border:1px solid ${c.color}30; font-weight:700; font-size:10px; padding:2px 6px; border-radius:4px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${c.label}">${c.label}</span>`;
+                return `<span style="background:${c.color}18; color:${c.color}; border:1.5px solid ${c.color}40; font-weight:800; font-size:12px; padding:4px 10px; border-radius:6px; text-transform:uppercase; letter-spacing:.4px; white-space:nowrap; display:inline-block; vertical-align:middle;" title="${c.label}">${c.label}</span>`;
             }
             function fmt(n,d=2){ return Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:d,maximumFractionDigits:d}); }
 
@@ -5106,24 +5164,23 @@ setTimeout(function() {
                 return shiftPeriod;
             }
 
-            const TH  = 'padding:6px 4px; font-size:11px; font-weight:700; color:#ffffff; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+            const TH  = 'padding:12px 10px; font-size:12.5px; font-weight:800; color:#ffffff; text-transform:uppercase; letter-spacing:.4px; white-space:nowrap;';
             const THR = TH + ' text-align:right;';
 
-            let html = `<div style="overflow-x:hidden; border-bottom:1px solid #e2e8f0; background:#ffffff;">
-                <table id="todayReadingsTable" style="width:100%; border-collapse:collapse; font-size:11px; text-align:left; table-layout:fixed;">
+            let html = `<div style="overflow-x:auto; -webkit-overflow-scrolling:touch; border-bottom:1px solid #e2e8f0; background:#ffffff;">
+                <table id="todayReadingsTable" style="width:100%; min-width:1380px; border-collapse:collapse; font-size:13.5px; text-align:left;">
                     <colgroup>
-                        <col style="width: 7%;">  <!-- Date -->
-                        <col style="width: 8%;">  <!-- Shift -->
-                        <col style="width: 14%;"> <!-- Name -->
-                        <col style="width: 7%;">  <!-- Beginning -->
-                        <col style="width: 7%;">  <!-- Ending -->
-                        <col style="width: 7%;">  <!-- Calibration -->
-                        <col style="width: 8%;">  <!-- Volume (L) -->
-                        <col style="width: 7%;">  <!-- Price/L -->
-                        <col style="width: 9%;">  <!-- Amount -->
-                        <col style="width: 9%;">  <!-- Encoded By -->
-                        <col style="width: 10%;"> <!-- Status -->
-                        
+                        <col style="width: 120px;">  <!-- Date -->
+                        <col style="width: 110px;">  <!-- Shift -->
+                        <col style="width: 160px;">  <!-- Name -->
+                        <col style="width: 115px;">  <!-- Beginning -->
+                        <col style="width: 115px;">  <!-- Ending -->
+                        <col style="width: 115px;">  <!-- Calibration -->
+                        <col style="width: 125px;">  <!-- Volume (L) -->
+                        <col style="width: 110px;">  <!-- Price/L -->
+                        <col style="width: 135px;">  <!-- Amount -->
+                        <col style="width: 140px;">  <!-- Encoded By -->
+                        <col style="width: 135px;">  <!-- Status -->
                     </colgroup>
                     <thead>
                         <tr style="background:#002F70; border-bottom:2px solid #001f4d;">
@@ -5138,7 +5195,6 @@ setTimeout(function() {
                             <th style="${THR}" title="Amount">Amount</th>
                             <th style="${TH}" title="Encoded By">Encoded By</th>
                             <th style="${TH}" title="Status">Status</th>
-                            
                         </tr>
                     </thead>
                     <tbody>`;
@@ -5154,11 +5210,11 @@ setTimeout(function() {
 
                 let notesCellContent = '—';
                 if (staffNotes && mgrNotes) {
-                    notesCellContent = `<div style="line-height:1.2; width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(tooltipText)}"><strong>S:</strong> ${escapeHtml(staffNotes)}<br><strong>M:</strong> ${escapeHtml(mgrNotes)}</div>`;
+                    notesCellContent = `<div style="line-height:1.2; width:100%; white-space:nowrap;" title="${escapeHtml(tooltipText)}"><strong>S:</strong> ${escapeHtml(staffNotes)}<br><strong>M:</strong> ${escapeHtml(mgrNotes)}</div>`;
                 } else if (staffNotes) {
-                    notesCellContent = `<div style="line-height:1.2; width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(tooltipText)}">${escapeHtml(staffNotes)}</div>`;
+                    notesCellContent = `<div style="line-height:1.2; width:100%; white-space:nowrap;" title="${escapeHtml(tooltipText)}">${escapeHtml(staffNotes)}</div>`;
                 } else if (mgrNotes) {
-                    notesCellContent = `<div style="line-height:1.2; width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#002F70;" title="${escapeHtml(tooltipText)}"><strong>M:</strong> ${escapeHtml(mgrNotes)}</div>`;
+                    notesCellContent = `<div style="line-height:1.2; width:100%; white-space:nowrap; color:#002F70;" title="${escapeHtml(tooltipText)}"><strong>M:</strong> ${escapeHtml(mgrNotes)}</div>`;
                 }
 
                 const dateStr = fmtDate(r.reading_date || r.transaction_date);
@@ -5166,26 +5222,25 @@ setTimeout(function() {
                 const fuelStr = r._seq_label || (r.fuel_type || '—').toUpperCase();
                 const staffStr = r.staff_name || '—';
 
-                html += `<tr style="border-bottom:1px solid #f1f5f9; background:#ffffff; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='#f0f5ff';" onmouseout="this.style.backgroundColor='#ffffff';">
-                    <td style="padding:6px 4px; color:#1e293b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${dateStr}">${dateStr}</td>
-                    <td style="padding:6px 4px; color:#334155; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${shiftStr}">${shiftStr}</td>
-                    <td style="padding:6px 4px; font-weight:700; color:#0f172a; font-size:11px; white-space:normal; word-break:break-word; vertical-align:middle;" title="${fuelStr}">${fuelStr}</td>
-                    <td style="padding:6px 4px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
-                    <td style="padding:6px 4px; text-align:right; font-variant-numeric:tabular-nums; color:#1e293b; font-weight:600; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
-                    <td style="padding:6px 4px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
-                    <td style="padding:6px 4px; text-align:right; font-weight:700; font-variant-numeric:tabular-nums; color:#1e293b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${fmt(r.volume_liters)} L">${fmt(r.volume_liters)} L</td>
-                    <td style="padding:6px 4px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.price_per_liter)}">₱${fmt(r.price_per_liter)}</td>
-                    <td style="padding:6px 4px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#0f172a; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
-                    <td style="padding:6px 4px; color:#334155; font-weight:500; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle;" title="${staffStr}">${staffStr}</td>
-                    <td style="padding:6px 4px; font-size:11px; vertical-align:middle;">${badge(r.status)}</td>
-                    
+                html += `<tr style="border-bottom:1px solid #e2e8f0; background:#ffffff; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='#f0f5ff';" onmouseout="this.style.backgroundColor='#ffffff';">
+                    <td style="padding:12px 10px; color:#0f172a; font-size:13px; font-weight:700; white-space:nowrap; vertical-align:middle;" title="${dateStr}">${dateStr}</td>
+                    <td style="padding:12px 10px; color:#334155; font-size:13px; font-weight:700; white-space:nowrap; vertical-align:middle;" title="${shiftStr}">${shiftStr}</td>
+                    <td style="padding:12px 10px; font-weight:800; color:#002F70; font-size:14px; white-space:nowrap; vertical-align:middle;" title="${fuelStr}">${fuelStr}</td>
+                    <td style="padding:12px 10px; text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; color:#1e293b; font-size:14px; font-weight:700; white-space:nowrap; vertical-align:middle;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
+                    <td style="padding:12px 10px; text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; color:#1e293b; font-weight:700; font-size:14px; white-space:nowrap; vertical-align:middle;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
+                    <td style="padding:12px 10px; text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; color:#475569; font-size:13.5px; font-weight:600; white-space:nowrap; vertical-align:middle;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
+                    <td style="padding:12px 10px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#0f172a; font-size:14px; white-space:nowrap; vertical-align:middle;" title="${fmt(r.volume_liters)} L">${fmt(r.volume_liters)} L</td>
+                    <td style="padding:12px 10px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:14px; font-weight:700; white-space:nowrap; vertical-align:middle;" title="₱${fmt(r.price_per_liter)}">₱${fmt(r.price_per_liter)}</td>
+                    <td style="padding:12px 10px; text-align:right; font-weight:900; font-variant-numeric:tabular-nums; color:#002F70; font-size:15px; white-space:nowrap; vertical-align:middle;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
+                    <td style="padding:12px 10px; color:#1e293b; font-weight:700; font-size:13.5px; white-space:nowrap; vertical-align:middle;" title="${staffStr}">${staffStr}</td>
+                    <td style="padding:12px 10px; font-size:12px; vertical-align:middle; white-space:nowrap;">${badge(r.status)}</td>
                 </tr>`;
             });
 
             if (pageRows.length === 0) {
                 html += `<tr>
-                    <td colspan="11" style="padding:40px; text-align:center; color:#94a3b8; font-size:14px; background:#ffffff;">
-                        <i class="fas fa-history" style="font-size:24px; display:block; margin-bottom:8px; color:#cbd5e1;"></i>
+                    <td colspan="11" style="padding:40px; text-align:center; color:#94a3b8; font-size:15px; font-weight:600; background:#ffffff;">
+                        <i class="fas fa-history" style="font-size:28px; display:block; margin-bottom:10px; color:#cbd5e1;"></i>
                         No readings submitted for the selected filter criteria.
                     </td>
                 </tr>`;
@@ -5282,21 +5337,44 @@ setTimeout(function() {
                SECTION: MERCHANDISE TRANSACTION (Customer-facing)
         ══════════════════════════════════════════════════════ */ ?>
         <?php elseif ($section === 'merchandise'): ?>
+        <?php
+        // Auto-clear stale POS / Job-Order draft records on section load
+        try {
+            $clean_uid = (int)($me['id'] ?? $me['user_id'] ?? 0);
+            if ($clean_uid > 0) {
+                $pdo->prepare("DELETE FROM user_form_drafts WHERE user_id = ? AND (module_key LIKE 'pos_merchandise%' OR module_key LIKE '%job_order%' OR module_key LIKE '%merchandise%' OR module_key LIKE '%transactions_hub%')")->execute([$clean_uid]);
+            }
+        } catch (Exception $e) {}
+        ?>
         <script>
         /* ── Auto-clear stale POS / Job-Order draft data on section load ────────
            When the staff lands on the Merchandise section (fresh page load), any
            leftover draft from a previously submitted or abandoned transaction is
-           cleared from both localStorage AND the server drafts API.
+           cleared from both localStorage, sessionStorage, and the server drafts API.
            This runs synchronously before DOMContentLoaded so the draft engine
            never restores stale data into the empty form.                       */
         (function () {
-            var userId = (window.pageData && window.pageData.userId) ? window.pageData.userId : 0;
+            try {
+                var keysToRemove = [];
+                for (var i = 0; i < localStorage.length; i++) {
+                    var k = localStorage.key(i);
+                    if (k && (k.indexOf('petron_draft_') === 0 || k.indexOf('jo_draft') !== -1 || k.indexOf('pos_merchandise') !== -1 || k.indexOf('job_order') !== -1 || k.indexOf('merchandise') !== -1)) {
+                        keysToRemove.push(k);
+                    }
+                }
+                keysToRemove.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+            } catch (e) {}
+
+            try {
+                sessionStorage.removeItem('jo_draft');
+                sessionStorage.removeItem('cart');
+            } catch (e) {}
+
             var basePath = (window.pageData && window.pageData.appBasePath)
                 ? window.pageData.appBasePath.replace(/\/$/, '')
                 : (window.location.pathname.includes('/public/') ? window.location.pathname.split('/public/')[0] : '');
             var DRAFTS_API = basePath + '/backend/api/drafts_api.php';
 
-            // All module keys the draft engine can create for this page/section
             var draftKeys = [
                 'pos_merchandise_joborder',
                 'pos_merchandise_joborder_merchandise',
@@ -5308,10 +5386,6 @@ setTimeout(function() {
             ];
 
             draftKeys.forEach(function (key) {
-                // 1. Clear from localStorage immediately
-                try { localStorage.removeItem('petron_draft_' + userId + '_' + key); } catch (e) {}
-
-                // 2. Clear from server asynchronously (fire-and-forget)
                 try {
                     fetch(DRAFTS_API + '?action=clear', {
                         method: 'POST',
@@ -5883,11 +5957,11 @@ setTimeout(function() {
                     <div style="display:flex;gap:10px;padding:0 16px;margin-bottom:12px;margin-top:12px;align-items:center;flex-wrap:wrap;width:100%;">
                         <?php $mh_open = isset($_GET['mh_open']) && $_GET['mh_open'] == '1'; ?>
                         <div class="txn-subtab-nav" style="margin-bottom:0 !important; max-width:520px;">
-                            <button onclick="switchMerchTab('form')" id="merchTabBtn_form"
+                            <button type="button" onclick="switchMerchTab('form')" id="merchTabBtn_form"
                                     class="txn-subtab-btn green <?= !$mh_open ? 'active' : 'inactive' ?>">
                                 <i class="fas fa-shopping-cart"></i> Merchandise
                             </button>
-                            <button onclick="switchMerchTab('history')" id="merchTabBtn_history"
+                            <button type="button" onclick="switchMerchTab('history')" id="merchTabBtn_history"
                                     class="txn-subtab-btn green <?= $mh_open ? 'active' : 'inactive' ?>">
                                 <i class="fas fa-history"></i> Merchandise History
                                 <?php if ($mh_variance_alert_count > 0): ?>
@@ -6218,12 +6292,11 @@ setTimeout(function() {
                                 No merchandise transactions found.
                             </div>
                             <?php else: ?>
-                            <div style="width:100%;overflow-x:hidden !important;">
+                            <div style="width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch;">
                             <style>
-                            #mhHistoryTable th { padding: 8px 10px; }
-                            #mhHistoryTable td { padding: 8px 10px; }
-                            #mhHistoryTable { table-layout: fixed !important; width: 100% !important; }
-                            #mhHistoryTable td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                            #mhHistoryTable th { padding: 12px 10px; font-size: 11.5px; font-weight: 700; white-space: nowrap; background: linear-gradient(135deg,#002F70 0%,#003d8f 100%); color: #fff; }
+                            #mhHistoryTable td { padding: 10px 10px; font-size: 12.5px; vertical-align: middle; }
+                            #mhHistoryTable { width: 100%; min-width: 1100px; border-collapse: collapse; }
                             </style>
 
                             <!-- ── Merchandise KPI Snapshot ─────────────────── -->
@@ -6322,31 +6395,31 @@ setTimeout(function() {
                                 </div>
                             </div>
 
-                            <table class="txn-table" id="mhHistoryTable" style="width:100%; table-layout:fixed;">
+                            <table class="txn-table" id="mhHistoryTable" style="width:100%; min-width:1100px; border-collapse:collapse;">
                                 <colgroup>
-                                    <col style="width:8%;"><!-- OR No. -->
-                                    <col style="width:12%;"><!-- Transaction ID -->
-                                    <col style="width:13%;"><!-- Customer -->
-                                    <col style="width:23%;"><!-- Products Summary -->
-                                    <col style="width:7%;"><!-- Total Qty -->
-                                    <col style="width:10%;"><!-- Total Amount -->
-                                    <col style="width:9%;"><!-- Pay Status -->
-                                    <col style="width:8%;"><!-- Pay Method -->
-                                    <col style="width:10%;"><!-- Date Released -->
-                                    <col style="width:9%;"><!-- Actions -->
+                                    <col style="width:120px;"><!-- OR No. -->
+                                    <col style="width:140px;"><!-- Transaction ID -->
+                                    <col style="width:160px;"><!-- Customer -->
+                                    <col style="width:200px;"><!-- Products Summary -->
+                                    <col style="width:80px;"><!-- Total Qty -->
+                                    <col style="width:110px;"><!-- Total Amount -->
+                                    <col style="width:110px;"><!-- Pay Status -->
+                                    <col style="width:100px;"><!-- Pay Method -->
+                                    <col style="width:140px;"><!-- Date Released -->
+                                    <col style="width:100px;"><!-- Actions -->
                                 </colgroup>
                                 <thead>
                                     <tr>
-                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">OR No.</th>
-                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">Txn ID</th>
-                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">Customer</th>
-                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">Products / Items</th>
-                                        <th style="font-size:11px;text-align:center;padding:9px 4px;">Total Qty</th>
-                                        <th style="font-size:11px;text-align:right;padding:9px 8px;">Total Amount</th>
-                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">Pay Status</th>
-                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">Pay Method</th>
-                                        <th style="font-size:11px;text-align:left;padding:9px 8px;">Date Released</th>
-                                        <th style="font-size:11px;text-align:center;padding:9px 8px;">Actions</th>
+                                        <th style="font-size:11.5px;text-align:left;padding:12px 10px;white-space:nowrap;">OR No.</th>
+                                        <th style="font-size:11.5px;text-align:left;padding:12px 10px;white-space:nowrap;">Txn ID</th>
+                                        <th style="font-size:11.5px;text-align:left;padding:12px 10px;white-space:nowrap;">Customer</th>
+                                        <th style="font-size:11.5px;text-align:left;padding:12px 10px;white-space:nowrap;">Products / Items</th>
+                                        <th style="font-size:11.5px;text-align:center;padding:12px 10px;white-space:nowrap;">Total Qty</th>
+                                        <th style="font-size:11.5px;text-align:right;padding:12px 10px;white-space:nowrap;">Total Amount</th>
+                                        <th style="font-size:11.5px;text-align:center;padding:12px 10px;white-space:nowrap;">Pay Status</th>
+                                        <th style="font-size:11.5px;text-align:center;padding:12px 10px;white-space:nowrap;">Pay Method</th>
+                                        <th style="font-size:11.5px;text-align:left;padding:12px 10px;white-space:nowrap;">Date Released</th>
+                                        <th style="font-size:11.5px;text-align:center;padding:12px 10px;white-space:nowrap;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mhTableBody">
@@ -6378,28 +6451,28 @@ setTimeout(function() {
                                      $mh_void_req    = ($mh_pending_type === 'Void');
                                  ?>
                                  <tr class="mh-row">
-                                    <td style="font-size:11px;font-weight:700;color:#475569;padding:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0;">
+                                    <td style="font-size:12px;font-weight:700;color:#002F70;font-family:monospace;padding:10px;white-space:nowrap;">
                                         <?= htmlspecialchars($txn['or_number'] ?? '—') ?>
                                     </td>
-                                    <td style="font-size:11px;color:var(--petron-blue);font-family:monospace;padding:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0;"
+                                    <td style="font-size:12px;color:var(--petron-blue);font-family:monospace;padding:10px;white-space:nowrap;"
                                         title="<?= htmlspecialchars($txn['transaction_id'] ?? '') ?>">
                                         <?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['mt_id'])) ?>
                                     </td>
-                                    <td style="font-size:12px;padding:10px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                                    <td style="font-size:12.5px;font-weight:600;color:#0f172a;padding:10px;white-space:nowrap;"
                                         title="<?= htmlspecialchars($txn['customer_name'] ?? '') ?>">
                                         <?= htmlspecialchars($txn['customer_name'] ?? 'Walk-in Customer') ?>
                                     </td>
-                                    <td style="font-size:12px;padding:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                                    <td style="font-size:12.5px;color:#334155;padding:10px;white-space:nowrap;"
                                         title="<?= htmlspecialchars($products_summary) ?>">
                                         <?= htmlspecialchars($products_summary) ?>
                                     </td>
                                     <td style="font-size:12px;text-align:center;font-weight:600;color:#475569;padding:10px;">
                                         <?= $qty_display ?>
                                     </td>
-                                    <td style="font-size:12px;text-align:right;font-weight:700;color:var(--petron-blue);padding:10px;white-space:nowrap;">
+                                    <td style="font-size:12.5px;text-align:right;font-weight:700;color:#002F70;padding:10px;white-space:nowrap;">
                                         ₱<?= number_format($total_amount, 2) ?>
                                     </td>
-                                    <td style="font-size:11px;padding:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0;">
+                                    <td style="font-size:11px;padding:10px;text-align:center;white-space:nowrap;">
                                         <?php
                                             $mh_pstat_raw = $txn['payment_status'] ?? 'Pending';
                                             $mh_pstat_lc  = strtolower(trim($mh_pstat_raw));
@@ -6409,17 +6482,19 @@ setTimeout(function() {
                                             elseif (in_array($mh_pstat_lc, ['account receivable','credit','ar'])) { $mh_pstat_bg = '#ede9fe'; $mh_pstat_col = '#5b21b6'; }
                                             elseif (in_array($mh_pstat_lc, ['unpaid','pending','pending payment'])) { $mh_pstat_bg = '#fee2e2'; $mh_pstat_col = '#b91c1c'; }
                                         ?>
-                                        <span style="display:inline-block;padding:2px 6px;border-radius:4px;background:<?= $mh_pstat_bg ?>;color:<?= $mh_pstat_col ?>;font-size:10px;font-weight:700;white-space:nowrap;">
+                                        <span style="display:inline-block;padding:4px 10px;border-radius:12px;background:<?= $mh_pstat_bg ?>;color:<?= $mh_pstat_col ?>;font-size:11px;font-weight:700;white-space:nowrap;">
                                             <?= htmlspecialchars($mh_pstat_raw) ?>
                                         </span>
                                     </td>
-                                    <td style="font-size:11px;color:#475569;padding:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0;" title="<?= htmlspecialchars($txn['payment_method'] ?? '') ?>">
-                                        <?= htmlspecialchars($txn['payment_method'] ?? '—') ?>
+                                    <td style="font-size:11px;color:#475569;padding:10px;text-align:center;white-space:nowrap;" title="<?= htmlspecialchars($txn['payment_method'] ?? '') ?>">
+                                        <span style="display:inline-block;padding:4px 10px;border-radius:12px;background:#f1f5f9;color:#334155;font-size:11px;font-weight:700;white-space:nowrap;">
+                                            <?= htmlspecialchars($txn['payment_method'] ?? '—') ?>
+                                        </span>
                                     </td>
-                                    <td style="font-size:11px;color:#64748b;padding:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                    <td style="font-size:12px;color:#475569;padding:10px;white-space:nowrap;">
                                         <?= $date_released ?>
                                     </td>
-                                     <td style="padding:6px;text-align:center;">
+                                     <td style="padding:10px;text-align:center;white-space:nowrap;">
                                          <div style="display:flex;flex-direction:column;gap:3px;align-items:stretch;">
                                              <button type="button"
                                                 onclick="window.viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>', this); return false;"
@@ -6551,7 +6626,7 @@ setTimeout(function() {
                         };
 
                         // ── Tab switcher ──────────────────────────────────────
-                        function switchMerchTab(tab) {
+                        window.switchMerchTab = function switchMerchTab(tab) {
                             var isHistory = (tab === 'history');
                             var formPanel = document.getElementById('merchTab_form');
                             var histPanel = document.getElementById('merchTab_history');
@@ -6581,23 +6656,13 @@ setTimeout(function() {
                             }
 
                             // Tab button styles — use CSS classes to override global button rule
-                            formBtn.className = 'txn-subtab-btn green ' + (isHistory ? 'inactive' : 'active');
-                            histBtn.className = 'txn-subtab-btn green ' + (isHistory ? 'active' : 'inactive');
+                            if (formBtn) formBtn.className = 'txn-subtab-btn green ' + (isHistory ? 'inactive' : 'active');
+                            if (histBtn) histBtn.className = 'txn-subtab-btn green ' + (isHistory ? 'active' : 'inactive');
 
                             var headerBtns = document.getElementById('merchHistoryHeaderButtons');
                             if (headerBtns) {
                                 headerBtns.style.display = isHistory ? 'flex' : 'none';
                             }
-
-
-
-
-
-
-
-
-
-
 
                             // Update URL so refresh keeps the tab open
                             if (window.history && window.history.replaceState) {
@@ -6609,8 +6674,58 @@ setTimeout(function() {
                                 }
                                 window.history.replaceState(null, '', url.toString());
                             }
+                        };
+                        var switchMerchTab = window.switchMerchTab;
+
+                        // Attach direct click listeners to ensure buttons work in all browser contexts
+                        var mBtnForm = document.getElementById('merchTabBtn_form');
+                        var mBtnHist = document.getElementById('merchTabBtn_history');
+                        if (mBtnForm) mBtnForm.addEventListener('click', function(e) { e.preventDefault(); window.switchMerchTab('form'); });
+                        if (mBtnHist) mBtnHist.addEventListener('click', function(e) { e.preventDefault(); window.switchMerchTab('history'); });
+                        // ── 10-SECOND REAL-TIME AUTO REFRESH FOR MERCHANDISE HISTORY ──
+                        var _isRefreshingMH = false;
+                        async function autoRefreshMerchandiseHistory() {
+                            if (_isRefreshingMH) return;
+                            if (document.hidden) return; // Skip if tab is in background
+
+                            // Only refresh if Merchandise History tab is currently visible
+                            var histPanel = document.getElementById('merchTab_history');
+                            if (!histPanel || histPanel.style.display === 'none') return;
+
+                            // Do not refresh if any modal is open
+                            var openModal = document.querySelector('.modal[style*="display: block"], .modal[style*="display: flex"], .modal.show, .swal2-shown');
+                            if (openModal) return;
+
+                            // Do not refresh if user is currently interacting with an input or dropdown
+                            var activeEl = document.activeElement;
+                            if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT') && histPanel.contains(activeEl)) return;
+
+                            try {
+                                _isRefreshingMH = true;
+                                var fetchUrl = new URL(window.location.href);
+                                fetchUrl.searchParams.set('ajax_mh', '1');
+
+                                var resp = await fetch(fetchUrl.toString(), {
+                                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                                });
+                                if (!resp.ok) return;
+                                var data = await resp.json();
+
+                                if (data && typeof data.mh_count !== 'undefined') {
+                                    var currentRows = document.querySelectorAll('#mhTableBody .mh-row');
+                                    if (data.mh_count !== currentRows.length) {
+                                        window.location.reload();
+                                    }
+                                }
+                            } catch (e) {
+                                // Silent background fail
+                            } finally {
+                                _isRefreshingMH = false;
+                            }
                         }
-                        window.switchMerchTab = switchMerchTab;
+
+                        // Run silent background refresh every 10 seconds
+                        setInterval(autoRefreshMerchandiseHistory, 10000);
 
                         // Init
                         mhRender();
@@ -10724,12 +10839,10 @@ setTimeout(function() {
             const vat      = subtotal * 0.12;
             const grand    = subtotal + vat;
             updateTotals(subtotal, vat, grand);
-            // Keep product checkboxes in sync with cart
             if (typeof syncProductCheckboxes === 'function') syncProductCheckboxes();
             if (typeof syncServiceCheckboxes === 'function') syncServiceCheckboxes();
 
             window.cart = cart;
-            if (window.PetronDraft) window.PetronDraft.flushAll();
         }
 
         function cartQty(idx, delta) {
@@ -10738,7 +10851,6 @@ setTimeout(function() {
             const newQty = item.quantity + delta;
             if (newQty < 1) { cartRemove(idx); return; }
             if (item.item_type === 'merchandise') {
-                // Look up stock from the hidden select; service items have no stock limit
                 const opt = document.querySelector(`#productSelect option[value="${item.product_id}"]`);
                 const stock = opt ? parseInt(opt.dataset.stock || 0) : 9999;
                 if (stock > 0 && newQty > stock) {
@@ -10746,7 +10858,6 @@ setTimeout(function() {
                 }
             }
             item.quantity = newQty;
-            // Sync itemQty field if this is the currently selected product
             if (selectedProduct && String(selectedProduct.id) === String(item.product_id)) {
                 const qtyEl = document.getElementById('itemQty');
                 if (qtyEl) qtyEl.value = newQty;
@@ -10760,7 +10871,7 @@ setTimeout(function() {
             cart.splice(idx, 1);
             if (item && item.item_type === 'service' && item.category !== 'Labor' && item.product_name !== 'Labor Charge') {
                 if (typeof updateServiceSelectionState === 'function') updateServiceSelectionState();
-            hideServiceDropdown();
+                hideServiceDropdown();
             } else {
                 renderCart();
                 updateCheckoutBtn();
@@ -10799,7 +10910,7 @@ setTimeout(function() {
                 'debitCardFields':     method === 'Debit Card',
                 'ewalletFields':       isEwallet,
                 'fleetCardFields':     method === 'Petron Fleet Card',
-                'efuelCardFields':     false, // removed from dropdown
+                'efuelCardFields':     false,
                 'creditAccountFields': method === 'Credit Account'
             };
             for (const [id, show] of Object.entries(containers)) {
@@ -10807,18 +10918,15 @@ setTimeout(function() {
                 if (el) el.style.display = show ? 'block' : 'none';
             }
 
-            // Auto-set provider for GCash / Maya
             if (isEwallet) {
                 const prov = document.getElementById('ewProvider');
-                if (prov) prov.value = method; // 'GCash' or 'Maya'
+                if (prov) prov.value = method;
             }
 
-            // Show balance due bar for card / ewallet / fleet
             const generalBalanceWrap = document.getElementById('generalBalanceWrap');
             const needsBalance = ['Credit Card','Debit Card','GCash','Maya','Petron Fleet Card'].includes(method);
             if (generalBalanceWrap) generalBalanceWrap.style.display = needsBalance ? 'block' : 'none';
 
-            // Pre-fill amount paid with grand total
             const grand = getGrandTotal();
             const prefillMap = {
                 'Credit Card': 'ccAmount', 'Debit Card': 'dcAmount',
@@ -10922,16 +11030,16 @@ setTimeout(function() {
                 if (amountPaid <= 0 || grand === 0) {
                     status = 'Pending'; color = '#9a3412'; border = '#fed7aa'; bg = '#ffedd5';
                     iconClass = 'fas fa-clock';
-                    subText = grand > 0 ? 'No amount encoded. Balance due: \u20b1' + fmtNum(grand) : 'Add items first.';
+                    subText = grand > 0 ? 'No amount encoded. Balance due: ₱' + fmtNum(grand) : 'Add items first.';
                 } else if (amountPaid < grand - 0.009) {
                     status = 'Partially Paid'; color = '#92400e'; border = '#fde68a'; bg = '#fef9c3';
                     iconClass = 'fas fa-exclamation-circle';
-                    subText = 'Paid \u20b1' + fmtNum(amountPaid) + ' \u2014 Balance: \u20b1' + fmtNum(grand - amountPaid);
+                    subText = 'Paid ₱' + fmtNum(amountPaid) + ' — Balance: ₱' + fmtNum(grand - amountPaid);
                 } else {
                     status = 'Paid'; color = '#166534'; border = '#86efac'; bg = '#dcfce7';
                     iconClass = 'fas fa-check-circle';
                     subText = method === 'Cash'
-                        ? (amountPaid - grand > 0.009 ? 'Change: \u20b1' + fmtNum(amountPaid - grand) : 'Exact amount paid.')
+                        ? (amountPaid - grand > 0.009 ? 'Change: ₱' + fmtNum(amountPaid - grand) : 'Exact amount paid.')
                         : 'Full amount received via ' + method + '.';
                 }
             }
@@ -10959,32 +11067,36 @@ setTimeout(function() {
             }
             btn.disabled = disabled;
         }
+
         // ── Submit transaction ────────────────────────────────────────────────
-        // Helper: release the atomic submission lock and restore the button
         function _resetSubmitBtn() {
             _isSubmittingTxn = false;
             const b = document.getElementById('checkoutBtn');
             if (b) { b.disabled = false; b.innerHTML = '<i class="fas fa-receipt"></i> Process & Print Receipt'; }
             updateCheckoutBtn();
         }
-        var _isSubmittingTxn = false; // atomic lock — prevents double submission
+
+        var _isSubmittingTxn = false;
         async function submitMerchTxn() {
-            // ── Front-end atomic lock: reject if already in flight ────────────
             if (_isSubmittingTxn) return;
             _isSubmittingTxn = true;
-            // Immediately disable button to block UI re-trigger
             const btn = document.getElementById('checkoutBtn');
             if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing…'; }
 
-            if (cart.length === 0) { showTxnAlert('Cart is empty.', 'warning'); _isSubmittingTxn = false; if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-receipt"></i> Process & Print Receipt'; } updateCheckoutBtn(); return; }
+            if (cart.length === 0) {
+                showTxnAlert('Cart is empty.', 'warning');
+                _resetSubmitBtn();
+                return;
+            }
 
             const method = document.getElementById('paymentMethod')?.value || '';
-            if (!method) { showTxnAlert('Please select a payment method.', 'warning'); _resetSubmitBtn(); return; }
+            if (!method) {
+                showTxnAlert('Please select a payment method.', 'warning');
+                _resetSubmitBtn();
+                return;
+            }
 
             const grand = getGrandTotal();
-
-            // ── Customer name ─────────────────────────────────────────────────
-            // ── Customer name ─────────────────────────────────────────────────
             const hasService = cart.some(i => i.item_type === 'service');
             const activeCustomerPrefix = hasService ? 'jo' : 'merch';
             let firstName = '', lastName = '', contactNumber = '';
@@ -11000,17 +11112,14 @@ setTimeout(function() {
                 if (!firstName) { showTxnAlert('Please enter the customer\'s first name.', 'warning'); _resetSubmitBtn(); return; }
             }
             let selectedCustomerId = selectedCustomerIds[activeCustomerPrefix] || null;
-
             const fullName = [firstName, lastName].filter(Boolean).join(' ') || firstName || 'Walk-in Customer';
 
-            // ── Payment validation ────────────────────────────────────────────
             if (method === 'Credit Account') {
                 if (!document.getElementById('creditCustomer')?.value) {
                     showTxnAlert('Please select a credit account.', 'warning'); _resetSubmitBtn(); return;
                 }
             }
 
-            // ── Loyalty validation & fields ──────────────────────────────────
             const loyaltyProgram = document.getElementById('loyaltyProgram')?.value || 'No Loyalty';
             const loyaltyCardNo = (document.getElementById('loyaltyCardNo')?.value || '').trim();
             const loyaltyPointsBalance = parseInt(document.getElementById('loyaltyPointsBalance')?.value || 0) || 0;
@@ -11024,7 +11133,6 @@ setTimeout(function() {
                 _resetSubmitBtn(); return;
             }
 
-            // ── JO data ───────────────────────────────────────────────────────
             let joData = {};
             if (hasService) {
                 const mechanicId = (document.getElementById('joMechanicId')?.value || '').trim();
@@ -11051,7 +11159,6 @@ setTimeout(function() {
                 };
             }
 
-            // ── Amount paid & payment status ──────────────────────────────────
             const amountPaid = _getAmountPaid(method);
             let paymentStatus;
             if (method === 'Credit Account') {
@@ -11066,7 +11173,6 @@ setTimeout(function() {
             const balanceDue = method === 'Credit Account' ? grand
                 : (paymentStatus === 'Paid' ? 0 : Math.max(0, grand - amountPaid));
 
-            // ── Build payload ─────────────────────────────────────────────────
             const isCard    = method === 'Credit Card' || method === 'Debit Card';
             const isEwallet = method === 'GCash' || method === 'Maya';
             const isFleet   = method === 'Petron Fleet Card';
@@ -11086,29 +11192,24 @@ setTimeout(function() {
                 balance_due:         balanceDue > 0 ? parseFloat(balanceDue.toFixed(2)) : null,
                 payment_status:      paymentStatus,
 
-                // Card fields
                 card_type:           isCard ? (document.getElementById(method === 'Credit Card' ? 'ccType' : 'dcType')?.value || null) : null,
                 card_last_four:      method === 'Credit Card' ? (document.getElementById('ccLastFour')?.value || null) : null,
                 card_reference:      method === 'Credit Card' ? (document.getElementById('ccRefNumber')?.value || null)
                                    : method === 'Debit Card'  ? (document.getElementById('dcRefNumber')?.value || null) : null,
 
-                // E-Wallet fields (GCash / Maya)
                 ewallet_provider:    isEwallet ? method : null,
                 ewallet_reference:   isEwallet ? (document.getElementById('ewRefNumber')?.value || null) : null,
 
-                // Fleet Card fields
                 fleet_card_number:   isFleet ? (document.getElementById('fcNumber')?.value || null) : null,
                 fleet_company_name:  isFleet ? (document.getElementById('fcCompanyName')?.value || null) : null,
                 fleet_auth_number:   isFleet ? (document.getElementById('fcAuthNumber')?.value || null) : null,
 
-                // Credit Account fields
                 credit_customer_id:    isCredit ? (parseInt(document.getElementById('creditCustomer')?.value) || null) : null,
                 credit_company_name:   isCredit ? (document.getElementById('creditCompanyName')?.value || null) : null,
                 credit_account_number: isCredit ? (document.getElementById('creditAccountNumber')?.value || null) : null,
                 credit_po_number:      isCredit ? (document.getElementById('creditPoNumber')?.value || null) : null,
                 credit_due_date:       isCredit ? (document.getElementById('creditDueDate')?.value || null) : null,
                 
-                // Loyalty fields
                 loyalty_type:            loyaltyProgram !== 'No Loyalty' ? loyaltyProgram : null,
                 loyalty_card_no:         hasLoyaltyCard ? loyaltyCardNo : null,
                 loyalty_points_earned:   hasLoyaltyCard ? loyaltyPointsEarned : null,
@@ -11136,44 +11237,25 @@ setTimeout(function() {
                 const data = await res.json();
 
                 if (data.success) {
-                    // If job order (has service), show banner with print link + redirect to tracker
-                    if (hasService) {
-                        const txnId = data.transaction_id;
-                        // Show success banner with a separate print link — no auto-print
-                        const old = document.getElementById('txnAlertBanner');
-                        if (old) old.remove();
-                        const div = document.createElement('div');
-                        div.id = 'txnAlertBanner';
-                        div.style.cssText = `position:fixed;top:84px;right:22px;left:auto;z-index:999999;
-                            background:#f0fdf4;border:1.5px solid #86efac;color:#166534;
-                            padding:12px 18px;border-radius:10px;font-size:13.5px;font-weight:700;
-                            display:flex;align-items:center;gap:10px;box-shadow:0 12px 30px rgba(0,0,0,.15);
-                            max-width:480px;width:auto;`;
-                        div.innerHTML = `<i class="fas fa-check-circle" style="font-size:16px;flex-shrink:0;"></i>
-                            <span style="flex:1;">Job Order successfully submitted!
-                            <a href="javascript:void(0)" onclick="printMerchandiseReceipt(${txnId})"
-                               style="color:#15803d;text-decoration:underline;font-weight:800;margin-left:6px;">
-                               <i class="fas fa-print" style="margin-right:3px;"></i>Print Receipt
-                            </a></span>`;
-                        document.body.appendChild(div);
-                        setTimeout(function() { if (div.parentElement) div.remove(); }, 5000);
-                        // Redirect to tracker
-                        setTimeout(function() {
-                            window.location.href = 'staff_transactions_hub.php?section=merchandise&active_tab=tracker';
-                        }, 1800);
-                        return;
+                    const txnId = data.transaction_id || data.merch_transaction_id;
+
+                    // Automatically open / print the official receipt (for BOTH Job Orders & Merchandise transactions)
+                    if (txnId) {
+                        printMerchandiseReceipt(txnId);
                     }
 
-                    // Reset everything (merchandise-only)
+                    // Reset cart and checkout state
                     cart = [];
                     renderCart();
                     updateCheckoutBtn();
                     resetMerchandiseForm();
                     selectedCustomerIds.jo = null;
                     selectedCustomerIds.merch = null;
+
                     // Reset JO fields
                     ['joFirstName','joLastName','joContactNumber','joVehiclePlate',
-                     'joServicePrice','joNotes','joEstimatedDuration'].forEach(id => {
+                     'joServicePrice','joLaborCharge','joNotes','joEstimatedDuration',
+                     'joYearModel','joEngineNumber','joChassisNumber','joOdometerReading'].forEach(id => {
                         const el = document.getElementById(id);
                         if (el) el.value = '';
                     });
@@ -11183,7 +11265,7 @@ setTimeout(function() {
                     if (joSvcHidden) joSvcHidden.value = '';
                     const joVehicleSel = document.getElementById('joVehicleType');
                     if (joVehicleSel) joVehicleSel.value = '';
-                    // Reset mechanic typeahead
+                    
                     const joMech = document.getElementById('joMechanic');
                     if (joMech) joMech.value = '';
                     const joMechId = document.getElementById('joMechanicId');
@@ -11193,21 +11275,55 @@ setTimeout(function() {
                     hideMechanicDropdown();
                     const notesWrap = document.getElementById('joServicePriceNotes');
                     if (notesWrap) notesWrap.style.display = 'none';
-                    // Hide mechanic busy warning on reset
                     const mechBusyWarn = document.getElementById('joMechanicBusyWarn');
                     if (mechBusyWarn) mechBusyWarn.style.display = 'none';
                     clearSuggestedParts();
+
                     // Reset merch customer fields
                     ['merchFirstName','merchLastName','merchContactNumber'].forEach(id => {
                         const el = document.getElementById(id);
                         if (el) el.value = '';
                     });
-                    // Reset payment
                     const pmSel = document.getElementById('paymentMethod');
                     if (pmSel) pmSel.selectedIndex = 0;
                     onPaymentChange();
-                    // Auto-print receipt for merchandise-only transactions
-                    printMerchandiseReceipt(data.transaction_id);
+
+                    // If job order (has service), show clear banner with instant action to go to Tracker or re-print
+                    if (hasService) {
+                        const old = document.getElementById('txnAlertBanner');
+                        if (old) old.remove();
+                        const div = document.createElement('div');
+                        div.id = 'txnAlertBanner';
+                        div.style.cssText = `position:fixed;top:84px;right:22px;left:auto;z-index:999999;
+                            background:#f0fdf4;border:1.5px solid #86efac;color:#166534;
+                            padding:14px 20px;border-radius:10px;font-size:13.5px;font-weight:700;
+                            display:flex;flex-direction:column;gap:8px;box-shadow:0 12px 30px rgba(0,0,0,.15);
+                            max-width:500px;width:auto;`;
+                        div.innerHTML = `
+                            <div style="display:flex;align-items:center;gap:10px;">
+                                <i class="fas fa-check-circle" style="font-size:18px;color:#16a34a;flex-shrink:0;"></i>
+                                <span style="flex:1;">Job Order processed successfully! Official Receipt opened for printing.</span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:10px;margin-top:4px;padding-left:28px;">
+                                <button type="button" onclick="printMerchandiseReceipt('${txnId}')"
+                                        style="background:#15803d;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">
+                                    <i class="fas fa-print"></i> Re-print Receipt
+                                </button>
+                                <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker"
+                                   style="background:#0284c7;color:#fff;text-decoration:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:5px;">
+                                    <i class="fas fa-tasks"></i> Go to Tracker Now &rarr;
+                                </a>
+                            </div>
+                        `;
+                        document.body.appendChild(div);
+
+                        // Auto redirect to tracker after 4 seconds (giving plenty of time to view receipt tab)
+                        setTimeout(function() {
+                            window.location.href = 'staff_transactions_hub.php?section=merchandise&active_tab=tracker';
+                        }, 4000);
+                        return;
+                    }
+
                     showTxnAlert('Transaction submitted successfully! Receipt opened in a new tab.', 'success');
                 } else {
                     showTxnAlert('Error: ' + (data.error || 'Transaction failed.'), 'error');
@@ -11215,7 +11331,7 @@ setTimeout(function() {
             } catch (err) {
                 showTxnAlert('Network error: ' + err.message, 'error');
             } finally {
-                _isSubmittingTxn = false; // always release the lock
+                _isSubmittingTxn = false;
                 if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-receipt"></i> Process & Print Receipt'; }
                 updateCheckoutBtn();
             }
@@ -11252,9 +11368,12 @@ setTimeout(function() {
 
         // ── Init ──────────────────────────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', function() {
+            cart = [];
+            window.cart = [];
             loadServiceTypes();
             loadVehicleTypes();
             renderCart();
+            updateTotals(0, 0, 0);
             updateCheckoutBtn();
             onPaymentChange();
 
@@ -11266,6 +11385,16 @@ setTimeout(function() {
                     dd.style.display = 'none';
                 }
             });
+        });
+
+        window.addEventListener('load', function() {
+            if (!cart || cart.length === 0) {
+                cart = [];
+                window.cart = [];
+                renderCart();
+                updateTotals(0, 0, 0);
+                updateCheckoutBtn();
+            }
         });
         </script>
 
@@ -11424,42 +11553,42 @@ setTimeout(function() {
             </div>
             <div class="txn-card-body" style="padding:0;">
                 
-                <div style="width:100%;overflow-x:hidden !important;padding-bottom:12px;">
-                <table class="txn-table" id="joUnifiedTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse;">
+                <div style="width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:12px; border-radius:0 0 8px 8px;">
+                <table class="txn-table" id="joUnifiedTable" style="width:100%; min-width:1450px; border-collapse:collapse;">
                     <colgroup>
-                        <col style="width:4.5%;"><!-- JO # -->
-                        <col style="width:6.5%;"><!-- OR No. -->
-                        <col style="width:8.5%;"><!-- Customer -->
-                        <col style="width:5.5%;"><!-- Plate No. -->
-                        <col style="width:5%;"><!-- Vehicle -->
-                        <col style="width:7%;"><!-- Service Type -->
-                        <col style="width:7.5%;"><!-- Assigned Mechanic -->
-                        <col style="width:5%;"><!-- Service Fee -->
-                        <col style="width:5%;"><!-- Labor Fee -->
-                        <col style="width:8.5%;"><!-- JO Status -->
-                        <col style="width:5.5%;"><!-- Payment Status -->
-                        <col style="width:5.5%;"><!-- Payment Method -->
-                        <col style="width:6.5%;"><!-- Est. Completion -->
-                        <col style="width:6%;"><!-- Date Created -->
-                        <col style="width:13.5%;"><!-- Actions -->
+                        <col style="width:70px;"><!-- JO # -->
+                        <col style="width:145px;"><!-- OR No. -->
+                        <col style="width:180px;"><!-- Customer -->
+                        <col style="width:110px;"><!-- Plate No. -->
+                        <col style="width:125px;"><!-- Vehicle -->
+                        <col style="width:175px;"><!-- Service Type -->
+                        <col style="width:140px;"><!-- Assigned Mechanic -->
+                        <col style="width:100px;"><!-- Service Fee -->
+                        <col style="width:90px;"><!-- Labor Fee -->
+                        <col style="width:130px;"><!-- JO Status -->
+                        <col style="width:120px;"><!-- Payment Status -->
+                        <col style="width:110px;"><!-- Payment Method -->
+                        <col style="width:150px;"><!-- Est. Completion -->
+                        <col style="width:130px;"><!-- Date Created -->
+                        <col style="width:165px;"><!-- Actions -->
                     </colgroup>
                     <thead style="background:linear-gradient(135deg,#002F70 0%,#003d8f 100%);">
                         <tr>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Job Order Number">JO #</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Official Receipt Number">OR No.</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Customer Name">Customer</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Plate Number">Plate No.</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Vehicle Type">Vehicle</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Service Type">Svc Type</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Assigned Mechanic">Mechanic</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:right;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Service Fee">Svc Fee</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:right;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Labor Fee">Labor</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="JO Status">JO Status</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 4px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Payment Status">Pay Status</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 4px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Payment Method">Pay Method</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Estimated Completion">Est. Done</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Date Created">Created</th>
-                            <th style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.3px;padding:9px 5px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="Actions">Actions</th>
+                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:left;white-space:nowrap;" title="Job Order Number">JO #</th>
+                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:left;white-space:nowrap;" title="Official Receipt Number">OR No.</th>
+                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:left;white-space:nowrap;" title="Customer Name">Customer</th>
+                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:left;white-space:nowrap;" title="Plate Number">Plate No.</th>
+                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:left;white-space:nowrap;" title="Vehicle Type">Vehicle</th>
+                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:left;white-space:nowrap;" title="Service Type">Service Type</th>
+                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:left;white-space:nowrap;" title="Assigned Mechanic">Mechanic</th>
+                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:right;white-space:nowrap;" title="Service Fee">Service Fee</th>
+                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:right;white-space:nowrap;" title="Labor Fee">Labor</th>
+                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:center;white-space:nowrap;" title="JO Status">JO Status</th>
+                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:center;white-space:nowrap;" title="Payment Status">Pay Status</th>
+                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:center;white-space:nowrap;" title="Payment Method">Pay Method</th>
+                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:left;white-space:nowrap;" title="Estimated Completion">Est. Done</th>
+                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:left;white-space:nowrap;" title="Date Created">Created</th>
+                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:center;white-space:nowrap;" title="Actions">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -11578,12 +11707,12 @@ setTimeout(function() {
                         style="<?= $wf_status === 'Rejected' ? 'background:#fff8f8;' : ($jo_is_overdue ? 'background:#fff5f5;border-left:3px solid #dc2626;' : '') ?>">
 
                         <!-- JO Number -->
-                        <td style="padding:8px 5px;font-weight:700;color:<?= $wf_status==='Rejected' ? '#dc2626' : '#002F70' ?>;font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;">
+                        <td style="padding:10px 10px;font-weight:700;color:<?= $wf_status==='Rejected' ? '#dc2626' : '#002F70' ?>;font-size:12.5px;white-space:nowrap;vertical-align:middle;">
                             <?= htmlspecialchars($job['job_order_id'] ?? ('#'.$job['id'])) ?>
                         </td>
 
                         <!-- OR No. -->
-                        <td style="padding:8px 5px;font-size:12px;color:#475569;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;">
+                        <td style="padding:10px 10px;font-size:12px;color:#1e293b;font-family:monospace;font-weight:700;white-space:nowrap;vertical-align:middle;">
                             <?php
                             $jo_or = '';
                             if (!empty($job['created_at'])) {
@@ -11594,48 +11723,48 @@ setTimeout(function() {
                         </td>
 
                         <!-- Customer -->
-                        <td style="padding:8px 5px;font-size:12px;color:#1e293b;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;"
+                        <td style="padding:10px 10px;font-size:12.5px;font-weight:600;color:#0f172a;white-space:nowrap;vertical-align:middle;"
                             title="<?= htmlspecialchars($job['customer_name'] ?? '') ?>">
                             <?= htmlspecialchars($job['customer_name'] ?? '—') ?>
                         </td>
 
                         <!-- Plate No. -->
-                        <td style="padding:8px 5px;font-size:12px;font-weight:700;color:#1e293b;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;">
+                        <td style="padding:10px 10px;font-size:12.5px;font-weight:700;color:#0f172a;white-space:nowrap;vertical-align:middle;">
                             <?= !empty($job['vehicle_plate']) ? htmlspecialchars($job['vehicle_plate']) : '<span style="color:#cbd5e1;">—</span>' ?>
                         </td>
 
                         <!-- Vehicle Type -->
-                        <td style="padding:8px 5px;font-size:12px;color:#475569;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;">
+                        <td style="padding:10px 10px;font-size:12px;color:#334155;white-space:nowrap;vertical-align:middle;">
                             <?= !empty($job['vehicle_type']) ? htmlspecialchars($job['vehicle_type']) : '<span style="color:#cbd5e1;">—</span>' ?>
                         </td>
 
                         <!-- Service Type -->
-                        <td style="padding:8px 5px;font-size:12px;color:#0369a1;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;"
+                        <td style="padding:10px 10px;font-size:12.5px;color:#0369a1;font-weight:600;white-space:nowrap;vertical-align:middle;"
                             title="<?= htmlspecialchars($job['service_type'] ?? '—') ?>">
                             <?= htmlspecialchars($job['service_type'] ?? '—') ?>
                         </td>
 
                         <!-- Assigned Mechanic -->
-                        <td style="padding:8px 5px;font-size:12px;color:#475569;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;">
+                        <td style="padding:10px 10px;font-size:12px;color:#334155;white-space:nowrap;vertical-align:middle;">
                             <?php
                             $mech = trim($job['mechanic_name'] ?? '');
                             if ($mech && $mech !== 'Unassigned'): ?>
-                            <span style="display:inline-flex;align-items:center;gap:3px;">
-                                <i class="fas fa-user-cog" style="color:#94a3b8;font-size:10px;flex-shrink:0;"></i>
+                            <span style="display:inline-flex;align-items:center;gap:4px;">
+                                <i class="fas fa-user-cog" style="color:#64748b;font-size:11px;flex-shrink:0;"></i>
                                 <?= htmlspecialchars($mech) ?>
                             </span>
                             <?php else: ?>
-                            <span style="color:#cbd5e1;font-style:italic;font-size:11px;">Unassigned</span>
+                            <span style="color:#94a3b8;font-style:italic;font-size:11.5px;">Unassigned</span>
                             <?php endif; ?>
                         </td>
 
                         <!-- Service Fee -->
-                        <td style="padding:8px 5px;font-size:12px;text-align:right;font-weight:700;color:#002F70;white-space:nowrap;vertical-align:middle;">
+                        <td style="padding:10px 10px;font-size:12.5px;text-align:right;font-weight:700;color:#002F70;white-space:nowrap;vertical-align:middle;">
                             ₱<?= number_format((float)($job['service_fee'] ?? $job['estimated_cost'] ?? $job['total_cost'] ?? 0), 2) ?>
                         </td>
 
                         <!-- Labor Fee -->
-                        <td style="padding:8px 5px;font-size:12px;text-align:right;font-weight:700;color:#16a34a;white-space:nowrap;vertical-align:middle;">
+                        <td style="padding:10px 10px;font-size:12.5px;text-align:right;font-weight:700;color:#16a34a;white-space:nowrap;vertical-align:middle;">
                             <?php
                             $labor_val = (float)($job['actual_labor_cost'] ?? $job['estimated_labor_cost'] ?? 0);
                             echo $labor_val > 0 ? '₱' . number_format($labor_val, 2) : '<span style="color:#cbd5e1;">—</span>';
@@ -11643,8 +11772,8 @@ setTimeout(function() {
                         </td>
 
                         <!-- JO Status -->
-                        <td style="padding:8px 4px;vertical-align:middle;overflow:hidden;text-align:center;">
-                            <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;max-width:100%;box-sizing:border-box;text-overflow:ellipsis;overflow:hidden;
+                        <td style="padding:10px 8px;vertical-align:middle;text-align:center;white-space:nowrap;">
+                            <span style="display:inline-flex;align-items:center;justify-content:center;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;
                                          background:<?= $wf_bg ?>;color:<?= $wf_color ?>;border:1px solid <?= $wf_color ?>40;"
                                   title="<?= htmlspecialchars($wf_label) ?>">
                                 <?= htmlspecialchars($wf_label) ?>
@@ -11652,8 +11781,8 @@ setTimeout(function() {
                         </td>
 
                         <!-- Payment Status -->
-                        <td style="padding:8px 4px;vertical-align:middle;overflow:hidden;text-align:center;">
-                            <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;max-width:100%;box-sizing:border-box;text-overflow:ellipsis;overflow:hidden;
+                        <td style="padding:10px 8px;vertical-align:middle;text-align:center;white-space:nowrap;">
+                            <span style="display:inline-flex;align-items:center;justify-content:center;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;
                                          background:<?= $pay_color ?>18;color:<?= $pay_color ?>;border:1px solid <?= $pay_color ?>40;"
                                   title="<?= htmlspecialchars($pay_label) ?>">
                                 <?= htmlspecialchars($pay_label) ?>
@@ -11661,7 +11790,7 @@ setTimeout(function() {
                         </td>
 
                         <!-- Payment Method -->
-                        <td style="padding:8px 4px;vertical-align:middle;text-align:center;overflow:hidden;">
+                        <td style="padding:10px 8px;vertical-align:middle;text-align:center;white-space:nowrap;">
                             <?php
                             $pay_method = trim($job['payment_method'] ?? 'Cash');
                             if (empty($pay_method)) $pay_method = 'Cash';
@@ -11672,14 +11801,14 @@ setTimeout(function() {
                             elseif (stripos($pay_method, 'Fleet') !== false || stripos($pay_method, 'Petron') !== false) { $pm_bg = '#fef3c7'; $pm_fg = '#b45309'; }
                             elseif (stripos($pay_method, 'Credit') !== false || stripos($pay_method, 'A/R') !== false) { $pm_bg = '#f3e8ff'; $pm_fg = '#6b21a8'; }
                             ?>
-                            <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;max-width:100%;box-sizing:border-box;text-overflow:ellipsis;overflow:hidden;background:<?= $pm_bg ?>;color:<?= $pm_fg ?>;border:1px solid <?= $pm_fg ?>30;"
+                            <span style="display:inline-flex;align-items:center;justify-content:center;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;background:<?= $pm_bg ?>;color:<?= $pm_fg ?>;border:1px solid <?= $pm_fg ?>30;"
                                   title="<?= htmlspecialchars($pay_method) ?>">
                                 <?= htmlspecialchars($pay_method) ?>
                             </span>
                         </td>
 
                         <!-- Est. Completion -->
-                        <td style="padding:8px 5px;font-size:12px;color:#475569;overflow:hidden;vertical-align:middle;">
+                        <td style="padding:10px 10px;font-size:12px;color:#334155;white-space:nowrap;vertical-align:middle;">
                             <?php
                             $est_comp = $job['due_date'] ?? null;
                             $created_time = !empty($job['created_at']) ? strtotime($job['created_at']) : time();
@@ -11717,22 +11846,22 @@ setTimeout(function() {
 
                             $comp_ts = strtotime($est_disp);
                             $today_ts = strtotime(date('Y-m-d'));
-                            $color = ($comp_ts < $today_ts && !in_array($wf_status ?? '', ['Completed'])) ? '#dc2626' : '#475569';
-                            echo '<span style="color:'.$color.';font-weight:600;font-size:12px;">'.htmlspecialchars($est_disp).'</span>';
+                            $color = ($comp_ts < $today_ts && !in_array($wf_status ?? '', ['Completed'])) ? '#dc2626' : '#1e293b';
+                            echo '<div style="color:'.$color.';font-weight:600;font-size:12px;white-space:nowrap;">'.htmlspecialchars($est_disp).'</div>';
                             if ($est_sub) {
-                                echo '<br><span style="font-size:11px;color:#0284c7;">'.htmlspecialchars($est_sub).'</span>';
+                                echo '<div style="font-size:11px;color:#0284c7;font-weight:600;white-space:nowrap;">'.htmlspecialchars($est_sub).'</div>';
                             }
                             ?>
                         </td>
 
                         <!-- Date Created -->
-                        <td style="padding:8px 5px;font-size:12px;color:#475569;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;">
-                            <?= date('M j, Y', strtotime($job['created_at'])) ?><br>
-                            <span style="font-size:11px;color:#94a3b8;"><?= date('h:i A', strtotime($job['created_at'])) ?></span>
+                        <td style="padding:10px 10px;font-size:12px;color:#334155;white-space:nowrap;vertical-align:middle;">
+                            <div style="font-weight:600;color:#1e293b;white-space:nowrap;"><?= date('M j, Y', strtotime($job['created_at'])) ?></div>
+                            <div style="font-size:11px;color:#64748b;white-space:nowrap;"><?= date('h:i A', strtotime($job['created_at'])) ?></div>
                         </td>
 
                         <!-- Actions Column -->
-                        <td style="padding:6px 3px;text-align:center;">
+                        <td style="padding:8px 8px;text-align:center;vertical-align:middle;white-space:nowrap;">
                             <?php
                                 $jo_total   = (float)($job['total_cost'] ?? $job['estimated_cost'] ?? 0);
                                 $jo_paid    = (float)($job['amount_paid'] ?? 0);
@@ -12270,7 +12399,7 @@ setTimeout(function() {
         }
 
         // Run auto-refresh every 10 seconds
-        setInterval(autoRefreshJobOrderTracker, 15000);
+        setInterval(autoRefreshJobOrderTracker, 10000);
         </script>
 
         </div><!-- /innerTab_tracker -->

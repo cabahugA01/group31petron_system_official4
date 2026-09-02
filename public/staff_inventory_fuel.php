@@ -1904,7 +1904,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.warn('Fuel inventory auto-fetch notice:', e);
         });
     }
-    setInterval(autoRefreshFuelInventory, 15000);
+    setInterval(autoRefreshFuelInventory, 10000);
 
     // Auto-open fuel stock request modal if triggered from URL
     var urlParams = new URLSearchParams(window.location.search);

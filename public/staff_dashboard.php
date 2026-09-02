@@ -2599,7 +2599,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Auto-refresh interval every 10 seconds
-    setInterval(refreshStaffDashboard, 15000);
+    setInterval(refreshStaffDashboard, 10000);
 });
 </script>
 

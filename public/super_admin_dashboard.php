@@ -806,6 +806,6 @@ function autoRefreshSuperadminDashboard() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshSuperadminDashboard, 15000);
+setInterval(autoRefreshSuperadminDashboard, 10000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

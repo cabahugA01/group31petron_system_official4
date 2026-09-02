@@ -578,6 +578,6 @@ function autoRefreshReportAuditTrail() {
         .catch(() => {});
 }
 
-setInterval(autoRefreshReportAuditTrail, 15000);
+setInterval(autoRefreshReportAuditTrail, 10000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

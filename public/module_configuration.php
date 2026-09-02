@@ -2597,6 +2597,6 @@ function autoRefreshModuleConfiguration() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshModuleConfiguration, 15000);
+setInterval(autoRefreshModuleConfiguration, 10000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

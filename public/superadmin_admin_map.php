@@ -1383,6 +1383,6 @@ function autoRefreshSuperadminAdminMap() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshSuperadminAdminMap, 15000);
+setInterval(autoRefreshSuperadminAdminMap, 10000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

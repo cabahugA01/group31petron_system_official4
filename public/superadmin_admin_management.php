@@ -1746,6 +1746,6 @@ function autoRefreshSuperadminAdminManagement() {
         })
         .catch(() => {});
 }
-setInterval(autoRefreshSuperadminAdminManagement, 15000);
+setInterval(autoRefreshSuperadminAdminManagement, 10000);
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

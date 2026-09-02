@@ -1568,7 +1568,7 @@ async function autoRefreshMechanicsManagement() {
 }
 
 // Run auto-refresh every 10 seconds
-setInterval(autoRefreshMechanicsManagement, 15000);
+setInterval(autoRefreshMechanicsManagement, 10000);
 </script>
 
 <div id="toastContainer" style="position:fixed; top:80px; right:24px; z-index:99999; display:flex; flex-direction:column; gap:10px; pointer-events:none;"></div>
