@@ -10,8 +10,8 @@ $me = current_user();
 $role = role_key($me['role'] ?? '');
 $station_id = (int)user_station_id();
 
-if (!in_array($role, ['manager', 'superadmin', 'developer'], true)) {
-    $_SESSION['error'] = 'Only managers can access customer management.';
+if (!in_array($role, ['manager', 'admin', 'superadmin', 'developer'], true)) {
+    $_SESSION['error'] = 'Access denied. Manager/Admin access required.';
     header('Location: dashboard.php');
     exit;
 }

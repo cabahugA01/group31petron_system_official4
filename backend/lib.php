@@ -336,17 +336,20 @@ define('MODULE_MENU_MAP', [
         'dashboard', 'manager_dashboard', 'admin_dashboard', 'staff_dashboard'
     ],
     'transactions'          => [
-        'transactions', 'admin_transactions', 'fuel_merch_transactions', 'variance_alerts',
+        'transactions', 'admin_transactions', 'staff_new_transaction', 'staff_transaction_history', 'admin_all_transactions',
+        'fuel_merch_transactions', 'variance_alerts',
         'shift_transactions_view', 'merchandise_transaction', 'shift_transactions',
         'staff_fuel_transactions', 'pending_transactions', 'pending_transactions_manager',
-        'validated_transactions_manager', 'ato_oversight_dashboard', 'ato_variance_reports'
+        'validated_transactions_manager', 'manager_request_data_management', 'manager_mechanics_management',
+        'ato_oversight_dashboard', 'ato_variance_reports'
     ],
     'job_orders'            => [
         'job_orders', 'job_encode', 'job_tracker', 'report_jo_tracker', 'mgr_prod_services',
         'mgr_report_joborders', 'rpt_job_orders'
     ],
     'fuel_management'       => [
-        'fuel', 'admin_fuel_management', 'staff_fuel_deliveries_sub', 'staff_fuel_del_history',
+        'fuel', 'admin_fuel_management', 'fuel_meter_encoding', 'admin_fuel_oversight', 'admin_fuel_del_oversight',
+        'staff_fuel_deliveries_sub', 'staff_fuel_del_history',
         'staff_fuel_transactions', 'admin_fuel_transactions_oversight', 'admin_fuel_deliveries_oversight',
         'admin_fuel_adjustments_oversight', 'admin_pump_master_oversight', 'fuel_transactions_validation',
         'fuel_deliveries_validation', 'fuel_adjustments', 'fuel_pump_master', 'mgr_prod_fuel',
@@ -720,30 +723,58 @@ function get_user_permissions($role) {
             break;
             
         case 'admin':
-            // Admin: View-only access to inventory, customers, station-related, and admin reports
+            // Admin: Full operational access (all staff capabilities) + administrative oversight & reports
             $permissions = [
                 // Basic access
                 'view_dashboard',
                 'view_calendar',
 
-                // Transactions - view only
+                // Transaction permissions (Full operational + oversight)
+                'create_transactions',
                 'view_transactions',
+                'approve_transactions',
+                'handle_approvals',
 
-                // Fuel management - view only
+                // Job order permissions
+                'create_job_orders',
+                'manage_job_orders',
+
+                // Fuel management (Encoding + oversight)
+                'encode_fuel',
+                'manage_fuel',
                 'view_fuel_variance',
 
-                // Inventory - view only
+                // Inventory permissions (Operational + oversight)
+                'manage_inventory',
                 'view_inventory',
+                'manage_deliveries',
+                'manage_purchase_orders',
 
-                // Station-related
+                // Customer management permissions
+                'manage_customers',
+                'manage_customers_basic',
+
+                // Staff & User management
+                'manage_staff',
+                'manage_shifts',
                 'manage_stations',
+                'manage_all_users',
                 'manage_users_station',
 
-                // Admin reports
-                'view_all_reports',
+                // Reports (Personal, operational, financial, audit, all)
+                'view_personal_reports',
+                'view_operational_reports',
                 'view_financial_reports',
                 'view_nationwide_reports',
-                'export_data'
+                'view_all_reports',
+                'view_audit_logs',
+                'view_audit_logs_station',
+                'export_data',
+                'audit_oversight',
+                'manage_pricing',
+                'manage_pricing_station',
+                'manage_system_settings',
+                'unlock_records'
             ];
             break;
             
@@ -2889,7 +2920,7 @@ function notify_manager(
     string $shift_period = ''
 ): void {
     try {
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE station_id = ? AND LOWER(role) IN ('manager','supervisor') AND status = 'Active'");
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE (station_id = ? OR station_id IS NULL OR station_id = 0) AND LOWER(role) IN ('manager','supervisor','admin') AND status = 'Active'");
         $stmt->execute([$station_id]);
         $managers = $stmt->fetchAll(PDO::FETCH_COLUMN);
         foreach ($managers as $mgr_id) {

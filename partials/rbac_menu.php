@@ -113,59 +113,89 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 'permissions' => ['manage_all_users', 'manage_users_station'],
                 'station_specific' => false,
             ],
-            // 4. Transactions — Admin Oversight with sub-menu
+            // 3. Transactions — Staff POS & History + Manager Validation, Requests & Mechanics
             [
                 'id'               => 'admin_transactions',
                 'label'            => 'Transactions',
                 'ico'              => 'fas fa-receipt',
-                'href'             => 'admin_all_transactions.php',
-                'permissions'      => ['view_all_reports', 'view_dashboard'],
+                'href'             => 'staff_transactions_hub.php?section=merchandise&active_tab=merchandise',
+                'permissions'      => ['create_transactions', 'view_transactions', 'approve_transactions', 'view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
-                'desc'             => 'Monitor and review all transaction records from all operational shifts and staff accounts.',
+                'desc'             => 'Process new transactions, review shift records, and manage validated transactions & requests.',
+                'sub_items'        => [
+                    ['id' => 'staff_new_transaction',          'label' => 'New Transaction',          'href' => 'staff_transactions_hub.php?section=merchandise&active_tab=merchandise', 'ico' => 'fas fa-plus-circle',   'permissions' => ['create_transactions'], 'desc' => 'Create and process new job order, merchandise, or combined transactions.'],
+                    ['id' => 'staff_transaction_history',      'label' => 'Transaction History',      'href' => 'staff_transactions_hub.php?section=history',                          'ico' => 'fas fa-history',        'permissions' => ['view_transactions'],   'desc' => 'View and track previously encoded transactions and receipts.'],
+                    ['id' => 'validated_transactions_manager', 'label' => 'All Transactions',          'href' => 'manager_validated_transactions.php',                                 'ico' => 'fas fa-list-check',     'permissions' => ['view_transactions', 'approve_transactions'], 'desc' => 'Monitor and manage merchandise, job order, and combined transactions.'],
+                    ['id' => 'manager_request_data_management', 'label' => 'Master Data Requests',     'href' => 'manager_request_data_management.php',                                'ico' => 'fas fa-clipboard-list', 'permissions' => ['view_transactions', 'approve_transactions'], 'desc' => 'Review and process staff requests for products, services, and vehicles.'],
+                    ['id' => 'manager_mechanics_management',    'label' => 'Mechanics Management',      'href' => 'manager_mechanics_management.php',                                   'ico' => 'fas fa-wrench',         'permissions' => ['view_transactions', 'approve_transactions'], 'desc' => 'Manage mechanic records used in job orders.'],
+                ],
             ],
-            // 5. Fuel Management — Direct Link
+            // 4. Fuel Management — Staff Meter Readings + Manager Validation, Adjustments & Admin Oversight
             [
                 'id'               => 'admin_fuel_management',
                 'label'            => 'Fuel Management',
                 'ico'              => 'fas fa-gas-pump',
-                'href'             => 'admin_fuel_transactions_oversight.php',
-                'permissions'      => ['view_all_reports', 'view_dashboard'],
+                'href'             => 'staff_transactions_hub.php?section=fuel',
+                'permissions'      => ['encode_fuel', 'manage_fuel', 'view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
-                'desc'             => 'Monitor validated fuel transactions for compliance.',
+                'desc'             => 'Record meter readings, validate pump transactions, calibrate pumps, and monitor fuel levels.',
+                'sub_items'        => [
+                    ['id' => 'fuel_meter_encoding',            'label' => 'Meter Readings & Closing',       'href' => 'staff_transactions_hub.php?section=fuel',             'ico' => 'fas fa-tachometer-alt',  'permissions' => ['encode_fuel'],  'desc' => 'Record pump meter readings, calibration, and shift sales closing.'],
+                    ['id' => 'fuel_transactions_validation',   'label' => 'Fuel Transaction Validation',    'href' => 'manager_fuel_transaction_validation.php',         'ico' => 'fas fa-clipboard-check', 'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Review and validate staff-encoded fuel transactions.'],
+                    ['id' => 'fuel_adjustments',               'label' => 'Adjustments',                    'href' => 'manager_fuel_adjustments.php',                    'ico' => 'fas fa-sliders-h',        'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Apply corrections for tank levels, stock, or price changes.'],
+                    ['id' => 'fuel_pump_master',               'label' => 'Calibration Review',             'href' => 'manager_fuel_pump_master.php',                    'ico' => 'fas fa-tools',            'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Manage calibration values for accurate pump readings.'],
+                    ['id' => 'admin_fuel_oversight',          'label' => 'Fuel Transactions Oversight',    'href' => 'admin_fuel_transactions_oversight.php',         'ico' => 'fas fa-clipboard-list',  'permissions' => ['view_all_reports'], 'desc' => 'Monitor and audit validated fuel transactions for compliance.'],
+                    ['id' => 'admin_fuel_del_oversight',       'label' => 'Fuel Deliveries Oversight',      'href' => 'admin_fuel_deliveries_oversight.php',             'ico' => 'fas fa-truck-moving',     'permissions' => ['view_all_reports'], 'desc' => 'Monitor and audit tanker fuel delivery receipts.'],
+                ],
             ],
-            // 6. Inventory Management — Admin Oversight Module
+            // 5. Inventory Management — Operational, Manager Stock-In/Review & Oversight
             [
                 'id' => 'admin_inventory',
                 'label' => 'Inventory',
                 'ico' => 'fas fa-boxes',
                 'href' => 'admin_inventory_merchandise.php',
-                'permissions' => ['view_all_reports', 'view_operational_reports', 'view_dashboard'],
+                'permissions' => ['view_inventory', 'manage_inventory', 'view_all_reports', 'view_operational_reports', 'view_dashboard'],
                 'station_specific' => true,
                 'sub_items' => [
-                    ['id' => 'admin_inventory_merchandise', 'label' => 'Merchandise Inventory', 'href' => 'admin_inventory_merchandise.php', 'ico' => 'fas fa-box', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor merchandise stock, pricing, and stock alerts.'],
-                    ['id' => 'admin_inventory_fuel', 'label' => 'Fuel Inventory', 'href' => 'admin_inventory_fuel.php', 'ico' => 'fas fa-gas-pump', 'permissions' => ['view_all_reports'], 'desc' => 'Monitor fuel levels and submit discrepancy corrections.'],
+                    ['id' => 'admin_inventory_merchandise', 'label' => 'Merchandise Inventory', 'href' => 'admin_inventory_merchandise.php', 'ico' => 'fas fa-box',               'permissions' => ['view_all_reports', 'view_inventory'], 'desc' => 'Monitor merchandise stock, pricing, and stock alerts.'],
+                    ['id' => 'admin_inventory_fuel',        'label' => 'Fuel Inventory',        'href' => 'admin_inventory_fuel.php',        'ico' => 'fas fa-gas-pump',          'permissions' => ['view_all_reports', 'view_inventory'], 'desc' => 'Monitor fuel levels and submit discrepancy corrections.'],
+                    ['id' => 'staff_record_delivery',       'label' => 'Record Delivery',       'href' => 'staff_record_delivery.php',       'ico' => 'fas fa-truck-loading',     'permissions' => ['manage_inventory', 'manage_deliveries'], 'desc' => 'Record merchandise and fuel delivery receipts.'],
+                    ['id' => 'mgr_stock_in',                 'label' => 'Stock-In',              'href' => 'manager_stock_in.php',            'ico' => 'fas fa-download',          'permissions' => ['manage_inventory', 'view_inventory'], 'desc' => 'Approve pending staff-recorded deliveries and update inventory.'],
+                    ['id' => 'mgr_stock_review',             'label' => 'Purchase Management',   'href' => 'manager_stock_request_review.php','ico' => 'fas fa-clipboard-check',  'permissions' => ['manage_inventory', 'view_inventory'], 'desc' => 'Review stock requests and manage procurement workflow.'],
+                    ['id' => 'staff_stock_requests',        'label' => 'Stock Requests',        'href' => 'staff_stock_requests.php',        'ico' => 'fas fa-clipboard-list',    'permissions' => ['manage_inventory', 'view_inventory'], 'desc' => 'Submit and monitor stock replenishment requests.'],
+                    ['id' => 'admin_purchase_orders',       'label' => 'Purchase Orders',       'href' => 'admin_purchase_orders.php',       'ico' => 'fas fa-file-invoice-dollar','permissions' => ['manage_purchase_orders', 'view_all_reports'], 'desc' => 'Manage station purchase orders and supplier procurement.'],
                 ],
             ],
-            // 8. Product & Pricing Management — Standalone Admin Module
+            // 6. Customers — Customer Management Module
+            [
+                'id'               => 'mgr_customers',
+                'label'            => 'Customers',
+                'ico'              => 'fas fa-users',
+                'href'             => 'manager_customers.php',
+                'permissions'      => ['manage_customers', 'manage_customers_basic', 'approve_transactions', 'view_all_reports'],
+                'station_specific' => true,
+                'desc'             => 'Manage customer records, credit limits, vehicles, and linkage for transactions and job orders.',
+            ],
+            // 7. Product & Pricing Management — Standalone Admin Module
             [
                 'id'          => 'admin_product_pricing',
                 'label'       => 'Product & Pricing Management',
                 'ico'         => 'fas fa-tags',
                 'href'        => 'admin_set_prices.php',
-                'permissions' => ['manage_system_settings', 'view_all_reports'],
+                'permissions' => ['manage_system_settings', 'view_all_reports', 'manage_pricing'],
                 'station_specific' => true,
                 'desc'        => 'Consolidated product list, current prices, price change validation, inventory snapshot.',
             ],
-            // 9. Calendar
+            // 8. Calendar
             [
                 'id' => 'admin_calendar',
                 'label' => 'Calendar',
                 'ico' => 'fas fa-calendar-check',
                 'href' => 'admin_calendar.php',
-                'permissions' => ['view_all_reports', 'view_dashboard'],
+                'permissions' => ['view_all_reports', 'view_dashboard', 'view_calendar'],
                 'station_specific' => true,
             ],
-            // 10. Reports - Complete Admin Reports
+            // 9. Reports - Complete Admin Reports
             [
                 'id' => 'admin_reports',
                 'label' => 'Reports',

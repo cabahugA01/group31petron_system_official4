@@ -14,7 +14,7 @@ $station_id = (int)user_station_id();
 $role       = role_key($me['role'] ?? '');
 
 // Access control
-if (!in_array($role, ['manager', 'superadmin', 'developer'], true)) {
+if (!in_array($role, ['manager', 'admin', 'superadmin', 'developer'], true)) {
     $_SESSION['error'] = 'Access denied. Manager access required.';
     header('Location: dashboard.php');
     exit;
@@ -564,6 +564,237 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: manager_stock_request_review.php?tab=pending_requests');
         exit;
     }
+
+    // 3. Directly Create Merchandise Purchase Order (Without prior Staff Stock Request)
+    if ($action === 'create_direct_merch_po') {
+        $supplier_id = (int)($_POST['supplier_id'] ?? 0);
+        if ($supplier_id <= 0) {
+            $supplier_id = manager_petron_supplier_id($pdo);
+        }
+        $expected_delivery = trim($_POST['expected_delivery'] ?? '') ?: date('Y-m-d', strtotime('+3 days'));
+        $remarks = trim($_POST['remarks'] ?? '');
+        $product_ids = $_POST['product_ids'] ?? [];
+        $quantities = $_POST['quantities'] ?? [];
+        $unit_costs = $_POST['unit_costs'] ?? [];
+
+        try {
+            $pdo->beginTransaction();
+            $items_to_insert = [];
+
+            foreach ($product_ids as $idx => $prod_id_raw) {
+                $prod_id = (int)$prod_id_raw;
+                if ($prod_id <= 0) continue;
+
+                $qty = (int)($quantities[$idx] ?? 0);
+                if ($qty <= 0) continue;
+
+                $unit_cost = (float)($unit_costs[$idx] ?? 0);
+                if ($unit_cost <= 0) {
+                    throw new Exception("Please enter a valid Unit Cost (> 0) for each selected product.");
+                }
+
+                // Fetch product details
+                $stmt_p = $pdo->prepare("
+                    SELECT ip.*, COALESCE(si.unit, ip.size, 'pcs') AS actual_unit
+                    FROM inventory_products ip
+                    LEFT JOIN station_inventory si ON ip.id = si.product_id AND si.station_id = ?
+                    WHERE ip.id = ?
+                    LIMIT 1
+                ");
+                $stmt_p->execute([$station_id, $prod_id]);
+                $prod = $stmt_p->fetch(PDO::FETCH_ASSOC);
+                if (!$prod) {
+                    $stmt_p = $pdo->prepare("SELECT product_name, sku, category, size, unit_cost, unit FROM station_inventory WHERE product_id = ? AND station_id = ? LIMIT 1");
+                    $stmt_p->execute([$prod_id, $station_id]);
+                    $prod = $stmt_p->fetch(PDO::FETCH_ASSOC);
+                }
+
+                $prod_name = $prod['product_name'] ?? 'Merchandise Item';
+                $prod_sku = $prod['sku'] ?? '';
+                $unit = $prod['actual_unit'] ?? ($prod['unit'] ?? ($prod['size'] ?? 'pcs'));
+
+                $items_to_insert[] = [
+                    'product_id' => $prod_id,
+                    'sku' => $prod_sku,
+                    'product_name' => $prod_name,
+                    'quantity' => $qty,
+                    'unit_cost' => $unit_cost,
+                    'total' => round($qty * $unit_cost, 2),
+                    'unit' => $unit
+                ];
+            }
+
+            if (empty($items_to_insert)) {
+                throw new Exception("Please select at least one product with a valid quantity (> 0).");
+            }
+
+            $po_number = manager_next_po_number($pdo);
+            $po_notes = "Direct PO created by Manager\n"
+                . "Expected Delivery: " . $expected_delivery . "\n"
+                . "Remarks: " . ($remarks !== '' ? $remarks : 'None');
+            $total_qty = array_sum(array_column($items_to_insert, 'quantity'));
+            $grand_total = array_sum(array_column($items_to_insert, 'total'));
+
+            $stmt_po = $pdo->prepare("
+                INSERT INTO purchase_orders (
+                    request_id, product_name, quantity, unit_price, total_amount, type, po_number, batch_id,
+                    station_id, supplier_id, created_by, status, expected_delivery_date, remarks,
+                    admin_finalized, admin_finalized_at, admin_id, approved_by, approved_at, created_at, updated_at
+                ) VALUES (
+                    NULL, 'Merchandise Purchase Order', ?, 0, ?, 'merch', ?, ?,
+                    ?, ?, ?, 'Approved', ?, ?,
+                    1, NOW(), ?, ?, NOW(), NOW(), NOW()
+                )
+            ");
+            $stmt_po->execute([
+                $total_qty, $grand_total, $po_number, $po_number,
+                $station_id, $supplier_id, $me['id'], $expected_delivery, $po_notes,
+                $me['id'], $me['id']
+            ]);
+            $po_id = (int)$pdo->lastInsertId();
+
+            foreach ($items_to_insert as $item) {
+                $stmt_item = $pdo->prepare("
+                    INSERT INTO purchase_order_items
+                        (po_id, product_id, item_name, quantity, quantity_ordered, unit_price, total_price)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ");
+                $stmt_item->execute([
+                    $po_id, $item['product_id'], $item['product_name'], $item['quantity'],
+                    $item['quantity'], $item['unit_cost'], $item['total']
+                ]);
+            }
+
+            // Notify staff members at station about the newly issued PO for receiving
+            $stmt_staff = $pdo->prepare("SELECT id FROM users WHERE station_id = ? AND role IN ('staff', 'cashier') AND status = 'Active'");
+            $stmt_staff->execute([$station_id]);
+            $staff_ids = $stmt_staff->fetchAll(PDO::FETCH_COLUMN);
+            if (!empty($staff_ids)) {
+                manager_notify_users(
+                    $pdo,
+                    $staff_ids,
+                    'New Purchase Order Issued',
+                    "Purchase Order {$po_number} has been directly issued by Manager. Total items: {$total_qty}.",
+                    'staff_record_delivery.php'
+                );
+            }
+
+            log_activity($pdo, $me['id'], 'Create Direct Merchandise PO', "Directly created Merchandise PO {$po_number} ({$total_qty} items, ₱" . number_format($grand_total, 2) . ")");
+            $pdo->commit();
+            $_SESSION['success'] = "Purchase Order <strong>$po_number</strong> created directly and approved successfully.";
+            header("Location: print_po_new.php?batch_id=" . urlencode($po_number) . "&type=merch&print=1");
+            exit;
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $_SESSION['error'] = "Error creating direct PO: " . $e->getMessage();
+            header('Location: manager_stock_request_review.php?tab=pending_requests');
+            exit;
+        }
+    }
+
+    // 4. Directly Create Fuel Purchase Order (Without prior Staff Stock Request)
+    if ($action === 'create_direct_fuel_po') {
+        $supplier_id = (int)($_POST['supplier_id'] ?? 0);
+        if ($supplier_id <= 0) {
+            $supplier_id = manager_petron_supplier_id($pdo);
+        }
+        $expected_delivery = trim($_POST['expected_delivery'] ?? '') ?: date('Y-m-d', strtotime('+3 days'));
+        $remarks = trim($_POST['remarks'] ?? '');
+        $fuel_type_ids = $_POST['fuel_type_ids'] ?? [];
+        $volumes = $_POST['volumes'] ?? [];
+        $unit_costs = $_POST['unit_costs'] ?? [];
+
+        try {
+            $pdo->beginTransaction();
+            $items_to_insert = [];
+
+            foreach ($fuel_type_ids as $idx => $ft_id_raw) {
+                $ft_id = (int)$ft_id_raw;
+                if ($ft_id <= 0) continue;
+
+                $liters = (float)($volumes[$idx] ?? 0);
+                if ($liters <= 0) continue;
+
+                $unit_cost = (float)($unit_costs[$idx] ?? 0);
+                if ($unit_cost <= 0) {
+                    throw new Exception("Please enter a valid Cost per Liter (> 0) for each selected fuel type.");
+                }
+
+                // Get fuel name
+                $stmt_f = $pdo->prepare("SELECT name FROM fuel_types WHERE id = ? LIMIT 1");
+                $stmt_f->execute([$ft_id]);
+                $fuel_name = $stmt_f->fetchColumn() ?: 'Fuel';
+
+                $items_to_insert[] = [
+                    'fuel_type_id' => $ft_id,
+                    'fuel_type' => $fuel_name,
+                    'liters' => $liters,
+                    'unit_cost' => $unit_cost,
+                    'total' => round($liters * $unit_cost, 2)
+                ];
+            }
+
+            if (empty($items_to_insert)) {
+                throw new Exception("Please enter volume in liters (> 0) for at least one fuel type.");
+            }
+
+            $po_number = manager_next_po_number($pdo);
+            $po_notes = "Direct Fuel PO created by Manager\n"
+                . "Expected Delivery: " . $expected_delivery . "\n"
+                . "Remarks: " . ($remarks !== '' ? $remarks : 'None');
+            $line_count = count($items_to_insert);
+            $line_index = 1;
+
+            foreach ($items_to_insert as $item) {
+                $line_po_number = $line_count > 1
+                    ? $po_number . '-' . str_pad($line_index, 2, '0', STR_PAD_LEFT)
+                    : $po_number;
+
+                $stmt_ins = $pdo->prepare("
+                    INSERT INTO fuel_purchase_orders (
+                        po_number, batch_id, station_id, fuel_type_id, volume, unit_price, total_amount,
+                        supplier_id, expected_delivery_date, status, created_by, approved_by, approved_at,
+                        notes, created_at, updated_at
+                    ) VALUES (
+                        ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, 'Approved', ?, ?, NOW(),
+                        ?, NOW(), NOW()
+                    )
+                ");
+                $stmt_ins->execute([
+                    $line_po_number, $po_number, $station_id, $item['fuel_type_id'], $item['liters'],
+                    $item['unit_cost'], $item['total'], $supplier_id, $expected_delivery,
+                    $me['id'], $me['id'], $po_notes
+                ]);
+                $line_index++;
+            }
+
+            // Notify staff members at station about the newly issued Fuel PO for receiving
+            $stmt_staff = $pdo->prepare("SELECT id FROM users WHERE station_id = ? AND role IN ('staff', 'cashier', 'pump_attendant') AND status = 'Active'");
+            $stmt_staff->execute([$station_id]);
+            $staff_ids = $stmt_staff->fetchAll(PDO::FETCH_COLUMN);
+            if (!empty($staff_ids)) {
+                manager_notify_users(
+                    $pdo,
+                    $staff_ids,
+                    'New Fuel Purchase Order Issued',
+                    "Fuel Purchase Order {$po_number} has been directly issued by Manager.",
+                    'staff_record_delivery.php'
+                );
+            }
+
+            log_activity($pdo, $me['id'], 'Create Direct Fuel PO', "Directly created Fuel PO {$po_number} totaling ₱" . number_format(array_sum(array_column($items_to_insert, 'total')), 2));
+            $pdo->commit();
+            $_SESSION['success'] = "Fuel Purchase Order <strong>$po_number</strong> created directly and approved successfully.";
+            header("Location: print_po_new.php?batch_id=" . urlencode($po_number) . "&type=fuel&print=1");
+            exit;
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $_SESSION['error'] = "Error creating direct fuel PO: " . $e->getMessage();
+            header('Location: manager_stock_request_review.php?tab=pending_requests');
+            exit;
+        }
+    }
 }
 
 //  Summary Card Counts 
@@ -821,6 +1052,59 @@ $cnt_hist_fuel = count(array_filter($purchase_history_list, fn($r) => $r['catego
 $cnt_hist_merch = count(array_filter($purchase_history_list, fn($r) => $r['category_type'] === 'merchandise'));
 $cnt_hist_completed = count(array_filter($purchase_history_list, fn($r) => in_array(strtolower($r['status']), ['completed', 'received', 'stock-in complete'])));
 $cnt_hist_cancelled = count(array_filter($purchase_history_list, fn($r) => in_array(strtolower($r['status']), ['cancelled', 'rejected', 'withdrawn'])));
+
+// Fetch Products and Fuel Types for Direct PO Creation
+$direct_merch_products = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT ip.id, ip.product_name, ip.sku, ip.category, ip.size, ip.unit_cost, ip.price,
+               COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
+               COALESCE(si.unit, ip.size, 'pcs') AS unit
+        FROM inventory_products ip
+        LEFT JOIN station_inventory si ON ip.id = si.product_id AND si.station_id = ?
+        WHERE ip.is_active = 1 OR ip.is_active IS NULL
+        ORDER BY ip.category ASC, ip.product_name ASC
+    ");
+    $stmt->execute([$station_id]);
+    $direct_merch_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT si.product_id AS id, si.product_name, si.sku, si.category, si.size, si.unit_cost, si.unit_price AS price,
+                   si.stock_level AS current_stock, COALESCE(si.unit, 'pcs') AS unit
+            FROM station_inventory si
+            WHERE si.station_id = ?
+            ORDER BY si.product_name ASC
+        ");
+        $stmt->execute([$station_id]);
+        $direct_merch_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e2) {}
+}
+
+$direct_fuel_types = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT fi.fuel_type_id, fi.fuel_type, fi.current_level, fi.capacity, fi.ugt_no,
+               COALESCE((SELECT fp.price_per_liter FROM fuel_pricing fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id AND fp.is_active = 1 ORDER BY fp.effective_date DESC LIMIT 1), ft.price_per_liter, 0) AS current_price
+        FROM fuel_inventory fi
+        LEFT JOIN fuel_types ft ON fi.fuel_type_id = ft.id
+        WHERE fi.station_id = ?
+        ORDER BY fi.fuel_type_id ASC
+    ");
+    $stmt->execute([$station_id]);
+    $direct_fuel_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    try {
+        $stmt = $pdo->query("SELECT id AS fuel_type_id, name AS fuel_type, price_per_liter AS current_price, 0 AS current_level, 0 AS capacity, '' AS ugt_no FROM fuel_types ORDER BY id ASC");
+        $direct_fuel_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e2) {}
+}
+
+$active_suppliers = [];
+try {
+    $stmt = $pdo->query("SELECT id, name, contact_person, phone, email FROM suppliers ORDER BY CASE WHEN name LIKE '%Petron%' THEN 0 ELSE 1 END, name ASC");
+    $active_suppliers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -1267,10 +1551,16 @@ body .main,
 <div class="pr-container">
 
     <!-- Header -->
-    <div style="margin-bottom: 20px;">
-        <h1 class="pr-title">
-            <i class="fas fa-clipboard-list" style="color: #002F6C;"></i> Purchase Management
-        </h1>
+    <div style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;">
+        <div>
+            <h1 class="pr-title" style="margin: 0;">
+                <i class="fas fa-clipboard-list" style="color: #002F6C;"></i> Purchase Management
+            </h1>
+            <p style="margin: 4px 0 0 0; font-size: 13px; color: #64748b;">Review staff stock requests or directly create new purchase orders for merchandise & fuel.</p>
+        </div>
+        <button type="button" onclick="openDirectPoModal()" class="btn-forward" style="background: #002F6C !important; color: #ffffff !important; border-radius: 8px !important; font-size: 13.5px !important; font-weight: 700 !important; padding: 11px 22px !important; box-shadow: 0 4px 10px rgba(0, 47, 108, 0.25) !important; cursor: pointer !important; display: inline-flex !important; align-items: center !important; gap: 8px !important; text-decoration: none;">
+            <i class="fas fa-plus-circle" style="font-size: 15px;"></i> Create Purchase Order
+        </button>
     </div>
 
     <!-- Alert Notifications -->
@@ -2627,7 +2917,416 @@ document.addEventListener('DOMContentLoaded', function() {
     msrRender('merch');
     msrRender('fuel');
     msrRender('hist');
+    
+    // Initialize one row in direct merch table
+    addDirectMerchRow();
 });
+
+// ==========================================
+// DIRECT CREATE PURCHASE ORDER JS LOGIC
+// ==========================================
+const directMerchCatalog = <?= json_encode($direct_merch_products, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+const directFuelCatalog = <?= json_encode($direct_fuel_types, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+
+function openDirectPoModal() {
+    openModal('directPoModal');
+}
+
+function switchDirectPoType(type) {
+    const merchForm = document.getElementById('directMerchPoForm');
+    const fuelForm = document.getElementById('directFuelPoForm');
+    const merchBtn = document.getElementById('directPoTabMerchBtn');
+    const fuelBtn = document.getElementById('directPoTabFuelBtn');
+
+    if (type === 'merch') {
+        merchForm.style.display = 'block';
+        fuelForm.style.display = 'none';
+
+        merchBtn.style.background = '#fff';
+        merchBtn.style.color = '#002F6C';
+        merchBtn.style.borderColor = '#cbd5e1';
+        merchBtn.style.borderBottom = 'none';
+        merchBtn.querySelector('i').style.color = '#002F6C';
+
+        fuelBtn.style.background = 'transparent';
+        fuelBtn.style.color = '#64748b';
+        fuelBtn.style.borderColor = 'transparent';
+        fuelBtn.querySelector('i').style.color = '#64748b';
+    } else {
+        merchForm.style.display = 'none';
+        fuelForm.style.display = 'block';
+
+        fuelBtn.style.background = '#fff';
+        fuelBtn.style.color = '#1d4ed8';
+        fuelBtn.style.borderColor = '#cbd5e1';
+        fuelBtn.style.borderBottom = 'none';
+        fuelBtn.querySelector('i').style.color = '#1d4ed8';
+
+        merchBtn.style.background = 'transparent';
+        merchBtn.style.color = '#64748b';
+        merchBtn.style.borderColor = 'transparent';
+        merchBtn.querySelector('i').style.color = '#64748b';
+    }
+}
+
+function addDirectMerchRow() {
+    const tbody = document.getElementById('directMerchTbody');
+    if (!tbody) return;
+
+    let optionsHtml = '<option value="">-- Select Product --</option>';
+    directMerchCatalog.forEach(function(p) {
+        const skuText = p.sku ? ' (SKU: ' + p.sku + ')' : '';
+        const stockText = ' [Stock: ' + (p.current_stock || 0) + ' ' + (p.unit || 'pcs') + ']';
+        optionsHtml += '<option value="' + p.id + '">' + (p.product_name || 'Product') + skuText + stockText + '</option>';
+    });
+
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid #f1f5f9';
+    tr.innerHTML = `
+        <td style="padding: 10px 12px;">
+            <select name="product_ids[]" onchange="onDirectProductSelect(this)" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px;" required>
+                ${optionsHtml}
+            </select>
+        </td>
+        <td style="padding: 10px 12px; text-align: center; color: #64748b; font-weight: 600;" class="direct-merch-unit-cell">
+            pcs
+        </td>
+        <td style="padding: 10px 12px; text-align: right;">
+            <input type="number" step="0.01" min="0.01" name="unit_costs[]" oninput="calcDirectMerchTotal()" class="direct-merch-cost-input" style="width: 110px; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 600;" placeholder="0.00" required>
+        </td>
+        <td style="padding: 10px 12px; text-align: center;">
+            <input type="number" step="1" min="1" name="quantities[]" value="1" oninput="calcDirectMerchTotal()" class="direct-merch-qty-input" style="width: 90px; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: center; font-weight: 700; color: #002F6C;" required>
+        </td>
+        <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #002F6C; font-family: monospace;" class="direct-merch-line-total">
+            ₱ 0.00
+        </td>
+        <td style="padding: 10px 12px; text-align: center;">
+            <button type="button" onclick="removeDirectMerchRow(this)" style="background: transparent; border: none; color: #ef4444; font-size: 14px; cursor: pointer; padding: 4px;" title="Remove row">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(tr);
+    calcDirectMerchTotal();
+}
+
+function removeDirectMerchRow(btn) {
+    const tbody = document.getElementById('directMerchTbody');
+    if (!tbody) return;
+    if (tbody.querySelectorAll('tr').length <= 1) {
+        alert('Purchase order must have at least one product row.');
+        return;
+    }
+    const tr = btn.closest('tr');
+    if (tr) tr.remove();
+    calcDirectMerchTotal();
+}
+
+function onDirectProductSelect(selectElem) {
+    const prodId = parseInt(selectElem.value, 10);
+    const tr = selectElem.closest('tr');
+    if (!tr) return;
+
+    const prod = directMerchCatalog.find(p => parseInt(p.id, 10) === prodId);
+    const unitCell = tr.querySelector('.direct-merch-unit-cell');
+    const costInput = tr.querySelector('.direct-merch-cost-input');
+
+    if (prod) {
+        if (unitCell) unitCell.textContent = prod.unit || prod.size || 'pcs';
+        if (costInput) {
+            const cost = parseFloat(prod.unit_cost || prod.price || 0);
+            costInput.value = cost > 0 ? cost.toFixed(2) : '';
+        }
+    } else {
+        if (unitCell) unitCell.textContent = 'pcs';
+        if (costInput) costInput.value = '';
+    }
+    calcDirectMerchTotal();
+}
+
+function calcDirectMerchTotal() {
+    const tbody = document.getElementById('directMerchTbody');
+    if (!tbody) return;
+
+    let grandTotal = 0;
+    let totalQty = 0;
+    let activeProductsCount = 0;
+
+    tbody.querySelectorAll('tr').forEach(function(tr) {
+        const sel = tr.querySelector('select[name="product_ids[]"]');
+        const costInput = tr.querySelector('.direct-merch-cost-input');
+        const qtyInput = tr.querySelector('.direct-merch-qty-input');
+        const lineTotalCell = tr.querySelector('.direct-merch-line-total');
+
+        const cost = parseFloat(costInput ? costInput.value : 0) || 0;
+        const qty = parseInt(qtyInput ? qtyInput.value : 0, 10) || 0;
+        const lineTotal = cost * qty;
+
+        if (lineTotalCell) {
+            lineTotalCell.textContent = '₱ ' + lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        if (sel && sel.value) {
+            activeProductsCount++;
+            grandTotal += lineTotal;
+            totalQty += qty;
+        }
+    });
+
+    const itemsText = document.getElementById('directMerchTotalItemsText');
+    if (itemsText) {
+        itemsText.textContent = activeProductsCount + ' Product' + (activeProductsCount !== 1 ? 's' : '') + ' (' + totalQty.toLocaleString() + ' units)';
+    }
+
+    const grandText = document.getElementById('directMerchGrandTotalText');
+    if (grandText) {
+        grandText.textContent = '₱ ' + grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+}
+
+function calcDirectFuelTotal() {
+    const fuelForm = document.getElementById('directFuelPoForm');
+    if (!fuelForm) return;
+
+    let grandTotal = 0;
+    let totalLiters = 0;
+
+    fuelForm.querySelectorAll('tbody tr').forEach(function(tr) {
+        const costInput = tr.querySelector('.direct-fuel-cost');
+        const volInput = tr.querySelector('.direct-fuel-vol');
+        const subtotalCell = tr.querySelector('.direct-fuel-subtotal');
+
+        const cost = parseFloat(costInput ? costInput.value : 0) || 0;
+        const liters = parseFloat(volInput ? volInput.value : 0) || 0;
+        const lineTotal = cost * liters;
+
+        if (subtotalCell) {
+            subtotalCell.textContent = '₱ ' + lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        if (liters > 0) {
+            totalLiters += liters;
+            grandTotal += lineTotal;
+        }
+    });
+
+    const litersText = document.getElementById('directFuelTotalLitersText');
+    if (litersText) {
+        litersText.textContent = totalLiters.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Liters';
+    }
+
+    const grandText = document.getElementById('directFuelGrandTotalText');
+    if (grandText) {
+        grandText.textContent = '₱ ' + grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+}
 </script>
+
+<!-- DIRECT CREATE PURCHASE ORDER MODAL -->
+<div id="directPoModal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 980px;">
+        <div class="modal-header" style="background: #002F6C; color: #fff; padding: 18px 24px; border-radius: 16px 16px 0 0; display: flex; align-items: center; justify-content: space-between;">
+            <div>
+                <h2 class="modal-title" style="margin: 0; font-size: 18px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-file-invoice" style="color: #60a5fa;"></i> Create Direct Purchase Order
+                </h2>
+                <div style="font-size: 12.5px; color: #cbd5e1; margin-top: 3px;">Directly order inventory from suppliers without needing a prior staff stock request.</div>
+            </div>
+            <button type="button" onclick="closeModal('directPoModal')" style="background: rgba(255,255,255,0.15); border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; transition: background 0.15s;">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <!-- PO Type Switcher Buttons -->
+        <div style="padding: 16px 24px 0 24px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; gap: 10px;">
+            <button type="button" id="directPoTabMerchBtn" onclick="switchDirectPoType('merch')" style="padding: 10px 20px; border-radius: 8px 8px 0 0; border: 1.5px solid #cbd5e1; border-bottom: none; font-size: 13.5px; font-weight: 700; cursor: pointer; background: #fff; color: #002F6C; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 -2px 6px rgba(0,0,0,0.03);">
+                <i class="fas fa-boxes" style="color: #002F6C;"></i> Merchandise PO
+            </button>
+            <button type="button" id="directPoTabFuelBtn" onclick="switchDirectPoType('fuel')" style="padding: 10px 20px; border-radius: 8px 8px 0 0; border: 1.5px solid transparent; border-bottom: none; font-size: 13.5px; font-weight: 600; cursor: pointer; background: transparent; color: #64748b; display: inline-flex; align-items: center; gap: 8px;">
+                <i class="fas fa-gas-pump" style="color: #64748b;"></i> Fuel PO
+            </button>
+        </div>
+
+        <div class="modal-body" style="padding: 24px; max-height: calc(82vh - 120px); overflow-y: auto;">
+            
+            <!-- MERCHANDISE DIRECT PO FORM -->
+            <form id="directMerchPoForm" method="POST" action="manager_stock_request_review.php">
+                <input type="hidden" name="action" value="create_direct_merch_po">
+                
+                <!-- General PO Meta -->
+                <div class="field-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px; background: #f8fafc; padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0;">
+                    <div class="field-group">
+                        <label><i class="fas fa-truck"></i> Supplier</label>
+                        <select name="supplier_id" required>
+                            <?php foreach ($active_suppliers as $supp): ?>
+                                <option value="<?= (int)$supp['id'] ?>" <?= stripos($supp['name'], 'Petron') !== false ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($supp['name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="field-group">
+                        <label><i class="fas fa-calendar-alt"></i> Expected Delivery Date</label>
+                        <input type="date" name="expected_delivery" value="<?= date('Y-m-d', strtotime('+3 days')) ?>" min="<?= date('Y-m-d') ?>" required>
+                    </div>
+                    <div class="field-group" style="grid-column: 1 / -1;">
+                        <label><i class="fas fa-sticky-note"></i> Remarks / Delivery Instructions (Optional)</label>
+                        <textarea name="remarks" rows="2" placeholder="Add any special delivery notes or instructions..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Products Table -->
+                <div style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="font-weight: 800; font-size: 14px; color: #002F6C; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-list-ol"></i> Order Items
+                    </div>
+                    <button type="button" onclick="addDirectMerchRow()" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; padding: 7px 14px; border-radius: 6px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s;">
+                        <i class="fas fa-plus"></i> Add Item
+                    </button>
+                </div>
+
+                <div style="border: 1px solid #e2e8f0; border-radius: 10px; overflow-x: auto; margin-bottom: 18px;">
+                    <table id="directMerchTable" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                        <thead>
+                            <tr style="background: #f1f5f9; border-bottom: 1.5px solid #e2e8f0; color: #475569; font-size: 11px; text-transform: uppercase;">
+                                <th style="padding: 10px 12px; text-align: left; width: 40%;">Product</th>
+                                <th style="padding: 10px 12px; text-align: center; width: 12%;">Unit</th>
+                                <th style="padding: 10px 12px; text-align: right; width: 18%;">Unit Cost (₱)</th>
+                                <th style="padding: 10px 12px; text-align: center; width: 15%;">Qty to Order</th>
+                                <th style="padding: 10px 12px; text-align: right; width: 20%;">Total (₱)</th>
+                                <th style="padding: 10px 12px; text-align: center; width: 5%;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="directMerchTbody">
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Grand Total & Summary -->
+                <div style="background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 12px; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+                    <div>
+                        <div style="font-size: 12px; font-weight: 700; color: #166534; text-transform: uppercase;">Total Items Selected</div>
+                        <div id="directMerchTotalItemsText" style="font-size: 16px; font-weight: 800; color: #15803d;">0 Products (0 units)</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 12px; font-weight: 700; color: #166534; text-transform: uppercase;">PO Grand Total Amount</div>
+                        <div id="directMerchGrandTotalText" style="font-size: 22px; font-weight: 800; color: #15803d; font-family: monospace;">₱ 0.00</div>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                    <button type="button" onclick="closeModal('directPoModal')" class="btn-cancel-inline">Cancel</button>
+                    <button type="submit" class="btn-forward" style="padding: 10px 24px;">
+                        <i class="fas fa-check-circle"></i> Issue & Create PO
+                    </button>
+                </div>
+            </form>
+
+            <!-- FUEL DIRECT PO FORM -->
+            <form id="directFuelPoForm" method="POST" action="manager_stock_request_review.php" style="display: none;">
+                <input type="hidden" name="action" value="create_direct_fuel_po">
+                
+                <!-- General PO Meta -->
+                <div class="field-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px; background: #f8fafc; padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0;">
+                    <div class="field-group">
+                        <label><i class="fas fa-truck"></i> Supplier</label>
+                        <select name="supplier_id" required>
+                            <?php foreach ($active_suppliers as $supp): ?>
+                                <option value="<?= (int)$supp['id'] ?>" <?= stripos($supp['name'], 'Petron') !== false ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($supp['name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="field-group">
+                        <label><i class="fas fa-calendar-alt"></i> Expected Delivery Date</label>
+                        <input type="date" name="expected_delivery" value="<?= date('Y-m-d', strtotime('+3 days')) ?>" min="<?= date('Y-m-d') ?>" required>
+                    </div>
+                    <div class="field-group" style="grid-column: 1 / -1;">
+                        <label><i class="fas fa-sticky-note"></i> Remarks / Tanker Delivery Instructions (Optional)</label>
+                        <textarea name="remarks" rows="2" placeholder="Add tanker or discharge instructions..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Fuel Table -->
+                <div style="margin-bottom: 16px; font-weight: 800; font-size: 14px; color: #002F6C; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-gas-pump"></i> Fuel Inventory Order Schedule
+                </div>
+
+                <div style="border: 1px solid #e2e8f0; border-radius: 10px; overflow-x: auto; margin-bottom: 18px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                        <thead>
+                            <tr style="background: #f1f5f9; border-bottom: 1.5px solid #e2e8f0; color: #475569; font-size: 11px; text-transform: uppercase;">
+                                <th style="padding: 10px 12px; text-align: left; width: 30%;">Fuel Type</th>
+                                <th style="padding: 10px 12px; text-align: center; width: 20%;">Current Level</th>
+                                <th style="padding: 10px 12px; text-align: right; width: 20%;">Cost / Liter (₱)</th>
+                                <th style="padding: 10px 12px; text-align: center; width: 20%;">Liters to Order</th>
+                                <th style="padding: 10px 12px; text-align: right; width: 20%;">Subtotal (₱)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($direct_fuel_types)): ?>
+                                <tr><td colspan="5" style="padding: 24px; text-align: center; color: #64748b;">No fuel types found.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($direct_fuel_types as $f_idx => $ft): 
+                                    $ft_id = (int)$ft['fuel_type_id'];
+                                    $cur_price = (float)($ft['current_price'] ?? 0);
+                                    $cur_lvl = (float)($ft['current_level'] ?? 0);
+                                    $cap = (float)($ft['capacity'] ?? 0);
+                                ?>
+                                <tr style="border-bottom: 1px solid #f1f5f9;">
+                                    <td style="padding: 12px;">
+                                        <input type="hidden" name="fuel_type_ids[]" value="<?= $ft_id ?>">
+                                        <div style="font-weight: 700; color: #002F6C;"><?= htmlspecialchars($ft['fuel_type']) ?></div>
+                                        <?php if (!empty($ft['ugt_no'])): ?>
+                                            <div style="font-size: 11px; color: #64748b;">Tank: <?= htmlspecialchars($ft['ugt_no']) ?></div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td style="padding: 12px; text-align: center;">
+                                        <span style="font-weight: 700; color: #475569;"><?= number_format($cur_lvl, 2) ?> L</span>
+                                        <?php if ($cap > 0): ?>
+                                            <span style="font-size: 11px; color: #94a3b8;">/ <?= number_format($cap) ?> L</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td style="padding: 12px; text-align: right;">
+                                        <input type="number" step="0.01" min="0" name="unit_costs[]" value="<?= $cur_price > 0 ? number_format($cur_price, 2, '.', '') : '' ?>" oninput="calcDirectFuelTotal()" class="direct-fuel-cost" style="width: 100px; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 600;" placeholder="0.00">
+                                    </td>
+                                    <td style="padding: 12px; text-align: center;">
+                                        <input type="number" step="1" min="0" name="volumes[]" value="" oninput="calcDirectFuelTotal()" class="direct-fuel-vol" style="width: 120px; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 700; color: #002F6C;" placeholder="0">
+                                    </td>
+                                    <td style="padding: 12px; text-align: right; font-weight: 700; color: #002F6C; font-family: monospace;" class="direct-fuel-subtotal">
+                                        ₱ 0.00
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Grand Total & Summary -->
+                <div style="background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 12px; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+                    <div>
+                        <div style="font-size: 12px; font-weight: 700; color: #1e40af; text-transform: uppercase;">Total Fuel Volume</div>
+                        <div id="directFuelTotalLitersText" style="font-size: 16px; font-weight: 800; color: #1d4ed8;">0.00 Liters</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 12px; font-weight: 700; color: #1e40af; text-transform: uppercase;">Fuel PO Grand Total</div>
+                        <div id="directFuelGrandTotalText" style="font-size: 22px; font-weight: 800; color: #1d4ed8; font-family: monospace;">₱ 0.00</div>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                    <button type="button" onclick="closeModal('directPoModal')" class="btn-cancel-inline">Cancel</button>
+                    <button type="submit" class="btn-forward" style="padding: 10px 24px; background: #1d4ed8 !important; border-color: #1d4ed8 !important;">
+                        <i class="fas fa-check-circle"></i> Issue & Create Fuel PO
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <?php include __DIR__ . '/../partials/footer.php'; ?>
 

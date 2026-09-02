@@ -14,7 +14,7 @@ $role       = role_key($me['role'] ?? '');
 $station_id = (int) user_station_id();
 
 // Access control - Manager and Supervisor only
-if (!in_array($role, ['manager', 'supervisor'])) {
+if (!in_array($role, ['manager', 'supervisor', 'admin', 'superadmin'])) {
     $_SESSION['error'] = 'Access denied. Manager access required.';
     header('Location: staff_dashboard.php'); 
     exit;

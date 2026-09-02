@@ -353,8 +353,8 @@ function getPaymentMethods($pdo) {
 }
 
 function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
-    // Only staff can create transactions
-    if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+    // Allow staff, cashier, pump_attendant, admin, manager, and superadmin to create transactions
+    if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'admin', 'manager', 'superadmin', 'cashier/staff'])) {
         http_response_code(403);
         echo json_encode(['error' => 'Access denied']);
         return;
@@ -613,28 +613,25 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
     }
 
     // ── Calculate totals ──────────────────────────────────────────────────────
-    // Use frontend-computed values (VAT is inclusive in final retail pricing).
-    // The items sum ($items_subtotal) is the actual Grand Total (VAT-inclusive).
+    // Subtotal (Vatable Sales) = sum of items
+    // VAT (12%) = subtotal * 0.12
+    // Grand Total = subtotal + VAT (12%)
     $items_subtotal = 0;
     foreach ($data['items'] as $item) {
         $items_subtotal += floatval($item['quantity'] ?? 1) * floatval($item['unit_price'] ?? 0);
     }
-    
-    // Grand total is the sum of items (already VAT inclusive)
-    $total_amount = floatval($data['total_amount'] ?? $items_subtotal);
-    
-    // Subtotal (Vatable Sales) is total divided by 1.12
-    $subtotal_amount = floatval($data['subtotal'] ?? round($total_amount / 1.12, 2));
-    
-    // VAT (12%) is the difference between total and vatable subtotal
-    $vat_amount = floatval($data['vat_amount'] ?? round($total_amount - $subtotal_amount, 2));
+    $items_subtotal = round($items_subtotal, 2);
 
-    // Sanity-check: if frontend grand total deviates too much from items sum, recompute
-    if (abs($total_amount - $items_subtotal) > 0.10) {
-        // Frontend total deviates too much — recompute from items
-        $total_amount    = round($items_subtotal, 2);
-        $subtotal_amount = round($total_amount / 1.12, 2);
-        $vat_amount      = round($total_amount - $subtotal_amount, 2);
+    $subtotal_amount = floatval($data['subtotal'] ?? $items_subtotal);
+    if ($subtotal_amount <= 0) {
+        $subtotal_amount = $items_subtotal;
+    }
+
+    $vat_amount = floatval($data['vat_amount'] ?? round($subtotal_amount * 0.12, 2));
+
+    $total_amount = floatval($data['total_amount'] ?? round($subtotal_amount + $vat_amount, 2));
+    if ($total_amount <= 0 || abs($total_amount - ($subtotal_amount + $vat_amount)) > 0.10) {
+        $total_amount = round($subtotal_amount + $vat_amount, 2);
     }
 
     // ── Payment method + amount setup ─────────────────────────────────────────

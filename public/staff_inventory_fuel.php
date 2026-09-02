@@ -16,8 +16,8 @@ if (!in_array($role, ['superadmin', 'developer']) && !is_module_enabled('invento
     render_module_disabled_page('Inventory');
 }
 
-if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
-    header('Location: dashboard.php');
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'admin', 'manager', 'superadmin'])) {
+    header('Location: login.php');
     exit;
 }
 

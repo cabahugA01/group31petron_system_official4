@@ -204,8 +204,8 @@ if ($type === 'job_order') {
                 'amount_paid'         => $jo_paid,
                 'balance_due'         => $jo_balance,
                 'total_amount'        => $jo_total,
-                'subtotal_amount'     => 0,
-                'vat_amount'          => 0,
+                'subtotal_amount'     => (float)($jo['subtotal_amount'] ?? 0),
+                'vat_amount'          => (float)($jo['vat_amount'] ?? 0),
                 'amount_tendered'     => $jo_paid,
                 'change_amount'       => 0,
                 'card_reference'      => $jo['card_reference'] ?? '',
@@ -801,11 +801,31 @@ $txn_type_label    = 'MERCHANDISE & SERVICE TRANSACTION';
 $txn_type_sublabel = 'Official Merchandise & Service Invoice';
 
 // ── Compute subtotal and VAT correctly (100% exact math) ─────────────────────
-$total = (float)($sale['total_amount'] ?? $sale['total'] ?? 0);
+$total           = (float)($sale['total_amount'] ?? $sale['total'] ?? 0);
+$stored_subtotal = (float)($sale['subtotal_amount'] ?? $sale['subtotal'] ?? 0);
+$stored_vat      = (float)($sale['vat_amount'] ?? 0);
 
-// Uniform Computation: Gross Total = $total, Net Sales = $total / 1.12, VAT = $total - Net Sales
-$subtotal_display = $total > 0 ? round($total / 1.12, 2) : 0;
-$vat_display      = $total > 0 ? round($total - $subtotal_display, 2) : 0;
+// Check if items sum to a subtotal
+$items_sum = 0;
+if (!empty($sale['items'])) {
+    foreach ($sale['items'] as $it) {
+        $items_sum += (float)($it['quantity'] ?? 1) * (float)($it['unit_price'] ?? 0);
+    }
+}
+
+if ($stored_subtotal > 0 && $stored_vat > 0 && abs(($stored_subtotal + $stored_vat) - $total) <= 0.05) {
+    $subtotal_display = $stored_subtotal;
+    $vat_display      = $stored_vat;
+} elseif ($items_sum > 0 && abs(($items_sum * 1.12) - $total) <= 0.05) {
+    $subtotal_display = round($items_sum, 2);
+    $vat_display      = round($total - $subtotal_display, 2);
+} elseif ($stored_vat > 0 && $total > $stored_vat) {
+    $subtotal_display = round($total - $stored_vat, 2);
+    $vat_display      = $stored_vat;
+} else {
+    $subtotal_display = $total > 0 ? round($total / 1.12, 2) : 0;
+    $vat_display      = $total > 0 ? round($total - $subtotal_display, 2) : 0;
+}
 $vatable   = $subtotal_display;
 $vat_amt   = $vat_display;
 $items     = $sale['items'] ?? [];

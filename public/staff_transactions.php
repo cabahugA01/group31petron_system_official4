@@ -8,9 +8,8 @@ $me = current_user();
 $station_id = user_station_id();
 $role = role_key($me['role'] ?? '');
 
-// Only staff can access this page
-if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
-    header('Location: dashboard.php');
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'admin', 'manager', 'superadmin'])) {
+    header('Location: login.php');
     exit;
 }
 

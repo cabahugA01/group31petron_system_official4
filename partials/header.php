@@ -4200,8 +4200,14 @@ require_once __DIR__ . '/rbac_menu.php';
             <div id="searchWrapper" style="position: relative; width: 100%; max-width: 440px; pointer-events: auto;">
                 <div style="position: relative; display: flex; align-items: center;">
                     <i class="fas fa-search" style="position: absolute; left: 14px; color: #94a3b8; font-size: 14px; pointer-events: none;"></i>
-                    <input type="text" id="searchInput" placeholder="Search Customer, JO, Product, OR No..." 
+                    <input type="search" id="searchInput" name="app_global_search_q" 
+                           placeholder="Search Customer, JO, Product, OR No..." 
                            autocomplete="off" 
+                           autocapitalize="off" 
+                           spellcheck="false" 
+                           data-lpignore="true" 
+                           data-form-type="other" 
+                           aria-autocomplete="none" 
                            style="width: 100%; padding: 8px 14px 8px 38px; border-radius: 20px; border: 1px solid #cbd5e1; font-size: 13px; outline: none; background: #ffffff; color: #0f172a; transition: all 0.15s ease;" />
                 </div>
                 <div id="searchSuggestions" style="display: none; position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; max-height: 450px; overflow-y: auto; z-index: 99999;"></div>
@@ -5468,6 +5474,21 @@ require_once __DIR__ . '/rbac_menu.php';
             const searchSuggestions = document.getElementById('searchSuggestions');
             if (!searchInput || !searchSuggestions) return;
 
+            // Clear any browser autofill (e.g. email) on initialization and focus
+            function cleanAutofill() {
+                if (searchInput.value && (searchInput.value.includes('@') || searchInput.value.includes('.com') || searchInput.value.includes('.edu'))) {
+                    searchInput.value = '';
+                    searchSuggestions.style.display = 'none';
+                    searchSuggestions.innerHTML = '';
+                }
+            }
+            cleanAutofill();
+            setTimeout(cleanAutofill, 100);
+            setTimeout(cleanAutofill, 500);
+            setTimeout(cleanAutofill, 1500);
+            window.addEventListener('load', cleanAutofill);
+            searchInput.addEventListener('focus', cleanAutofill);
+
             // Icon + colour per result type (mirrors search.php $ICONS / $COLORS)
             const TYPE_META = {
                 'Transaction'   : { icon: 'fas fa-shopping-cart',   color: '#3b82f6' },
@@ -5492,6 +5513,11 @@ require_once __DIR__ . '/rbac_menu.php';
             searchInput.addEventListener('input', function () {
                 clearTimeout(debounceTimer);
                 const query = this.value.trim();
+                if (query.includes('@') && (query.includes('.') || query.includes('com'))) {
+                    this.value = '';
+                    searchSuggestions.style.display = 'none';
+                    return;
+                }
                 if (query.length < 2) {
                     searchSuggestions.style.display = 'none';
                     return;
@@ -6681,3 +6707,5 @@ try {
     setInterval(checkStatus, 10000);
 })();
 </script>
+<!-- Node.js Real-time Service Integration -->
+<script src="<?= htmlspecialchars($public_base_url) ?>/js/nodejs_realtime.js"></script>

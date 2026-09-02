@@ -497,25 +497,33 @@ overflow: hidden;
     box-sizing: border-box !important;
     border-radius: 10px;
     background: #ffffff;
+.vt-table-wrapper {
+    width: 100% !important;
+    overflow-x: hidden !important;
+    background: #ffffff !important;
+    border-radius: 10px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
+    border: 1px solid #e2e8f0 !important;
 }
 .vt-table { 
     width: 100% !important; 
-    min-width: 960px !important; 
     border-collapse: collapse !important; 
     table-layout: fixed !important; 
 }
 .vt-table thead th {
-    background: #002F70 !important; color: #ffffff !important; font-size: 12px !important;
-    font-weight: 700 !important; padding: 10px 6px !important; text-transform: uppercase !important;
+    background: #002F70 !important; color: #ffffff !important; font-size: 11px !important;
+    font-weight: 700 !important; padding: 10px 8px !important; text-transform: uppercase !important;
     white-space: nowrap !important;
     border-bottom: 2px solid #001f4d !important; vertical-align: middle !important;
-    letter-spacing: 0.2px;
-    overflow: hidden; text-overflow: ellipsis;
+    letter-spacing: 0.3px;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
 }
 .vt-table tbody td {
-    padding: 10px 6px !important; vertical-align: middle !important; font-size: 13px !important;
+    padding: 10px 8px !important; vertical-align: middle !important; font-size: 12px !important;
     border-bottom: 1px solid #f1f5f9 !important; color: #334155;
-    overflow: hidden; text-overflow: ellipsis;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
 }
 .vt-table tbody tr:hover td { background: #f8fafc !important; }
 
@@ -658,48 +666,34 @@ overflow: hidden;
     <!-- Table Container -->
     <div class="card">
         <div class="vt-table-wrapper">
-        <table class="vt-table" style="table-layout:fixed;width:100%;">
+        <table class="vt-table">
             <colgroup>
-                <col style="width:8%;"><!-- OR NO. -->
-                <col style="width:9%;"><!-- TXN ID -->
-                <col style="width:8%;"><!-- CUSTOMER -->
-                <col style="width:7%;"><!-- TYPE -->
-                <col style="width:14%;"><!-- PRODUCTS -->
-                <col style="width:8%;"><!-- SERVICE TYPE -->
-                <col style="width:5%;"><!-- SVC FEE -->
-                <col style="width:5%;"><!-- LABOR FEE -->
-                <col style="width:5%;"><!-- PLATE NO. -->
-                <col style="width:8%;"><!-- TOTAL -->
-                <col style="width:6%;"><!-- PAYMENT -->
-                <col style="width:4%;"><!-- SHIFT -->
-                <col style="width:6%;"><!-- STAFF -->
-                <col style="width:7%;"><!-- STATUS -->
-                <col style="width:7%;"><!-- DATE & TIME -->
-                <col style="width:8%;"><!-- ACTIONS -->
+                <col style="width:15%;"><!-- OR NO. / TXN ID -->
+                <col style="width:13%;"><!-- CUSTOMER & VEHICLE -->
+                <col style="width:8%;"><!-- TYPE & SHIFT -->
+                <col style="width:15%;"><!-- PRODUCTS / SERVICES -->
+                <col style="width:6%;"><!-- FEES BREAKDOWN -->
+                <col style="width:10%;"><!-- TOTAL & PAYMENT -->
+                <col style="width:12%;"><!-- STAFF & DATE -->
+                <col style="width:11%;"><!-- STATUS -->
+                <col style="width:10%;"><!-- ACTIONS -->
             </colgroup>
             <thead>
                 <tr>
-                    <th style="white-space:nowrap;">OR NO.</th>
-                    <th style="white-space:nowrap;">TXN ID</th>
-                    <th style="white-space:nowrap;">CUSTOMER</th>
-                    <th style="white-space:nowrap;">TYPE</th>
-                    <th>PRODUCTS</th>
-                    <th>SERVICE TYPE</th>
-                    <th style="text-align:right;white-space:nowrap;">SVC FEE</th>
-                    <th style="text-align:right;white-space:nowrap;">LABOR FEE</th>
-                    <th style="text-align:center;white-space:nowrap;">PLATE NO.</th>
-                    <th style="text-align:right;white-space:nowrap;">TOTAL</th>
-                    <th style="white-space:nowrap;">PAYMENT</th>
-                    <th style="white-space:nowrap;">SHIFT</th>
-                    <th style="white-space:nowrap;">STAFF</th>
+                    <th style="white-space:nowrap;">OR NO. / TXN ID</th>
+                    <th style="white-space:nowrap;">CUSTOMER & VEHICLE</th>
+                    <th style="white-space:nowrap;">TYPE & SHIFT</th>
+                    <th style="white-space:nowrap;">PRODUCTS / SERVICES</th>
+                    <th style="white-space:nowrap;">FEES</th>
+                    <th style="white-space:nowrap;">TOTAL & PAYMENT</th>
+                    <th style="white-space:nowrap;">STAFF & DATE</th>
                     <th style="text-align:center;white-space:nowrap;">STATUS</th>
-                    <th style="white-space:nowrap;">DATE & TIME</th>
                     <th style="text-align:center;white-space:nowrap;">ACTIONS</th>
                 </tr>
             </thead>
             <tbody>
             <?php if(empty($rows)): ?>
-            <tr><td colspan="16" style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:8px;"></i>No transactions found</td></tr>
+            <tr><td colspan="9" style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:8px;"></i>No transactions found</td></tr>
             <?php else: ?>
                         <?php foreach($rows as $r): ?>
             <?php
@@ -755,44 +749,111 @@ overflow: hidden;
                 $or_no = 'OR-' . date('Y', strtotime($r['txn_date'])) . '-' . str_pad($r['txn_db_id'], 6, '0', STR_PAD_LEFT);
             ?>
             <tr>
-                <td style="font-weight:700;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<?=htmlspecialchars($or_no)?>"><?=htmlspecialchars($or_no)?></td>
-                <td style="font-family:monospace;color:#64748b;font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<?=htmlspecialchars($r['transaction_id'])?>"><?=htmlspecialchars($r['transaction_id'])?></td>
-                <td style="color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<?=htmlspecialchars($r['customer'])?>"><?=htmlspecialchars($r['customer'])?></td>
-                <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span class="badge <?=$tBadge?>"><i class="fas <?=$tIcon?>"></i> <?=htmlspecialchars($tLabel)?></span></td>
-                <td style="font-size:11px;line-height:1.2;vertical-align:middle;word-break:break-word;"><?=format_transaction_items($r['items'])?></td>
-                <td style="font-size:11px;color:#475569;line-height:1.2;vertical-align:middle;word-break:break-word;" title="<?=htmlspecialchars($r['service_type']??'')?>"><?=htmlspecialchars(!empty(trim($r['service_type']??'')) ? $r['service_type'] : '—')?></td>
-                <td style="font-weight:700;color:#2563eb;text-align:right;white-space:nowrap;"><?php
-                    $s_cost = (float)($r['service_fee'] ?? 0);
-                    echo $s_cost > 0 ? '₱' . number_format($s_cost, 2) : '<span style="color:#cbd5e1;">—</span>';
-                ?></td>
-                <td style="font-weight:700;color:#16a34a;text-align:right;white-space:nowrap;"><?php
-                    $l_cost = (float)($r['labor_fee'] ?? 0);
-                    echo $l_cost > 0 ? '₱' . number_format($l_cost, 2) : '<span style="color:#cbd5e1;">—</span>';
-                ?></td>
-                <td style="text-align:center;color:#475569;white-space:nowrap;"><?php
+                <!-- 1. OR No. / Txn ID -->
+                <td style="vertical-align:middle;padding:10px 8px;max-width:0;overflow:hidden;">
+                    <div style="font-weight:800;font-size:13px;color:#002F70;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?=htmlspecialchars($or_no)?></div>
+                    <div style="font-family:monospace;font-size:10.5px;font-weight:700;color:#64748b;margin-top:3px;word-break:break-all;overflow-wrap:anywhere;line-height:1.2;display:block;max-width:100%;"><?=htmlspecialchars($r['transaction_id'])?></div>
+                </td>
+
+                <!-- 2. Customer & Vehicle -->
+                <td style="vertical-align:middle;padding:10px 8px;max-width:0;overflow:hidden;">
+                    <div style="font-weight:700;font-size:13px;color:#0f172a;line-height:1.25;word-break:break-word;"><?=htmlspecialchars($r['customer'])?></div>
+                    <?php
                     $veh = trim($r['vehicle'] ?? '');
-                    if ($veh === '' || $veh === '—' || $veh === 'N/A') {
-                        echo '<span style="color:#cbd5e1;">N/A</span>';
-                    } else { echo htmlspecialchars($veh); }
-                ?></td>
-                <td style="font-weight:700;text-align:right;color:#0f172a;white-space:nowrap;">₱<?=number_format((float)$r['amount'],2)?></td>
-                <td style="font-size:11px;color:#334155;white-space:nowrap;">
-                    <div><?=htmlspecialchars($r['payment_method'])?></div>
-                    <div style="font-size:10px;font-weight:700;color:<?= $vs === 'voided' ? '#dc2626' : '#16a34a' ?>;"><?= htmlspecialchars($r['payment_status'] ?: 'Paid') ?></div>
+                    if ($veh !== '' && $veh !== '—' && $veh !== 'N/A'): ?>
+                        <div style="display:inline-flex;align-items:center;gap:4px;background:#f1f5f9;border:1px solid #cbd5e1;color:#1e293b;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;margin-top:3px;max-width:100%;">
+                            <i class="fas fa-car" style="color:#2563eb;font-size:10.5px;"></i> <?=htmlspecialchars($veh)?>
+                        </div>
+                    <?php else: ?>
+                        <div style="font-size:11px;color:#94a3b8;margin-top:2px;">No Plate</div>
+                    <?php endif; ?>
                 </td>
-                <td style="font-size:11px;color:#475569;white-space:nowrap;"><?=htmlspecialchars($r['shift'])?></td>
-                <td style="font-size:11px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<?=htmlspecialchars($r['staff_name'])?>"><?=htmlspecialchars($r['staff_name'])?></td>
-                <td style="text-align:center;white-space:nowrap;">
-                    <span class="badge <?=$statusBadge?>"><i class="fas <?=$statusIcon?>"></i> <?=$statusLabel?></span>
+
+                <!-- 3. Type & Shift -->
+                <td style="vertical-align:middle;padding:10px 8px;">
+                    <div><span class="badge <?=$tBadge?>" style="font-size:11px;padding:3px 8px;"><i class="fas <?=$tIcon?>"></i> <?=htmlspecialchars($tLabel)?></span></div>
+                    <?php 
+                    $s_raw = trim($r['shift'] ?? '');
+                    $s_val = strtolower($s_raw);
+                    $shift_lbl = match($s_val) {
+                        'first', 'shift 1', '1', 'shift1' => 'Shift 1',
+                        'second', 'shift 2', '2', 'shift2' => 'Shift 2',
+                        'third', 'shift 3', '3', 'shift3' => 'Shift 3',
+                        default => ($s_raw !== '' && $s_raw !== 'N/A') ? $s_raw : 'Shift 1'
+                    };
+                    ?>
+                    <div style="font-size:11.5px;color:#475569;margin-top:4px;font-weight:600;">
+                        <i class="fas fa-clock" style="font-size:10px;margin-right:3px;color:#64748b;"></i> <?=htmlspecialchars($shift_lbl)?>
+                    </div>
                 </td>
-                <td style="line-height:1.2;white-space:nowrap;">
-                    <div style="font-size:11px;font-weight:600;color:#334155;"><?=date('M d, Y',strtotime($r['txn_date']))?></div>
-                    <div style="font-size:10px;color:#64748b;"><?=date('h:i A',strtotime($r['txn_date']))?></div>
+
+                <!-- 4. Products & Services -->
+                <td style="vertical-align:middle;padding:10px 8px;font-size:12.5px;line-height:1.35;">
+                    <?php
+                    $has_p = !empty(trim($r['items'] ?? ''));
+                    $has_s = !empty(trim($r['service_type'] ?? ''));
+                    if ($has_p) {
+                        echo format_transaction_items($r['items'] ?? '');
+                    }
+                    if ($has_s) {
+                        if ($has_p) echo '<div style="margin-top:4px;padding-top:4px;border-top:1px dashed #e2e8f0;"></div>';
+                        echo '<div style="font-weight:700;color:#1e40af;"><i class="fas fa-wrench" style="color:#2563eb;font-size:11px;margin-right:4px;"></i>' . htmlspecialchars($r['service_type']) . '</div>';
+                    }
+                    if (!$has_p && !$has_s) {
+                        echo '<span style="color:#94a3b8;">—</span>';
+                    }
+                    ?>
                 </td>
-                <!-- Actions: View Details ONLY (Admin Oversight) -->
-                <td style="text-align:center;padding:4px 3px;vertical-align:middle;">
+
+                <!-- 5. Fees Breakdown -->
+                <td style="vertical-align:middle;padding:10px 8px;font-size:12px;line-height:1.35;">
+                    <?php
+                    $s_cost = (float)($r['service_fee'] ?? 0);
+                    $l_cost = (float)($r['labor_fee'] ?? 0);
+                    if ($s_cost > 0) {
+                        echo '<div style="color:#334155;">Svc: <strong style="color:#2563eb;font-weight:800;">₱' . number_format($s_cost, 2) . '</strong></div>';
+                    }
+                    if ($l_cost > 0) {
+                        echo '<div style="color:#334155;margin-top:2px;">Labor: <strong style="color:#16a34a;font-weight:800;">₱' . number_format($l_cost, 2) . '</strong></div>';
+                    }
+                    if ($s_cost <= 0 && $l_cost <= 0) {
+                        echo '<span style="color:#94a3b8;">—</span>';
+                    }
+                    ?>
+                </td>
+
+                <!-- 6. Total & Payment -->
+                <td style="vertical-align:middle;padding:10px 8px;">
+                    <div style="font-weight:800;font-size:14px;color:#002F70;line-height:1.2;">₱<?=number_format((float)$r['amount'],2)?></div>
+                    <?php
+                    $is_paid = $vs !== 'voided' && strtolower($r['payment_status'] ?? '') !== 'unpaid';
+                    $pay_st_txt = $r['payment_status'] ?: 'Paid';
+                    ?>
+                    <div style="display:flex;align-items:center;gap:5px;margin-top:4px;flex-wrap:wrap;">
+                        <span style="color:#1e293b;font-weight:700;font-size:11.5px;"><?=htmlspecialchars($r['payment_method'] ?: 'Cash')?></span>
+                        <span style="background:<?=$is_paid ? '#dcfce7' : '#fee2e2'?>;color:<?=$is_paid ? '#15803d' : '#b91c1c'?>;font-weight:800;font-size:10px;padding:1px 5px;border-radius:4px;border:1px solid <?=$is_paid ? '#bbf7d0' : '#fecaca'?>;letter-spacing:0.3px;">
+                            <?=strtoupper(htmlspecialchars($pay_st_txt))?>
+                        </span>
+                    </div>
+                </td>
+
+                <!-- 7. Staff & Date -->
+                <td style="vertical-align:middle;padding:10px 8px;">
+                    <div style="font-weight:700;font-size:12.5px;color:#0f172a;line-height:1.2;"><?=htmlspecialchars($r['staff_name'])?></div>
+                    <div style="font-size:11px;color:#475569;margin-top:3px;font-weight:500;">
+                        <?=date('M d, Y',strtotime($r['txn_date']))?> &bull; <?=date('h:i A',strtotime($r['txn_date']))?>
+                    </div>
+                </td>
+
+                <!-- 8. Status -->
+                <td style="vertical-align:middle;text-align:center;padding:10px 4px;white-space:nowrap;overflow:visible;text-overflow:clip;">
+                    <span class="badge <?=$statusBadge?>" style="font-size:11px;padding:3px 8px;display:inline-flex;align-items:center;white-space:nowrap;"><i class="fas <?=$statusIcon?>"></i> <?=$statusLabel?></span>
+                </td>
+
+                <!-- 9. Actions -->
+                <td style="text-align:center;padding:10px 6px;vertical-align:middle;white-space:nowrap;overflow:visible;text-overflow:clip;">
                     <button type="button" class="vt-btn-act-sm admin-view-btn"
-                            style="color:#002F70;border:1px solid #bfdbfe;background:#eff6ff !important;cursor:pointer;font-weight:700;padding:5px 8px;font-size:12px;border-radius:6px;white-space:normal;line-height:1.3;width:100%;"
+                            style="color:#002F70;border:1px solid #93c5fd;background:#eff6ff !important;cursor:pointer;font-weight:700;padding:5px 8px;font-size:11px;border-radius:6px;width:100%;white-space:nowrap;"
                             data-txn="<?= htmlspecialchars(json_encode([
                                 'db_id'              => (int)$r['txn_db_id'],
                                 'or_no'              => 'OR-' . date('Y', strtotime($r['txn_date'])) . '-' . str_pad($r['txn_db_id'], 6, '0', STR_PAD_LEFT),
@@ -929,8 +990,10 @@ overflow: hidden;
 .vt-modal-body {
     padding: 20px;
     overflow-y: auto;
+    overflow-x: hidden !important;
     flex: 1;
     min-height: 0;
+    box-sizing: border-box;
 }
 .vt-modal-footer {
     padding: 14px 20px;
@@ -944,13 +1007,17 @@ overflow: hidden;
 .vt-detail-grid {
     display: grid;
     grid-template-columns: 150px 1fr;
-    gap: 10px 20px;
-    font-size: 14.5px;
+    gap: 10px 16px;
+    font-size: 13.5px;
 }
 .vt-detail-label {
     font-weight: 600;
     color: #64748b;
     padding-top: 1px;
+}
+.vt-detail-value {
+    color: #1e293b;
+    word-break: break-word;
 }
 .vt-detail-value {
     color: #1e293b;
@@ -1074,29 +1141,36 @@ function renderAdminTxnModal(data, d) {
 
     /* ── ITEMS BREAKDOWN TABLE ── */
     if (data.items_breakdown && data.items_breakdown.length > 0) {
-        html += `<div style="margin-top:20px;border-top:1px solid #e2e8f0;padding-top:14px;">
-            <div style="font-size:13px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
+        html += `<div style="margin-top:16px;border-top:1px solid #e2e8f0;padding-top:12px;overflow-x:hidden;">
+            <div style="font-size:12.5px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">
                 <i class="fas fa-boxes" style="margin-right:5px;"></i>Purchased Items Breakdown
             </div>
-            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;">
+                <colgroup>
+                    <col style="width:18%;">
+                    <col style="width:38%;">
+                    <col style="width:12%;">
+                    <col style="width:16%;">
+                    <col style="width:16%;">
+                </colgroup>
                 <thead>
-                    <tr style="background:#f1f5f9;border-bottom:2px solid #cbd5e1;color:#475569;font-size:12px;text-transform:uppercase;letter-spacing:.4px;">
-                        <th style="padding:8px 10px;text-align:left;">SKU</th>
-                        <th style="padding:8px 10px;text-align:left;">Product / Item</th>
-                        <th style="padding:8px 10px;text-align:center;">Qty</th>
-                        <th style="padding:8px 10px;text-align:right;">Unit Price</th>
-                        <th style="padding:8px 10px;text-align:right;">Subtotal</th>
+                    <tr style="background:#f1f5f9;border-bottom:2px solid #cbd5e1;color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:.3px;">
+                        <th style="padding:6px 8px;text-align:left;overflow:hidden;white-space:nowrap;">SKU</th>
+                        <th style="padding:6px 8px;text-align:left;overflow:hidden;white-space:nowrap;">Product / Item</th>
+                        <th style="padding:6px 8px;text-align:center;overflow:hidden;white-space:nowrap;">Qty</th>
+                        <th style="padding:6px 8px;text-align:right;overflow:hidden;white-space:nowrap;">Unit Price</th>
+                        <th style="padding:6px 8px;text-align:right;overflow:hidden;white-space:nowrap;">Subtotal</th>
                     </tr>
                 </thead>
                 <tbody>`;
         data.items_breakdown.forEach((item, idx) => {
             const bg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
             html += `<tr style="background:${bg};border-bottom:1px solid #f1f5f9;">
-                <td style="padding:9px 10px;font-family:monospace;font-weight:700;color:#002F70;font-size:12px;">${item.sku}</td>
-                <td style="padding:9px 10px;font-weight:600;color:#1e293b;">${item.product_name}</td>
-                <td style="padding:9px 10px;text-align:center;color:#475569;font-weight:700;">${item.quantity}</td>
-                <td style="padding:9px 10px;text-align:right;color:#64748b;">&#8369;${item.unit_price}</td>
-                <td style="padding:9px 10px;text-align:right;font-weight:700;color:#002F70;">&#8369;${item.subtotal}</td>
+                <td style="padding:7px 8px;font-family:monospace;font-weight:700;color:#002F70;font-size:11px;overflow:hidden;word-break:break-all;">${item.sku || '—'}</td>
+                <td style="padding:7px 8px;font-weight:600;color:#1e293b;font-size:12px;overflow:hidden;word-break:break-word;">${item.product_name}</td>
+                <td style="padding:7px 8px;text-align:center;color:#475569;font-weight:700;font-size:12px;">${item.quantity}</td>
+                <td style="padding:7px 8px;text-align:right;color:#64748b;font-size:12px;white-space:nowrap;">&#8369;${item.unit_price}</td>
+                <td style="padding:7px 8px;text-align:right;font-weight:700;color:#002F70;font-size:12px;white-space:nowrap;">&#8369;${item.subtotal}</td>
             </tr>`;
         });
         html += `</tbody></table></div>`;

@@ -128,14 +128,8 @@ try {
         }
 
         $v_status = strtolower(trim($txn['validation_status'] ?? $txn['status'] ?? ''));
-        if ($v_status === 'voided') {
-            echo json_encode(['success' => false, 'error' => 'Job Order is already voided']); exit;
-        }
-
-        // ONLY Pending job orders can be voided
-        $wf_status = strtolower(trim($txn['status'] ?? 'pending'));
-        if ($wf_status !== 'pending') {
-            echo json_encode(['success' => false, 'error' => 'Dili mahimong i-void ang Job Order nga In Progress o Completed na.']); exit;
+        if ($v_status === 'voided' || $v_status === 'cancelled') {
+            echo json_encode(['success' => false, 'error' => 'Job Order is already voided or cancelled']); exit;
         }
 
         $pdo->beginTransaction();

@@ -15,8 +15,8 @@ $me = current_user();
 $station_id = user_station_id();
 $role = role_key($me['role'] ?? '');
 
-if (!in_array($role, ['staff', 'cashier', 'pump_attendant'], true)) {
-    $_SESSION['error'] = 'Access denied. Staff role required.';
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'admin', 'manager', 'superadmin', 'cashier/staff'], true)) {
+    $_SESSION['error'] = 'Access denied. Valid role required.';
     header('Location: ../public/staff_transactions.php');
     exit;
 }

@@ -1,0 +1,27 @@
+{
+  "name": "petron-station-realtime-service",
+  "version": "1.0.0",
+  "description": "Node.js Real-Time Service & WebSocket Microservice for Petron Station Management System",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "nodejs",
+    "express",
+    "socket.io",
+    "realtime",
+    "petron",
+    "station-management"
+  ],
+  "author": "Group 31 Dev Team",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
+    "mysql2": "^3.24.3",
+    "socket.io": "^4.8.3"
+  }
+}

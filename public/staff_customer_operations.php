@@ -17,7 +17,7 @@ $station_id = (int)user_station_id();
 customer_ensure_optional_columns($pdo);
 customer_ensure_request_table($pdo);
 
-if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'superadmin', 'developer'], true)) {
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'admin', 'manager', 'superadmin', 'developer'], true)) {
     echo json_encode(['success' => false, 'error' => 'Unauthorized.']);
     exit;
 }

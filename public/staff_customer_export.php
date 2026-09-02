@@ -16,7 +16,7 @@ $station_id = (int)user_station_id();
 
 customer_ensure_optional_columns($pdo);
 
-if (!in_array($role, ['staff', 'superadmin', 'developer'])) {
+if (!in_array($role, ['staff', 'admin', 'manager', 'superadmin', 'developer'])) {
     die('Unauthorized access');
 }
 
