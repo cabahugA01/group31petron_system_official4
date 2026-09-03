@@ -440,6 +440,11 @@ try {
         // Index by UGT number string (e.g. "ugt #1")
         if ($ugt_val) {
             $fi_lookup[$ugt_val] = $row;
+            $u_num = preg_replace('/[^0-9]/', '', $ugt_val);
+            if ($u_num) {
+                $fi_lookup['ugt_' . (int)$u_num] = $row;
+                $fi_lookup['ugt #' . (int)$u_num] = $row;
+            }
         }
 
         // ── Extra canonical/variant keys so TANK_CONFIG ft_key matches ─────
@@ -532,11 +537,19 @@ try {
         $ft_key = strtolower(trim($tc['fuel_type']));
         $tank_num = $tc['tanker_num'];
 
+        $tank_ugt_raw = strtolower(trim($tc['tank'] ?? ''));
+        $tank_ugt_num = preg_replace('/[^0-9]/', '', $tank_ugt_raw);
         $inv = null;
-        if (isset($fi_lookup[$ft_key . '_tank_' . $tank_num])) {
+        if ($tank_ugt_raw && isset($fi_lookup[$tank_ugt_raw])) {
+            $inv = $fi_lookup[$tank_ugt_raw];
+        } elseif ($tank_ugt_num && isset($fi_lookup['ugt_' . (int)$tank_ugt_num])) {
+            $inv = $fi_lookup['ugt_' . (int)$tank_ugt_num];
+        } elseif ($tank_ugt_num && isset($fi_lookup['ugt #' . (int)$tank_ugt_num])) {
+            $inv = $fi_lookup['ugt #' . (int)$tank_ugt_num];
+        } elseif (isset($fi_lookup[$ft_key . '_tank_' . $tank_num])) {
             $inv = $fi_lookup[$ft_key . '_tank_' . $tank_num];
-        } elseif (isset($fi_lookup[$ft_key . '_' . strtolower(trim($tc['tank']))])) {
-            $inv = $fi_lookup[$ft_key . '_' . strtolower(trim($tc['tank']))];
+        } elseif (isset($fi_lookup[$ft_key . '_' . $tank_ugt_raw])) {
+            $inv = $fi_lookup[$ft_key . '_' . $tank_ugt_raw];
         } elseif (isset($fi_lookup[$ft_key . '_' . strtolower(trim($tc['label']))])) {
             $inv = $fi_lookup[$ft_key . '_' . strtolower(trim($tc['label']))];
         } elseif ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
@@ -636,9 +649,10 @@ try {
         $fuel_products[] = [
             'id'             => $inv_id,
             'pump_id'        => $tc['tanker_num'],
-            'ugt_no'         => $tc['tank'],
+            'ugt_no'         => !empty($inv['ugt_no']) ? $inv['ugt_no'] : $tc['tank'],
             'tank_label'     => $tc['label'],
-            'raw_fuel_type'  => $tc['fuel_type'],
+            'fuel_type'      => !empty($inv['fuel_type']) ? $inv['fuel_type'] : $tc['fuel_type'],
+            'raw_fuel_type'  => !empty($inv['fuel_type']) ? $inv['fuel_type'] : $tc['fuel_type'],
             'capacity'       => $capacity,
             'current_stock'  => $ending_system,
             'critical_level' => $critical_level,
@@ -813,95 +827,100 @@ if (isset($_GET['ajax_asp']) && $_GET['ajax_asp'] == '1') {
     exit;
 }
 
-
-
-
 include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-/* ABSOLUTE NO TEXT OVERLAPPING RULE */
+/* ── Modern 100% Full Width Table Styles (Zero Horizontal Scrolling) ── */
 .cust-section, .table-wrap, .table-responsive, .table-card, .card {
-    overflow-x: auto !important;
+    overflow-x: hidden !important;
     width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
 }
 
-table.cust-table, #mgrMerchTable, table.pricing-table, table.tbl-requests, table.table {
-    table-layout: auto !important;
+table.cust-table, #adminFuelTable, #adminMerchTable, #mgrMerchTable, table.pricing-table, table.tbl-requests, table.table {
+    table-layout: fixed !important;
     width: 100% !important;
-    min-width: 1050px !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
     border-collapse: collapse !important;
+    box-sizing: border-box !important;
 }
 
-table th {
-    padding: 9px 8px !important;
-    font-size: 12.5px !important;
-    font-weight: 800 !important;
-    letter-spacing: 0.2px !important;
+table.pricing-table th {
+    background: #002F6C !important;
+    color: #ffffff !important;
+    padding: 10px 6px !important;
+    text-align: left;
+    font-size: 11px !important;
+    font-weight: 700 !important;
     text-transform: uppercase !important;
-    white-space: nowrap !important;
-}
-
-table td {
-    padding: 9px 8px !important;
-    font-size: 13.5px !important;
-    line-height: 1.3 !important;
+    letter-spacing: .3px !important;
+    border-bottom: 2px solid #001f48 !important;
+    white-space: normal !important;
+    overflow: visible !important;
     word-break: normal !important;
-    overflow-wrap: break-word !important;
+    line-height: 1.25 !important;
+    box-sizing: border-box !important;
+    vertical-align: middle !important;
 }
 
-/* Customer ID Monospace Code */
-.cust-table td:first-child, .cust-table td code {
-    font-size: 12.5px !important;
-    font-weight: 800 !important;
-    font-family: monospace !important;
-    white-space: nowrap !important;
+table.pricing-table td {
+    padding: 8px 6px !important;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle !important;
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+    box-sizing: border-box !important;
 }
 
-/* Customer Name High Legibility */
-.cust-table td:nth-child(2) strong {
-    font-size: 14px !important;
-    font-weight: 800 !important;
-    color: #002F6C !important;
-    white-space: nowrap !important;
-}
-
-/* Vehicles, Amounts, & Dates Never Overlap */
-td:nth-child(3), td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9), td:nth-child(10),
-th:nth-child(3), th:nth-child(4), th:nth-child(5), th:nth-child(6), th:nth-child(7), th:nth-child(8), th:nth-child(9), th:nth-child(10) {
-    white-space: nowrap !important;
-}
-
-/* Status Pill */
+/* Status Pill & Badges */
 .pill, .pill.active, .pill.inactive, .pill.archived, .pill.regular, .pill.credit, .status-pill, .badge {
     white-space: nowrap !important;
-    display: inline-block !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
     padding: 3px 8px !important;
-    font-size: 11.5px !important;
-    font-weight: 800 !important;
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
     text-transform: uppercase !important;
-    border-radius: 5px !important;
+    border-radius: 999px !important;
     line-height: 1.1 !important;
 }
 
 /* Action Buttons */
-.cust-actions button, .cust-table .btn-plain, .act-btn, .tbl-btn {
-    font-size: 11.5px !important;
-    font-weight: 700 !important;
-    height: 26px !important;
-    padding: 0 8px !important;
-    white-space: nowrap !important;
+.act-btn-wrap {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 3px !important;
+    width: 100% !important;
+    align-items: stretch !important;
+    box-sizing: border-box !important;
+}
+
+.act-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    min-height: 25px !important;
+    height: auto !important;
+    padding: 3px 6px !important;
     border-radius: 5px !important;
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    border: 1px solid #cbd5e1 !important;
+    background: #ffffff !important;
+    transition: all .15s ease-in-out !important;
+    overflow: visible !important;
 }
 </style>
-
-
-
-
-
-
-
-
 
 
 
@@ -1075,23 +1094,24 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 5px !important;
-    padding: 5px 10px !important;
-    border-radius: 6px !important;
+    gap: 4px !important;
+    padding: 3px 8px !important;
+    border-radius: 5px !important;
     font-size: 11px !important;
     font-weight: 700 !important;
     cursor: pointer !important;
     white-space: nowrap !important;
     line-height: 1.2 !important;
     width: 100% !important;
-    max-width: 110px !important;
-    margin-bottom: 4px !important;
+    max-width: 95px !important;
+    margin-bottom: 3px !important;
     transition: all .18s ease-in-out !important;
     background: #ffffff !important;
     border: 1.5px solid #cbd5e1 !important;
     text-decoration: none !important;
     box-sizing: border-box !important;
     opacity: 1 !important;
+    overflow: visible !important;
 }
 .act-btn:last-child { margin-bottom: 0 !important; }
 
@@ -1111,7 +1131,7 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
 .act-btn-edit { color: #002F6C !important; -webkit-text-fill-color: #002F6C !important; border-color: #002F6C !important; background: #ffffff !important; }
 .act-btn-edit:hover { background: #002F6C !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #002F6C !important; }
 
-.act-btn-deactivate { color: #dc2626 !important; -webkit-text-fill-color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
+.act-btn-deactivate { color: #dc2626 !important; -webkit-text-fill-color: #dc2626 !important; border: 1.5px solid #f87171 !important; background: #fff5f5 !important; }
 .act-btn-deactivate:hover { background: #dc2626 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #dc2626 !important; }
 
 .act-btn-activate { color: #16a34a !important; -webkit-text-fill-color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
@@ -1307,27 +1327,38 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
     <!-- ── 3. Fuel Inventory & Pricing Table ─────────────────────────────── -->
     <div class="card" style="padding:0;overflow:hidden;border:1px solid #e2e8f0;border-radius:10px;">
 
-        <div class="table-wrap" style="overflow-x: hidden;-webkit-overflow-scrolling:touch;">
-            <table class="pricing-table" id="adminFuelTable">
+        <div class="table-wrap" style="width:100% !important;max-width:100% !important;overflow-x:hidden !important;box-sizing:border-box !important;">
+            <table class="pricing-table" id="adminFuelTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
+                <colgroup>
+                    <col style="width:8%;">   <!-- UGT No. -->
+                    <col style="width:10%;">  <!-- Fuel Type -->
+                    <col style="width:10%;">  <!-- Price / Liter -->
+                    <col style="width:10%;">  <!-- Current Volume -->
+                    <col style="width:10%;">  <!-- Capacity -->
+                    <col style="width:9%;">   <!-- Reorder Level -->
+                    <col style="width:8%;">   <!-- Status -->
+                    <col style="width:13%;">  <!-- Price Request Status -->
+                    <col style="width:10%;">  <!-- Last Updated -->
+                    <col style="width:12%;">  <!-- Actions -->
+                </colgroup>
                 <thead>
                     <tr>
-                        <th>UGT No.</th>
-                        <th>Fuel Type</th>
-                        <th>Price / Liter (₱)</th>
-                        <th>Current Volume (L)</th>
-                        <th>Capacity (L)</th>
-                        
-                        <th>Reorder Level (L)</th>
-                        <th>Status</th>
-                        <th>Price Request Status</th>
-                        <th>Last Updated</th>
-                        <th style="text-align: center; width: 140px;">Actions</th>
+                        <th style="white-space:nowrap;">UGT No.</th>
+                        <th style="white-space:nowrap;">Fuel Type</th>
+                        <th style="white-space:nowrap;text-align:right;">Price / Liter</th>
+                        <th style="white-space:nowrap;text-align:right;">Current Vol (L)</th>
+                        <th style="white-space:nowrap;text-align:right;">Capacity (L)</th>
+                        <th style="white-space:nowrap;text-align:right;">Reorder (L)</th>
+                        <th style="white-space:nowrap;text-align:center;">Status</th>
+                        <th style="white-space:nowrap;text-align:center;">Price Req. Status</th>
+                        <th style="white-space:nowrap;">Last Updated</th>
+                        <th style="white-space:nowrap;text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="adminFuelTableBody">
                 <?php if (empty($fuel_products)): ?>
                     <tr>
-                        <td colspan="11" style="text-align:center;padding:28px;color:#94a3b8;">
+                        <td colspan="10" style="text-align:center;padding:28px;color:#94a3b8;">
                             <i class="fas fa-info-circle"></i> No fuel inventory records found for this station.
                         </td>
                     </tr>
@@ -1339,7 +1370,14 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
                         $reorder  = (float)($f['reorder_level'] ?? 0);
                         
                         $raw_status = strtolower(trim($f['status'] ?? 'normal'));
-                        if ($level <= 0 || in_array($raw_status, ['out of stock', 'out', 'empty'])) {
+                        $fuel_active_status = strtolower($f['inv_status'] ?? ($f['status'] ?? 'active'));
+                        $is_deactivated = in_array($fuel_active_status, ['inactive', 'disabled', 'deactivated'], true);
+
+                        if ($is_deactivated) {
+                            $status_label = 'Deactivated';
+                            $status_class = 'badge-inactive';
+                            $badge_style  = 'background:#fee2e2 !important;color:#b91c1c !important;border:1.5px solid #f87171 !important;';
+                        } elseif ($level <= 0 || in_array($raw_status, ['out of stock', 'out', 'empty'])) {
                             $status_label = 'Out of Stock';
                             $status_class = 'badge-out';
                             $badge_style  = 'background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;';
@@ -1358,9 +1396,10 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
                         }
                         
                         $ugt_str = $f['ugt_no'] ?? ('UGT #' . $f['pump_id']);
-                        $canonical_type = get_canonical_fuel_name($f['raw_fuel_type']);
-                        $full_fuel_name = $canonical_type;
-                        $fuel_active_status = strtolower($f['inv_status'] ?? ($f['status'] ?? 'active'));
+                        $raw_name = !empty($f['fuel_type']) ? $f['fuel_type'] : ($f['raw_fuel_type'] ?? 'Fuel');
+                        $clean_name = trim(preg_replace('/\s*\(UGT\s*#?\d+\)/i', '', $raw_name));
+                        $full_fuel_name = $clean_name !== '' ? $clean_name : $raw_name;
+                        $canonical_type = $full_fuel_name;
                         $req_status = $f['approval_status'] ?? '';
                     ?>
                     <tr class="admin-fuel-row" 
@@ -1368,88 +1407,95 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
                         data-fueltype="<?php echo htmlspecialchars($canonical_type); ?>"
                         data-fullname="<?php echo htmlspecialchars($full_fuel_name); ?>"
                         data-reqstatus="<?php echo htmlspecialchars($req_status ?: 'none'); ?>"
-                        data-activestatus="<?php echo htmlspecialchars($fuel_active_status); ?>">
+                        data-activestatus="<?php echo $is_deactivated ? 'inactive' : 'active'; ?>"
+                        style="<?php echo $is_deactivated ? 'background:#fff5f5;' : ''; ?>">
                         
                         <!-- UGT No. -->
-                        <td>
-                            <strong style="font-family:monospace;color:#002F6C;font-size:14px;"><?php echo htmlspecialchars($ugt_str); ?></strong>
+                        <td style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
+                            <strong style="font-family:monospace;color:#002F6C;font-size:12px;white-space:nowrap;"><?php echo htmlspecialchars($ugt_str); ?></strong>
                         </td>
                         
                         <!-- Fuel Type -->
-                        <td>
-                            <strong><?php echo htmlspecialchars($full_fuel_name); ?></strong>
+                        <td style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
+                            <strong style="font-size:12px;<?php echo $is_deactivated ? 'color:#64748b;' : 'color:#0f172a;'; ?>word-break:break-word;line-height:1.25;"><?php echo htmlspecialchars($full_fuel_name); ?></strong>
+                            <?php if ($is_deactivated): ?>
+                                <div style="font-size:10px;color:#dc2626;font-weight:700;margin-top:2px;">
+                                    <i class="fas fa-ban"></i> Deactivated (Disabled)
+                                </div>
+                            <?php endif; ?>
                         </td>
                         
                         <!-- Current Price -->
-                        <td>
-                            <strong style="color:#002F6C;font-size:15.5px;">&#8369;<?php echo number_format((float)($f['price_per_liter'] ?? 0), 2); ?></strong>
+                        <td style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:right;">
+                            <strong style="color:#002F6C;font-size:13px;white-space:nowrap;">&#8369;<?php echo number_format((float)($f['price_per_liter'] ?? 0), 2); ?></strong>
                         </td>
                         
-                        <!-- Current Volume (Clean numerical format) -->
-                        <td>
+                        <!-- Current Volume -->
+                        <td style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:right;font-size:11.5px;white-space:nowrap;">
                             <?php echo number_format($level, 2); ?>
                         </td>
                         
                         <!-- Capacity -->
-                        <td><?php echo number_format($capacity, 2); ?></td>
-                        
-                        
-                        
+                        <td style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:right;font-size:11.5px;white-space:nowrap;"><?php echo number_format($capacity, 2); ?></td>
                         
                         <!-- Reorder Level -->
-                        <td><strong style="color:#475569;"><?php echo number_format($reorder, 2); ?></strong></td>
+                        <td style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:right;font-size:11.5px;white-space:nowrap;"><strong style="color:#475569;"><?php echo number_format($reorder, 2); ?></strong></td>
                         
                         <!-- Status -->
-                        <td>
-                            <span class="badge <?php echo $status_class; ?>" style="<?php echo $badge_style; ?>padding:3px 10px;border-radius:20px;font-size:14px;font-weight:700;display:inline-block;">
-                                <?php echo htmlspecialchars($status_label); ?>
+                        <td style="padding:6px 4px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;">
+                            <span class="badge <?php echo $status_class; ?>" style="<?php echo $badge_style; ?>padding:3px 8px;border-radius:20px;font-size:10px;font-weight:700;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;">
+                                <?php if ($is_deactivated): ?>
+                                    <i class="fas fa-ban" style="font-size:9px;"></i> DEACTIVATED
+                                <?php else: ?>
+                                    <?php echo htmlspecialchars($status_label); ?>
+                                <?php endif; ?>
                             </span>
                         </td>
                         
                         <!-- Price Request Status -->
-                        <td>
+                        <td style="padding:6px 4px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;">
                             <?php if ($req_status === 'pending'): ?>
-                                <span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:700;padding:4px 9px;">
-                                    <i class="fas fa-clock"></i> Pending (&#8369;<?php echo number_format((float)$f['pending_price'], 2); ?>)
+                                <span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:700;padding:3px 7px;font-size:10px;white-space:nowrap;">
+                                    <i class="fas fa-clock" style="font-size:9px;"></i> Pending (&#8369;<?php echo number_format((float)$f['pending_price'], 2); ?>)
                                 </span>
                             <?php elseif ($req_status === 'rejected'): ?>
-                                <span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-weight:700;padding:4px 9px;">
-                                    <i class="fas fa-times-circle"></i> Rejected
+                                <span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-weight:700;padding:3px 7px;font-size:10px;white-space:nowrap;">
+                                    <i class="fas fa-times-circle" style="font-size:9px;"></i> Rejected
                                 </span>
                             <?php else: ?>
-                                <span class="badge" style="background:#dcfce7;color:#166534;border:1px solid #86efac;font-weight:600;padding:4px 9px;">
-                                    <i class="fas fa-check-circle"></i> None / Approved
+                                <span class="badge" style="background:#dcfce7;color:#166534;border:1px solid #86efac;font-weight:600;padding:3px 7px;font-size:10px;white-space:nowrap;">
+                                    <i class="fas fa-check-circle" style="font-size:9px;"></i> None / Approved
                                 </span>
                             <?php endif; ?>
                         </td>
                         
                         <!-- Last Updated -->
-                        <td class="muted" style="font-size:14.5px;">
+                        <td class="muted" style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;font-size:11px;white-space:nowrap;">
                             <?php echo $f['last_updated'] ? htmlspecialchars(date('M d, Y H:i', strtotime($f['last_updated']))) : '&mdash;'; ?>
                         </td>
                         
                         <!-- Actions Column -->
-                        <td style="text-align: center; vertical-align: middle;">
+                        <td style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;text-align:center;vertical-align:middle;">
                             <div class="act-btn-wrap">
                                 <?php if (!empty($f['id'])): ?>
-                                    <!-- <i class="fas fa-eye"></i> View Button -->
+                                    <!-- View Button -->
                                     <button type="button" onclick="openViewFuelModalAdmin(<?php echo $f['id']; ?>)" class="act-btn act-btn-view">
                                         <i class="fas fa-eye"></i> View
                                     </button>
                                     
-                                    <!-- Edit Button (Direct Admin Edit) -->
+                                    <!-- Edit Button -->
                                     <button type="button" onclick="openEditPriceModalAdmin(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars(addslashes($full_fuel_name)); ?>', <?php echo (float)($f['price_per_liter'] ?? 0); ?>, <?php echo (float)($f['capacity'] ?? 0); ?>, <?php echo (float)($f['critical_level'] ?? 0); ?>, <?php echo (float)($f['reorder_level'] ?? 0); ?>, '<?php echo htmlspecialchars(addslashes($ugt_str)); ?>', <?php echo $req_status === 'pending' ? 'true' : 'false'; ?>)" class="act-btn act-btn-edit">
                                         <i class="fas fa-edit"></i> Edit
                                     </button>
 
-                                    <!-- Approve & Reject Buttons (Shown ONLY if there is a pending request!) -->
+                                    <!-- Approve & Reject Buttons -->
                                     <?php if ($req_status === 'pending' && !empty($f['approval_id'])): ?>
                                         <button type="button" onclick="openApprovePriceModalAdmin(<?php echo $f['approval_id']; ?>, '<?php echo htmlspecialchars(addslashes($full_fuel_name)); ?>', <?php echo (float)($f['price_per_liter'] ?? 0); ?>, <?php echo (float)($f['pending_price'] ?? 0); ?>)" class="act-btn act-btn-approve">
-                                            <i class="fas fa-check"></i> Approve Price
+                                            <i class="fas fa-check"></i> Approve
                                         </button>
 
                                         <button type="button" onclick="openRejectPriceModalAdmin(<?php echo $f['approval_id']; ?>, '<?php echo htmlspecialchars(addslashes($full_fuel_name)); ?>', <?php echo (float)($f['price_per_liter'] ?? 0); ?>, <?php echo (float)($f['pending_price'] ?? 0); ?>)" class="act-btn act-btn-reject">
-                                            <i class="fas fa-times"></i> Reject Price
+                                            <i class="fas fa-times"></i> Reject
                                         </button>
                                     <?php endif; ?>
 
@@ -1464,7 +1510,7 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
                                         </button>
                                     <?php endif; ?>
                                 <?php else: ?>
-                                    <span style="font-size:14px;color:#94a3b8;font-style:italic;">No Actions</span>
+                                    <span style="font-size:12px;color:#94a3b8;font-style:italic;">No Actions</span>
                                 <?php endif; ?>
                             </div>
                         </td>
@@ -1553,28 +1599,39 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
             No merchandise products found.
         </div>
     <?php else: ?>
-    <div class="card" style="padding:0;overflow:hidden;">
-        <div class="table-wrap" style="overflow-x:hidden; width:100%;">
-            <table class="pricing-table" id="adminMerchTable" style="width:100%; table-layout:auto; min-width: 0;">
-                
+    <div class="card" style="padding:0;overflow:hidden;border:1px solid #e2e8f0;border-radius:10px;">
+        <div class="table-wrap" style="width:100% !important;max-width:100% !important;overflow-x:hidden !important;box-sizing:border-box !important;">
+            <table class="pricing-table" id="adminMerchTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
+                <colgroup>
+                    <col style="width:9%;">   <!-- SKU -->
+                    <col style="width:16%;">  <!-- Product -->
+                    <col style="width:14%;">  <!-- Category / Brand -->
+                    <col style="width:6%;">   <!-- UOM -->
+                    <col style="width:11%;">  <!-- Selling Price -->
+                    <col style="width:7%;">   <!-- Stock -->
+                    <col style="width:11%;">  <!-- Request Status -->
+                    <col style="width:8%;">   <!-- Product Status -->
+                    <col style="width:8%;">   <!-- Updated -->
+                    <col style="width:10%;">  <!-- Actions -->
+                </colgroup>
                 <thead style="background:#002F6C !important;">
                     <tr style="background:#002F6C !important;">
-                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:14px; text-transform:uppercase; text-align:left;">SKU</th>
-                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:14px; text-transform:uppercase; text-align:left;">Product</th>
-                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:14px; text-transform:uppercase; text-align:left;">Category / Brand</th>
-                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:14px; text-transform:uppercase; text-align:left;">UOM</th>
-                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:14px; text-transform:uppercase; text-align:right;">Default Selling Price</th>
-                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:14px; text-transform:uppercase; text-align:center;">Total Stock</th>
-                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:14px; text-transform:uppercase; text-align:center;">Request Status</th>
-                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:14px; text-transform:uppercase; text-align:center;">Product Status</th>
-                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:14px; text-transform:uppercase; text-align:center;">Updated</th>
-                        <th style="background:#002F6C !important; color:#ffffff !important; font-weight:700; padding:10px 8px; font-size:14px; text-transform:uppercase; text-align:center;">Actions</th>
+                        <th style="white-space:nowrap;">SKU</th>
+                        <th style="white-space:nowrap;">Product</th>
+                        <th style="white-space:nowrap;">Category / Brand</th>
+                        <th style="white-space:nowrap;">UOM</th>
+                        <th style="white-space:nowrap;text-align:right;">Selling Price</th>
+                        <th style="white-space:nowrap;text-align:center;">Total Stock</th>
+                        <th style="white-space:nowrap;text-align:center;">Request Status</th>
+                        <th style="white-space:nowrap;text-align:center;">Product Status</th>
+                        <th style="white-space:nowrap;text-align:center;">Updated</th>
+                        <th style="white-space:nowrap;text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="adminMerchBody">
                 <?php foreach ($merch_by_cat as $cat_label => $items): ?>
                     <tr class="cat-row" data-cat-header="<?php echo htmlspecialchars($cat_label); ?>">
-                        <td colspan="9">
+                        <td colspan="10" style="background:#f1f5f9;font-weight:700;font-size:12px;padding:6px 10px;">
                             <i class="fas fa-folder"></i>
                             <?php echo htmlspecialchars($cat_label); ?>
                             <span class="muted cat-count" style="font-weight:400;margin-left:6px;">(<?php echo count($items); ?> items)</span>
@@ -1601,89 +1658,88 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
                         <?php if ($is_inactive): ?>style="opacity:0.6;background:#f8f9fa;"<?php endif; ?>>
                         
                         <!-- SKU -->
-                        <td>
-                            <code style="font-size:14px;color:#4f46e5;background:#ede9fe;padding:2px 6px;border-radius:4px;font-weight:700;">
+                        <td style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
+                            <code style="font-size:11.5px;color:#4f46e5;background:#ede9fe;padding:2px 5px;border-radius:4px;font-weight:700;white-space:nowrap;">
                                 <?php echo htmlspecialchars($item['sku'] ?? '—'); ?>
                             </code>
                         </td>
 
                         <!-- Product -->
-                        <td>
-                            <strong style="color:#1e293b;font-size:15.5px;"><?php echo htmlspecialchars($item['product_name'] ?? ''); ?></strong>
+                        <td style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
+                            <strong style="color:#1e293b;font-size:12px;word-break:break-word;line-height:1.25;"><?php echo htmlspecialchars($item['product_name'] ?? ''); ?></strong>
                         </td>
 
                         <!-- Category / Brand -->
-                        <td>
-                            <div style="font-weight:600;color:#334155;font-size:14.5px;"><?php echo htmlspecialchars($cat_label); ?></div>
-                            <div class="muted" style="font-size:14px;"><?php echo htmlspecialchars($item['brand'] ?? 'Generic'); ?></div>
+                        <td style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
+                            <div style="font-weight:600;color:#334155;font-size:11.5px;word-break:break-word;"><?php echo htmlspecialchars($cat_label); ?></div>
+                            <div class="muted" style="font-size:10.5px;color:#64748b;word-break:break-word;"><?php echo htmlspecialchars($item['brand'] ?? 'Generic'); ?></div>
                         </td>
 
                         <!-- UOM -->
-                        <td style="font-size:14.5px;color:#334155;font-weight:500;"><?php echo htmlspecialchars($item['unit'] ?? 'pcs'); ?></td>
+                        <td style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;font-size:11.5px;color:#334155;font-weight:500;white-space:nowrap;"><?php echo htmlspecialchars($item['unit'] ?? 'pcs'); ?></td>
 
                         <!-- Default Selling Price -->
-                        <td style="text-align:right;">
+                        <td style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:right;">
                             <?php if ($price <= 0): ?>
-                                <span class="badge badge-noprice">No Price Set</span>
+                                <span class="badge badge-noprice" style="font-size:10px;padding:2px 6px;white-space:nowrap;">No Price</span>
                             <?php else: ?>
-                                <strong style="color:#002F6C;font-size:15.5px;">&#8369;<?php echo number_format($price, 2); ?></strong>
+                                <strong style="color:#002F6C;font-size:13px;white-space:nowrap;">&#8369;<?php echo number_format($price, 2); ?></strong>
                             <?php endif; ?>
                         </td>
 
                         <!-- Total Stock -->
-                        <td style="text-align:center;">
-                            <strong style="font-size:15.5px;color:#1e293b;"><?php echo number_format($stock, 0); ?></strong>
+                        <td style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;">
+                            <strong style="font-size:12.5px;color:#1e293b;white-space:nowrap;"><?php echo number_format($stock, 0); ?></strong>
                         </td>
 
                         <!-- Request Status -->
-                        <td style="text-align:center;">
+                        <td style="padding:6px 4px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;">
                             <?php if ($app_status === 'pending'): ?>
-                                <span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:700;"><i class="fas fa-clock" style="font-size:15.5px;margin-right:3px;"></i> Pending</span>
+                                <span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:700;padding:3px 6px;font-size:10px;white-space:nowrap;"><i class="fas fa-clock" style="font-size:9px;margin-right:2px;"></i> Pending</span>
                             <?php elseif ($app_status === 'approved'): ?>
-                                <span class="badge" style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;font-weight:700;"><i class="fas fa-check-circle" style="font-size:15.5px;margin-right:3px;"></i> Approved</span>
+                                <span class="badge" style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;font-weight:700;padding:3px 6px;font-size:10px;white-space:nowrap;"><i class="fas fa-check-circle" style="font-size:9px;margin-right:2px;"></i> Approved</span>
                             <?php elseif ($app_status === 'rejected'): ?>
-                                <span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-weight:700;"><i class="fas fa-times-circle" style="font-size:15.5px;margin-right:3px;"></i> Rejected</span>
+                                <span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-weight:700;padding:3px 6px;font-size:10px;white-space:nowrap;"><i class="fas fa-times-circle" style="font-size:9px;margin-right:2px;"></i> Rejected</span>
                             <?php else: ?>
-                                <span class="badge" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;font-weight:600;"><i class="fas fa-check" style="font-size:14.5px;color:#16a34a;margin-right:3px;"></i> Current</span>
+                                <span class="badge" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;font-weight:600;padding:3px 6px;font-size:10px;white-space:nowrap;"><i class="fas fa-check" style="font-size:9px;color:#16a34a;margin-right:2px;"></i> Current</span>
                             <?php endif; ?>
                         </td>
 
                         <!-- Product Status -->
-                        <td style="text-align:center;">
+                        <td style="padding:6px 4px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;">
                             <?php if ($is_inactive): ?>
-                                <span class="badge badge-out">Inactive</span>
+                                <span class="badge badge-out" style="padding:3px 6px;font-size:10px;white-space:nowrap;">Inactive</span>
                             <?php else: ?>
-                                <span class="badge badge-available">Active</span>
+                                <span class="badge badge-available" style="padding:3px 6px;font-size:10px;white-space:nowrap;">Active</span>
                             <?php endif; ?>
                         </td>
 
                         <!-- Updated -->
-                        <td style="text-align:center;font-size:14px;color:#64748b;"><?php echo $updated; ?></td>
+                        <td style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;font-size:11px;color:#64748b;white-space:nowrap;"><?php echo $updated; ?></td>
 
                         <!-- Actions -->
-                        <td style="text-align:center;">
+                        <td style="padding:6px 6px;max-width:0;overflow:hidden;box-sizing:border-box;text-align:center;vertical-align:middle;">
                             <div class="act-btn-wrap">
                                 <?php if ($app_status === 'pending'): ?>
-                                    <button onclick="viewAdminMerchandiseDetails(<?php echo $item['id']; ?>)" class="act-btn act-btn-view">
+                                    <button type="button" onclick="viewAdminMerchandiseDetails(<?php echo $item['id']; ?>)" class="act-btn act-btn-view">
                                         <i class="fas fa-eye"></i> View
                                     </button>
-                                    <button onclick="openViewRequestModal(<?php echo $item['approval_id']; ?>)" class="act-btn act-btn-viewreq">
-                                        <i class="fas fa-eye"></i> View Request
+                                    <button type="button" onclick="openViewRequestModal(<?php echo $item['approval_id']; ?>)" class="act-btn act-btn-viewreq">
+                                        <i class="fas fa-eye"></i> View Req
                                     </button>
-                                    <button onclick="openApproveConfirmModal(<?php echo $item['approval_id']; ?>, '<?php echo htmlspecialchars(addslashes($item['product_name'])); ?>', '<?php echo number_format($price, 2); ?>', '<?php echo number_format($item['pending_price'], 2); ?>')" class="act-btn act-btn-approve">
+                                    <button type="button" onclick="openApproveConfirmModal(<?php echo $item['approval_id']; ?>, '<?php echo htmlspecialchars(addslashes($item['product_name'])); ?>', '<?php echo number_format($price, 2); ?>', '<?php echo number_format($item['pending_price'], 2); ?>')" class="act-btn act-btn-approve">
                                         <i class="fas fa-check"></i> Approve
                                     </button>
-                                    <button onclick="openRejectReasonModal(<?php echo $item['approval_id']; ?>, '<?php echo htmlspecialchars(addslashes($item['product_name'])); ?>')" class="act-btn act-btn-reject">
+                                    <button type="button" onclick="openRejectReasonModal(<?php echo $item['approval_id']; ?>, '<?php echo htmlspecialchars(addslashes($item['product_name'])); ?>')" class="act-btn act-btn-reject">
                                         <i class="fas fa-times"></i> Reject
                                     </button>
                                 <?php else: ?>
-                                    <button onclick="viewAdminMerchandiseDetails(<?php echo $item['id']; ?>)" class="act-btn act-btn-view">
+                                    <button type="button" onclick="viewAdminMerchandiseDetails(<?php echo $item['id']; ?>)" class="act-btn act-btn-view">
                                         <i class="fas fa-eye"></i> View
                                     </button>
-                                    <button onclick="openAdminEditProductModal(<?php echo $item['id']; ?>)" class="act-btn act-btn-edit">
+                                    <button type="button" onclick="openAdminEditProductModal(<?php echo $item['id']; ?>)" class="act-btn act-btn-edit">
                                         <i class="fas fa-edit"></i> Edit
                                     </button>
-
                                 <?php endif; ?>
                             </div>
                         </td>
@@ -1714,21 +1770,28 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
                 No service types found.
             </div>
         <?php else: ?>
-            <div class="table-wrap" style="overflow-x: hidden;-webkit-overflow-scrolling:touch;">
-                <table class="pricing-table" style="width:100%;">
+            <div class="table-wrap" style="width:100% !important;max-width:100% !important;overflow-x:hidden !important;box-sizing:border-box !important;">
+                <table class="pricing-table" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
+                    <colgroup>
+                        <col style="width:9%;">   <!-- Code -->
+                        <col style="width:28%;">  <!-- Service Name -->
+                        <col style="width:14%;">  <!-- Category -->
+                        <col style="width:12%;">  <!-- Service Fee -->
+                        <col style="width:12%;">  <!-- Labor Fee -->
+                        <col style="width:8%;">   <!-- Status -->
+                        <col style="width:12%;">  <!-- Last Updated -->
+                        <col style="width:13%;">  <!-- Action -->
+                    </colgroup>
                     <thead>
-                        <tr>
-                            <th style="width:75px;">Code</th>
-                            <th style="min-width:120px;">Service Name</th>
-                            <th style="width:110px;">Category</th>
-                            <th style="text-align:right;width:95px;">Service Fee</th>
-                            <th style="text-align:right;width:90px;">Labor Fee</th>
-                            <th style="text-align:center;width:70px;">Duration</th>
-                            <th style="text-align:center;width:65px;">Mechanics</th>
-                            <th style="text-align:center;width:85px;">Status</th>
-                            <th style="text-align:center;width:90px;">Last Updated</th>
-                            <th style="width:100px;">Manager</th>
-                            <th style="text-align:center;width:115px;">Action</th>
+                        <tr style="background:#002F6C !important;">
+                            <th style="color:#fff;">Code</th>
+                            <th style="color:#fff;">Service Name</th>
+                            <th style="color:#fff;">Category</th>
+                            <th style="color:#fff;text-align:right;">Service Fee</th>
+                            <th style="color:#fff;text-align:right;">Labor Fee</th>
+                            <th style="color:#fff;text-align:center;">Status</th>
+                            <th style="color:#fff;text-align:center;">Last Updated</th>
+                            <th style="color:#fff;text-align:center;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1741,14 +1804,14 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
                             $svcDesc      = htmlspecialchars($svc['description'] ?? '');
                             $currentSvcFee  = (float)($svc['service_price'] ?? 0);
                             $currentLabFee  = (float)($svc['labor_fee'] ?? 0);
+                            $oldSvcFee      = (float)($svc['old_service_fee'] ?? 0);
+                            $oldLabFee      = (float)($svc['old_labor_fee'] ?? 0);
                             $duration     = (int)($svc['estimated_duration'] ?? 60);
                             $mechanics    = (int)($svc['required_mechanics'] ?? 1);
                             $isActive     = (int)($svc['active'] ?? 1) === 1;
                             $hasPending   = ($svc['approval_status'] ?? '') === 'pending';
                             $pendSvcFee   = $hasPending ? (float)($svc['pending_price'] ?? 0) : 0;
                             $pendLabFee   = $hasPending ? (float)($svc['pending_labor_fee'] ?? 0) : 0;
-                            $oldSvcFee    = (float)($svc['old_service_fee'] ?? $currentSvcFee);
-                            $oldLabFee    = (float)($svc['old_labor_fee'] ?? $currentLabFee);
                             $updatedAt    = !empty($svc['updated_at']) ? date('M j, Y', strtotime($svc['updated_at'])) : '—';
                             $hrs          = floor($duration / 60);
                             $mins         = $duration % 60;
@@ -1764,90 +1827,77 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
                                 'service_price'      => $currentSvcFee,
                                 'labor_fee'          => $currentLabFee,
                                 'estimated_duration' => $duration,
+                                'duration_str'       => $durationStr,
                                 'required_mechanics' => $mechanics,
                                 'description'        => $svc['description'] ?? '',
                                 'active'             => $isActive ? 1 : 0,
+                                'updated_at'         => $updatedAt,
                             ], JSON_HEX_APOS | JSON_HEX_QUOT);
                         ?>
                         <tr>
                             <!-- Code -->
-                            <td>
-                                <span style="font-family:monospace;font-size:14px;color:#0369a1;font-weight:700;background:#e0f2fe;padding:3px 6px;border-radius:5px;letter-spacing:0.2px;"><?php echo $svcCode; ?></span>
+                            <td style="padding:6px 6px;box-sizing:border-box;vertical-align:middle;">
+                                <span style="font-family:monospace;font-size:11px;color:#0369a1;font-weight:700;background:#e0f2fe;padding:2px 6px;border-radius:4px;white-space:nowrap;border:1px solid #bae6fd;display:inline-block;"><?php echo $svcCode; ?></span>
                             </td>
 
                             <!-- Service Name -->
-                            <td>
-                                <div style="font-weight:600;color:#1e293b;font-size:15px;"><?php echo $svcName; ?></div>
+                            <td style="padding:6px 8px;box-sizing:border-box;vertical-align:middle;">
+                                <div style="font-weight:700;color:#1e293b;font-size:12px;line-height:1.35;"><?php echo $svcName; ?></div>
                                 <?php if ($svcDesc): ?>
-                                <div style="font-size:13.5px;color:#94a3b8;margin-top:2px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo $svcDesc; ?>"><?php echo $svcDesc; ?></div>
+                                <div style="font-size:10.5px;color:#64748b;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo $svcDesc; ?>"><?php echo $svcDesc; ?></div>
                                 <?php endif; ?>
                             </td>
 
                             <!-- Category -->
-                            <td>
-                                <span style="background:#f0f7ff;color:#003d7a;padding:3px 8px;border-radius:999px;font-size:13.5px;font-weight:600;white-space:nowrap;"><?php echo $svcCat; ?></span>
+                            <td style="padding:6px 6px;box-sizing:border-box;vertical-align:middle;">
+                                <span style="background:#f0f7ff;color:#003d7a;border:1px solid #dbeafe;padding:2px 7px;border-radius:999px;font-size:10.5px;font-weight:700;display:inline-block;white-space:nowrap;"><?php echo $svcCat; ?></span>
                             </td>
 
                             <!-- Service Fee -->
-                            <td style="text-align:right;">
-                                <div style="font-weight:700;color:#002F6C;font-size:15.5px;">&#8369;<?php echo number_format($currentSvcFee, 2); ?></div>
+                            <td style="padding:6px 6px;box-sizing:border-box;vertical-align:middle;text-align:right;">
+                                <div style="font-weight:700;color:#002F6C;font-size:12px;white-space:nowrap;">&#8369;<?php echo number_format($currentSvcFee, 2); ?></div>
                                 <?php if ($hasPending && $pendSvcFee > 0): ?>
-                                <div style="font-size:9.5px;color:#d97706;background:#fef3c7;padding:1px 4px;border-radius:4px;margin-top:2px;font-weight:600;display:inline-block;white-space:nowrap;">
-                                    <i class="fas fa-hourglass-half" style="font-size:8.5px;"></i> &#8369;<?php echo number_format($pendSvcFee, 2); ?>
+                                <div style="font-size:9.5px;color:#d97706;background:#fef3c7;border:1px solid #fde68a;padding:1px 4px;border-radius:4px;margin-top:2px;font-weight:700;display:inline-block;white-space:nowrap;">
+                                    <i class="fas fa-hourglass-half" style="font-size:8px;"></i> &#8369;<?php echo number_format($pendSvcFee, 2); ?>
                                 </div>
                                 <?php endif; ?>
                             </td>
 
                             <!-- Labor Fee -->
-                            <td style="text-align:right;">
-                                <div style="font-weight:600;color:#0369a1;font-size:15px;">&#8369;<?php echo number_format($currentLabFee, 2); ?></div>
+                            <td style="padding:6px 6px;box-sizing:border-box;vertical-align:middle;text-align:right;">
+                                <div style="font-weight:700;color:#0369a1;font-size:12px;white-space:nowrap;">&#8369;<?php echo number_format($currentLabFee, 2); ?></div>
                                 <?php if ($hasPending && $pendLabFee > 0): ?>
-                                <div style="font-size:9.5px;color:#d97706;background:#fef3c7;padding:1px 4px;border-radius:4px;margin-top:2px;font-weight:600;display:inline-block;white-space:nowrap;">
-                                    <i class="fas fa-hourglass-half" style="font-size:8.5px;"></i> &#8369;<?php echo number_format($pendLabFee, 2); ?>
+                                <div style="font-size:9.5px;color:#d97706;background:#fef3c7;border:1px solid #fde68a;padding:1px 4px;border-radius:4px;margin-top:2px;font-weight:700;display:inline-block;white-space:nowrap;">
+                                    <i class="fas fa-hourglass-half" style="font-size:8px;"></i> &#8369;<?php echo number_format($pendLabFee, 2); ?>
                                 </div>
                                 <?php endif; ?>
                             </td>
 
-                            <!-- Duration -->
-                            <td style="text-align:center;">
-                                <span style="color:#64748b;font-size:14px;white-space:nowrap;"><i class="fas fa-clock" style="color:#94a3b8;font-size:15.5px;"></i> <?php echo $durationStr; ?></span>
-                            </td>
-
-                            <!-- Mechanics -->
-                            <td style="text-align:center;">
-                                <span style="color:#64748b;font-size:14px;"><i class="fas fa-user-cog" style="color:#94a3b8;font-size:15.5px;"></i> <?php echo $mechanics; ?></span>
-                            </td>
-
                             <!-- Status -->
-                            <td style="text-align:center;">
+                            <td style="padding:6px 4px;box-sizing:border-box;vertical-align:middle;text-align:center;">
                                 <?php if ($isActive): ?>
-                                <span style="background:#dcfce7;color:#15803d;padding:3px 8px;border-radius:999px;font-size:13.5px;font-weight:700;display:inline-block;">Active</span>
+                                <span style="background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;display:inline-block;white-space:nowrap;text-transform:uppercase;">Active</span>
                                 <?php else: ?>
-                                <span style="background:#fee2e2;color:#b91c1c;padding:3px 8px;border-radius:999px;font-size:13.5px;font-weight:700;display:inline-block;">Inactive</span>
+                                <span style="background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;display:inline-block;white-space:nowrap;text-transform:uppercase;">Inactive</span>
                                 <?php endif; ?>
                                 <?php if ($hasPending): ?>
-                                <div style="margin-top:3px;">
-                                    <span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:999px;font-size:9.5px;font-weight:700;white-space:nowrap;"><i class="fas fa-hourglass-half" style="font-size:8.5px;"></i> Pending</span>
+                                <div style="margin-top:2px;">
+                                    <span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:1px 5px;border-radius:999px;font-size:9px;font-weight:700;white-space:nowrap;text-transform:uppercase;"><i class="fas fa-hourglass-half" style="font-size:8px;"></i> Pending</span>
                                 </div>
                                 <?php endif; ?>
                             </td>
 
                             <!-- Last Updated -->
-                            <td style="text-align:center;font-size:14px;color:#94a3b8;white-space:nowrap;"><?php echo $updatedAt; ?></td>
-
-                            <!-- Manager -->
-                            <td>
-                                <?php if ($hasPending && $managerName): ?>
-                                <div style="font-size:14px;color:#1e293b;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<?php echo $managerName; ?>"><?php echo $managerName; ?></div>
-                                <div style="font-size:9.5px;color:#94a3b8;">Pending fee</div>
-                                <?php else: ?>
-                                <span style="color:#cbd5e1;font-size:14.5px;">—</span>
-                                <?php endif; ?>
-                            </td>
+                            <td style="padding:6px 4px;text-align:center;font-size:11px;color:#64748b;white-space:nowrap;"><?php echo $updatedAt; ?></td>
 
                             <!-- Action (Admin Functions) -->
-                            <td style="text-align:center;vertical-align:middle;padding:4px 3px !important;">
+                            <td style="text-align:center;vertical-align:middle;padding:6px 4px !important;overflow:visible !important;max-width:none !important;">
                                 <div class="act-btn-wrap">
+                                    <button type="button"
+                                        onclick="openAdminViewServiceModal(<?php echo htmlspecialchars($jsObj, ENT_QUOTES, 'UTF-8'); ?>)"
+                                        class="act-btn act-btn-view">
+                                        <i class="fas fa-eye"></i> View
+                                    </button>
                                     <?php if ($hasPending): ?>
                                     <button type="button"
                                         onclick="openApprovePriceModalAdmin(<?php echo $approvalId; ?>, '<?php echo htmlspecialchars(addslashes($svc['service_name'])); ?>', <?php echo $currentSvcFee; ?>, <?php echo $pendSvcFee; ?>, 'services')"
@@ -1860,7 +1910,7 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
                                         <i class="fas fa-times"></i> Reject
                                     </button>
                                     <?php endif; ?>
-                                    <?php if (!$hasPending && ($oldSvcFee !== $currentSvcFee || $oldLabFee !== $currentLabFee)): ?>
+                                    <?php if (!$hasPending && $oldSvcFee > 0 && ($oldSvcFee !== $currentSvcFee || $oldLabFee !== $currentLabFee)): ?>
                                     <button type="button"
                                         onclick="restoreServiceFees(<?php echo $svcId; ?>, '<?php echo htmlspecialchars(addslashes($svc['service_name'])); ?>', <?php echo $oldSvcFee; ?>, <?php echo $oldLabFee; ?>)"
                                         class="act-btn act-btn-restore">
@@ -2084,6 +2134,48 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
                 <button type="submit" style="padding:8px 18px; border:none; background:#002F6C; color:#fff; border-radius:6px; cursor:pointer; font-weight:600;"><i class="fas fa-save"></i> Save Changes</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- VIEW ADMIN SERVICE DETAILS MODAL -->
+<div id="viewAdminServiceModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:flex-start;justify-content:center;padding:85px 20px 70px 20px;box-sizing:border-box;overflow-y:auto;">
+    <div style="background:#fff;border-radius:12px;width:92%;max-width:680px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:0 auto;overflow:hidden;max-height:calc(100vh - 155px);display:flex;flex-direction:column;">
+        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <h3 style="margin:0;font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-wrench" style="color:#fff;font-size:16px;"></i>
+                <span id="adm_vs_title" style="color:#fff;">SERVICE SPECIFICATION &amp; DETAILS</span>
+            </h3>
+            <button type="button" onclick="closeAdminViewServiceModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;">&times;</button>
+        </div>
+        <div style="padding:22px 24px;overflow-y:auto;overflow-x:hidden;flex:1 1 auto;background:#fff;box-sizing:border-box;">
+            <!-- Overview Card -->
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:18px;">
+                <h4 style="margin:0 0 14px 0;font-size:13px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;text-transform:uppercase;letter-spacing:0.3px;">
+                    <i class="fas fa-info-circle"></i> Service Information
+                </h4>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(190px, 1fr));gap:14px;font-size:12px;">
+                    <div><span style="color:#64748b;font-weight:600;">Service Code:</span><br><code id="adm_vs_code" style="font-weight:800;color:#0369a1;background:#e0f2fe;padding:2px 6px;border-radius:4px;display:inline-block;margin-top:2px;">-</code></div>
+                    <div><span style="color:#64748b;font-weight:600;">Category:</span><br><span id="adm_vs_category" style="background:#f0f7ff;color:#003d7a;border:1px solid #dbeafe;padding:2px 8px;border-radius:999px;font-weight:700;display:inline-block;margin-top:2px;">-</span></div>
+                    <div style="grid-column: 1 / -1;"><span style="color:#64748b;font-weight:600;">Service Name:</span><br><strong id="adm_vs_name" style="color:#0f172a;font-size:14px;">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;">Service Fee:</span><br><strong id="adm_vs_fee" style="color:#002F6C;font-size:14px;">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;">Labor Fee:</span><br><strong id="adm_vs_labor" style="color:#0369a1;font-size:14px;">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;">Total Service Rate:</span><br><strong id="adm_vs_total" style="color:#15803d;font-size:14px;">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;">Estimated Duration:</span><br><span id="adm_vs_duration" style="color:#334155;font-weight:600;">-</span></div>
+                    <div><span style="color:#64748b;font-weight:600;">Required Mechanics:</span><br><span id="adm_vs_mechanics" style="color:#334155;font-weight:600;">-</span></div>
+                    <div><span style="color:#64748b;font-weight:600;">Status:</span><br><span id="adm_vs_status" style="margin-top:2px;display:inline-block;">-</span></div>
+                    <div><span style="color:#64748b;font-weight:600;">Last Updated:</span><br><span id="adm_vs_updated" style="color:#475569;font-weight:600;">-</span></div>
+                    <div style="grid-column: 1 / -1;"><span style="color:#64748b;font-weight:600;">Description / Scope of Work:</span><br><div id="adm_vs_desc" style="color:#334155;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;margin-top:4px;line-height:1.4;">-</div></div>
+                </div>
+            </div>
+        </div>
+        <div style="background:#f8fafc;padding:12px 24px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">
+            <button type="button" onclick="closeAdminViewServiceModal()" style="background:#fff;border:1px solid #cbd5e1;color:#475569;padding:7px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">
+                Close
+            </button>
+            <button type="button" id="adm_vs_edit_btn" style="background:#002F70;border:1px solid #002F70;color:#fff;padding:7px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">
+                <i class="fas fa-edit"></i> Edit Service
+            </button>
+        </div>
     </div>
 </div>
 
@@ -2478,6 +2570,47 @@ document.getElementById('adminEditFuelForm').addEventListener('submit', function
         }).catch(function() { showCustomAlert('Network error while updating fuel product.', 'error'); });
 });
 
+// ── 1.1b Admin View Service Modal ──────────────────────────────────────────
+function openAdminViewServiceModal(svc) {
+    if (typeof svc === 'string') {
+        try { svc = JSON.parse(svc); } catch(e) { console.error(e); }
+    }
+    if (!svc) return;
+
+    document.getElementById('adm_vs_code').textContent = svc.service_code || ('SVC-' + String(svc.id).padStart(4, '0'));
+    document.getElementById('adm_vs_name').textContent = svc.service_name || '—';
+    document.getElementById('adm_vs_category').textContent = svc.category || 'General';
+    document.getElementById('adm_vs_fee').textContent = '₱' + (parseFloat(svc.service_price || 0)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('adm_vs_labor').textContent = '₱' + (parseFloat(svc.labor_fee || 0)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    
+    var totalFee = (parseFloat(svc.service_price || 0) + parseFloat(svc.labor_fee || 0)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('adm_vs_total').textContent = '₱' + totalFee;
+    
+    document.getElementById('adm_vs_duration').textContent = svc.duration_str || (svc.estimated_duration ? svc.estimated_duration + ' mins' : '—');
+    document.getElementById('adm_vs_mechanics').textContent = (svc.required_mechanics || 1) + ' mechanic(s)';
+    document.getElementById('adm_vs_updated').textContent = svc.updated_at || '—';
+    document.getElementById('adm_vs_desc').textContent = svc.description || 'No description provided.';
+    
+    var statusEl = document.getElementById('adm_vs_status');
+    if (svc.active == 1) {
+        statusEl.innerHTML = '<span style="background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:700;text-transform:uppercase;">Active</span>';
+    } else {
+        statusEl.innerHTML = '<span style="background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:700;text-transform:uppercase;">Inactive</span>';
+    }
+    
+    var editBtn = document.getElementById('adm_vs_edit_btn');
+    editBtn.onclick = function() {
+        closeAdminViewServiceModal();
+        openAdminEditServiceModal(svc.id, svc.service_name, svc.category, svc.service_key, svc.service_price, svc.active);
+    };
+
+    document.getElementById('viewAdminServiceModal').style.display = 'flex';
+}
+
+function closeAdminViewServiceModal() {
+    document.getElementById('viewAdminServiceModal').style.display = 'none';
+}
+
 // ── 1.2 Admin Edit Service Modal ──────────────────────────────────────────
 function openAdminEditServiceModal(id, name, category, key, price, active) {
     document.getElementById('adminEditServiceId').value = id;
@@ -2549,9 +2682,10 @@ document.getElementById('adminEditServiceForm').addEventListener('submit', funct
 });
 
 function adminToggleService(id, active, name) {
-    document.getElementById('toggleServiceStatusId').value = id;
-    document.getElementById('toggleServiceStatusValue').value = active;
-    document.getElementById('toggleServiceStatusName').innerText = name;
+    var idInput  = document.getElementById('toggleServiceStatusId');
+    var valInput = document.getElementById('toggleServiceStatusValue');
+    if (idInput)  idInput.value = id;
+    if (valInput) valInput.value = active;
 
     var header     = document.getElementById('toggleServiceStatusHeader');
     var title      = document.getElementById('toggleServiceStatusTitle');
@@ -2565,24 +2699,29 @@ function adminToggleService(id, active, name) {
     var escapedName = safeName.innerHTML;
 
     if (parseInt(active, 10) === 1) {
-        header.style.background = 'linear-gradient(135deg, #16a34a, #15803d)';
-        title.innerText = 'Activate Service';
-        hIcon.className = 'fas fa-check-circle';
-        btnIcon.className = 'fas fa-check-circle';
-        desc.innerHTML = 'Are you sure you want to activate <strong style="color:#0f172a;">' + escapedName + '</strong>? This service will become active for job orders.';
-        confirmBtn.style.background = '#16a34a';
-        confirmBtn.innerHTML = '<i class="fas fa-check-circle"></i> Confirm Activation';
+        if (header) header.style.background = 'linear-gradient(135deg, #16a34a, #15803d)';
+        if (title) title.innerText = 'Activate Service';
+        if (hIcon) hIcon.className = 'fas fa-check-circle';
+        if (btnIcon) btnIcon.className = 'fas fa-check-circle';
+        if (desc) desc.innerHTML = 'Are you sure you want to activate <strong style="color:#0f172a;">' + escapedName + '</strong>? This service will become active for job orders.';
+        if (confirmBtn) {
+            confirmBtn.style.background = '#16a34a';
+            confirmBtn.innerHTML = '<i class="fas fa-check-circle"></i> Confirm Activation';
+        }
     } else {
-        header.style.background = 'linear-gradient(135deg, #dc2626, #b91c1c)';
-        title.innerText = 'Deactivate Service';
-        hIcon.className = 'fas fa-ban';
-        btnIcon.className = 'fas fa-ban';
-        desc.innerHTML = 'Are you sure you want to deactivate <strong style="color:#0f172a;">' + escapedName + '</strong>? Deactivated services will be hidden from new job orders.';
-        confirmBtn.style.background = '#dc2626';
-        confirmBtn.innerHTML = '<i class="fas fa-ban"></i> Confirm Deactivation';
+        if (header) header.style.background = 'linear-gradient(135deg, #dc2626, #b91c1c)';
+        if (title) title.innerText = 'Deactivate Service';
+        if (hIcon) hIcon.className = 'fas fa-ban';
+        if (btnIcon) btnIcon.className = 'fas fa-ban';
+        if (desc) desc.innerHTML = 'Are you sure you want to deactivate <strong style="color:#0f172a;">' + escapedName + '</strong>? Deactivated services will be hidden from new job orders.';
+        if (confirmBtn) {
+            confirmBtn.style.background = '#dc2626';
+            confirmBtn.innerHTML = '<i class="fas fa-ban"></i> Confirm Deactivation';
+        }
     }
 
-    document.getElementById('toggleServiceStatusModal').style.display = 'flex';
+    var modal = document.getElementById('toggleServiceStatusModal');
+    if (modal) modal.style.display = 'flex';
 }
 
 function closeToggleServiceStatusModal() {

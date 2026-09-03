@@ -1151,13 +1151,15 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
                         </span>
                     </td>
                     <td style="font-size:14px;color:#64748b;"><?= $ts_str ?></td>
-                    <td style="text-align:center;white-space:nowrap;">
-                        <button type="button" class="int-btn-outline" style="font-size:14px;height:28px;padding:0 8px;cursor:pointer;margin-right:4px;" data-fuel="<?= htmlspecialchars(json_encode($r), ENT_QUOTES) ?>" onclick="event.stopPropagation(); openFuelModalFromBtn(this)">
-                            <i class="fas fa-eye"></i> View
-                        </button>
-                        <button type="button" class="int-btn-outline" style="font-size:14px;height:28px;padding:0 8px;cursor:pointer;border-color:#5b21b6;color:#5b21b6;" data-fuel="<?= htmlspecialchars(json_encode($r), ENT_QUOTES) ?>" onclick="event.stopPropagation(); openAdjustReadingModalFromBtn(this)">
-                            <i class="fas fa-balance-scale"></i> Adjust Reading
-                        </button>
+                    <td style="text-align:center;">
+                        <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
+                            <button type="button" class="int-btn-outline" style="width:100%;font-size:13px;height:28px;padding:0 8px;cursor:pointer;white-space:nowrap;" data-fuel="<?= htmlspecialchars(json_encode($r), ENT_QUOTES) ?>" onclick="event.stopPropagation(); openFuelModalFromBtn(this)">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                            <button type="button" class="int-btn-outline" style="width:100%;font-size:13px;height:28px;padding:0 8px;cursor:pointer;border-color:#5b21b6;color:#5b21b6;white-space:nowrap;" data-fuel="<?= htmlspecialchars(json_encode($r), ENT_QUOTES) ?>" onclick="event.stopPropagation(); openAdjustReadingModalFromBtn(this)">
+                                <i class="fas fa-balance-scale"></i> Adjust Reading
+                            </button>
+                        </div>
                     </td>
                 </tr>
             <?php endforeach; ?>

@@ -66,6 +66,11 @@ try {
         }
         if ($ugt_val) {
             $fi_lookup[$ugt_val] = $row;
+            $u_num = preg_replace('/[^0-9]/', '', $ugt_val);
+            if ($u_num) {
+                $fi_lookup['ugt_' . (int)$u_num] = $row;
+                $fi_lookup['ugt #' . (int)$u_num] = $row;
+            }
         }
 
         if (preg_match('/diesel\s*(\d)/i', $fuel_key, $m)) {
@@ -154,15 +159,21 @@ try {
         $ft_key = strtolower(trim($tc['fuel_type']));
         $tank_num = $tc['tanker_num'];
 
+        $tank_ugt_raw = strtolower(trim($tc['tank'] ?? ''));
+        $tank_ugt_num = preg_replace('/[^0-9]/', '', $tank_ugt_raw);
         $inv = null;
-        if (isset($fi_lookup[$ft_key . '_tank_' . $tank_num])) {
+        if ($tank_ugt_raw && isset($fi_lookup[$tank_ugt_raw])) {
+            $inv = $fi_lookup[$tank_ugt_raw];
+        } elseif ($tank_ugt_num && isset($fi_lookup['ugt_' . (int)$tank_ugt_num])) {
+            $inv = $fi_lookup['ugt_' . (int)$tank_ugt_num];
+        } elseif ($tank_ugt_num && isset($fi_lookup['ugt #' . (int)$tank_ugt_num])) {
+            $inv = $fi_lookup['ugt #' . (int)$tank_ugt_num];
+        } elseif (isset($fi_lookup[$ft_key . '_tank_' . $tank_num])) {
             $inv = $fi_lookup[$ft_key . '_tank_' . $tank_num];
-        } elseif (isset($fi_lookup[$ft_key . '_' . strtolower(trim($tc['tank']))])) {
-            $inv = $fi_lookup[$ft_key . '_' . strtolower(trim($tc['tank']))];
+        } elseif (isset($fi_lookup[$ft_key . '_' . $tank_ugt_raw])) {
+            $inv = $fi_lookup[$ft_key . '_' . $tank_ugt_raw];
         } elseif (isset($fi_lookup[$ft_key . '_' . strtolower(trim($tc['label']))])) {
             $inv = $fi_lookup[$ft_key . '_' . strtolower(trim($tc['label']))];
-        } elseif (isset($fi_lookup[strtolower(trim($tc['tank']))])) {
-            $inv = $fi_lookup[strtolower(trim($tc['tank']))];
         } elseif ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
             $cand = '';
             if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'xtra unl 1'; }
@@ -260,9 +271,10 @@ try {
         $fuel_products[] = [
             'id'             => $inv_id,
             'pump_id'        => $tc['tanker_num'],
-            'ugt_no'         => $tc['tank'],
+            'ugt_no'         => !empty($inv['ugt_no']) ? $inv['ugt_no'] : $tc['tank'],
             'tank_label'     => $tc['label'],
-            'raw_fuel_type'  => $tc['fuel_type'],
+            'fuel_type'      => !empty($inv['fuel_type']) ? $inv['fuel_type'] : $tc['fuel_type'],
+            'raw_fuel_type'  => !empty($inv['fuel_type']) ? $inv['fuel_type'] : $tc['fuel_type'],
             'capacity'       => $capacity,
             'current_stock'  => $ending_system,
             'critical_level' => $critical_level,
@@ -438,15 +450,19 @@ include __DIR__ . '/../partials/header.php';
 <style>
 /* ABSOLUTE NO TEXT OVERLAPPING RULE */
 .cust-section, .table-wrap, .table-responsive, .table-card, .card {
-    overflow-x: auto !important;
+    overflow-x: hidden !important;
     width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
 }
 
-table.cust-table, #mgrMerchTable, table.pricing-table, table.tbl-requests, table.table {
-    table-layout: auto !important;
+table.cust-table, #merchTable, #mgrMerchTable, table.pricing-table, table.tbl-requests, table.table {
+    table-layout: fixed !important;
     width: 100% !important;
-    min-width: 1050px !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
     border-collapse: collapse !important;
+    box-sizing: border-box !important;
 }
 
 table th {
@@ -502,12 +518,13 @@ th:nth-child(3), th:nth-child(4), th:nth-child(5), th:nth-child(6), th:nth-child
 
 /* Action Buttons */
 .cust-actions button, .cust-table .btn-plain, .act-btn, .tbl-btn {
-    font-size: 11.5px !important;
+    font-size: 11px !important;
     font-weight: 700 !important;
-    height: 26px !important;
-    padding: 0 8px !important;
+    height: 24px !important;
+    padding: 0 6px !important;
     white-space: nowrap !important;
     border-radius: 5px !important;
+    overflow: visible !important;
 }
 </style>
 
@@ -621,32 +638,30 @@ body, html { overflow-x: hidden; max-width: 100%; }
     max-width: 100% !important;
     box-sizing: border-box !important;
 }
-.pricing-table {
+.pricing-table, #merchTable, #mgrMerchTable, table.tbl-requests {
     width: 100% !important;
     max-width: 100% !important;
     border-collapse: collapse !important;
     box-sizing: border-box !important;
-}
-#merchTable {
-    table-layout: auto !important; min-width: 0 !important;
+    table-layout: fixed !important;
 }
 .pricing-table th {
     background: #002F70 !important; 
     color: #fff !important; 
-    padding: 8px 6px !important;
-    font-size: 10px !important;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .3px;
-    white-space: nowrap;
+    padding: 10px 8px !important;
+    font-size: 11.5px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .3px !important;
+    white-space: nowrap !important;
+    vertical-align: middle !important;
 }
 .pricing-table td {
-    padding: 6px 5px !important;
-    border-bottom: 1px solid #f1f5f9;
-    vertical-align: middle;
-    white-space: normal !important;
-    word-break: break-word !important;
-    font-size: 11px !important;
+    padding: 9px 8px !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    vertical-align: middle !important;
+    font-size: 13px !important;
+    line-height: 1.3 !important;
 }
 .pricing-table tbody tr:hover { background: #e3f2fd; }
 
@@ -750,33 +765,34 @@ body, html { overflow-x: hidden; max-width: 100%; }
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 5px !important;
-    padding: 5px 10px !important;
-    border-radius: 6px !important;
+    gap: 4px !important;
+    padding: 3px 8px !important;
+    border-radius: 5px !important;
     font-size: 11px !important;
     font-weight: 700 !important;
     cursor: pointer !important;
     white-space: nowrap !important;
     line-height: 1.2 !important;
     width: 100% !important;
-    max-width: 110px !important;
-    margin-bottom: 4px !important;
+    max-width: 95px !important;
+    margin-bottom: 3px !important;
     transition: all .18s ease-in-out !important;
     background: #ffffff !important;
     border: 1.5px solid #cbd5e1 !important;
     text-decoration: none !important;
     box-sizing: border-box !important;
     opacity: 1 !important;
+    overflow: visible !important;
 }
 .act-btn:last-child { margin-bottom: 0 !important; }
 
-.act-btn-view { color: #16a34a !important; -webkit-text-fill-color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
-.act-btn-view:hover { background: #16a34a !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
+.act-btn-view { color: #475569 !important; -webkit-text-fill-color: #475569 !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.act-btn-view:hover { background: #475569 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
 
 .act-btn-edit { color: #002F6C !important; -webkit-text-fill-color: #002F6C !important; border-color: #002F6C !important; background: #ffffff !important; }
 .act-btn-edit:hover { background: #002F6C !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
 
-.act-btn-deactivate { color: #dc2626 !important; -webkit-text-fill-color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
+.act-btn-deactivate { color: #dc2626 !important; -webkit-text-fill-color: #dc2626 !important; border-color: #f87171 !important; background: #fff5f5 !important; }
 .act-btn-deactivate:hover { background: #dc2626 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
 
 .act-btn-activate { color: #16a34a !important; -webkit-text-fill-color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
@@ -829,8 +845,9 @@ body, html { overflow-x: hidden; max-width: 100%; }
         <select id="fuelStatusFilter" onchange="filterFuelTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;color:#334155;background:#fff;">
             <option value="">All Statuses</option>
             <option value="Normal">Normal</option>
-            <option value="Low">Low</option>
-            
+            <option value="Low Stock">Low Stock</option>
+            <option value="Out of Stock">Out of Stock</option>
+            <option value="Deactivated">Deactivated</option>
         </select>
     </div>
 
@@ -841,16 +858,26 @@ body, html { overflow-x: hidden; max-width: 100%; }
     </div>
 
     <div class="card" style="padding:0;overflow:hidden;">
-        <div class="table-wrap" style="overflow-x: hidden;">
-            <table class="pricing-table">
+        <div class="table-wrap" style="overflow-x: hidden; width:100%;">
+            <table class="pricing-table" style="table-layout:fixed; width:100%;">
+                <colgroup>
+                    <col style="width: 9%;">  <!-- UGT No. -->
+                    <col style="width: 18%;"> <!-- Fuel Type -->
+                    <col style="width: 11%;"> <!-- Price / Liter -->
+                    <col style="width: 12%;"> <!-- Current Volume -->
+                    <col style="width: 10%;"> <!-- Capacity -->
+                    <col style="width: 10%;"> <!-- Reorder Level -->
+                    <col style="width: 9%;">  <!-- Status -->
+                    <col style="width: 8%;">  <!-- Last Updated -->
+                    <col style="width: 13%;"> <!-- Actions -->
+                </colgroup>
                 <thead>
                     <tr>
-                        <th style="text-align:left;padding-left:16px;">UGT No.</th>
+                        <th style="text-align:left;padding-left:12px;">UGT No.</th>
                         <th style="text-align:left;">Fuel Type</th>
                         <th style="text-align:right;">Price / Liter (&#8369;)</th>
                         <th style="text-align:right;">Current Volume (L)</th>
                         <th style="text-align:right;">Capacity (L)</th>
-                        
                         <th style="text-align:right;">Reorder Level (L)</th>
                         <th style="text-align:center;">Status</th>
                         <th style="text-align:center;">Last Updated</th>
@@ -867,14 +894,21 @@ body, html { overflow-x: hidden; max-width: 100%; }
                 <?php else: ?>
                     <?php 
                     foreach ($fuel_products as $f):
-                        $level    = $f['current_stock'];
-                        $critical = $f['critical_level'];
-                        $reorder  = $f['reorder_level'] ?? 0;
-                        $capacity = $f['capacity'];
+                        $level    = (float)($f['current_stock'] ?? 0);
+                        $critical = (float)($f['critical_level'] ?? 0);
+                        $reorder  = (float)($f['reorder_level'] ?? 0);
+                        $capacity = (float)($f['capacity'] ?? 0);
                         
                         $raw_status = strtolower(trim($f['status'] ?? 'normal'));
-                        // Evaluate status strictly from actual numeric stock levels (Only 3 statuses: Normal = GREEN, Low Stock = RED, Out of Stock = RED)
-                        if ($level <= 0) {
+                        $fuel_active_status = strtolower($f['inv_status'] ?? ($f['status'] ?? 'active'));
+                        $is_deactivated = in_array($fuel_active_status, ['inactive', 'disabled', 'deactivated'], true);
+
+                        if ($is_deactivated) {
+                            $status_label = 'Deactivated';
+                            $status_class = 'badge-inactive';
+                            $bar_color    = '#94a3b8';
+                            $badge_style  = 'background:#fee2e2 !important;color:#b91c1c !important;border:1.5px solid #f87171 !important;';
+                        } elseif ($level <= 0) {
                             $status_label = 'Out of Stock';
                             $status_class = 'badge-out';
                             $bar_color    = '#dc2626';
@@ -893,42 +927,53 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         
                         $pct = $capacity > 0 ? min(100, round($level / $capacity * 100)) : 0;
                         $ugt_str = $f['ugt_no'] ?? ('UGT #' . $f['pump_id']);
-                        $canonical_type = get_canonical_fuel_name($f['raw_fuel_type']);
-                        $full_fuel_name = $canonical_type;
+                        $raw_name = !empty($f['fuel_type']) ? $f['fuel_type'] : ($f['raw_fuel_type'] ?? 'Fuel');
+                        $clean_name = trim(preg_replace('/\s*\(UGT\s*#?\d+\)/i', '', $raw_name));
+                        $full_fuel_name = $clean_name !== '' ? $clean_name : $raw_name;
+                        $canonical_type = $full_fuel_name;
                     ?>
-                    <tr class="fuel-row" data-ugt="<?php echo htmlspecialchars(strtolower($ugt_str)); ?>" data-name="<?php echo htmlspecialchars(strtolower($full_fuel_name)); ?>" data-status="<?php echo htmlspecialchars($status_label); ?>">
-                        <td>
-                            <strong style="font-family:monospace;color:#002F6C;font-size:14px;"><?php echo htmlspecialchars($ugt_str); ?></strong>
+                    <tr class="fuel-row" data-ugt="<?php echo htmlspecialchars(strtolower($ugt_str)); ?>" data-name="<?php echo htmlspecialchars(strtolower($full_fuel_name)); ?>" data-status="<?php echo htmlspecialchars($status_label); ?>" data-active="<?php echo $is_deactivated ? 'inactive' : 'active'; ?>" style="<?php echo $is_deactivated ? 'background:#fff5f5;' : ''; ?>">
+                        <td style="padding-left:12px;white-space:nowrap;">
+                            <strong style="font-family:monospace;color:#002F6C;font-size:13px;letter-spacing:0.2px;"><?php echo htmlspecialchars($ugt_str); ?></strong>
                         </td>
-                        <td>
-                            <strong><?php echo htmlspecialchars($full_fuel_name); ?></strong>
+                        <td style="word-break:break-word;line-height:1.25;">
+                            <strong style="<?php echo $is_deactivated ? 'color:#64748b;' : 'color:#0f172a;'; ?>font-size:13px;"><?php echo htmlspecialchars($full_fuel_name); ?></strong>
+                            <?php if ($is_deactivated): ?>
+                                <div style="font-size:10px;color:#dc2626;font-weight:700;margin-top:2px;">
+                                    <i class="fas fa-ban"></i> Deactivated (Disabled)
+                                </div>
+                            <?php endif; ?>
                         </td>
-                        <td>
-                            <strong style="color:#002F6C;">&#8369;<?php echo number_format((float)($f['price_per_liter'] ?? 0), 2); ?></strong>
+                        <td style="text-align:right;white-space:nowrap;">
+                            <strong style="color:#002F6C;font-size:13px;">&#8369;<?php echo number_format((float)($f['price_per_liter'] ?? 0), 2); ?></strong>
                             <?php if (($f['approval_status'] ?? '') === 'pending'): ?>
-                                <div style="font-size:14px; color:#d97706; background:#fef3c7; padding:2px 6px; border-radius:4px; margin-top:4px; display:inline-block; font-weight:600;">
+                                <div style="font-size:11px; color:#d97706; background:#fef3c7; padding:2px 5px; border-radius:4px; margin-top:2px; display:inline-block; font-weight:600;">
                                     Pending: ₱<?php echo number_format($f['pending_price'], 2); ?>
                                 </div>
                             <?php endif; ?>
                         </td>
-                        <td>
-                            <?php echo number_format($level, 2); ?>
-                            <div style="margin-top:4px;height:4px;background:#e2e8f0;border-radius:2px;width:80px;">
+                        <td style="text-align:right;white-space:nowrap;">
+                            <span style="font-size:12.5px;font-weight:600;"><?php echo number_format($level, 2); ?></span>
+                            <div style="margin-top:3px;height:4px;background:#e2e8f0;border-radius:2px;width:100%;">
                                 <div style="height:4px;background:<?php echo $bar_color; ?>;border-radius:2px;width:<?php echo $pct; ?>%;"></div>
                             </div>
                         </td>
-                        <td><?php echo number_format($capacity, 2); ?></td>
+                        <td style="text-align:right;white-space:nowrap;font-size:12.5px;"><?php echo number_format($capacity, 2); ?></td>
                         
-                        <td><strong style="color:#475569;"><?php echo number_format((float)$reorder, 2); ?></strong></td>
-                        <td>
-                            <span class="badge <?php echo $status_class; ?>" style="<?php echo $badge_style; ?>display:inline-block;padding:3px 10px;border-radius:999px;font-size:14px;font-weight:700;">
-                                <?php echo htmlspecialchars($status_label); ?>
+                        <td style="text-align:right;white-space:nowrap;"><strong style="color:#475569;font-size:12.5px;"><?php echo number_format((float)$reorder, 2); ?></strong></td>
+                        <td style="text-align:center;white-space:nowrap;">
+                            <span class="badge <?php echo $status_class; ?>" style="<?php echo $badge_style; ?>display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;">
+                                <?php if ($is_deactivated): ?>
+                                    <i class="fas fa-ban" style="font-size:9.5px;"></i> DEACTIVATED
+                                <?php else: ?>
+                                    <?php echo htmlspecialchars($status_label); ?>
+                                <?php endif; ?>
                             </span>
                         </td>
-                        <td class="muted" style="font-size:14.5px;">
+                        <td class="muted" style="font-size:11.5px;text-align:center;white-space:nowrap;">
                             <?php echo $f['last_updated'] ? htmlspecialchars(date('M d, Y H:i', strtotime($f['last_updated']))) : '&mdash;'; ?>
                         </td>
-                        <td>
+                        <td style="text-align:center;white-space:nowrap;">
                             <div class="act-btn-wrap">
                                 <?php if (!empty($f['id'])): ?>
                                     <button onclick="viewFuelDetails(<?php echo $f['id']; ?>)" class="act-btn act-btn-view">
@@ -937,19 +982,17 @@ body, html { overflow-x: hidden; max-width: 100%; }
                                     <button onclick="openEditPriceModal(<?php echo $f['id']; ?>, '<?php echo htmlspecialchars(addslashes($full_fuel_name)); ?>', <?php echo (float)($f['price_per_liter'] ?? 0); ?>, <?php echo (float)($f['capacity'] ?? 0); ?>, <?php echo (float)($f['critical_level'] ?? 0); ?>, <?php echo (float)($f['reorder_level'] ?? 0); ?>, '<?php echo htmlspecialchars(addslashes($ugt_str)); ?>')" class="act-btn act-btn-edit">
                                         <i class="fas fa-edit"></i> Edit
                                     </button>
-                                    <?php 
-                                    $fuel_active_status = strtolower($f['inv_status'] ?? ($f['status'] ?? 'active'));
-                                    if ($fuel_active_status !== 'inactive'): ?>
-                                        <button onclick="toggleFuelStatus(<?php echo $f['id']; ?>, 'inactive', '<?php echo htmlspecialchars(addslashes($canonical_type)); ?>')" class="act-btn act-btn-deactivate">
+                                    <?php if (!$is_deactivated): ?>
+                                        <button onclick="toggleFuelStatus(<?php echo $f['id']; ?>, 'inactive', '<?php echo htmlspecialchars(addslashes($canonical_type)); ?>')" class="act-btn act-btn-deactivate" style="color:#dc2626 !important;border-color:#fca5a5 !important;background:#fef2f2 !important;">
                                             <i class="fas fa-ban"></i> Deactivate
                                         </button>
                                     <?php else: ?>
-                                        <button onclick="toggleFuelStatus(<?php echo $f['id']; ?>, 'active', '<?php echo htmlspecialchars(addslashes($canonical_type)); ?>')" class="act-btn act-btn-activate">
+                                        <button onclick="toggleFuelStatus(<?php echo $f['id']; ?>, 'active', '<?php echo htmlspecialchars(addslashes($canonical_type)); ?>')" class="act-btn act-btn-activate" style="color:#16a34a !important;border-color:#86efac !important;background:#f0fdf4 !important;">
                                             <i class="fas fa-check-circle"></i> Activate
                                         </button>
                                     <?php endif; ?>
                                 <?php else: ?>
-                                    <span style="font-size:14px;color:#94a3b8;font-style:italic;">No Actions</span>
+                                    <span style="font-size:12px;color:#94a3b8;font-style:italic;">No Actions</span>
                                 <?php endif; ?>
                             </div>
                         </td>
@@ -959,6 +1002,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                 </tbody>
             </table>
         </div>
+    </div>
     </div>
 </div>
 
@@ -998,8 +1042,8 @@ body, html { overflow-x: hidden; max-width: 100%; }
             <option value="">All Statuses</option>
             <option value="available">Available</option>
             <option value="low">Low Stock</option>
-            
             <option value="out">Out of Stock</option>
+            <option value="inactive">Deactivated</option>
             <option value="noprice">No Price Set</option>
             <option value="belowcost">Price Below Cost</option>
         </select>
@@ -1018,29 +1062,38 @@ body, html { overflow-x: hidden; max-width: 100%; }
     <?php else: ?>
     <div class="card" style="padding:0;overflow:hidden;">
         <div class="table-wrap" style="overflow-x:hidden; width:100%;">
-            <table class="pricing-table" id="merchTable" style="width:100%; table-layout:auto; min-width: 0;">
-                
+            <table class="pricing-table" id="merchTable" style="width:100%; table-layout:fixed;">
+                <colgroup>
+                    <col style="width: 11%;"> <!-- SKU / Code -->
+                    <col style="width: 21%;"> <!-- Product Name -->
+                    <col style="width: 13%;"> <!-- Category -->
+                    <col style="width: 9%;">  <!-- Brand -->
+                    <col style="width: 7%;">  <!-- UOM -->
+                    <col style="width: 9%;">  <!-- Default Selling Price -->
+                    <col style="width: 7%;">  <!-- Reorder Lvl -->
+                    <col style="width: 9%;">  <!-- Status -->
+                    <col style="width: 14%;"> <!-- Actions -->
+                </colgroup>
                 <thead>
                     <tr>
-                        <th style="text-align:left;padding:10px 8px;">SKU / Code</th>
-                        <th style="text-align:left;padding:10px 8px;">Product Name</th>
-                        <th style="text-align:left;padding:10px 8px;">Category</th>
-                        <th style="text-align:left;padding:10px 8px;">Brand</th>
-                        <th style="text-align:left;padding:10px 8px;">UOM</th>
-                        <th style="text-align:right;padding:10px 8px;">Default Selling Price</th>
-                        <th style="text-align:center;padding:10px 8px;">Reorder Lvl</th>
-                        
-                        <th style="text-align:center;padding:10px 8px;">Status</th>
-                        <th style="text-align:center;padding:10px 8px;">Actions</th>
+                        <th style="text-align:left;padding-left:12px;">SKU / Code</th>
+                        <th style="text-align:left;">Product Name</th>
+                        <th style="text-align:left;">Category</th>
+                        <th style="text-align:left;">Brand</th>
+                        <th style="text-align:left;">UOM</th>
+                        <th style="text-align:right;">Selling Price</th>
+                        <th style="text-align:center;">Reorder Lvl</th>
+                        <th style="text-align:center;">Status</th>
+                        <th style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="merchBody">
                 <?php foreach ($merch_by_cat as $cat_label => $items): ?>
                     <tr class="cat-row" data-cat-header="<?php echo htmlspecialchars($cat_label); ?>">
-                        <td colspan="9">
-                            <i class="fas fa-folder"></i>
-                            <?php echo htmlspecialchars($cat_label); ?>
-                            <span class="muted cat-count" style="font-weight:400;margin-left:6px;">(<?php echo count($items); ?> items)</span>
+                        <td colspan="9" style="padding:8px 12px;">
+                            <i class="fas fa-folder" style="color:#002F6C;margin-right:4px;"></i>
+                            <strong><?php echo htmlspecialchars($cat_label); ?></strong>
+                            <span class="muted cat-count" style="font-weight:600;margin-left:6px;font-size:12px;">(<?php echo count($items); ?> items)</span>
                         </td>
                     </tr>
                     <?php foreach ($items as $item):
@@ -1050,8 +1103,15 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         $critical_lvl  = (int)($item['critical_level'] ?? 10);
                         $no_price      = ($price <= 0);
                         $brand_display = htmlspecialchars($item['brand'] ?? '—');
+                        $product_status = strtolower(trim($item['status'] ?? 'active'));
+                        $is_inactive   = in_array($product_status, ['inactive','disabled','deactivated']);
 
-                        if ($stock <= 0) {
+                        if ($is_inactive) {
+                            $st_label   = 'Deactivated';
+                            $st_class   = 'badge-inactive';
+                            $st_key     = 'inactive';
+                            $style_attr = 'background:#fee2e2 !important;color:#b91c1c !important;border:1.5px solid #f87171 !important;';
+                        } elseif ($stock <= 0) {
                             $st_label   = 'Out of Stock';
                             $st_class   = 'badge-out';
                             $st_key     = 'out';
@@ -1067,9 +1127,6 @@ body, html { overflow-x: hidden; max-width: 100%; }
                             $st_key     = 'available';
                             $style_attr = 'background:#dcfce7 !important;color:#15803d !important;border:1px solid #86efac !important;';
                         }
-
-                        $product_status = strtolower(trim($item['status'] ?? 'active'));
-                        $is_inactive = in_array($product_status, ['inactive','disabled','deactivated']);
                     ?>
                     <tr class="merch-row"
                         data-name="<?php echo strtolower(htmlspecialchars($item['product_name'] ?? '')); ?>"
@@ -1080,48 +1137,55 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         data-cat="<?php echo htmlspecialchars($cat_label); ?>"
                         data-status="<?php echo $st_key; ?>"
                         data-noprice="<?php echo $no_price ? '1' : '0'; ?>"
-                        <?php if ($is_inactive): ?>style="opacity:0.6;background:#f8f9fa;"<?php endif; ?>>
+                        <?php if ($is_inactive): ?>style="background:#fff5f5;"<?php endif; ?>>
                         <!-- SKU / Code -->
-                        <td>
-                            <code style="font-size:14px;color:#4f46e5;background:#ede9fe;padding:2px 6px;border-radius:4px;font-weight:700;">
+                        <td style="padding-left:12px;white-space:nowrap;">
+                            <code style="font-size:12px;color:#3730a3;background:#e0e7ff;padding:3px 7px;border-radius:4px;font-weight:800;white-space:nowrap;display:inline-block;letter-spacing:0.2px;font-family:monospace;">
                                 <?php echo htmlspecialchars($item['sku'] ?? '—'); ?>
                             </code>
                         </td>
                         <!-- Product Name -->
-                        <td>
-                            <strong style="color:#1e293b;font-size:15.5px;"><?php echo htmlspecialchars($item['product_name'] ?? ''); ?></strong>
+                        <td style="word-break:break-word;line-height:1.25;">
+                            <strong style="<?php echo $is_inactive ? 'color:#64748b;' : 'color:#0f172a;'; ?>font-size:13px;display:block;"><?php echo htmlspecialchars($item['product_name'] ?? ''); ?></strong>
                             <?php if ($is_inactive): ?>
-                                <span style="margin-left:5px;font-size:15.5px;background:#e2e8f0;color:#64748b;padding:1px 5px;border-radius:3px;font-weight:600;">INACTIVE</span>
+                                <span style="font-size:10px;background:#fee2e2;color:#b91c1c;padding:1px 5px;border-radius:3px;font-weight:700;display:inline-block;margin-top:2px;">
+                                    <i class="fas fa-ban" style="font-size:9px;"></i> DEACTIVATED
+                                </span>
                             <?php endif; ?>
                             <?php if (($item['approval_status'] ?? '') === 'pending'): ?>
-                                <div style="font-size:15.5px;color:#d97706;background:#fef3c7;padding:2px 5px;border-radius:3px;margin-top:2px;font-weight:600;display:inline-block;">Pending: ₱<?php echo number_format($item['pending_price'], 2); ?></div>
+                                <div style="font-size:11px;color:#d97706;background:#fef3c7;padding:2px 5px;border-radius:3px;margin-top:2px;font-weight:600;display:inline-block;">Pending: ₱<?php echo number_format($item['pending_price'], 2); ?></div>
                             <?php endif; ?>
                         </td>
                         <!-- Category -->
-                        <td style="font-size:14.5px;color:#334155;"><?php echo htmlspecialchars($cat_label); ?></td>
+                        <td style="font-size:12.5px;color:#334155;word-break:break-word;line-height:1.25;"><?php echo htmlspecialchars($cat_label); ?></td>
                         <!-- Brand -->
-                        <td style="font-size:14.5px;color:#64748b;"><?php echo $brand_display ?: '—'; ?></td>
+                        <td style="font-size:12.5px;color:#64748b;word-break:break-word;"><?php echo $brand_display ?: '—'; ?></td>
                         <!-- UOM -->
-                        <td style="font-size:14.5px;color:#334155;font-weight:500;"><?php echo htmlspecialchars($item['unit'] ?? 'pcs'); ?></td>
+                        <td style="font-size:12.5px;color:#334155;font-weight:600;white-space:nowrap;"><?php echo htmlspecialchars($item['unit'] ?? 'pcs'); ?></td>
                         <!-- Default Selling Price -->
-                        <td style="text-align:right;">
+                        <td style="text-align:right;white-space:nowrap;">
                             <?php if ($no_price): ?>
-                                <span class="badge badge-noprice">No Price Set</span>
+                                <span class="badge badge-noprice" style="font-size:11px;">No Price</span>
                             <?php else: ?>
-                                <strong style="color:#002F6C;font-size:15.5px;">&#8369;<?php echo number_format($price, 2); ?></strong>
+                                <strong style="color:#002F6C;font-size:13px;">&#8369;<?php echo number_format($price, 2); ?></strong>
                             <?php endif; ?>
                         </td>
                         <!-- Reorder Level -->
-                        <td style="text-align:center;">
-                            <span style="display:inline-block;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:4px;padding:2px 8px;font-size:14.5px;font-weight:700;"><?php echo number_format($reorder_level); ?></span>
+                        <td style="text-align:center;white-space:nowrap;">
+                            <span style="display:inline-block;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:4px;padding:2px 7px;font-size:12px;font-weight:700;"><?php echo number_format($reorder_level); ?></span>
                         </td>
-                        
-                        
                         <!-- Status -->
-                        <!-- Status -->
-                        <td style="text-align:center;"><span class="badge <?php echo $st_class; ?>" style="<?php echo $style_attr; ?>display:inline-block;padding:3px 9px;border-radius:999px;font-size:14px;font-weight:700;"><?php echo $st_label; ?></span></td>
+                        <td style="text-align:center;white-space:nowrap;">
+                            <span class="badge <?php echo $st_class; ?>" style="<?php echo $style_attr; ?>display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;">
+                                <?php if ($is_inactive): ?>
+                                    <i class="fas fa-ban" style="font-size:9.5px;"></i> DEACTIVATED
+                                <?php else: ?>
+                                    <?php echo htmlspecialchars($st_label); ?>
+                                <?php endif; ?>
+                            </span>
+                        </td>
                         <!-- Actions -->
-                        <td style="text-align:center;">
+                        <td style="text-align:center;white-space:nowrap;">
                             <div class="act-btn-wrap">
                                 <button onclick="viewMerchandiseDetails(<?php echo $item['id']; ?>)" class="act-btn act-btn-view">
                                     <i class="fas fa-eye"></i> View
@@ -1130,15 +1194,14 @@ body, html { overflow-x: hidden; max-width: 100%; }
                                     <i class="fas fa-edit"></i> Edit
                                 </button>
                                 <?php if (!$is_inactive): ?>
-                                    <button onclick="deactivateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars(addslashes($item['product_name'] ?? '')); ?>')" class="act-btn act-btn-deactivate">
+                                    <button onclick="deactivateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars(addslashes($item['product_name'] ?? '')); ?>')" class="act-btn act-btn-deactivate" style="color:#dc2626 !important;border-color:#fca5a5 !important;background:#fef2f2 !important;">
                                         <i class="fas fa-ban"></i> Deactivate
                                     </button>
                                 <?php else: ?>
-                                    <button onclick="activateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars(addslashes($item['product_name'] ?? '')); ?>')" class="act-btn act-btn-activate">
+                                    <button onclick="activateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars(addslashes($item['product_name'] ?? '')); ?>')" class="act-btn act-btn-activate" style="color:#16a34a !important;border-color:#86efac !important;background:#f0fdf4 !important;">
                                         <i class="fas fa-check-circle"></i> Activate
                                     </button>
                                 <?php endif; ?>
-
                             </div>
                         </td>
                     </tr>
@@ -1206,20 +1269,28 @@ body, html { overflow-x: hidden; max-width: 100%; }
                 <div style="font-size:15.5px;">Click <strong>Add Service</strong> to add your first service type.</div>
             </div>
         <?php else: ?>
-        <div class="table-wrap" style="overflow-x: hidden;">
-            <table class="pricing-table" style="min-width: 0;">
+        <div class="table-wrap" style="overflow-x: hidden; width:100%;">
+            <table class="pricing-table" id="servicePricingTable" style="table-layout:fixed; width:100%;">
+                <colgroup>
+                    <col style="width: 9%;">   <!-- Code -->
+                    <col style="width: 28%;">  <!-- Service Name -->
+                    <col style="width: 14%;">  <!-- Category -->
+                    <col style="width: 12%;">  <!-- Service Fee -->
+                    <col style="width: 12%;">  <!-- Labor Fee -->
+                    <col style="width: 8%;">   <!-- Status -->
+                    <col style="width: 12%;">  <!-- Last Updated -->
+                    <col style="width: 13%;">  <!-- Action -->
+                </colgroup>
                 <thead>
                     <tr>
-                        <th style="width:110px;">Code</th>
-                        <th>Service Name</th>
-                        <th>Category</th>
-                        <th style="text-align:right;min-width:115px;">Service Fee</th>
-                        <th style="text-align:right;min-width:105px;">Labor Fee</th>
-                        <th style="text-align:center;min-width:80px;">Duration</th>
-                        <th style="text-align:center;min-width:85px;">Mechanics</th>
-                        <th style="text-align:center;min-width:90px;">Status</th>
-                        <th style="text-align:center;min-width:100px;">Last Updated</th>
-                        <th style="text-align:center;min-width:210px;">Actions</th>
+                        <th style="text-align:left;padding-left:8px;">Code</th>
+                        <th style="text-align:left;">Service Name</th>
+                        <th style="text-align:left;">Category</th>
+                        <th style="text-align:right;">Service Fee</th>
+                        <th style="text-align:right;">Labor Fee</th>
+                        <th style="text-align:center;">Status</th>
+                        <th style="text-align:center;">Last Updated</th>
+                        <th style="text-align:center;">Action</th>
                     </tr>
                 </thead>
                 <tbody id="serviceTableBody">
@@ -1251,76 +1322,94 @@ body, html { overflow-x: hidden; max-width: 100%; }
                             'service_price'      => $svcFee,
                             'labor_fee'          => $laborFee,
                             'estimated_duration' => $duration,
+                            'duration_str'       => $durationStr,
                             'required_mechanics' => $mechanics,
                             'description'        => $svc['description'] ?? '',
                             'active'             => $isActive ? 1 : 0,
+                            'updated_at'         => $updatedAt,
                         ], JSON_HEX_APOS | JSON_HEX_QUOT);
                     ?>
                     <tr class="service-row"
                         data-category="<?php echo $svcCat; ?>"
                         data-active="<?php echo $isActive ? '1' : '0'; ?>"
-                        data-name="<?php echo strtolower(htmlspecialchars($svc['service_name'])); ?>">
-                        <td>
-                            <span style="font-family:monospace;font-size:14px;color:#0369a1;font-weight:700;background:#e0f2fe;padding:3px 7px;border-radius:5px;letter-spacing:0.3px;"><?php echo $svcCode; ?></span>
+                        data-name="<?php echo strtolower(htmlspecialchars($svc['service_name'])); ?>"
+                        <?php if (!$isActive): ?>style="background:#fff5f5;"<?php endif; ?>>
+                        
+                        <!-- Code -->
+                        <td style="padding:6px 6px;box-sizing:border-box;vertical-align:middle;">
+                            <span style="font-family:monospace;font-size:11px;color:#0369a1;font-weight:700;background:#e0f2fe;padding:2px 6px;border-radius:4px;white-space:nowrap;border:1px solid #bae6fd;display:inline-block;"><?php echo $svcCode; ?></span>
                         </td>
-                        <td>
-                            <div style="font-weight:600;color:#1e293b;font-size:15.5px;"><?php echo $svcName; ?></div>
+
+                        <!-- Service Name -->
+                        <td style="padding:6px 8px;box-sizing:border-box;vertical-align:middle;">
+                            <div style="font-weight:700;<?php echo !$isActive ? 'color:#64748b;' : 'color:#1e293b;'; ?>font-size:12px;line-height:1.35;"><?php echo $svcName; ?></div>
+                            <?php if (!$isActive): ?>
+                                <span style="font-size:9.5px;background:#fee2e2;color:#b91c1c;padding:1px 5px;border-radius:3px;font-weight:700;display:inline-block;margin-top:2px;">
+                                    <i class="fas fa-ban" style="font-size:8.5px;"></i> DEACTIVATED
+                                </span>
+                            <?php endif; ?>
                             <?php if ($svcDesc): ?>
-                            <div style="font-size:14px;color:#94a3b8;margin-top:2px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo $svcDesc; ?>"><?php echo $svcDesc; ?></div>
+                            <div style="font-size:10.5px;color:#64748b;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo $svcDesc; ?>"><?php echo $svcDesc; ?></div>
                             <?php endif; ?>
                         </td>
-                        <td>
-                            <span style="background:#f0f7ff;color:#003d7a;padding:3px 10px;border-radius:999px;font-size:14px;font-weight:600;white-space:nowrap;"><?php echo $svcCat; ?></span>
+
+                        <!-- Category -->
+                        <td style="padding:6px 6px;box-sizing:border-box;vertical-align:middle;">
+                            <span style="background:#f0f7ff;color:#003d7a;border:1px solid #dbeafe;padding:2px 7px;border-radius:999px;font-size:10.5px;font-weight:700;display:inline-block;white-space:nowrap;"><?php echo $svcCat; ?></span>
                         </td>
-                        <td style="text-align:right;">
-                            <div style="font-weight:700;color:#002F6C;font-size:14px;">&#8369;<?php echo number_format($svcFee, 2); ?></div>
+
+                        <!-- Service Fee -->
+                        <td style="padding:6px 6px;box-sizing:border-box;vertical-align:middle;text-align:right;">
+                            <div style="font-weight:700;color:#002F6C;font-size:12px;white-space:nowrap;">&#8369;<?php echo number_format($svcFee, 2); ?></div>
                             <?php if ($hasPending && $pendSvcFee > 0): ?>
-                            <div style="font-size:15.5px;color:#d97706;background:#fef3c7;padding:2px 5px;border-radius:4px;margin-top:3px;font-weight:600;display:inline-block;white-space:nowrap;">
-                                <i class="fas fa-hourglass-half" style="font-size:14.5px;"></i> &#8369;<?php echo number_format($pendSvcFee, 2); ?>
+                            <div style="font-size:9.5px;color:#d97706;background:#fef3c7;border:1px solid #fde68a;padding:1px 4px;border-radius:4px;margin-top:2px;font-weight:700;display:inline-block;white-space:nowrap;">
+                                <i class="fas fa-hourglass-half" style="font-size:8px;"></i> &#8369;<?php echo number_format($pendSvcFee, 2); ?>
                             </div>
                             <?php endif; ?>
                         </td>
-                        <td style="text-align:right;">
-                            <div style="font-weight:600;color:#0369a1;font-size:15.5px;">&#8369;<?php echo number_format($laborFee, 2); ?></div>
+
+                        <!-- Labor Fee -->
+                        <td style="padding:6px 6px;box-sizing:border-box;vertical-align:middle;text-align:right;">
+                            <div style="font-weight:700;color:#0369a1;font-size:12px;white-space:nowrap;">&#8369;<?php echo number_format($laborFee, 2); ?></div>
                             <?php if ($hasPending && $pendLabFee > 0): ?>
-                            <div style="font-size:15.5px;color:#d97706;background:#fef3c7;padding:2px 5px;border-radius:4px;margin-top:3px;font-weight:600;display:inline-block;white-space:nowrap;">
-                                <i class="fas fa-hourglass-half" style="font-size:14.5px;"></i> &#8369;<?php echo number_format($pendLabFee, 2); ?>
+                            <div style="font-size:9.5px;color:#d97706;background:#fef3c7;border:1px solid #fde68a;padding:1px 4px;border-radius:4px;margin-top:2px;font-weight:700;display:inline-block;white-space:nowrap;">
+                                <i class="fas fa-hourglass-half" style="font-size:8px;"></i> &#8369;<?php echo number_format($pendLabFee, 2); ?>
                             </div>
                             <?php endif; ?>
                         </td>
-                        <td style="text-align:center;">
-                            <span style="color:#64748b;font-size:14.5px;white-space:nowrap;"><i class="fas fa-clock" style="color:#94a3b8;font-size:14px;"></i> <?php echo $durationStr; ?></span>
-                        </td>
-                        <td style="text-align:center;">
-                            <span style="color:#64748b;font-size:14.5px;"><i class="fas fa-user-cog" style="color:#94a3b8;font-size:14px;"></i> <?php echo $mechanics; ?></span>
-                        </td>
-                        <td style="text-align:center;">
+
+                        <!-- Status -->
+                        <td style="padding:6px 4px;box-sizing:border-box;vertical-align:middle;text-align:center;">
                             <?php if ($isActive): ?>
-                            <span style="background:#dcfce7;color:#15803d;padding:4px 10px;border-radius:999px;font-size:14px;font-weight:700;display:inline-block;">Active</span>
+                            <span style="background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;display:inline-block;white-space:nowrap;text-transform:uppercase;">Active</span>
                             <?php else: ?>
-                            <span style="background:#fee2e2;color:#b91c1c;padding:4px 10px;border-radius:999px;font-size:14px;font-weight:700;display:inline-block;">Inactive</span>
+                            <span style="background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;display:inline-block;white-space:nowrap;text-transform:uppercase;">Inactive</span>
                             <?php endif; ?>
                             <?php if ($hasPending): ?>
-                            <div style="margin-top:4px;">
-                                <span style="background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:999px;font-size:15.5px;font-weight:700;white-space:nowrap;"><i class="fas fa-hourglass-half" style="font-size:14.5px;"></i> Pending</span>
+                            <div style="margin-top:2px;">
+                                <span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:1px 5px;border-radius:999px;font-size:9px;font-weight:700;white-space:nowrap;text-transform:uppercase;"><i class="fas fa-hourglass-half" style="font-size:8px;"></i> Pending</span>
                             </div>
                             <?php endif; ?>
                         </td>
-                        <td style="text-align:center;font-size:14.5px;color:#94a3b8;white-space:nowrap;"><?php echo $updatedAt; ?></td>
-                        <td style="text-align:center;">
+
+                        <!-- Last Updated -->
+                        <td style="padding:6px 4px;text-align:center;font-size:11px;color:#64748b;white-space:nowrap;"><?php echo $updatedAt; ?></td>
+
+                        <!-- Action -->
+                        <td style="text-align:center;vertical-align:middle;padding:6px 4px !important;overflow:visible !important;max-width:none !important;">
                             <div class="act-btn-wrap">
-                                <button onclick='openViewServiceModal(<?php echo $jsObj; ?>)' class="act-btn act-btn-view">
+                                <button type="button" onclick='openViewServiceModal(<?php echo htmlspecialchars($jsObj, ENT_QUOTES, "UTF-8"); ?>)' class="act-btn act-btn-view">
                                     <i class="fas fa-eye"></i> View
                                 </button>
-                                <button onclick='openEditServiceModal(<?php echo $jsObj; ?>)' class="act-btn act-btn-edit">
+                                <button type="button" onclick='openEditServiceModal(<?php echo htmlspecialchars($jsObj, ENT_QUOTES, "UTF-8"); ?>)' class="act-btn act-btn-edit">
                                     <i class="fas fa-edit"></i> Edit
                                 </button>
                                 <?php if ($isActive): ?>
-                                <button onclick="deactivateService(<?php echo $svcId; ?>, '<?php echo addslashes($svc['service_name']); ?>')" class="act-btn act-btn-deactivate">
+                                <button type="button" onclick="deactivateService(<?php echo $svcId; ?>, '<?php echo addslashes($svc['service_name']); ?>')" class="act-btn act-btn-deactivate">
                                     <i class="fas fa-ban"></i> Deactivate
                                 </button>
                                 <?php else: ?>
-                                <button onclick="activateService(<?php echo $svcId; ?>, '<?php echo addslashes($svc['service_name']); ?>')" class="act-btn act-btn-activate">
+                                <button type="button" onclick="activateService(<?php echo $svcId; ?>, '<?php echo addslashes($svc['service_name']); ?>')" class="act-btn act-btn-activate">
                                     <i class="fas fa-check-circle"></i> Activate
                                 </button>
                                 <?php endif; ?>
@@ -1852,7 +1941,10 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
 
         <!-- Footer -->
-        <div style="display:flex;justify-content:flex-end;padding:14px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;flex-shrink:0;">
+        <div style="display:flex;justify-content:flex-end;padding:14px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;flex-shrink:0;gap:10px;">
+            <button type="button" onclick="editFuelFromView()" style="background:#002F6C !important;color:#ffffff !important;border:none !important;padding:8px 20px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                <i class="fas fa-edit"></i> Edit Product
+            </button>
             <button type="button" onclick="closeViewFuelModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 20px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">
                 <i class="fas fa-times"></i> Close
             </button>
@@ -2306,8 +2398,11 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
 
         <!-- Footer -->
-        <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:12px 24px;display:flex;justify-content:flex-end;flex-shrink:0;">
-            <button onclick="closeViewMerchModal()" style="background:#00264D !important;color:#fff !important;border:none;padding:8px 20px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">Close</button>
+        <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:12px 24px;display:flex;justify-content:flex-end;flex-shrink:0;gap:10px;">
+            <button type="button" onclick="editMerchFromView()" style="background:#002F6C !important;color:#fff !important;border:none;padding:8px 20px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                <i class="fas fa-edit"></i> Edit Product
+            </button>
+            <button onclick="closeViewMerchModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1;padding:8px 20px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">Close</button>
         </div>
     </div>
 </div>
@@ -2795,13 +2890,7 @@ function closeAddProductModal() {
 
 function getCleanCanonicalFuelName(name) {
     if (!name) return 'Fuel';
-    var lower = String(name).toLowerCase().trim();
-    if (lower.indexOf('turbo') !== -1) return 'Turbo Diesel';
-    if (lower.indexOf('diesel') !== -1) return 'Diesel';
-    if (lower.indexOf('kerosene') !== -1) return 'Kerosene';
-    if (lower.indexOf('xcs') !== -1) return 'XCS Plus';
-    if (lower.indexOf('xtra') !== -1 || lower.indexOf('unl') !== -1 || lower.indexOf('advance') !== -1) return 'Xtra UNL';
-    return String(name).replace(/[\s\-_#]*\d+$/gi, '').replace(/\s*\(UGT\s*#?\d+\)/gi, '').trim();
+    return String(name).replace(/\s*\(UGT\s*#?\d+\)/gi, '').trim();
 }
 
 function openEditPriceModal(id, fuelType, currentPrice, capacity, criticalLevel, reorderLevel, ugtNo) {
@@ -2829,7 +2918,7 @@ function openEditPriceModal(id, fuelType, currentPrice, capacity, criticalLevel,
         .then(r => r.json()).then(data => {
             if (data.success && data.fuel) {
                 var f = data.fuel;
-                var rawName = getCleanCanonicalFuelName(f.clean_fuel_type || f.fuel_type || fuelType);
+                var rawName = getCleanCanonicalFuelName(f.fuel_type || f.clean_fuel_type || fuelType);
                 var ugt = f.ugt_no || ugtNo || '';
                 
                 if (document.getElementById('editUgtNo')) document.getElementById('editUgtNo').value = ugt;
@@ -2994,6 +3083,8 @@ safeAddListener('editPriceForm', 'submit', function(e) {
         }).catch(function() { showCustomAlert('Network error. Please try again.', 'error'); });
 });
 
+var _currentViewFuel = null;
+
 // ── View Fuel Details (4 Full Sections) ─────────────────────────────────────
 function viewFuelDetails(fuelId) {
     fetch('manager_set_prices_handler.php?action=get_fuel_details&id=' + fuelId)
@@ -3001,6 +3092,7 @@ function viewFuelDetails(fuelId) {
         .then(data => {
             if (data.success) {
                 var fuel = data.fuel;
+                _currentViewFuel = fuel;
                 var history = data.history || [];
                 var configHistory = data.config_history || [];
                 var statusHistory = data.status_history || [];
@@ -3153,6 +3245,23 @@ function viewFuelDetails(fuelId) {
 
 function closeViewFuelModal() {
     document.getElementById('viewFuelModal').style.display = 'none';
+}
+
+function editFuelFromView() {
+    if (!_currentViewFuel) return;
+    var f = _currentViewFuel;
+    closeViewFuelModal();
+    setTimeout(function() {
+        openEditPriceModal(
+            f.id,
+            f.fuel_type,
+            f.price_per_liter,
+            f.capacity,
+            f.critical_level,
+            f.reorder_level,
+            f.ugt_no
+        );
+    }, 80);
 }
 
 // ── Toggle Fuel Status (Activate / Deactivate with Confirmation Dialog) ─────
@@ -3556,6 +3665,7 @@ function closeEditMerchPriceModal() {
 
 // ── View Merchandise Details Modal ──────────────────────────────────────────
 function viewMerchandiseDetails(id) {
+    _currentViewMerchId = id;
     var modal = document.getElementById('viewMerchModal');
     modal.style.display = 'flex';
     // Loading placeholders
@@ -3669,6 +3779,15 @@ function viewMerchandiseDetails(id) {
 
 function closeViewMerchModal() {
     document.getElementById('viewMerchModal').style.display = 'none';
+}
+
+function editMerchFromView() {
+    if (!_currentViewMerchId) return;
+    var id = _currentViewMerchId;
+    closeViewMerchModal();
+    setTimeout(function() {
+        openEditMerchModal(id);
+    }, 80);
 }
 
 function restoreMerchPrice(id, targetPrice) {

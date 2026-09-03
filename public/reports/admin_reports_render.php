@@ -726,12 +726,12 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
             if (!function_exists('inv_status_badge')) {
                 function inv_status_badge(string $status): string {
                     $s = strtolower(trim($status));
-                    if ($s === 'available')      return 'bg-success';
-                    if ($s === 'low stock' || $s === 'low fuel')  return 'bg-warning text-dark';
-                    if ($s === 'critical stock' || $s === 'critical fuel') return 'bg-orange text-white';
-                    if ($s === 'out of stock')   return 'bg-danger';
-                    if ($s === 'expired')        return 'bg-secondary';
-                    return 'bg-secondary';
+                    if ($s === 'available' || $s === 'normal' || $s === 'in stock') return 'bg-success text-white';
+                    if ($s === 'low stock' || $s === 'low fuel')  return 'bg-danger text-white';
+                    if ($s === 'critical stock' || $s === 'critical fuel' || $s === 'critical') return 'bg-danger text-white';
+                    if ($s === 'out of stock')   return 'bg-danger text-white';
+                    if ($s === 'expired')        return 'bg-secondary text-white';
+                    return 'bg-secondary text-white';
                 }
             }
             $rows = $report_data['rows'] ?? [];
@@ -754,9 +754,13 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                         <?php if (empty($rows)): ?>
                             <tr><td colspan="11" class="text-center py-4 text-muted">No merchandise inventory items found.</td></tr>
                         <?php else: foreach ($rows as $r):
-                            $badge = inv_status_badge($r['status'] ?? '');
+                            $stRaw = trim($r['status'] ?? 'Available');
+                            $stLower = strtolower($stRaw);
+                            $badge = inv_status_badge($stRaw);
                             $expDate = $r['expiration_date'] ?? '';
                             $isExpired = !empty($expDate) && strtotime($expDate) < time();
+                            $isLowM = in_array($stLower, ['low stock', 'low fuel', 'critical stock', 'out of stock']);
+                            $badgeBgM = $isLowM ? '#dc2626' : ($stLower === 'available' || $stLower === 'in stock' ? '#16a34a' : '#64748b');
                         ?>
                             <tr>
                                 <td><code><?= htmlspecialchars($r['sku'] ?: 'N/A') ?></code></td>
@@ -768,7 +772,11 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                 <td class="text-center fw-bold"><?= number_format((float)($r['current_stock'] ?? 0)) ?></td>
                                 <td class="text-center"><?= number_format((float)($r['reorder_level'] ?? 0)) ?></td>
                                 <td class="<?= $isExpired ? 'text-danger fw-bold' : '' ?>"><?= !empty($expDate) ? date('m/d/Y', strtotime($expDate)) : 'N/A' ?></td>
-                                <td><span class="badge <?= $badge ?>"><?= htmlspecialchars($r['status'] ?? 'N/A') ?></span></td>
+                                <td>
+                                    <span class="badge" style="background-color: <?= $badgeBgM ?> !important; color: #ffffff !important; font-weight: 700 !important; padding: 4px 10px !important; border-radius: 6px !important; font-size: 11px !important; display: inline-block !important;">
+                                        <?= htmlspecialchars($stRaw) ?>
+                                    </span>
+                                </td>
                                 <td class="text-muted" style="font-size:11px"><?= !empty($r['last_updated']) ? date('m/d/Y H:i', strtotime($r['last_updated'])) : 'N/A' ?></td>
                             </tr>
                         <?php endforeach; endif; ?>
@@ -796,9 +804,14 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                         <?php if (empty($rows)): ?>
                             <tr><td colspan="9" class="text-center py-4 text-muted">No fuel inventory records found.</td></tr>
                         <?php else: foreach ($rows as $r):
-                            $badge = inv_status_badge($r['status'] ?? '');
+                            $stRaw = trim($r['status'] ?? 'Available');
+                            $stLower = strtolower($stRaw);
                             $pct   = (float)($r['available_pct'] ?? 0);
                             $barColor = $pct <= 20 ? '#ef4444' : ($pct <= 40 ? '#f59e0b' : '#22c55e');
+
+                            // Green for Available, Red for Low Fuel / Critical
+                            $isLow = in_array($stLower, ['low fuel', 'low stock', 'critical fuel', 'critical stock', 'out of stock']);
+                            $badgeBg = $isLow ? '#dc2626' : '#16a34a';
                         ?>
                             <tr>
                                 <td><strong><?= htmlspecialchars($r['ugt'] ?? 'N/A') ?></strong></td>
@@ -813,7 +826,11 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                     </div>
                                     <span class="fw-bold" style="color:<?= $barColor ?>"><?= $pct ?>%</span>
                                 </td>
-                                <td><span class="badge <?= $badge ?>"><?= htmlspecialchars($r['status'] ?? 'N/A') ?></span></td>
+                                <td>
+                                    <span class="badge" style="background-color: <?= $badgeBg ?> !important; color: #ffffff !important; font-weight: 700 !important; padding: 4px 10px !important; border-radius: 6px !important; font-size: 11px !important; letter-spacing: 0.3px; display: inline-block !important;">
+                                        <?= htmlspecialchars($stRaw) ?>
+                                    </span>
+                                </td>
                                 <td class="text-muted" style="font-size:11px"><?= !empty($r['last_updated']) ? date('m/d/Y H:i', strtotime($r['last_updated'])) : 'N/A' ?></td>
                             </tr>
                         <?php endforeach; endif; ?>

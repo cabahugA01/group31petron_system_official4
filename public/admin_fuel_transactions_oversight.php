@@ -235,7 +235,7 @@ if ($pump !== '') {
 }
 if ($status !== '') {
     if ($status === 'Pending') {
-        $where[] = "(LOWER(ft.status) LIKE '%pending%' OR ft.status IS NULL OR ft.status = '')";
+        $where[] = "(LOWER(ft.status) LIKE '%pending%' OR LOWER(ft.status) LIKE '%submitted%' OR ft.status IS NULL OR ft.status = '')";
     } else {
         $where[] = "LOWER(ft.status) = ?";
         $params[] = strtolower($status);
@@ -253,9 +253,9 @@ $total_sales = 0.0;
 try {
     $sc_sql = "SELECT
         COUNT(*) as total,
-        SUM(CASE WHEN LOWER(ft.status) LIKE '%pending%' OR ft.status IS NULL OR ft.status='' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN LOWER(ft.status) LIKE '%pending%' OR LOWER(ft.status) LIKE '%submitted%' OR ft.status IS NULL OR ft.status='' THEN 1 ELSE 0 END) as pending,
         SUM(CASE WHEN LOWER(ft.status) IN ('verified','adjusted','approved','validated') THEN 1 ELSE 0 END) as validated,
-        SUM(CASE WHEN LOWER(ft.status) = 'rejected' THEN 1 ELSE 0 END) as rejected,
+        SUM(CASE WHEN LOWER(ft.status) IN ('rejected','voided') THEN 1 ELSE 0 END) as rejected,
         COALESCE(SUM(ft.liters_sold), 0) as liters,
         COALESCE(SUM(ft.total_amount), 0) as sales
         FROM fuel_transactions ft
@@ -564,12 +564,20 @@ require_once __DIR__ . '/../partials/header.php';
 .afto-table-hd { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap; gap:8px; }
 .afto-table-title { font-size:13px; font-weight:700; color:#00264D; text-transform:uppercase; letter-spacing:.3px; margin:0; }
 .afto-tbl-wrap { width:100% !important; max-width:100% !important; overflow-x:hidden !important; box-sizing:border-box !important; }
-.afto-tbl { width:100% !important; min-width:100% !important; max-width:100% !important; border-collapse:collapse !important; table-layout:fixed !important; font-size:11.5px; }
+.afto-tbl { width:100% !important; min-width:100% !important; max-width:100% !important; border-collapse:collapse !important; table-layout:fixed !important; font-size:12px; }
 .afto-tbl thead tr { background:#002F70 !important; }
-.afto-tbl thead th { padding:10px 8px !important; text-align:left; font-size:11px !important; font-weight:700 !important; color:#fff !important; text-transform:uppercase !important; letter-spacing:.3px !important; border-bottom:2px solid #001a3d !important; vertical-align:middle !important; overflow:hidden !important; text-overflow:ellipsis !important; white-space:nowrap !important; box-sizing:border-box !important; }
+.afto-tbl thead th { 
+    padding:10px 8px !important; text-align:left; font-size:11px !important; font-weight:700 !important; color:#fff !important; 
+    text-transform:uppercase !important; letter-spacing:.3px !important; border-bottom:2px solid #001a3d !important; 
+    vertical-align:middle !important; overflow:visible !important; text-overflow:clip !important; white-space:normal !important; 
+    word-break:normal !important; line-height:1.25 !important; box-sizing:border-box !important; 
+}
 .afto-tbl tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
 .afto-tbl tbody tr:hover td { background:#eff6ff !important; }
-.afto-tbl tbody td { padding:9px 8px !important; color:#334155; vertical-align:middle !important; background:#fff; font-size:11.5px !important; overflow:hidden !important; word-break:break-word !important; overflow-wrap:break-word !important; max-width:0 !important; box-sizing:border-box !important; }
+.afto-tbl tbody td { 
+    padding:10px 8px !important; color:#334155; vertical-align:middle !important; background:#fff; font-size:12px !important; 
+    line-height:1.35 !important; overflow:visible !important; box-sizing:border-box !important; 
+}
 
 /* Status Badges */
 .afto-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700; white-space:nowrap; }
@@ -807,27 +815,27 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="afto-tbl-wrap">
         <table class="afto-tbl" id="aftoTable">
             <colgroup>
-                <col style="width:12%">  <!-- TXN ID & DATE -->
+                <col style="width:11%">  <!-- TXN ID & DATE -->
                 <col style="width:13%">  <!-- FUEL TYPE & SHIFT -->
-                <col style="width:13%">  <!-- METER READINGS -->
-                <col style="width:11%">  <!-- VOLUME & PRICE -->
+                <col style="width:12%">  <!-- METER READINGS -->
+                <col style="width:12%">  <!-- VOLUME & PRICE -->
                 <col style="width:11%">  <!-- TOTAL AMOUNT -->
                 <col style="width:13%">  <!-- ENCODER & VALIDATOR -->
-                <col style="width:10%">  <!-- STATUS -->
-                <col style="width:9%">   <!-- VAL. DATE & REMARKS -->
-                <col style="width:8%">   <!-- ACTIONS -->
+                <col style="width:11%">  <!-- STATUS -->
+                <col style="width:10%">  <!-- VALIDATED DATE -->
+                <col style="width:7%">   <!-- ACTIONS -->
             </colgroup>
             <thead>
                 <tr>
-                    <th style="white-space:nowrap;">TXN ID & DATE</th>
-                    <th style="white-space:nowrap;">FUEL TYPE & SHIFT</th>
-                    <th style="white-space:nowrap;">METER READINGS</th>
-                    <th style="white-space:nowrap;">VOLUME & PRICE</th>
-                    <th style="white-space:nowrap;">TOTAL AMOUNT</th>
-                    <th style="white-space:nowrap;">ENCODER & VALIDATOR</th>
-                    <th style="white-space:nowrap;text-align:center;">STATUS</th>
-                    <th style="white-space:nowrap;">VAL. DATE</th>
-                    <th style="white-space:nowrap;text-align:center;">ACTIONS</th>
+                    <th>TXN ID & DATE</th>
+                    <th>FUEL TYPE & SHIFT</th>
+                    <th>METER READINGS</th>
+                    <th>VOLUME & PRICE</th>
+                    <th>TOTAL AMOUNT</th>
+                    <th>ENCODER & VALIDATOR</th>
+                    <th style="text-align:center;">STATUS</th>
+                    <th>VALIDATED DATE</th>
+                    <th style="text-align:center;">ACTIONS</th>
                 </tr>
             </thead>
             <tbody>
@@ -909,21 +917,21 @@ require_once __DIR__ . '/../partials/header.php';
                 ?>
                 <tr>
                     <!-- 1. TXN ID & DATE -->
-                    <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
-                        <div style="font-weight:700;font-size:11px;color:#002F70;font-family:monospace;word-break:break-all;overflow-wrap:anywhere;line-height:1.2;" title="<?= htmlspecialchars($tx['transaction_id']) ?>"><?= htmlspecialchars($tx['transaction_id']) ?></div>
-                        <div style="font-size:10.5px;color:#64748b;margin-top:2px;white-space:nowrap;"><?= date('M d, Y', strtotime($tx['transaction_date'])) ?></div>
+                    <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
+                        <div style="font-weight:700;font-size:11.5px;color:#002F70;font-family:monospace;word-break:break-all;overflow-wrap:anywhere;line-height:1.25;" title="<?= htmlspecialchars($tx['transaction_id']) ?>"><?= htmlspecialchars($tx['transaction_id']) ?></div>
+                        <div style="font-size:11px;color:#64748b;margin-top:2px;white-space:nowrap;"><?= date('M d, Y', strtotime($tx['transaction_date'])) ?></div>
                     </td>
 
                     <!-- 2. FUEL TYPE & SHIFT -->
-                    <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
-                        <div style="font-weight:800;font-size:12px;color:#0f172a;line-height:1.25;word-break:break-word;" title="<?= htmlspecialchars($tx['_seq_label']) ?>"><?= htmlspecialchars($tx['_seq_label']) ?></div>
-                        <div style="font-size:10.5px;color:#475569;margin-top:3px;font-weight:600;white-space:nowrap;">
+                    <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
+                        <div style="font-weight:700;font-size:12px;color:#0f172a;line-height:1.3;word-break:break-word;" title="<?= htmlspecialchars($tx['_seq_label']) ?>"><?= htmlspecialchars($tx['_seq_label']) ?></div>
+                        <div style="font-size:11px;color:#475569;margin-top:2px;font-weight:600;white-space:nowrap;">
                             <i class="fas fa-clock" style="font-size:9.5px;color:#64748b;margin-right:2px;"></i> <?= htmlspecialchars($shift_label) ?>
                         </div>
                     </td>
 
                     <!-- 3. METER READINGS -->
-                    <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;font-size:11px;">
+                    <td style="padding:10px 8px;vertical-align:middle;font-size:11.5px;box-sizing:border-box;">
                         <div style="color:#334155;white-space:nowrap;">Beg: <strong><?= number_format($tx['previous_reading'],2) ?></strong></div>
                         <div style="color:#334155;margin-top:2px;white-space:nowrap;">End: <strong><?= number_format($tx['present_reading'],2) ?></strong></div>
                         <?php if ((float)($tx['calibration'] ?? 0) > 0): ?>
@@ -932,51 +940,60 @@ require_once __DIR__ . '/../partials/header.php';
                     </td>
 
                     <!-- 4. VOLUME & PRICE -->
-                    <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
-                        <div style="font-weight:800;font-size:12.5px;color:#0f172a;white-space:nowrap;"><?= number_format($tx['liters_sold'],2) ?> L</div>
-                        <div style="font-size:10.5px;color:#64748b;margin-top:2px;white-space:nowrap;">@ ₱<?= number_format($tx['price_per_liter'],2) ?>/L</div>
+                    <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
+                        <div style="font-weight:700;font-size:12px;color:#0f172a;white-space:nowrap;"><?= number_format($tx['liters_sold'],2) ?> L</div>
+                        <div style="font-size:11px;color:#64748b;margin-top:2px;white-space:nowrap;">@ ₱<?= number_format($tx['price_per_liter'],2) ?>/L</div>
                     </td>
 
                     <!-- 5. TOTAL AMOUNT -->
-                    <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
-                        <div style="font-weight:800;font-size:13.5px;color:#002F70;white-space:nowrap;line-height:1.2;">₱<?= number_format($tx['total_amount'],2) ?></div>
-                        <div style="font-size:10px;color:#16a34a;font-weight:700;margin-top:2px;white-space:nowrap;">
-                            <i class="fas fa-check-circle" style="font-size:9px;"></i> <?= htmlspecialchars($tx['payment_method'] ?: 'Internal') ?>
+                    <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
+                        <div style="font-weight:700;font-size:12.5px;color:#002F70;white-space:nowrap;line-height:1.25;">₱<?= number_format($tx['total_amount'],2) ?></div>
+                        <div style="font-size:10.5px;color:#16a34a;font-weight:700;margin-top:2px;white-space:nowrap;">
+                            <i class="fas fa-check-circle" style="font-size:9.5px;"></i> <?= htmlspecialchars($tx['payment_method'] ?: 'Internal') ?>
                         </div>
                     </td>
 
                     <!-- 6. ENCODER & VALIDATOR -->
-                    <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
-                        <div style="font-weight:700;font-size:11.5px;color:#0f172a;word-break:break-word;line-height:1.25;">
+                    <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
+                        <div style="font-weight:700;font-size:11.5px;color:#0f172a;word-break:break-word;line-height:1.3;">
                             <i class="fas fa-user-edit" style="color:#2563eb;font-size:10px;margin-right:2px;"></i> <?= htmlspecialchars($tx['staff_name']) ?>
                         </div>
                         <?php if (!empty($tx['manager_name']) && $tx['manager_name'] !== '—'): ?>
-                            <div style="font-size:10.5px;color:#64748b;margin-top:2px;word-break:break-word;">
+                            <div style="font-size:11px;color:#64748b;margin-top:2px;word-break:break-word;">
                                 <i class="fas fa-user-check" style="color:#16a34a;font-size:10px;margin-right:2px;"></i> <?= htmlspecialchars($tx['manager_name']) ?>
                             </div>
                         <?php endif; ?>
                     </td>
 
                     <!-- 7. STATUS -->
-                    <td style="padding:9px 4px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;">
-                        <span class="afto-badge <?= $badge ?>" style="font-size:10.5px;padding:3px 7px;display:inline-flex;align-items:center;white-space:nowrap;"><?= $st_label ?></span>
+                    <td style="padding:10px 4px;vertical-align:middle;text-align:center;box-sizing:border-box;">
+                        <span class="afto-badge <?= $badge ?>" style="font-size:10px;padding:3px 8px;display:inline-flex;align-items:center;white-space:nowrap;font-weight:700;"><?= $st_label ?></span>
                     </td>
 
-                    <!-- 8. VAL. DATE & REMARKS -->
-                    <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
-                        <?php if (!empty($tx['validated_at'])): ?>
-                            <div style="font-size:11px;color:#334155;font-weight:600;white-space:nowrap;"><?= date('M d, Y', strtotime($tx['validated_at'])) ?></div>
+                    <!-- 8. VALIDATED DATE & REMARKS -->
+                    <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
+                        <?php 
+                        $val_ts = (!empty($tx['validated_at']) && $tx['validated_at'] !== '0000-00-00 00:00:00') ? strtotime($tx['validated_at']) : 0;
+                        if ($val_ts > 0): ?>
+                            <div style="font-size:11.5px;color:#1e293b;font-weight:700;white-space:nowrap;">
+                                <i class="fas fa-calendar-check" style="color:#16a34a;font-size:10px;margin-right:3px;"></i><?= date('M d, Y', $val_ts) ?>
+                            </div>
+                            <div style="font-size:10.5px;color:#64748b;margin-top:2px;white-space:nowrap;">
+                                <i class="fas fa-clock" style="color:#94a3b8;font-size:9.5px;margin-right:2px;"></i><?= date('h:i A', $val_ts) ?>
+                            </div>
                         <?php else: ?>
-                            <div style="color:#94a3b8;font-size:11px;">—</div>
+                            <span style="color:#64748b;font-size:10.5px;font-weight:600;background:#f8fafc;border:1px solid #e2e8f0;padding:2px 7px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;" title="Waiting for manager validation">
+                                <i class="fas fa-clock" style="color:#d97706;font-size:9.5px;"></i> Not Yet Validated
+                            </span>
                         <?php endif; ?>
                         <?php if (!empty($remarks) && $remarks !== '—'): ?>
-                            <div style="font-size:10px;color:#64748b;margin-top:2px;word-break:break-word;" title="<?= htmlspecialchars($remarks) ?>"><?= htmlspecialchars(mb_strimwidth($remarks, 0, 18, '...')) ?></div>
+                            <div style="font-size:10px;color:#64748b;margin-top:2px;word-break:break-word;" title="<?= htmlspecialchars($remarks) ?>"><?= htmlspecialchars(mb_strimwidth($remarks, 0, 20, '...')) ?></div>
                         <?php endif; ?>
                     </td>
 
                     <!-- 9. ACTIONS -->
-                    <td style="padding:9px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;">
-                        <button type="button" onclick="viewTxnDetails(<?= $tx['id'] ?>)" class="afto-row-btn afto-row-btn-details" style="height:26px;padding:0 6px;font-size:10.5px;display:inline-flex;align-items:center;justify-content:center;gap:4px;width:100%;box-sizing:border-box;">
+                    <td style="padding:10px 6px;vertical-align:middle;text-align:center;box-sizing:border-box;">
+                        <button type="button" onclick="viewTxnDetails(<?= $tx['id'] ?>)" class="afto-row-btn afto-row-btn-details" style="height:26px;padding:0 8px;font-size:11px;display:inline-flex;align-items:center;justify-content:center;gap:4px;width:100%;box-sizing:border-box;">
                             <i class="fas fa-eye"></i> <span>View</span>
                         </button>
                     </td>
@@ -1114,7 +1131,7 @@ function viewTxnDetails(id) {
                     <div class="details-item"><label>Staff Encoder</label><span>${data.staff_name || '—'}</span></div>
                     <div class="details-item"><label>Manager Validator</label><span>${validatorName}</span></div>
                     <div class="details-item"><label>Status</label><span>${data.status || '—'}</span></div>
-                    <div class="details-item"><label>Validation Date</label><span>${data.validated_at || '—'}</span></div>
+                    <div class="details-item"><label>Validation Date</label><span>${data.validated_at ? data.validated_at : '<span style="color:#d97706;font-weight:600;">Not Yet Validated</span>'}</span></div>
                     <div class="details-item" style="grid-column: span 2;"><label>Remarks</label><span>${remarks}</span></div>
                 `;
                 document.getElementById('detailsGrid').innerHTML = gridHtml;

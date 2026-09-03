@@ -401,17 +401,18 @@ body,html{overflow-x:hidden;max-width:100%;}
 .mv-none{color:#94a3b8;}
 
 /* ── Table ── */
-.table-wrap{overflow-x:auto !important;width:100% !important;-webkit-overflow-scrolling:touch;}
-.table-wrap::-webkit-scrollbar{height:7px;}
+.table-wrap{overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch;}
+.table-wrap::-webkit-scrollbar{height:6px;}
 .table-wrap::-webkit-scrollbar-track{background:#f1f5f9;border-radius:4px;}
 .table-wrap::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px;}
 .table-wrap::-webkit-scrollbar-thumb:hover{background:#94a3b8;}
-#merchTable{width:100%!important;min-width:1320px;border-collapse:collapse;table-layout:fixed !important;}
-#merchTable thead th{background:#002F70;color:#fff;padding:9px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;vertical-align:middle;box-sizing:border-box;line-height:1.2;text-align:left;white-space:nowrap;}
-#merchTable tbody td{padding:8px 6px;font-size:11.5px;border-bottom:1px solid #f1f5f9;vertical-align:middle;box-sizing:border-box;line-height:1.2;}
+#merchTable{width:100%!important;border-collapse:collapse;table-layout:auto !important;}
+#merchTable thead th{background:#002F70;color:#fff;padding:10px 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.2px;vertical-align:middle;box-sizing:border-box;line-height:1.3;text-align:left;white-space:nowrap;}
+#merchTable tbody td{padding:10px 8px;font-size:13px;border-bottom:1px solid #f1f5f9;vertical-align:middle;box-sizing:border-box;line-height:1.5;white-space:normal;word-break:break-word;overflow:visible;}
 #merchTable tbody tr:hover td{background:#f8faff;}
 @media(max-width:768px){
-  .inv-card-body{padding:12px;}
+  .inv-card-body{padding:8px;}
+  #merchTable thead th, #merchTable tbody td{font-size:11px;padding:8px 5px;}
 }
 .mi-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:13000;align-items:center;justify-content:center;padding:24px 16px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 .mi-overlay.open{display:flex !important;}
@@ -733,33 +734,33 @@ body.modal-open .main {
         <div class="table-wrap">
             <table id="merchTable">
                 <colgroup>
-                    <col style="width:115px;">  <!-- Batch ID -->
-                    <col style="width:105px;">  <!-- SKU -->
-                    <col style="width:200px;">  <!-- Product Name -->
-                    <col style="width:130px;">  <!-- Category -->
-                    <col style="width:70px;">   <!-- UOM -->
-                    <col style="width:95px;">   <!-- Expiration Date -->
-                    <col style="width:80px;">   <!-- Initial Stock -->
-                    <col style="width:110px;">  <!-- Current Stock -->
-                    <col style="width:80px;">   <!-- Reorder Level -->
-                    <col style="width:115px;">  <!-- Status -->
-                    <col style="width:90px;">   <!-- Last Updated -->
-                    <col style="width:130px;">  <!-- Actions -->
+                    <col>  <!-- Batch ID -->
+                    <col>  <!-- SKU -->
+                    <col>  <!-- Product Name -->
+                    <col>  <!-- Category -->
+                    <col>  <!-- UOM -->
+                    <col>  <!-- Expiration Date -->
+                    <col>  <!-- Initial Stock -->
+                    <col>  <!-- Current Stock -->
+                    <col>  <!-- Reorder Level -->
+                    <col>  <!-- Status -->
+                    <col>  <!-- Last Updated -->
+                    <col>  <!-- Actions -->
                 </colgroup>
                 <thead>
                     <tr>
-                        <th style="padding:9px 6px;">Batch ID</th>
-                        <th style="padding:9px 6px;">SKU</th>
-                        <th style="padding:9px 6px;">Product Name</th>
-                        <th style="padding:9px 6px; text-align:center;">Category</th>
-                        <th style="padding:9px 6px; text-align:center;">UOM</th>
-                        <th style="padding:9px 6px; text-align:center;">Exp. Date</th>
-                        <th style="padding:9px 6px; text-align:right;">Initial</th>
-                        <th style="padding:9px 6px; text-align:center;">Current Stock</th>
-                        <th style="padding:9px 6px; text-align:right;">Reorder</th>
-                        <th style="padding:9px 6px; text-align:center;">Status</th>
-                        <th style="padding:9px 6px; text-align:center;">Updated</th>
-                        <th style="padding:9px 6px; text-align:center;">Actions</th>
+                        <th>Batch ID</th>
+                        <th>SKU</th>
+                        <th>Product Name</th>
+                        <th style="text-align:center;">Category</th>
+                        <th style="text-align:center;">UOM</th>
+                        <th style="text-align:center;">Exp. Date</th>
+                        <th style="text-align:right;">Initial</th>
+                        <th style="text-align:center;">Current Stock</th>
+                        <th style="text-align:right;">Reorder</th>
+                        <th style="text-align:center;">Status</th>
+                        <th style="text-align:center;">Updated</th>
+                        <th style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="merchTableBody">
@@ -814,30 +815,30 @@ body.modal-open .main {
                         data-stock="<?php echo $it['stock']; ?>"
                         data-updated="<?php echo htmlspecialchars($it['last_updated']); ?>"
                         data-idx="<?php echo htmlspecialchars(json_encode($it)); ?>">
-                        <td style="padding:8px 6px;"><code style="font-size:10.5px;font-weight:700;color:#002F70;"><?php echo htmlspecialchars($batch_id); ?></code></td>
-                        <td style="padding:8px 6px;"><code style="font-size:10.5px;font-weight:600;"><?php echo htmlspecialchars($it['sku']); ?></code></td>
-                        <td style="padding:8px 6px;white-space:normal;line-height:1.2;word-break:break-word;"><strong style="font-size:11.5px;color:#0f172a;"><?php echo htmlspecialchars($it['name']); ?></strong></td>
-                        <td style="padding:8px 6px;text-align:center;font-size:11px;line-height:1.15;word-break:break-word;color:#475569;"><?php echo htmlspecialchars($it['category']); ?></td>
-                        <td style="padding:8px 6px;text-align:center;font-size:11px;font-weight:600;color:#475569;"><?php echo htmlspecialchars($it['unit']); ?></td>
-                        <td style="padding:8px 6px;text-align:center;font-size:11px;font-weight:600;white-space:nowrap;color:<?php echo $exp_date !== 'N/A' ? '#0f172a' : '#94a3b8'; ?>;"><?php echo htmlspecialchars($exp_date); ?></td>
-                        <td style="padding:8px 6px;text-align:right;font-size:11.5px;font-weight:700;color:#0f172a;"><?php echo number_format($initial_qty); ?></td>
-                        <td style="padding:8px 6px;text-align:center;">
-                            <div class="fill-bar-wrap" style="height:5px;margin-bottom:3px;">
+                        <td><code style="font-size:12px;font-weight:700;color:#002F70;word-break:break-all;"><?php echo htmlspecialchars($batch_id); ?></code></td>
+                        <td><code style="font-size:12px;font-weight:600;word-break:break-all;"><?php echo htmlspecialchars($it['sku']); ?></code></td>
+                        <td style="white-space:normal;line-height:1.4;word-break:break-word;"><strong style="font-size:13px;color:#0f172a;"><?php echo htmlspecialchars($it['name']); ?></strong></td>
+                        <td style="text-align:center;font-size:12px;line-height:1.4;word-break:break-word;color:#475569;"><?php echo htmlspecialchars($it['category']); ?></td>
+                        <td style="text-align:center;font-size:12px;font-weight:600;color:#475569;word-break:break-word;"><?php echo htmlspecialchars($it['unit']); ?></td>
+                        <td style="text-align:center;font-size:12px;font-weight:600;word-break:break-word;color:<?php echo $exp_date !== 'N/A' ? '#0f172a' : '#94a3b8'; ?>;"><?php echo htmlspecialchars($exp_date); ?></td>
+                        <td style="text-align:right;font-size:13px;font-weight:700;color:#0f172a;"><?php echo number_format($initial_qty); ?></td>
+                        <td style="text-align:center;">
+                            <div class="fill-bar-wrap" style="height:6px;margin-bottom:4px;">
                                 <div class="fill-bar-inner" style="width:<?php echo min(100, round($it['fill_pct'])); ?>%;background:<?php echo $display_color; ?>;"></div>
                             </div>
-                            <span style="font-size:10.5px;font-weight:700;color:#334155;"><?php echo number_format($it['stock']); ?> <?php echo htmlspecialchars($it['unit']); ?></span>
+                            <span style="font-size:12px;font-weight:700;color:#334155;word-break:break-word;"><?php echo number_format($it['stock']); ?> <?php echo htmlspecialchars($it['unit']); ?></span>
                         </td>
-                        <td style="padding:8px 6px;text-align:right;font-size:11.5px;font-weight:600;color:#ea580c;"><?php echo number_format($it['reorder'] ?? 24); ?></td>
-                        <td style="padding:8px 6px;text-align:center;">
-                            <span class="status-badge" style="background:<?php echo $display_color; ?>20;color:<?php echo $display_color; ?>;border:1px solid <?php echo $display_color; ?>40;font-size:10px;padding:3px 6px;font-weight:700;white-space:nowrap;">
+                        <td style="text-align:right;font-size:13px;font-weight:600;color:#ea580c;"><?php echo number_format($it['reorder'] ?? 24); ?></td>
+                        <td style="text-align:center;">
+                            <span class="status-badge" style="background:<?php echo $display_color; ?>20;color:<?php echo $display_color; ?>;border:1px solid <?php echo $display_color; ?>40;font-size:11px;padding:4px 8px;font-weight:700;white-space:normal;word-break:break-word;display:inline-block;">
                                 <?php echo htmlspecialchars($display_status); ?>
                             </span>
                         </td>
-                        <td style="padding:8px 6px;text-align:center;font-size:10.5px;color:#64748b;white-space:nowrap;"><?php echo $ts; ?></td>
+                        <td style="text-align:center;font-size:12px;color:#64748b;word-break:break-word;"><?php echo $ts; ?></td>
                         <td style="padding:8px 6px;text-align:center;">
-                            <div style="display:flex;gap:4px;align-items:center;justify-content:center;flex-wrap:nowrap;">
-                                <button type="button" class="txn-btn primary sm" onclick='viewDetails(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)' style="padding:3px 7px;font-size:10.5px;height:26px;min-height:26px;gap:3px;font-weight:600;border-radius:4px;" title="View Details"><i class="fas fa-eye" style="font-size:9.5px;"></i> View</button>
-                                <button type="button" class="txn-btn warning sm" onclick='openAdjustmentModal(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)' style="background:#16a34a!important;border-color:#16a34a!important;color:#fff!important;padding:3px 7px;font-size:10.5px;height:26px;min-height:26px;gap:3px;font-weight:600;border-radius:4px;" title="Adjust Stock"><i class="fas fa-edit" style="font-size:9.5px;"></i> Adjust</button>
+                            <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
+                                <button type="button" class="txn-btn primary sm" onclick='viewDetails(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)' style="width:100%;padding:5px 8px;font-size:12px;height:26px;min-height:26px;gap:4px;font-weight:600;border-radius:4px;" title="View Details"><i class="fas fa-eye" style="font-size:11px;"></i> View</button>
+                                <button type="button" class="txn-btn warning sm" onclick='openAdjustmentModal(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)' style="width:100%;background:#16a34a!important;border-color:#16a34a!important;color:#fff!important;padding:5px 8px;font-size:12px;height:26px;min-height:26px;gap:4px;font-weight:600;border-radius:4px;" title="Adjust Stock"><i class="fas fa-edit" style="font-size:11px;"></i> Adjust</button>
                             </div>
                         </td>
                     </tr>

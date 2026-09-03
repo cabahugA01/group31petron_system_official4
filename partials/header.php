@@ -3037,20 +3037,27 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
       </style>
 
 <style id="globalRedBadgeStyle">
-/* === GLOBAL ENFORCEMENT: ALL BADGES MUST BE RED (#dc2626 / #E30613) === */
-span[data-badge],
-span[data-sidebar-badge],
-.badge,
+/* === GLOBAL ENFORCEMENT: NOTIFICATION COUNTER BADGES MUST BE RED (#dc2626 / #E30613) === */
 #notificationBadge,
 .notif-badge,
-.sidebar-badge,
-.nav-badge,
-.cal-badge,
-.sub-badge,
-a.sidebar-sub-item span[data-badge] {
+.cal-badge {
     background-color: #dc2626 !important; /* Petron / System Vivid Red */
     color: #ffffff !important;
     font-weight: 700 !important;
+}
+
+/* === Sidebar Module Badges: Completely Disabled / Removed as requested === */
+.sidebar [data-badge],
+.sidebar [data-sidebar-badge],
+.sidebar-menu [data-badge],
+.sidebar-menu [data-sidebar-badge],
+.nav-item [data-badge],
+.nav-item [data-sidebar-badge],
+.sidebar-sub-item [data-badge],
+.sidebar-badge,
+.nav-badge,
+.sub-badge {
+    display: none !important;
 }
 </style>
 
@@ -3904,15 +3911,6 @@ require_once __DIR__ . '/rbac_menu.php';
         echo '<a class="'.$parent_cls.' has-submenu" href="'.htmlspecialchars($it['href']).'" data-tooltip="'.htmlspecialchars($it['label']).'" onclick="toggleSidebarSub(event,\'sub-'.htmlspecialchars($it['id']).'\')">';
         echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;flex-shrink:0;"><i class="'.htmlspecialchars($it['ico']).'"></i></span>';
         echo '<span style="flex-grow:1;font-size:13px;font-weight:500;">'.htmlspecialchars($it['label']).'</span>';
-        
-        $p_badge = $badges[$it['id']] ?? 0;
-        if ($p_badge <= 0 && !empty($it['sub_items'])) {
-            foreach ($it['sub_items'] as $sub) {
-                $p_badge += $fuel_sub_badges[$sub['id'] ?? ''] ?? 0;
-            }
-        }
-        $p_disp = $p_badge > 0 ? 'display:flex;' : 'display:none;';
-        echo '<span data-sidebar-badge="'.htmlspecialchars($it['id']).'" data-badge style="background:#E30613;color:white;padding:0 6px;border-radius:10px;font-size:11px;font-weight:bold;min-width:20px;height:20px;'.$p_disp.'align-items:center;justify-content:center;margin-right:6px;">'.($p_badge > 0 ? $p_badge : '').'</span>';
         echo '<i class="fas fa-chevron-down" style="font-size:10px;transition:transform .3s;'.($parent_active?'transform:rotate(180deg)':'').'"></i>';
         echo '</a>';
 
@@ -3920,15 +3918,11 @@ require_once __DIR__ . '/rbac_menu.php';
         echo '<div id="sub-'.htmlspecialchars($it['id']).'" style="display:'.$display.';background:transparent;border-left:3px solid rgba(255,255,255,.2);margin-left:0;padding-left:0;">';
         foreach ($it['sub_items'] as $sub) {
             $sub_active = ($page_id === ($sub['id'] ?? '')) ? 'active' : '';
-            $sub_badge = $fuel_sub_badges[$sub['id'] ?? ''] ?? 0;
             echo '<a class="nav-item sidebar-sub-item '.$sub_active.'" href="'.htmlspecialchars($sub['href']).'" style="padding:6px 15px 6px 47px;min-height:auto;" data-tooltip="'.htmlspecialchars($sub['label'] ?? '').'">';
             echo '<span class="ico" style="margin-right:8px;width:14px;text-align:center;flex-shrink:0;"><i class="fas fa-circle" style="font-size:4px;opacity:.5;"></i></span>';
             echo '<span style="flex-grow:1;line-height:1.2;">';
             echo '<span style="display:block;font-size:12px;font-weight:500;">'.htmlspecialchars($sub['label'] ?? '').'</span>';
             echo '</span>';
-            if ($sub_badge > 0) {
-                echo '<span data-badge style="background:#E30613;color:white;padding:0 5px;border-radius:10px;font-size:10px;font-weight:bold;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">'.$sub_badge.'</span>';
-            }
             echo '</a>';
         }
         echo '</div>';
@@ -3937,13 +3931,9 @@ require_once __DIR__ . '/rbac_menu.php';
         $href  = htmlspecialchars($it['href'] ?? '#');
         $label = htmlspecialchars($it['label'] ?? '');
         $ico   = htmlspecialchars($it['ico'] ?? 'fas fa-link');
-        $it_id = htmlspecialchars($it['id'] ?? '');
         echo '<a class="nav-item '.$active.'" href="'.$href.'" data-tooltip="'.$label.'">';
         echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;flex-shrink:0;"><i class="'.$ico.'"></i></span>';
         echo '<span style="flex-grow:1;font-size:13px;font-weight:500;">'.$label.'</span>';
-        $r_b = $badges[$it['id'] ?? ''] ?? 0;
-        $r_disp = $r_b > 0 ? 'display:flex;' : 'display:none;';
-        echo '<span data-sidebar-badge="'.$it_id.'" data-badge style="background:#E30613;color:white;padding:0 6px;border-radius:10px;font-size:11px;font-weight:bold;min-width:20px;height:20px;'.$r_disp.'align-items:center;justify-content:center;margin-left:10px;">'.($r_b > 0 ? $r_b : '').'</span>';
         echo '</a>';
     }
 

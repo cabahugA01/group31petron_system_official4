@@ -1057,35 +1057,39 @@ $cnt_hist_cancelled = count(array_filter($purchase_history_list, fn($r) => in_ar
 $direct_merch_products = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT ip.id, ip.product_name, ip.sku, ip.category, ip.size, ip.unit_cost, ip.price,
-               COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
-               COALESCE(si.unit, ip.size, 'pcs') AS unit
-        FROM inventory_products ip
-        LEFT JOIN station_inventory si ON ip.id = si.product_id AND si.station_id = ?
-        WHERE ip.is_active = 1 OR ip.is_active IS NULL
-        ORDER BY ip.category ASC, ip.product_name ASC
+        SELECT
+            COALESCE(ip.id, p.id, si.product_id) AS id,
+            COALESCE(ip.product_name, p.name, 'Unknown Product') AS product_name,
+            COALESCE(ip.category, pc.name, 'Merchandise') AS category,
+            COALESCE(si.cost, ip.unit_cost, p.cost, 0) AS unit_cost,
+            COALESCE(si.price, ip.unit_price, p.price, 0) AS price,
+            COALESCE(ip.sku, p.sku, CONCAT('P', LPAD(si.product_id,4,'0'))) AS sku,
+            COALESCE(si.stock_level, 0) AS current_stock,
+            COALESCE(si.capacity, ip.max_stock, p.capacity, 480) AS capacity,
+            COALESCE(si.reorder_level, ip.min_stock, p.min_stock_level, 24) AS reorder_level,
+            COALESCE(si.critical_level, 10) AS critical_level,
+            COALESCE(si.unit, ip.size, p.unit, 'pcs') AS unit
+        FROM station_inventory si
+        LEFT JOIN inventory_products ip ON ip.id = si.product_id
+        LEFT JOIN products p ON p.id = si.product_id
+        LEFT JOIN product_categories pc ON pc.id = p.category_id
+        WHERE si.station_id = ?
+          AND (LOWER(COALESCE(ip.category, pc.name, '')) NOT IN ('fuel', 'fuel products', 'services', 'service') OR (ip.category IS NULL AND pc.name IS NULL))
+        ORDER BY category, product_name
     ");
     $stmt->execute([$station_id]);
     $direct_merch_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    try {
-        $stmt = $pdo->prepare("
-            SELECT si.product_id AS id, si.product_name, si.sku, si.category, si.size, si.unit_cost, si.unit_price AS price,
-                   si.stock_level AS current_stock, COALESCE(si.unit, 'pcs') AS unit
-            FROM station_inventory si
-            WHERE si.station_id = ?
-            ORDER BY si.product_name ASC
-        ");
-        $stmt->execute([$station_id]);
-        $direct_merch_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e2) {}
+    $direct_merch_products = [];
 }
 
 $direct_fuel_types = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT fi.fuel_type_id, fi.fuel_type, fi.current_level, fi.capacity, fi.ugt_no,
-               COALESCE((SELECT fp.price_per_liter FROM fuel_pricing fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id AND fp.is_active = 1 ORDER BY fp.effective_date DESC LIMIT 1), ft.price_per_liter, 0) AS current_price
+        SELECT fi.id AS fi_id, fi.fuel_type_id, fi.fuel_type, fi.current_level, fi.capacity, fi.ugt_no,
+               COALESCE(fi.reorder_level, 5000) AS reorder_level,
+               COALESCE(fi.critical_level, 2000) AS critical_level,
+               COALESCE((SELECT fp.price_per_liter FROM fuel_pricing fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id AND fp.is_active = 1 ORDER BY fp.effective_date DESC LIMIT 1), ft.price_per_liter, fi.price_per_liter, 0) AS current_price
         FROM fuel_inventory fi
         LEFT JOIN fuel_types ft ON fi.fuel_type_id = ft.id
         WHERE fi.station_id = ?
@@ -1095,10 +1099,45 @@ try {
     $direct_fuel_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     try {
-        $stmt = $pdo->query("SELECT id AS fuel_type_id, name AS fuel_type, price_per_liter AS current_price, 0 AS current_level, 0 AS capacity, '' AS ugt_no FROM fuel_types ORDER BY id ASC");
+        $stmt = $pdo->query("SELECT id AS fuel_type_id, name AS fuel_type, price_per_liter AS current_price, 0 AS current_level, 0 AS capacity, '' AS ugt_no, 5000 AS reorder_level, 2000 AS critical_level FROM fuel_types ORDER BY id ASC");
         $direct_fuel_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e2) {}
 }
+
+$has_low_stock_fuel = false;
+$low_fuel_count = 0;
+foreach ($direct_fuel_types as &$ft) {
+    $cur = (float)($ft['current_level'] ?? 0);
+    $cap = (float)($ft['capacity'] ?? 0);
+    $reorder = (float)($ft['reorder_level'] ?? 5000);
+    $crit = (float)($ft['critical_level'] ?? 2000);
+    
+    if ($cur <= 0) {
+        $ft['status'] = 'Out of Stock';
+        $ft['status_badge'] = '<span style="color:#dc2626;font-weight:700;font-size:11px;">⚠ OUT OF STOCK</span>';
+        $ft['is_low'] = true;
+        $low_fuel_count++;
+    } elseif ($cur <= $crit) {
+        $ft['status'] = 'Critical';
+        $ft['status_badge'] = '<span style="color:#dc2626;font-weight:700;font-size:11px;">⚠ CRITICAL</span>';
+        $ft['is_low'] = true;
+        $low_fuel_count++;
+    } elseif ($cur <= $reorder) {
+        $ft['status'] = 'Low Stock';
+        $ft['status_badge'] = '<span style="color:#d97706;font-weight:700;font-size:11px;">↓ LOW STOCK</span>';
+        $ft['is_low'] = true;
+        $low_fuel_count++;
+    } else {
+        $ft['status'] = 'Normal';
+        $ft['status_badge'] = '<span style="color:#15803d;font-weight:700;font-size:11px;">✓ NORMAL</span>';
+        $ft['is_low'] = false;
+    }
+    $ft['suggested_liters'] = $ft['is_low'] ? max(0, ceil($cap - $cur)) : 0;
+    if ($ft['is_low']) {
+        $has_low_stock_fuel = true;
+    }
+}
+unset($ft);
 
 $active_suppliers = [];
 try {
@@ -1269,10 +1308,10 @@ body .main,
     top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(15, 23, 42, 0.65);
     display: none;
-    align-items: flex-end; /* Centered vertically */
-    justify-content: center; /* Centered horizontally */
+    align-items: flex-start;
+    justify-content: center;
     z-index: 10005;
-    padding: 20px;
+    padding: 24px 20px 80px 20px;
     overflow-y: auto !important;
 }
 .modal-overlay.open {
@@ -1283,12 +1322,12 @@ body .main,
     border-radius: 16px;
     width: 100%;
     max-width: 950px;
-    max-height: calc(100vh - 40px); /* Centered and constrained to screen */
+    max-height: calc(100vh - 110px);
     display: flex;
     flex-direction: column;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
     animation: modalFadeIn 0.2s ease-out;
-    margin: auto; /* Fallback centering */
+    margin: 15px auto 60px auto;
 }
 @keyframes modalFadeIn {
     from { opacity: 0; transform: scale(0.96); }
@@ -1300,7 +1339,7 @@ body .main,
     color: #fff;
     border-radius: 16px 16px 0 0;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
 }
@@ -1546,6 +1585,33 @@ body .main,
     transition: background 0.15s;
 }
 .btn-cancel-inline:hover { background: #e2e8f0 !important; }
+
+/* Direct PO table delete/remove button — remove blue background */
+.btn-direct-remove,
+#directPoModal td button,
+#directPoModal table button.btn-direct-remove {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #ef4444 !important;
+    padding: 6px 8px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: all 0.15s ease !important;
+}
+#directPoModal td button:hover,
+#directPoModal table button.btn-direct-remove:hover {
+    background: #fee2e2 !important;
+    background-color: #fee2e2 !important;
+    color: #b91c1c !important;
+}
+#directPoModal td button i {
+    color: inherit !important;
+}
 </style>
 
 <div class="pr-container">
@@ -2917,9 +2983,6 @@ document.addEventListener('DOMContentLoaded', function() {
     msrRender('merch');
     msrRender('fuel');
     msrRender('hist');
-    
-    // Initialize one row in direct merch table
-    addDirectMerchRow();
 });
 
 // ==========================================
@@ -2930,42 +2993,93 @@ const directFuelCatalog = <?= json_encode($direct_fuel_types, JSON_HEX_TAG | JSO
 
 function openDirectPoModal() {
     openModal('directPoModal');
+    autoPopulateLowStockRows();
+    autoPopulateLowStockFuelRows();
+}
+
+// Auto-fill Order Items with LOW STOCK & OUT OF STOCK products
+function autoPopulateLowStockRows() {
+    const tbody = document.getElementById('directMerchTbody');
+    if (!tbody) return;
+    tbody.innerHTML = ''; // clear existing rows
+
+    const lowStockItems = directMerchCatalog.filter(function(p) {
+        const stock   = parseFloat(p.current_stock  || 0);
+        const reorder = parseFloat(p.reorder_level  || 24);
+        return stock <= reorder; // low stock or out of stock
+    });
+
+    if (lowStockItems.length === 0) {
+        // No low stock — show one blank row as fallback
+        addDirectMerchRow();
+        return;
+    }
+
+    lowStockItems.forEach(function(p) {
+        const stock    = parseFloat(p.current_stock || 0);
+        const capacity = parseFloat(p.capacity      || 480);
+        const suggestQty = Math.max(1, Math.ceil(capacity - stock)); // suggest enough to fill to capacity
+        const statusLabel = stock <= 0 ? '⚠ OUT OF STOCK' : '↓ LOW STOCK';
+        const statusColor = stock <= 0 ? '#dc2626' : '#d97706';
+
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #f1f5f9';
+        tr.dataset.productId = p.id;
+        tr.innerHTML = `
+            <input type="hidden" name="product_ids[]" value="${p.id}">
+            <td style="padding:10px 12px;">
+                <div style="font-weight:700;font-size:13px;color:#0f172a;">${p.product_name || ''}</div>
+                <div style="font-size:11px;color:#64748b;margin-top:2px;">${p.sku ? 'SKU: ' + p.sku : ''} &nbsp;
+                    <span style="color:${statusColor};font-weight:700;">${statusLabel}</span>
+                    &nbsp;(Current: <strong>${stock}</strong> ${p.unit || 'pcs'})
+                </div>
+            </td>
+            <td style="padding:10px 12px;text-align:center;color:#64748b;font-weight:600;">${p.unit || 'pcs'}</td>
+            <td style="padding:10px 12px;text-align:right;">
+                <input type="number" step="0.01" min="0.01" name="unit_costs[]"
+                    oninput="calcDirectMerchTotal()" class="direct-merch-cost-input"
+                    style="width:100%;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;text-align:right;font-weight:600;box-sizing:border-box;"
+                    value="${parseFloat(p.unit_cost || p.price || 0).toFixed(2)}" placeholder="0.00" required>
+            </td>
+            <td style="padding:10px 12px;text-align:center;">
+                <input type="number" step="1" min="1" name="quantities[]"
+                    value="${suggestQty}" oninput="calcDirectMerchTotal()" class="direct-merch-qty-input"
+                    style="width:100%;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;text-align:center;font-weight:700;color:#002F6C;box-sizing:border-box;" required>
+            </td>
+            <td style="padding:10px 18px 10px 8px;text-align:right;font-weight:700;color:#002F6C;font-family:monospace;" class="direct-merch-line-total">
+                ₱ 0.00
+            </td>
+            <td style="padding:10px 12px;text-align:center;">
+                <button type="button" onclick="removeDirectMerchRow(this)" class="btn-direct-remove"
+                    style="background: transparent !important; background-color: transparent !important; border: none !important; color: #ef4444 !important; font-size: 15px; cursor: pointer; padding: 6px; box-shadow: none !important;" title="Remove row">
+                    <i class="fas fa-trash-alt" style="color: #ef4444 !important;"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    calcDirectMerchTotal();
 }
 
 function switchDirectPoType(type) {
     const merchForm = document.getElementById('directMerchPoForm');
-    const fuelForm = document.getElementById('directFuelPoForm');
-    const merchBtn = document.getElementById('directPoTabMerchBtn');
-    const fuelBtn = document.getElementById('directPoTabFuelBtn');
+    const fuelForm  = document.getElementById('directFuelPoForm');
+    const merchBtn  = document.getElementById('directPoTabMerchBtn');
+    const fuelBtn   = document.getElementById('directPoTabFuelBtn');
 
     if (type === 'merch') {
         merchForm.style.display = 'block';
-        fuelForm.style.display = 'none';
-
-        merchBtn.style.background = '#fff';
-        merchBtn.style.color = '#002F6C';
-        merchBtn.style.borderColor = '#cbd5e1';
-        merchBtn.style.borderBottom = 'none';
-        merchBtn.querySelector('i').style.color = '#002F6C';
-
-        fuelBtn.style.background = 'transparent';
-        fuelBtn.style.color = '#64748b';
-        fuelBtn.style.borderColor = 'transparent';
-        fuelBtn.querySelector('i').style.color = '#64748b';
+        fuelForm.style.display  = 'none';
+        merchBtn.classList.add('active');
+        fuelBtn.classList.remove('active');
+        calcDirectMerchTotal();
     } else {
         merchForm.style.display = 'none';
-        fuelForm.style.display = 'block';
-
-        fuelBtn.style.background = '#fff';
-        fuelBtn.style.color = '#1d4ed8';
-        fuelBtn.style.borderColor = '#cbd5e1';
-        fuelBtn.style.borderBottom = 'none';
-        fuelBtn.querySelector('i').style.color = '#1d4ed8';
-
-        merchBtn.style.background = 'transparent';
-        merchBtn.style.color = '#64748b';
-        merchBtn.style.borderColor = 'transparent';
-        merchBtn.querySelector('i').style.color = '#64748b';
+        fuelForm.style.display  = 'block';
+        fuelBtn.classList.add('active');
+        merchBtn.classList.remove('active');
+        autoPopulateLowStockFuelRows();
     }
 }
 
@@ -2992,17 +3106,17 @@ function addDirectMerchRow() {
             pcs
         </td>
         <td style="padding: 10px 12px; text-align: right;">
-            <input type="number" step="0.01" min="0.01" name="unit_costs[]" oninput="calcDirectMerchTotal()" class="direct-merch-cost-input" style="width: 110px; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 600;" placeholder="0.00" required>
+            <input type="number" step="0.01" min="0.01" name="unit_costs[]" oninput="calcDirectMerchTotal()" onchange="calcDirectMerchTotal()" onkeyup="calcDirectMerchTotal()" class="direct-merch-cost-input" style="width: 100%; padding: 7px 8px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 600; box-sizing: border-box;" placeholder="0.00" required>
         </td>
         <td style="padding: 10px 12px; text-align: center;">
-            <input type="number" step="1" min="1" name="quantities[]" value="1" oninput="calcDirectMerchTotal()" class="direct-merch-qty-input" style="width: 90px; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: center; font-weight: 700; color: #002F6C;" required>
+            <input type="number" step="1" min="1" name="quantities[]" value="1" oninput="calcDirectMerchTotal()" onchange="calcDirectMerchTotal()" onkeyup="calcDirectMerchTotal()" class="direct-merch-qty-input" style="width: 100%; padding: 7px 8px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: center; font-weight: 700; color: #002F6C; box-sizing: border-box;" required>
         </td>
-        <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #002F6C; font-family: monospace;" class="direct-merch-line-total">
+        <td style="padding: 10px 18px 10px 8px; text-align: right; font-weight: 700; color: #002F6C; font-family: monospace;" class="direct-merch-line-total">
             ₱ 0.00
         </td>
         <td style="padding: 10px 12px; text-align: center;">
-            <button type="button" onclick="removeDirectMerchRow(this)" style="background: transparent; border: none; color: #ef4444; font-size: 14px; cursor: pointer; padding: 4px;" title="Remove row">
-                <i class="fas fa-trash-alt"></i>
+            <button type="button" onclick="removeDirectMerchRow(this)" class="btn-direct-remove" style="background: transparent !important; background-color: transparent !important; border: none !important; color: #ef4444 !important; font-size: 15px; cursor: pointer; padding: 6px; box-shadow: none !important;" title="Remove row">
+                <i class="fas fa-trash-alt" style="color: #ef4444 !important;"></i>
             </button>
         </td>
     `;
@@ -3027,19 +3141,23 @@ function onDirectProductSelect(selectElem) {
     const tr = selectElem.closest('tr');
     if (!tr) return;
 
-    const prod = directMerchCatalog.find(p => parseInt(p.id, 10) === prodId);
     const unitCell = tr.querySelector('.direct-merch-unit-cell');
     const costInput = tr.querySelector('.direct-merch-cost-input');
 
+    if (!prodId) {
+        if (unitCell) unitCell.textContent = 'pcs';
+        if (costInput) costInput.value = '';
+        calcDirectMerchTotal();
+        return;
+    }
+
+    const prod = directMerchCatalog.find(function(p) { return parseInt(p.id, 10) === prodId; });
     if (prod) {
-        if (unitCell) unitCell.textContent = prod.unit || prod.size || 'pcs';
+        if (unitCell) unitCell.textContent = prod.unit || 'pcs';
         if (costInput) {
             const cost = parseFloat(prod.unit_cost || prod.price || 0);
             costInput.value = cost > 0 ? cost.toFixed(2) : '';
         }
-    } else {
-        if (unitCell) unitCell.textContent = 'pcs';
-        if (costInput) costInput.value = '';
     }
     calcDirectMerchTotal();
 }
@@ -3053,7 +3171,7 @@ function calcDirectMerchTotal() {
     let activeProductsCount = 0;
 
     tbody.querySelectorAll('tr').forEach(function(tr) {
-        const sel = tr.querySelector('select[name="product_ids[]"]');
+        const pidInput = tr.querySelector('[name="product_ids[]"]');
         const costInput = tr.querySelector('.direct-merch-cost-input');
         const qtyInput = tr.querySelector('.direct-merch-qty-input');
         const lineTotalCell = tr.querySelector('.direct-merch-line-total');
@@ -3066,7 +3184,7 @@ function calcDirectMerchTotal() {
             lineTotalCell.textContent = '₱ ' + lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
-        if (sel && sel.value) {
+        if (pidInput && pidInput.value) {
             activeProductsCount++;
             grandTotal += lineTotal;
             totalQty += qty;
@@ -3120,34 +3238,194 @@ function calcDirectFuelTotal() {
         grandText.textContent = '₱ ' + grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 }
+
+// Auto-fill Fuel Order Items with LOW STOCK & OUT OF STOCK tanks only
+function autoPopulateLowStockFuelRows() {
+    const tbody = document.getElementById('directFuelTbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const lowStockFuels = directFuelCatalog.filter(function(ft) {
+        const cur = parseFloat(ft.current_level || 0);
+        const reorder = parseFloat(ft.reorder_level || 5000);
+        return cur <= reorder || cur <= 0;
+    });
+
+    if (lowStockFuels.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" style="padding: 24px; text-align: center; background: #f0fdf4;">
+                    <div style="font-weight: 700; color: #166534; font-size: 13.5px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                        <i class="fas fa-check-circle" style="color: #22c55e;"></i> All Fuel Tanks Have Optimal / Normal Stock Levels
+                    </div>
+                    <div style="font-size: 12px; color: #64748b; margin-top: 4px;">
+                        No low stock or out of stock fuel tanks detected. Click <strong>"+ Add Fuel Tank"</strong> above if you wish to order fuel.
+                    </div>
+                </td>
+            </tr>
+        `;
+        calcDirectFuelTotal();
+        return;
+    }
+
+    lowStockFuels.forEach(function(ft) {
+        const cur = parseFloat(ft.current_level || 0);
+        const cap = parseFloat(ft.capacity || 0);
+        const crit = parseFloat(ft.critical_level || 2000);
+        const cost = parseFloat(ft.current_price || 0);
+        const suggestLiters = Math.max(1, Math.ceil(cap - cur));
+
+        let statusLabel = '↓ LOW STOCK';
+        let statusColor = '#d97706';
+        if (cur <= 0) {
+            statusLabel = '⚠ OUT OF STOCK';
+            statusColor = '#dc2626';
+        } else if (cur <= crit) {
+            statusLabel = '⚠ CRITICAL';
+            statusColor = '#dc2626';
+        }
+
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #f1f5f9';
+        tr.innerHTML = `
+            <input type="hidden" name="fuel_type_ids[]" value="${ft.fuel_type_id}">
+            <td style="padding: 10px 12px;">
+                <div style="font-weight: 700; color: #002F6C; word-break: break-word; font-size: 13px;">${ft.fuel_type || ''}</div>
+                <div style="font-size: 11px; color: #64748b; margin-top: 3px; display: flex; align-items: center; gap: 8px;">
+                    ${ft.ugt_no ? '<span>Tank: ' + ft.ugt_no + '</span>' : ''}
+                    <span style="color: ${statusColor}; font-weight: 700;">${statusLabel}</span>
+                </div>
+            </td>
+            <td style="padding: 10px 8px; text-align: center; white-space: nowrap;">
+                <span style="font-weight: 700; color: #475569;">${cur.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} L</span>
+                ${cap > 0 ? '<span style="font-size: 11px; color: #94a3b8;"><br>/ ' + cap.toLocaleString() + ' L</span>' : ''}
+            </td>
+            <td style="padding: 10px 8px; text-align: right;">
+                <input type="number" step="0.01" min="0.01" name="unit_costs[]" value="${cost > 0 ? cost.toFixed(2) : ''}" oninput="calcDirectFuelTotal()" onchange="calcDirectFuelTotal()" onkeyup="calcDirectFuelTotal()" class="direct-fuel-cost" style="width: 100%; max-width: 95px; min-width: 0; box-sizing: border-box; padding: 7px 8px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 600; display: inline-block;" placeholder="0.00" required>
+            </td>
+            <td style="padding: 10px 8px; text-align: center;">
+                <input type="number" step="1" min="1" name="volumes[]" value="${suggestLiters}" oninput="calcDirectFuelTotal()" onchange="calcDirectFuelTotal()" onkeyup="calcDirectFuelTotal()" class="direct-fuel-vol" style="width: 100%; max-width: 105px; min-width: 0; box-sizing: border-box; padding: 7px 8px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 700; color: #002F6C; display: inline-block;" placeholder="0" required>
+            </td>
+            <td style="padding: 10px 20px 10px 8px; text-align: right; font-weight: 700; color: #002F6C; font-family: monospace; white-space: nowrap; font-size: 13px;" class="direct-fuel-subtotal">
+                ₱ 0.00
+            </td>
+            <td style="padding: 10px 8px; text-align: center;">
+                <button type="button" onclick="removeDirectFuelRow(this)" class="btn-direct-remove" style="background: transparent !important; background-color: transparent !important; border: none !important; color: #ef4444 !important; font-size: 15px; cursor: pointer; padding: 6px; box-shadow: none !important;" title="Remove tank">
+                    <i class="fas fa-trash-alt" style="color: #ef4444 !important;"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    calcDirectFuelTotal();
+}
+
+function addDirectFuelRow() {
+    const tbody = document.getElementById('directFuelTbody');
+    if (!tbody) return;
+
+    if (tbody.querySelector('td[colspan="6"]')) {
+        tbody.innerHTML = '';
+    }
+
+    let optionsHtml = '<option value="">-- Select Fuel Tank --</option>';
+    directFuelCatalog.forEach(function(ft) {
+        const cur = parseFloat(ft.current_level || 0);
+        const cap = parseFloat(ft.capacity || 0);
+        optionsHtml += `<option value="${ft.fuel_type_id}">${ft.fuel_type} (${ft.ugt_no || 'UGT'}) [Level: ${cur.toLocaleString()} / ${cap.toLocaleString()} L]</option>`;
+    });
+
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid #f1f5f9';
+    tr.innerHTML = `
+        <td style="padding: 10px 12px;">
+            <select name="fuel_type_ids[]" onchange="onDirectFuelSelect(this)" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px;" required>
+                ${optionsHtml}
+            </select>
+        </td>
+        <td style="padding: 10px 8px; text-align: center; color: #475569; font-weight: 700;" class="direct-fuel-level-cell">
+            -
+        </td>
+        <td style="padding: 10px 8px; text-align: right;">
+            <input type="number" step="0.01" min="0.01" name="unit_costs[]" oninput="calcDirectFuelTotal()" onchange="calcDirectFuelTotal()" onkeyup="calcDirectFuelTotal()" class="direct-fuel-cost" style="width: 100%; max-width: 95px; min-width: 0; box-sizing: border-box; padding: 7px 8px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 600; display: inline-block;" placeholder="0.00" required>
+        </td>
+        <td style="padding: 10px 8px; text-align: center;">
+            <input type="number" step="1" min="1" name="volumes[]" value="" oninput="calcDirectFuelTotal()" onchange="calcDirectFuelTotal()" onkeyup="calcDirectFuelTotal()" class="direct-fuel-vol" style="width: 100%; max-width: 105px; min-width: 0; box-sizing: border-box; padding: 7px 8px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 700; color: #002F6C; display: inline-block;" placeholder="0" required>
+        </td>
+        <td style="padding: 10px 20px 10px 8px; text-align: right; font-weight: 700; color: #002F6C; font-family: monospace; white-space: nowrap; font-size: 13px;" class="direct-fuel-subtotal">
+            ₱ 0.00
+        </td>
+        <td style="padding: 10px 8px; text-align: center;">
+            <button type="button" onclick="removeDirectFuelRow(this)" class="btn-direct-remove" style="background: transparent !important; background-color: transparent !important; border: none !important; color: #ef4444 !important; font-size: 15px; cursor: pointer; padding: 6px; box-shadow: none !important;" title="Remove tank">
+                <i class="fas fa-trash-alt" style="color: #ef4444 !important;"></i>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(tr);
+    calcDirectFuelTotal();
+}
+
+function removeDirectFuelRow(btn) {
+    const tr = btn.closest('tr');
+    if (tr) tr.remove();
+    calcDirectFuelTotal();
+}
+
+function onDirectFuelSelect(selectElem) {
+    const ftId = parseInt(selectElem.value, 10);
+    const tr = selectElem.closest('tr');
+    if (!tr) return;
+
+    const levelCell = tr.querySelector('.direct-fuel-level-cell');
+    const costInput = tr.querySelector('.direct-fuel-cost');
+    const volInput  = tr.querySelector('.direct-fuel-vol');
+
+    if (!ftId) {
+        if (levelCell) levelCell.textContent = '-';
+        if (costInput) costInput.value = '';
+        if (volInput)  volInput.value = '';
+        calcDirectFuelTotal();
+        return;
+    }
+
+    const ft = directFuelCatalog.find(function(f) { return parseInt(f.fuel_type_id, 10) === ftId; });
+    if (ft) {
+        const cur = parseFloat(ft.current_level || 0);
+        const cap = parseFloat(ft.capacity || 0);
+        const cost = parseFloat(ft.current_price || 0);
+        const suggest = Math.max(1, Math.ceil(cap - cur));
+
+        if (levelCell) levelCell.innerHTML = `<span>${cur.toLocaleString()} L</span><span style="font-size:11px;color:#94a3b8;"><br>/ ${cap.toLocaleString()} L</span>`;
+        if (costInput && cost > 0) costInput.value = cost.toFixed(2);
+        if (volInput && suggest > 0) volInput.value = suggest;
+    }
+    calcDirectFuelTotal();
+}
 </script>
 
 <!-- DIRECT CREATE PURCHASE ORDER MODAL -->
 <div id="directPoModal" class="modal-overlay">
-    <div class="modal-box" style="max-width: 980px;">
-        <div class="modal-header" style="background: #002F6C; color: #fff; padding: 18px 24px; border-radius: 16px 16px 0 0; display: flex; align-items: center; justify-content: space-between;">
-            <div>
-                <h2 class="modal-title" style="margin: 0; font-size: 18px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-file-invoice" style="color: #60a5fa;"></i> Create Direct Purchase Order
-                </h2>
-                <div style="font-size: 12.5px; color: #cbd5e1; margin-top: 3px;">Directly order inventory from suppliers without needing a prior staff stock request.</div>
+    <div class="modal-box" style="max-width: 1020px; width: 95vw; margin-top: 20px; margin-bottom: 70px; max-height: calc(100vh - 120px);">
+        <div class="modal-header" style="background: #002F6C; padding: 18px 24px; border-radius: 16px 16px 0 0;">
+            <h2 class="modal-title" style="margin: 0; font-size: 18px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-file-invoice" style="color: #60a5fa;"></i> Create Direct Purchase Order
+            </h2>
+        </div>
+
+        <!-- PO Type Switcher Buttons — matches sub-tab-nav design -->
+        <div style="padding: 16px 24px 0 24px; background: #f8fafc;">
+            <div class="sub-tab-nav" style="margin-bottom: 0 !important;">
+                <button type="button" id="directPoTabMerchBtn" onclick="switchDirectPoType('merch')" class="sub-tab-nav-btn active">
+                    <i class="fas fa-boxes"></i> Merchandise PO
+                </button>
+                <button type="button" id="directPoTabFuelBtn" onclick="switchDirectPoType('fuel')" class="sub-tab-nav-btn">
+                    <i class="fas fa-gas-pump"></i> Fuel PO
+                </button>
             </div>
-            <button type="button" onclick="closeModal('directPoModal')" style="background: rgba(255,255,255,0.15); border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; transition: background 0.15s;">
-                <i class="fas fa-times"></i>
-            </button>
         </div>
 
-        <!-- PO Type Switcher Buttons -->
-        <div style="padding: 16px 24px 0 24px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; gap: 10px;">
-            <button type="button" id="directPoTabMerchBtn" onclick="switchDirectPoType('merch')" style="padding: 10px 20px; border-radius: 8px 8px 0 0; border: 1.5px solid #cbd5e1; border-bottom: none; font-size: 13.5px; font-weight: 700; cursor: pointer; background: #fff; color: #002F6C; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 -2px 6px rgba(0,0,0,0.03);">
-                <i class="fas fa-boxes" style="color: #002F6C;"></i> Merchandise PO
-            </button>
-            <button type="button" id="directPoTabFuelBtn" onclick="switchDirectPoType('fuel')" style="padding: 10px 20px; border-radius: 8px 8px 0 0; border: 1.5px solid transparent; border-bottom: none; font-size: 13.5px; font-weight: 600; cursor: pointer; background: transparent; color: #64748b; display: inline-flex; align-items: center; gap: 8px;">
-                <i class="fas fa-gas-pump" style="color: #64748b;"></i> Fuel PO
-            </button>
-        </div>
-
-        <div class="modal-body" style="padding: 24px; max-height: calc(82vh - 120px); overflow-y: auto;">
+        <div class="modal-body" style="padding: 24px 24px 36px 24px; max-height: calc(100vh - 270px); overflow-y: auto;">
             
             <!-- MERCHANDISE DIRECT PO FORM -->
             <form id="directMerchPoForm" method="POST" action="manager_stock_request_review.php">
@@ -3180,21 +3458,29 @@ function calcDirectFuelTotal() {
                     <div style="font-weight: 800; font-size: 14px; color: #002F6C; display: flex; align-items: center; gap: 8px;">
                         <i class="fas fa-list-ol"></i> Order Items
                     </div>
-                    <button type="button" onclick="addDirectMerchRow()" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; padding: 7px 14px; border-radius: 6px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s;">
-                        <i class="fas fa-plus"></i> Add Item
+                    <button type="button" onclick="addDirectMerchRow()" style="background: #002F6C !important; color: #ffffff !important; border: 1.5px solid #001f4d !important; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.15); transition: all 0.15s;">
+                        <i class="fas fa-plus-circle" style="color: #60a5fa !important; font-size: 14px;"></i> <span style="color: #ffffff !important;">Add Item</span>
                     </button>
                 </div>
 
-                <div style="border: 1px solid #e2e8f0; border-radius: 10px; overflow-x: auto; margin-bottom: 18px;">
-                    <table id="directMerchTable" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <div style="border: 1px solid #e2e8f0; border-radius: 10px; overflow-x: hidden; margin-bottom: 18px;">
+                    <table id="directMerchTable" style="width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed;">
+                        <colgroup>
+                            <col style="width:34%;">
+                            <col style="width:10%;">
+                            <col style="width:16%;">
+                            <col style="width:14%;">
+                            <col style="width:20%;">
+                            <col style="width:6%;">
+                        </colgroup>
                         <thead>
                             <tr style="background: #f1f5f9; border-bottom: 1.5px solid #e2e8f0; color: #475569; font-size: 11px; text-transform: uppercase;">
-                                <th style="padding: 10px 12px; text-align: left; width: 40%;">Product</th>
-                                <th style="padding: 10px 12px; text-align: center; width: 12%;">Unit</th>
-                                <th style="padding: 10px 12px; text-align: right; width: 18%;">Unit Cost (₱)</th>
-                                <th style="padding: 10px 12px; text-align: center; width: 15%;">Qty to Order</th>
-                                <th style="padding: 10px 12px; text-align: right; width: 20%;">Total (₱)</th>
-                                <th style="padding: 10px 12px; text-align: center; width: 5%;"></th>
+                                <th style="padding: 10px 12px; text-align: left;">Product</th>
+                                <th style="padding: 10px 12px; text-align: center;">Unit</th>
+                                <th style="padding: 10px 12px; text-align: right;">Unit Cost (₱)</th>
+                                <th style="padding: 10px 12px; text-align: center;">Qty to Order</th>
+                                <th style="padding: 10px 12px; text-align: right;">Total (₱)</th>
+                                <th style="padding: 10px 12px; text-align: center;"></th>
                             </tr>
                         </thead>
                         <tbody id="directMerchTbody">
@@ -3215,7 +3501,7 @@ function calcDirectFuelTotal() {
                     </div>
                 </div>
 
-                <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
                     <button type="button" onclick="closeModal('directPoModal')" class="btn-cancel-inline">Cancel</button>
                     <button type="submit" class="btn-forward" style="padding: 10px 24px;">
                         <i class="fas fa-check-circle"></i> Issue & Create PO
@@ -3250,57 +3536,37 @@ function calcDirectFuelTotal() {
                 </div>
 
                 <!-- Fuel Table -->
-                <div style="margin-bottom: 16px; font-weight: 800; font-size: 14px; color: #002F6C; display: flex; align-items: center; gap: 8px;">
-                    <i class="fas fa-gas-pump"></i> Fuel Inventory Order Schedule
+                <div style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="font-weight: 800; font-size: 14px; color: #002F6C; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-gas-pump"></i> Fuel Order Items
+                    </div>
+                    <button type="button" onclick="addDirectFuelRow()" style="background: #002F6C !important; color: #ffffff !important; border: 1.5px solid #001f4d !important; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.15); transition: all 0.15s;">
+                        <i class="fas fa-plus-circle" style="color: #60a5fa !important; font-size: 14px;"></i> <span style="color: #ffffff !important;">Add Fuel Tank</span>
+                    </button>
                 </div>
 
-                <div style="border: 1px solid #e2e8f0; border-radius: 10px; overflow-x: auto; margin-bottom: 18px;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <div style="border: 1px solid #e2e8f0; border-radius: 10px; overflow-x: hidden; margin-bottom: 18px; width: 100%; box-sizing: border-box;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed;">
+                        <colgroup>
+                            <col style="width: 26%;">
+                            <col style="width: 16%;">
+                            <col style="width: 15%;">
+                            <col style="width: 15%;">
+                            <col style="width: 22%;">
+                            <col style="width: 6%;">
+                        </colgroup>
                         <thead>
                             <tr style="background: #f1f5f9; border-bottom: 1.5px solid #e2e8f0; color: #475569; font-size: 11px; text-transform: uppercase;">
-                                <th style="padding: 10px 12px; text-align: left; width: 30%;">Fuel Type</th>
-                                <th style="padding: 10px 12px; text-align: center; width: 20%;">Current Level</th>
-                                <th style="padding: 10px 12px; text-align: right; width: 20%;">Cost / Liter (₱)</th>
-                                <th style="padding: 10px 12px; text-align: center; width: 20%;">Liters to Order</th>
-                                <th style="padding: 10px 12px; text-align: right; width: 20%;">Subtotal (₱)</th>
+                                <th style="padding: 10px 12px; text-align: left;">Fuel Type</th>
+                                <th style="padding: 10px 8px; text-align: center;">Current Level</th>
+                                <th style="padding: 10px 8px; text-align: right;">Cost / Liter (₱)</th>
+                                <th style="padding: 10px 8px; text-align: center;">Liters to Order</th>
+                                <th style="padding: 10px 20px 10px 8px; text-align: right;">Subtotal (₱)</th>
+                                <th style="padding: 10px 8px; text-align: center;"></th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <?php if (empty($direct_fuel_types)): ?>
-                                <tr><td colspan="5" style="padding: 24px; text-align: center; color: #64748b;">No fuel types found.</td></tr>
-                            <?php else: ?>
-                                <?php foreach ($direct_fuel_types as $f_idx => $ft): 
-                                    $ft_id = (int)$ft['fuel_type_id'];
-                                    $cur_price = (float)($ft['current_price'] ?? 0);
-                                    $cur_lvl = (float)($ft['current_level'] ?? 0);
-                                    $cap = (float)($ft['capacity'] ?? 0);
-                                ?>
-                                <tr style="border-bottom: 1px solid #f1f5f9;">
-                                    <td style="padding: 12px;">
-                                        <input type="hidden" name="fuel_type_ids[]" value="<?= $ft_id ?>">
-                                        <div style="font-weight: 700; color: #002F6C;"><?= htmlspecialchars($ft['fuel_type']) ?></div>
-                                        <?php if (!empty($ft['ugt_no'])): ?>
-                                            <div style="font-size: 11px; color: #64748b;">Tank: <?= htmlspecialchars($ft['ugt_no']) ?></div>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td style="padding: 12px; text-align: center;">
-                                        <span style="font-weight: 700; color: #475569;"><?= number_format($cur_lvl, 2) ?> L</span>
-                                        <?php if ($cap > 0): ?>
-                                            <span style="font-size: 11px; color: #94a3b8;">/ <?= number_format($cap) ?> L</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td style="padding: 12px; text-align: right;">
-                                        <input type="number" step="0.01" min="0" name="unit_costs[]" value="<?= $cur_price > 0 ? number_format($cur_price, 2, '.', '') : '' ?>" oninput="calcDirectFuelTotal()" class="direct-fuel-cost" style="width: 100px; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 600;" placeholder="0.00">
-                                    </td>
-                                    <td style="padding: 12px; text-align: center;">
-                                        <input type="number" step="1" min="0" name="volumes[]" value="" oninput="calcDirectFuelTotal()" class="direct-fuel-vol" style="width: 120px; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 700; color: #002F6C;" placeholder="0">
-                                    </td>
-                                    <td style="padding: 12px; text-align: right; font-weight: 700; color: #002F6C; font-family: monospace;" class="direct-fuel-subtotal">
-                                        ₱ 0.00
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
+                        <tbody id="directFuelTbody">
+                            <!-- Populated dynamically via autoPopulateLowStockFuelRows() -->
                         </tbody>
                     </table>
                 </div>
@@ -3317,7 +3583,7 @@ function calcDirectFuelTotal() {
                     </div>
                 </div>
 
-                <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
                     <button type="button" onclick="closeModal('directPoModal')" class="btn-cancel-inline">Cancel</button>
                     <button type="submit" class="btn-forward" style="padding: 10px 24px; background: #1d4ed8 !important; border-color: #1d4ed8 !important;">
                         <i class="fas fa-check-circle"></i> Issue & Create Fuel PO

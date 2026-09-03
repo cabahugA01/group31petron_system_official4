@@ -1462,7 +1462,6 @@ include __DIR__ . '/../partials/header.php';
 .ato-btn-print:hover  { background:#64748b !important; color:#fff !important; }
 .ato-btn-back   { color:#4b5563 !important; border-color:#6b7280 !important; }
 .ato-btn-back:hover   { background:#6b7280 !important; color:#fff !important; }
-
 /*  Table Styles with Blue Headers  */
 .ato-table { 
     width:100%;
@@ -1484,21 +1483,20 @@ include __DIR__ . '/../partials/header.php';
     border-bottom:2px solid #001a3d;
     text-align:left;
     vertical-align:middle;
-    overflow:hidden;
-    text-overflow:ellipsis;
+    overflow:visible;
+    text-overflow:clip;
+    white-space:normal;
+    line-height:1.25;
 }
 .ato-table tbody td { 
-    padding:7px 6px;
+    padding:8px 6px;
     border-bottom:1px solid #f1f5f9;
     vertical-align:middle;
     background:#fff;
-    overflow:hidden;
-    text-overflow:ellipsis;
     font-size:11px;
     word-break:break-word;
     overflow-wrap:break-word;
     white-space:normal;
-    max-width:0; /* forces text-overflow on fixed-layout table */
 }
 .ato-table tbody tr:hover td { 
     background:#eff6ff;
