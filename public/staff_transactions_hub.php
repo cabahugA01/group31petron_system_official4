@@ -5730,8 +5730,9 @@ setTimeout(function() {
                                 foreach ($inspection_items as $insp_item):
                                     $insp_id = 'joInspect_' . str_replace([' ', '&', '/'], '_', $insp_item);
                                 ?>
-                                <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;font-weight:500;color:#334155;padding:6px 8px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;transition:background .15s;"
-                                       onmouseover="this.style.background='#fef9c3'" onmouseout="this.style.background='#fff'">
+                                <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;font-weight:500;color:#334155;padding:6px 8px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;transition:all .15s;"
+                                       onmouseover="this.style.background='#fef9c3'"
+                                       onmouseout="var cb=this.querySelector('input[type=checkbox]'); if(!cb || !cb.checked){ this.style.background='#fff'; }">
                                     <input type="checkbox" id="<?= $insp_id ?>" name="jo_inspection[]" value="<?= htmlspecialchars($insp_item) ?>"
                                            onchange="updateInspectionSelectAllState()"
                                            style="accent-color:#b45309;width:15px;height:15px;flex-shrink:0;">
@@ -5746,6 +5747,42 @@ setTimeout(function() {
                                           style="resize:vertical;min-height:56px;font-size:13px;"></textarea>
                             </div>
                         </div>
+                        <script>
+                        window.toggleAllVehicleInspections = function(isChecked) {
+                            var boxes = document.querySelectorAll('input[name="jo_inspection[]"]');
+                            boxes.forEach(function(cb) {
+                                cb.checked = isChecked;
+                                var lbl = cb.closest('label');
+                                if (lbl) {
+                                    lbl.style.background = isChecked ? '#fef9c3' : '#ffffff';
+                                    lbl.style.borderColor = isChecked ? '#f59e0b' : '#e2e8f0';
+                                    lbl.style.fontWeight = isChecked ? '600' : '500';
+                                }
+                            });
+                            var selAll = document.getElementById('joInspectSelectAll');
+                            if (selAll) {
+                                selAll.checked = isChecked;
+                                selAll.indeterminate = false;
+                            }
+                        };
+                        window.updateInspectionSelectAllState = function() {
+                            var allBoxes = document.querySelectorAll('input[name="jo_inspection[]"]');
+                            var checkedBoxes = document.querySelectorAll('input[name="jo_inspection[]"]:checked');
+                            allBoxes.forEach(function(cb) {
+                                var lbl = cb.closest('label');
+                                if (lbl) {
+                                    lbl.style.background = cb.checked ? '#fef9c3' : '#ffffff';
+                                    lbl.style.borderColor = cb.checked ? '#f59e0b' : '#e2e8f0';
+                                    lbl.style.fontWeight = cb.checked ? '600' : '500';
+                                }
+                            });
+                            var selAll = document.getElementById('joInspectSelectAll');
+                            if (selAll && allBoxes.length > 0) {
+                                selAll.checked = (allBoxes.length === checkedBoxes.length);
+                                selAll.indeterminate = (checkedBoxes.length > 0 && checkedBoxes.length < allBoxes.length);
+                            }
+                        };
+                        </script>
 
                         <!-- ── STEP 6: CUSTOMER COMPLAINT ─────────────────────── -->
                         <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-top:12px;border-top:1px solid #fde68a;">
@@ -7262,10 +7299,6 @@ setTimeout(function() {
                         <div style="font-size:14px;font-weight:700;color:#1e293b;">Request New Vehicle</div>
                         <div style="font-size:11px;color:#64748b;">Submitted for manager approval</div>
                     </div>
-                    <button onclick="closeAddVehicleModal()"
-                            style="margin-left:auto;background:none;border:none;cursor:pointer;
-                                   color:#94a3b8;font-size:20px;line-height:1;padding:0;"
-                            title="Close">×</button>
                 </div>
 
                 <!-- Brand -->
@@ -7391,11 +7424,6 @@ setTimeout(function() {
                         <div style="font-size:14px;font-weight:700;color:#1e293b;">Request New Product</div>
                         <div style="font-size:11px;color:#64748b;">Submitted for manager approval</div>
                     </div>
-                    <button type="button" onclick="closeAddProductModal()"
-                            style="margin-left:auto;background:none;border:none;font-size:20px;
-                                   color:#94a3b8;cursor:pointer;padding:0;line-height:1;">
-                        ×
-                    </button>
                 </div>
 
                 <!-- Category -->
@@ -9254,16 +9282,34 @@ setTimeout(function() {
 
         // ── Vehicle Inspection Select All Toggle ──────────────────────────────────────
         window.toggleAllVehicleInspections = function(isChecked) {
-            document.querySelectorAll('input[name="jo_inspection[]"]').forEach(cb => {
+            const boxes = document.querySelectorAll('input[name="jo_inspection[]"]');
+            boxes.forEach(cb => {
                 cb.checked = isChecked;
+                const lbl = cb.closest('label');
+                if (lbl) {
+                    lbl.style.background = isChecked ? '#fef9c3' : '#ffffff';
+                    lbl.style.borderColor = isChecked ? '#f59e0b' : '#e2e8f0';
+                    lbl.style.fontWeight = isChecked ? '600' : '500';
+                }
             });
             const selAll = document.getElementById('joInspectSelectAll');
-            if (selAll) selAll.indeterminate = false;
+            if (selAll) {
+                selAll.checked = isChecked;
+                selAll.indeterminate = false;
+            }
         };
 
         window.updateInspectionSelectAllState = function() {
             const allBoxes = document.querySelectorAll('input[name="jo_inspection[]"]');
             const checkedBoxes = document.querySelectorAll('input[name="jo_inspection[]"]:checked');
+            allBoxes.forEach(cb => {
+                const lbl = cb.closest('label');
+                if (lbl) {
+                    lbl.style.background = cb.checked ? '#fef9c3' : '#ffffff';
+                    lbl.style.borderColor = cb.checked ? '#f59e0b' : '#e2e8f0';
+                    lbl.style.fontWeight = cb.checked ? '600' : '500';
+                }
+            });
             const selAll = document.getElementById('joInspectSelectAll');
             if (selAll && allBoxes.length > 0) {
                 selAll.checked = (allBoxes.length === checkedBoxes.length);
@@ -9274,7 +9320,15 @@ setTimeout(function() {
         // ── Clear Job Order services, inspection, complaint, remarks, cart & payment ─────
         function clearJobOrderDetailsOnly() {
             // Clear Vehicle Inspection checkboxes & remarks
-            document.querySelectorAll('input[name="jo_inspection[]"]').forEach(cb => cb.checked = false);
+            document.querySelectorAll('input[name="jo_inspection[]"]').forEach(cb => {
+                cb.checked = false;
+                const lbl = cb.closest('label');
+                if (lbl) {
+                    lbl.style.background = '#fff';
+                    lbl.style.borderColor = '#e2e8f0';
+                    lbl.style.fontWeight = '500';
+                }
+            });
             const selAll = document.getElementById('joInspectSelectAll');
             if (selAll) { selAll.checked = false; selAll.indeterminate = false; }
             const inspRemarks = document.getElementById('joInspectionRemarks');
@@ -10265,7 +10319,15 @@ setTimeout(function() {
             if (priNormal) priNormal.checked = true;
 
             // Clear Vehicle Inspection
-            document.querySelectorAll('input[name="jo_inspection[]"]').forEach(cb => cb.checked = false);
+            document.querySelectorAll('input[name="jo_inspection[]"]').forEach(cb => {
+                cb.checked = false;
+                const lbl = cb.closest('label');
+                if (lbl) {
+                    lbl.style.background = '#fff';
+                    lbl.style.borderColor = '#e2e8f0';
+                    lbl.style.fontWeight = '500';
+                }
+            });
             const selAll = document.getElementById('joInspectSelectAll');
             if (selAll) { selAll.checked = false; selAll.indeterminate = false; }
             const inspRemarks = document.getElementById('joInspectionRemarks');
@@ -11239,7 +11301,7 @@ setTimeout(function() {
             const isEwallet = method === 'GCash' || method === 'Maya';
             const subtotal = cart.reduce((s, i) => s + i.quantity * i.unit_price, 0);
             const vat = subtotal * 0.12;
-            const grand = subtotal + vat;
+            // grand total is already declared as const grand = getGrandTotal() above
 
             const payload = {
                 action:              'create_transaction',
