@@ -38,6 +38,14 @@ try {
             mt.id,
             mt.transaction_id,
             mt.customer_name,
+            COALESCE(mt.customer_contact, '') AS customer_contact,
+            COALESCE(mt.transaction_type, 'merchandise') AS transaction_type,
+            COALESCE(mt.job_order_service, '') AS job_order_service,
+            COALESCE(mt.job_order_vehicle_plate, '') AS job_order_vehicle_plate,
+            COALESCE(mt.job_order_vehicle_type, '') AS job_order_vehicle_type,
+            COALESCE(mt.job_order_vehicle_brand, '') AS job_order_vehicle_brand,
+            COALESCE(mt.job_order_vehicle_model, '') AS job_order_vehicle_model,
+            COALESCE(mt.job_order_mechanic_name, '') AS job_order_mechanic_name,
             mt.total_amount,
             mt.payment_method,
             mt.payment_status,
@@ -122,11 +130,13 @@ try {
     $pay_status_raw = strtolower(trim($txn['payment_status'] ?? 'pending payment'));
     $pay_badge_colors = [
         'paid' => '#16a34a',
+        'partially paid' => '#d97706',
         'partial payment' => '#d97706',
         'partial' => '#d97706',
         'pending payment' => '#dc2626',
         'pending' => '#dc2626',
-        'credit' => '#7c3aed'
+        'credit' => '#7c3aed',
+        'credit account' => '#7c3aed'
     ];
     $pay_badge_color = $pay_badge_colors[$pay_status_raw] ?? '#6b7280';
     $pay_badge = '<span style="display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:12px;color:#fff;background:' . $pay_badge_color . ';">' . strtoupper($txn['payment_status'] ?? 'Pending') . '</span>';
@@ -134,11 +144,16 @@ try {
     // Validation status badge
     $val_status_raw = strtolower(trim($txn['validation_status'] ?? 'pending'));
     $val_badge_colors = [
+        'completed' => '#16a34a',
+        'official' => '#16a34a',
         'approved' => '#16a34a',
         'validated' => '#16a34a',
+        'active' => '#002F70',
         'pending' => '#d97706',
         'pending validation' => '#d97706',
         'rejected' => '#dc2626',
+        'voided' => '#dc2626',
+        'void' => '#dc2626',
         'adjusted' => '#7c3aed'
     ];
     $val_badge_color = $val_badge_colors[$val_status_raw] ?? '#6b7280';
@@ -151,7 +166,15 @@ try {
         'transaction' => [
             'id' => $txn['id'],
             'transaction_id' => $txn['transaction_id'],
+            'transaction_type' => $txn['transaction_type'] ?? 'merchandise',
             'customer_name' => $txn['customer_name'] ?: 'Walk-in Customer',
+            'customer_contact' => $txn['customer_contact'] ?? '',
+            'job_order_service' => $txn['job_order_service'] ?? '',
+            'job_order_vehicle_plate' => $txn['job_order_vehicle_plate'] ?? '',
+            'job_order_vehicle_type' => $txn['job_order_vehicle_type'] ?? '',
+            'job_order_vehicle_brand' => $txn['job_order_vehicle_brand'] ?? '',
+            'job_order_vehicle_model' => $txn['job_order_vehicle_model'] ?? '',
+            'job_order_mechanic_name' => $txn['job_order_mechanic_name'] ?? '',
             'total_amount' => $total,
             'payment_method' => $txn['payment_method'] ?: 'Cash',
             'payment_status' => $txn['payment_status'] ?: 'Pending Payment',

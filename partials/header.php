@@ -3046,18 +3046,25 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     font-weight: 700 !important;
 }
 
-/* === Sidebar Module Badges: Completely Disabled / Removed as requested === */
+/* === Sidebar Navigation Badges: Completely Disabled / Removed as requested === */
+.sidebar .badge,
 .sidebar [data-badge],
 .sidebar [data-sidebar-badge],
+.sidebar-menu .badge,
 .sidebar-menu [data-badge],
 .sidebar-menu [data-sidebar-badge],
+.nav-item .badge,
 .nav-item [data-badge],
 .nav-item [data-sidebar-badge],
+.sidebar-sub-item .badge,
 .sidebar-sub-item [data-badge],
 .sidebar-badge,
 .nav-badge,
 .sub-badge {
     display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
 }
 </style>
 
@@ -5741,27 +5748,8 @@ require_once __DIR__ . '/rbac_menu.php';
             }
 
             function updateSidebarBadges(categoryCounts) {
-                if (!categoryCounts) return;
-                const map = {
-                    'transactions':          categoryCounts.transactions || 0,
-                    'fuel':                  categoryCounts.fuel || 0,
-                    'admin_fuel':            categoryCounts.admin_fuel || categoryCounts.fuel || 0,
-                    'admin_fuel_management': categoryCounts.admin_fuel_management || categoryCounts.fuel || 0,
-                    'inventory':             categoryCounts.inventory || 0,
-                    'admin_inventory':       categoryCounts.admin_inventory || categoryCounts.inventory || 0,
-                    'customers':             categoryCounts.customers || 0,
-                    'prod_pricing':          categoryCounts.prod_pricing || 0,
-                    'admin_product_pricing': categoryCounts.admin_product_pricing || categoryCounts.prod_pricing || 0,
-                    'reports':               categoryCounts.reports || 0,
-                    'admin_reports':         categoryCounts.admin_reports || categoryCounts.reports || 0,
-                    'notifications':         categoryCounts.notifications || 0
-                };
-                for (const [key, cnt] of Object.entries(map)) {
-                    document.querySelectorAll(`[data-sidebar-badge="${key}"]`).forEach(el => {
-                        if (cnt > 0) { el.textContent = cnt > 99 ? '99+' : cnt; el.style.display = 'flex'; }
-                        else { el.style.display = 'none'; }
-                    });
-                }
+                // Disabled as requested: notifications are strictly in the header notification bell badge
+                return;
             }
 
             function updateBadge(count, categoryCounts) {
@@ -5996,53 +5984,8 @@ require_once __DIR__ . '/rbac_menu.php';
             }
 
             function updateSidebarDrawerBadges(categoryCounts) {
-                if (!categoryCounts) return;
-                const map = {
-                    'transactions':          categoryCounts.transactions || 0,
-                    'fuel':                  categoryCounts.fuel || 0,
-                    'admin_fuel':            categoryCounts.admin_fuel || categoryCounts.fuel || 0,
-                    'admin_fuel_management': categoryCounts.admin_fuel_management || categoryCounts.fuel || 0,
-                    'inventory':             categoryCounts.inventory || 0,
-                    'admin_inventory':       categoryCounts.admin_inventory || categoryCounts.inventory || 0,
-                    'customers':             categoryCounts.customers || 0,
-                    'mgr_customers':         categoryCounts.mgr_customers || categoryCounts.customers || 0,
-                    'mgr_product_pricing':   categoryCounts.prod_pricing || 0,
-                    'prod_pricing':          categoryCounts.prod_pricing || 0,
-                    'reports':               categoryCounts.reports || 0,
-                    'notifications':         categoryCounts.notifications || 0
-                };
-                for (const [key, cnt] of Object.entries(map)) {
-                    const els = document.querySelectorAll(`[data-sidebar-badge="${key}"]`);
-                    els.forEach(el => {
-                        if (cnt > 0) {
-                            el.textContent = cnt > 99 ? '99+' : cnt;
-                            el.style.display = 'flex';
-                            el.style.backgroundColor = '#dc2626';
-                            el.style.color = '#ffffff';
-                        } else {
-                            el.style.display = 'none';
-                        }
-                    });
-                }
-                // Automatically recalculate parent badges for sub-menus
-                document.querySelectorAll('[id^="sub-"]').forEach(container => {
-                    const parentLink = container.previousElementSibling;
-                    if (!parentLink) return;
-                    const parentBadgeSpan = parentLink.querySelector('span[data-badge]');
-                    if (!parentBadgeSpan) return;
-                    let sum = 0;
-                    container.querySelectorAll('a.sidebar-sub-item span[data-badge]').forEach(span => {
-                        if (span.style.display !== 'none') {
-                            sum += parseInt(span.textContent, 10) || 0;
-                        }
-                    });
-                    if (sum > 0) {
-                        parentBadgeSpan.textContent = sum > 99 ? '99+' : sum;
-                        parentBadgeSpan.style.display = 'flex';
-                    } else {
-                        parentBadgeSpan.style.display = 'none';
-                    }
-                });
+                // Disabled as requested: notifications are strictly in the header notification bell badge
+                return;
             }
 
             // ── Load & render notifications (fast — no generator wait) ────────

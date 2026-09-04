@@ -524,6 +524,13 @@ $mh_variance_alert_count = 0;
 $mh_kpi_txn_count        = 0;
 $mh_kpi_items_released   = 0;
 $mh_kpi_total_encoded    = 0.00;
+$jom_recent              = [];
+$jom_total               = 0;
+$jom_items_map           = [];
+$jom_filter_start_date   = $_GET['jom_start_date'] ?? '';
+$jom_filter_end_date     = $_GET['jom_end_date'] ?? '';
+$jom_filter_status       = $_GET['jom_status'] ?? '';
+$jom_search              = trim($_GET['jom_search'] ?? '');
 
 // Pre-fetch pending transaction_requests for Merchandise History rows
         // ── AJAX JSON POLLING ENDPOINT FOR MERCHANDISE HISTORY ─────────────────
@@ -614,15 +621,9 @@ if ($section === 'merchandise') {
         $mh_where_clauses = ["mt.station_id = ?"];
         $mh_params = [$station_id];
 
-        // Transaction Type Filter
-        if ($mh_filter_type === 'merchandise') {
-            $mh_where_clauses[] = "COALESCE(mt.transaction_type, 'merchandise') = 'merchandise'";
-        } elseif ($mh_filter_type === 'combined') {
-            $mh_where_clauses[] = "COALESCE(mt.transaction_type, 'merchandise') = 'combined'";
-        } else {
-            // Show both merchandise and combined transactions (excl. pure job_orders in this tab)
-            $mh_where_clauses[] = "COALESCE(mt.transaction_type, 'merchandise') IN ('merchandise', 'combined')";
-        }
+        // Transaction Type Filter — Merchandise History shows ONLY pure merchandise.
+        // Combined (JO + Merchandise) transactions are in the JOM sub-tab exclusively.
+        $mh_where_clauses[] = "COALESCE(mt.transaction_type, 'merchandise') = 'merchandise'";
 
         // Date Range Filters
         if ($mh_filter_start_date !== '') {
@@ -795,6 +796,108 @@ if ($section === 'merchandise') {
 
         $stmt_sh = $pdo->query("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 ORDER BY sort_order ASC");
         $mh_available_shifts = $stmt_sh ? $stmt_sh->fetchAll(PDO::FETCH_ASSOC) : [];
+
+        // ── Job Order + Merchandise History (combined) ──────────────────────────
+        try {
+            // Build JOM where clause
+            $jom_where_clauses = ["mt.station_id = ?", "COALESCE(mt.transaction_type,'merchandise') = 'combined'"];
+            $jom_params = [$station_id];
+            if ($jom_filter_start_date !== '') {
+                $jom_where_clauses[] = "DATE($mh_date_col) >= ?";
+                $jom_params[] = $jom_filter_start_date;
+            }
+            if ($jom_filter_end_date !== '') {
+                $jom_where_clauses[] = "DATE($mh_date_col) <= ?";
+                $jom_params[] = $jom_filter_end_date;
+            }
+            if ($jom_filter_status !== '') {
+                $jom_where_clauses[] = "COALESCE(mt.validation_status, 'Pending') = ?";
+                $jom_params[] = $jom_filter_status;
+            }
+            if ($jom_search !== '') {
+                $jom_where_clauses[] = "(mt.customer_name LIKE ? OR $mh_txnid_col LIKE ? OR mt.job_order_service LIKE ? OR mt.job_order_vehicle_plate LIKE ?)";
+                $jom_params[] = '%'.$jom_search.'%';
+                $jom_params[] = '%'.$jom_search.'%';
+                $jom_params[] = '%'.$jom_search.'%';
+                $jom_params[] = '%'.$jom_search.'%';
+            }
+            $jom_where = "WHERE " . implode(" AND ", $jom_where_clauses);
+
+            $stmt_jom = $pdo->prepare("
+                SELECT mt.id AS mt_id,
+                       $mh_txnid_col AS transaction_id,
+                       mt.customer_name,
+                       mt.customer_contact,
+                       COALESCE(mt.job_order_service, '') AS job_order_service,
+                       COALESCE(mt.job_order_vehicle_plate, '') AS job_order_vehicle_plate,
+                       COALESCE(mt.job_order_vehicle_type, '') AS job_order_vehicle_type,
+                       COALESCE(mt.job_order_vehicle_brand, '') AS job_order_vehicle_brand,
+                       COALESCE(mt.job_order_vehicle_model, '') AS job_order_vehicle_model,
+                       COALESCE(mt.job_order_mechanic_name, '') AS job_order_mechanic_name,
+                       mt.payment_method,
+                       COALESCE(mt.payment_status, 'Pending') AS payment_status,
+                       COALESCE(mt.validation_status, 'Completed') AS validation_status,
+                       COALESCE(mt.workflow_status, 'Active') AS workflow_status,
+                       $mh_date_col AS transaction_date,
+                       COALESCE(mt.total_amount, 0) AS total_amount,
+                       COALESCE(mt.amount_paid, 0) AS amount_paid,
+                       COALESCE(mt.balance_due, 0) AS balance_due,
+                       (SELECT GROUP_CONCAT(
+                           CONCAT(mti.product_name,
+                               IF(mti.quantity != 1, CONCAT(' (',
+                                   IF(mti.quantity = FLOOR(mti.quantity), CAST(CAST(mti.quantity AS UNSIGNED) AS CHAR), CAST(ROUND(mti.quantity, 2) AS CHAR)),
+                               ')'), '')
+                           ) SEPARATOR ', ')
+                        FROM merchandise_transaction_items mti
+                        WHERE mti.transaction_id = mt.id AND COALESCE(mti.item_type,'merchandise') = 'merchandise'
+                       ) AS merchandise_summary,
+                       (SELECT GROUP_CONCAT(mti.product_name SEPARATOR ', ')
+                        FROM merchandise_transaction_items mti
+                        WHERE mti.transaction_id = mt.id AND COALESCE(mti.item_type,'merchandise') = 'service'
+                       ) AS service_summary
+                FROM merchandise_transactions mt
+                $jom_where
+                ORDER BY $mh_date_col DESC
+            ");
+            $stmt_jom->execute($jom_params);
+            $jom_recent = $stmt_jom->fetchAll(PDO::FETCH_ASSOC);
+            $jom_total  = count($jom_recent);
+
+            // Fetch items per combined transaction
+            if (!empty($jom_recent)) {
+                $jom_ids = array_column($jom_recent, 'mt_id');
+                $jom_iph = implode(',', array_map('intval', $jom_ids));
+                $jom_itm = $pdo->query("
+                    SELECT transaction_id, product_name, quantity, unit_price, subtotal,
+                           COALESCE(item_type,'merchandise') AS item_type,
+                           COALESCE(category,'') AS category,
+                           COALESCE(size_variant,'') AS size_variant
+                    FROM merchandise_transaction_items
+                    WHERE transaction_id IN ($jom_iph)
+                    ORDER BY transaction_id, id ASC
+                ");
+                foreach ($jom_itm->fetchAll(PDO::FETCH_ASSOC) as $ji) {
+                    $jom_items_map[(int)$ji['transaction_id']][] = $ji;
+                }
+            }
+
+            // Pre-fetch pending requests for JOM rows
+            $jom_pending_requests = [];
+            $jom_ids_str = array_column($jom_recent, 'mt_id');
+            if (!empty($jom_ids_str)) {
+                foreach ($mh_pending_requests as $k => $v) {
+                    if (in_array((int)$k, array_map('intval', $jom_ids_str))) {
+                        $jom_pending_requests[$k] = $v;
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            $jom_recent = [];
+            $jom_total  = 0;
+            $jom_items_map = [];
+            $jom_pending_requests = [];
+            error_log('JOM history error: ' . $e->getMessage());
+        }
     } catch (Exception $e) { 
         $mh_recent = []; 
         $mh_total = 0; 
@@ -2491,15 +2594,7 @@ window.openTxnRequestModal = function(e, txnId, recordSource, requestType, custo
 }
 
 .subtab-badge-val {
-    transition: all 0.15s ease !important;
-}
-.txn-subtab-btn.active .subtab-badge-val {
-    background: #ffffff !important;
-    color: #002F70 !important;
-}
-.txn-subtab-btn.inactive .subtab-badge-val {
-    background: #002F70 !important;
-    color: #ffffff !important;
+    display: none !important;
 }
 
 /* Icon Buttons next to inputs (immune to overrides) */
@@ -5433,27 +5528,16 @@ setTimeout(function() {
         <!-- ── Inner Tabs ─────────────────────────────────────────────── -->
         <div class="txn-subtab-nav">
             <?php
-            // Variance alert badges (separated per module):
-            // 1. Merchandise / Service Transaction tab badge
-            $merch_badge_warn   = $mh_variance_alert_count > 0 ? $mh_variance_alert_count : null;
-
-            // 2. Job Order Tracker tab badge
-            $tracker_badge_val  = $jo_pending_count > 0 ? $jo_pending_count : null;
-            $tracker_badge_warn = $jo_variance_alert_count > 0 ? $jo_variance_alert_count : null;
-
             $inner_tabs = [
                 'merchandise'   => [
                     'label'      => 'Merchandise/Service Transaction',
                     'icon'       => 'fa-shopping-cart',
-                    'color'      => '#28a745',
-                    'badge_warn' => null
+                    'color'      => '#28a745'
                 ],
                 'tracker'       => [
                     'label'      => 'Job Order Tracker',
                     'icon'       => 'fa-tasks',
-                    'color'      => '#003d7a',
-                    'badge'      => $tracker_badge_val,
-                    'badge_warn' => $tracker_badge_warn
+                    'color'      => '#003d7a'
                 ],
             ];
             foreach ($inner_tabs as $tk => $tc):
@@ -5465,16 +5549,6 @@ setTimeout(function() {
                     style="white-space:nowrap;">
                 <i class="fas <?= $tc['icon'] ?>"></i>
                 <?= $tc['label'] ?>
-                <?php if (!empty($tc['badge'])): ?>
-                <span class="subtab-badge-val" style="background:<?= $ia ? '#ffffff' : '#002F70' ?>;color:<?= $ia ? '#002F70' : '#ffffff' ?>;font-size:10.5px;font-weight:800;
-                             padding:1px 7px;border-radius:20px;"><?= $tc['badge'] ?> Pending</span>
-                <?php endif; ?>
-                <?php if (!empty($tc['badge_warn'])): ?>
-                <span style="background:#dc2626;color:#fff;font-size:10px;font-weight:800;
-                             padding:1px 7px;border-radius:20px;" title="Variance alerts detected">
-                    <i class="fas fa-exclamation-triangle"></i> <?= $tc['badge_warn'] ?>
-                </span>
-                <?php endif; ?>
             </button>
             <?php endforeach; ?>
 
@@ -6007,24 +6081,29 @@ setTimeout(function() {
 
                     <!-- ── Merchandise sub-tabs ─────────────────────────────── -->
                     <div style="display:flex;gap:10px;padding:0 16px;margin-bottom:12px;margin-top:12px;align-items:center;flex-wrap:wrap;width:100%;">
-                        <?php $mh_open = isset($_GET['mh_open']) && $_GET['mh_open'] == '1'; ?>
-                        <div class="txn-subtab-nav" style="margin-bottom:0 !important; max-width:520px;">
+                        <?php
+                        $mh_open    = isset($_GET['mh_open'])  && $_GET['mh_open']  == '1';
+                        $jom_open   = isset($_GET['jom_open']) && $_GET['jom_open'] == '1';
+                        $merch_active = (!$mh_open && !$jom_open) ? 'active' : 'inactive';
+                        $hist_active  = ($mh_open  && !$jom_open) ? 'active' : 'inactive';
+                        $jom_active   = $jom_open  ? 'active' : 'inactive';
+                        ?>
+                        <div class="txn-subtab-nav" style="margin-bottom:0 !important; max-width:740px;">
                             <button type="button" onclick="switchMerchTab('form')" id="merchTabBtn_form"
-                                    class="txn-subtab-btn green <?= !$mh_open ? 'active' : 'inactive' ?>">
+                                    class="txn-subtab-btn green <?= $merch_active ?>">
                                 <i class="fas fa-shopping-cart"></i> Merchandise
                             </button>
                             <button type="button" onclick="switchMerchTab('history')" id="merchTabBtn_history"
-                                    class="txn-subtab-btn green <?= $mh_open ? 'active' : 'inactive' ?>">
+                                    class="txn-subtab-btn green <?= $hist_active ?>">
                                 <i class="fas fa-history"></i> Merchandise History
-                                <?php if ($mh_variance_alert_count > 0): ?>
-                                <span style="background:#dc2626;color:#fff;font-size:10px;font-weight:800;
-                                             padding:1px 7px;border-radius:20px;margin-left:6px;" title="Variance alerts detected in Merchandise History">
-                                    <i class="fas fa-exclamation-triangle"></i> <?= $mh_variance_alert_count ?>
-                                </span>
-                                <?php endif; ?>
+                            </button>
+                            <button type="button" onclick="switchMerchTab('combined')" id="merchTabBtn_combined"
+                                    class="txn-subtab-btn darkblue <?= $jom_active ?>"
+                                    style="white-space:nowrap;">
+                                <i class="fas fa-tools"></i> JO + Merchandise History
                             </button>
                         </div>
-                        <div id="merchHistoryHeaderButtons" style="display: <?= $mh_open ? 'flex' : 'none' ?>; gap:8px; align-items:center; margin-left:auto;">
+                        <div id="merchHistoryHeaderButtons" style="display: <?= ($mh_open || $jom_open) ? 'flex' : 'none' ?>; gap:8px; align-items:center; margin-left:auto;">
                             <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise"
                                title="Back to Merchandise Form"
                                class="txn-btn secondary"
@@ -6279,14 +6358,7 @@ setTimeout(function() {
                             <form method="GET" action="staff_transactions_hub.php" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
                                 <input type="hidden" name="section" value="merchandise">
                                 <input type="hidden" name="mh_open" value="1">
-                                <div style="display:flex;flex-direction:column;gap:4px;">
-                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Type</label>
-                                    <select name="mh_type" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
-                                        <option value="all" <?= $mh_filter_type === 'all' ? 'selected' : '' ?>>All Transactions</option>
-                                        <option value="merchandise" <?= $mh_filter_type === 'merchandise' ? 'selected' : '' ?>>Merchandise Only</option>
-                                        <option value="combined" <?= $mh_filter_type === 'combined' ? 'selected' : '' ?>>Combined Transaction</option>
-                                    </select>
-                                </div>
+
                                 <div style="display:flex;flex-direction:column;gap:4px;">
                                     <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Start Date</label>
                                     <input type="date" name="mh_start_date" value="<?= htmlspecialchars($mh_filter_start_date) ?>"
@@ -6637,6 +6709,222 @@ setTimeout(function() {
                         </div>
                     </div><!-- /merchTab_history -->
 
+                    <!-- ── Sub-tab: JO + Merchandise History ─────────────────── -->
+                    <div id="merchTab_combined" style="display:<?= $jom_open ? 'block' : 'none' ?>; padding-bottom:80px; min-width:0; overflow:hidden;">
+
+                        <!-- Filter Bar -->
+                        <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;">
+                            <form method="GET" action="staff_transactions_hub.php" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+                                <input type="hidden" name="section" value="merchandise">
+                                <input type="hidden" name="jom_open" value="1">
+                                <div style="display:flex;flex-direction:column;gap:4px;">
+                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Start Date</label>
+                                    <input type="date" name="jom_start_date" value="<?= htmlspecialchars($jom_filter_start_date) ?>"
+                                           style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                                </div>
+                                <div style="display:flex;flex-direction:column;gap:4px;">
+                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">End Date</label>
+                                    <input type="date" name="jom_end_date" value="<?= htmlspecialchars($jom_filter_end_date) ?>"
+                                           style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                                </div>
+                                <div style="display:flex;flex-direction:column;gap:4px;">
+                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Status</label>
+                                    <select name="jom_status" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                                        <option value="">All Statuses</option>
+                                        <option value="Completed" <?= $jom_filter_status === 'Completed' ? 'selected' : '' ?>>Completed</option>
+                                        <option value="Adjusted"  <?= $jom_filter_status === 'Adjusted'  ? 'selected' : '' ?>>Adjusted</option>
+                                        <option value="Voided"    <?= $jom_filter_status === 'Voided'    ? 'selected' : '' ?>>Voided</option>
+                                    </select>
+                                </div>
+                                <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px;">
+                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Search</label>
+                                    <input type="text" name="jom_search" value="<?= htmlspecialchars($jom_search) ?>"
+                                           placeholder="TXN ID, Customer, Service, Plate…"
+                                           style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;width:100%;">
+                                </div>
+                                <button type="submit" class="txn-btn primary"><i class="fas fa-filter"></i> Filter</button>
+                                <a href="staff_transactions_hub.php?section=merchandise&jom_open=1" class="txn-btn secondary"><i class="fas fa-times"></i> Clear</a>
+                            </form>
+                        </div>
+
+                        <!-- Table -->
+                        <div style="padding:0;">
+                            <?php if (empty($jom_recent)): ?>
+                            <div style="text-align:center;padding:36px;color:#94a3b8;">
+                                <i class="fas fa-tools" style="font-size:26px;display:block;margin-bottom:8px;color:#93c5fd;"></i>
+                                <div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:4px;">No combined transactions found.</div>
+                                <div style="font-size:12px;color:#64748b;">Combined transactions are created when a Job Order service and merchandise items are checked out together.</div>
+                            </div>
+                            <?php else: ?>
+                            <div style="width:100%;overflow-x:hidden;border-radius:0 0 8px 8px;">
+                            <style>
+                            #jomHistoryTable { width:100%; border-collapse:collapse; table-layout:fixed; }
+                            #jomHistoryTable th { padding:12px 8px; font-size:11px; font-weight:700; white-space:nowrap; background:linear-gradient(135deg,#002F70 0%,#003d8f 100%); color:#fff; letter-spacing:.4px; text-transform:uppercase; }
+                            #jomHistoryTable td { padding:11px 8px; font-size:12px; vertical-align:middle; border-bottom:1px solid #f1f5f9; }
+                            #jomHistoryTable tr.jom-row:hover td { background:#f8faff; cursor:pointer; }
+                            </style>
+                            <table id="jomHistoryTable">
+                                <colgroup>
+                                    <col style="width:13%;"><!-- TXN ID -->
+                                    <col style="width:15%;"><!-- CUSTOMER -->
+                                    <col style="width:17%;"><!-- JOB ORDER -->
+                                    <col style="width:22%;"><!-- MERCHANDISE -->
+                                    <col style="width:10%;"><!-- TOTAL -->
+                                    <col style="width:11%;"><!-- PAYMENT STATUS -->
+                                    <col style="width:9%;"><!-- STATUS -->
+                                    <col style="width:3%;"><!-- ACTIONS -->
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th style="text-align:left;">TXN ID</th>
+                                        <th style="text-align:left;">CUSTOMER</th>
+                                        <th style="text-align:left;">JOB ORDER</th>
+                                        <th style="text-align:left;">MERCHANDISE</th>
+                                        <th style="text-align:left;">TOTAL</th>
+                                        <th style="text-align:left;">PAYMENT STATUS</th>
+                                        <th style="text-align:center;">STATUS</th>
+                                        <th style="text-align:center;">ACTIONS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="jomTableBody">
+                                <?php foreach ($jom_recent as $jom):
+                                    $jom_id         = (int)$jom['mt_id'];
+                                    $jom_tid        = htmlspecialchars($jom['transaction_id'] ?? ('#'.$jom_id));
+                                    $jom_cname      = htmlspecialchars($jom['customer_name'] ?? 'Walk-in Customer');
+                                    $jom_plate      = htmlspecialchars($jom['job_order_vehicle_plate'] ?? '');
+                                    $jom_service    = htmlspecialchars($jom['job_order_service'] ?? '—');
+                                    $jom_mechanic   = htmlspecialchars($jom['job_order_mechanic_name'] ?? '');
+                                    $jom_merch_sum  = htmlspecialchars($jom['merchandise_summary'] ?? '—');
+                                    $jom_svc_sum    = htmlspecialchars($jom['service_summary'] ?? $jom_service);
+                                    $jom_total_amt  = (float)($jom['total_amount'] ?? 0);
+                                    $jom_paid_amt   = (float)($jom['amount_paid'] ?? 0);
+                                    $jom_balance    = (float)($jom['balance_due'] ?? 0);
+                                    $jom_pstatus    = $jom['payment_status'] ?? 'Pending';
+                                    $jom_vstatus    = strtolower(trim($jom['validation_status'] ?? 'completed'));
+                                    $jom_date_str   = '';
+                                    if (!empty($jom['transaction_date'])) {
+                                        try { $jom_date_str = (new DateTime($jom['transaction_date']))->format('M j, Y g:i A'); } catch(Exception $e){}
+                                    }
+
+                                    // Payment badge colors
+                                    $jps = strtolower(trim($jom_pstatus));
+                                    if ($jps === 'paid')                    { $jpc='#16a34a'; $jpb='#dcfce7'; }
+                                    elseif (in_array($jps,['partially paid','partial payment'])) { $jpc='#d97706'; $jpb='#fef9c3'; }
+                                    elseif (in_array($jps,['credit account','credit'])) { $jpc='#5b21b6'; $jpb='#ede9fe'; }
+                                    else { $jpc='#b91c1c'; $jpb='#fee2e2'; }
+
+                                    // Status badge
+                                    if (in_array($jom_vstatus,['voided','cancelled','canceled','void'])) {
+                                        $jv_badge = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:700;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;"><i class="fas fa-ban" style="font-size:8px;"></i> Voided</span>';
+                                    } elseif ($jom_vstatus === 'adjusted') {
+                                        $jv_badge = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;"><i class="fas fa-sliders-h" style="font-size:8px;"></i> Adjusted</span>';
+                                    } else {
+                                        $jv_badge = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:700;color:#166534;background:#dcfce7;border:1px solid #86efac;"><i class="fas fa-check-circle" style="font-size:8px;"></i> Completed</span>';
+                                    }
+
+                                    // Action state
+                                    $jom_pr     = $jom_pending_requests[(string)$jom_id] ?? null;
+                                    $jom_is_void = in_array($jom_vstatus,['voided','cancelled','canceled','void']);
+                                    $jom_void_req = ($jom_pr && $jom_pr['request_type'] === 'Void');
+                                    $jom_adj_req  = ($jom_pr && $jom_pr['request_type'] === 'Adjustment');
+                                ?>
+                                <tr class="jom-row" onclick="window.viewMerchandiseDetails('<?= addslashes($jom['transaction_id'] ?? $jom_id) ?>')" title="Click to view details">
+                                    <!-- 1. TXN ID -->
+                                    <td style="max-width:0;overflow:hidden;">
+                                        <div style="font-weight:700;font-size:11px;color:#002F70;font-family:monospace;word-break:break-all;line-height:1.2;"><?= $jom_tid ?></div>
+                                        <div style="font-size:10px;color:#94a3b8;margin-top:2px;"><?= $jom_date_str ?></div>
+                                    </td>
+                                    <!-- 2. CUSTOMER -->
+                                    <td style="max-width:0;overflow:hidden;">
+                                        <div style="font-weight:700;font-size:12px;color:#0f172a;line-height:1.25;word-break:break-word;"><?= $jom_cname ?></div>
+                                        <?php if ($jom_plate !== ''): ?>
+                                        <div style="display:inline-flex;align-items:center;gap:3px;background:#f1f5f9;border:1px solid #cbd5e1;color:#1e293b;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:700;margin-top:2px;">
+                                            <i class="fas fa-car" style="color:#2563eb;font-size:9px;"></i> <?= $jom_plate ?>
+                                        </div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <!-- 3. JOB ORDER -->
+                                    <td style="max-width:0;overflow:hidden;">
+                                        <div style="display:inline-flex;align-items:center;gap:4px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:3px 7px;font-size:11px;font-weight:700;color:#1d4ed8;white-space:nowrap;margin-bottom:3px;">
+                                            <i class="fas fa-wrench" style="font-size:9px;"></i> <?= $jom_svc_sum ?>
+                                        </div>
+                                        <?php if ($jom_mechanic !== ''): ?>
+                                        <div style="font-size:10px;color:#64748b;"><i class="fas fa-user-cog" style="font-size:9px;color:#94a3b8;"></i> <?= $jom_mechanic ?></div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <!-- 4. MERCHANDISE -->
+                                    <td style="max-width:0;overflow:hidden;">
+                                        <div style="font-size:11.5px;color:#334155;line-height:1.5;word-break:break-word;"><?= $jom_merch_sum !== '' ? $jom_merch_sum : '<span style="color:#94a3b8;">—</span>' ?></div>
+                                    </td>
+                                    <!-- 5. TOTAL -->
+                                    <td style="max-width:0;overflow:hidden;">
+                                        <div style="font-weight:800;font-size:13px;color:#002F70;white-space:nowrap;">₱<?= number_format($jom_total_amt,2) ?></div>
+                                        <?php if ($jom_balance > 0): ?>
+                                        <div style="font-size:10px;font-weight:700;color:#dc2626;white-space:nowrap;">AR: ₱<?= number_format($jom_balance,2) ?></div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <!-- 6. PAYMENT STATUS -->
+                                    <td style="max-width:0;overflow:hidden;">
+                                        <span style="display:inline-flex;align-items:center;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:800;background:<?= $jpb ?>;color:<?= $jpc ?>;border:1px solid <?= $jpc ?>40;white-space:nowrap;">
+                                            <?= strtoupper(htmlspecialchars($jom_pstatus)) ?>
+                                        </span>
+                                        <div style="font-size:10px;color:#64748b;margin-top:2px;"><?= htmlspecialchars($jom['payment_method'] ?? '') ?></div>
+                                    </td>
+                                    <!-- 7. STATUS -->
+                                    <td style="text-align:center;max-width:0;overflow:hidden;">
+                                        <?= $jv_badge ?>
+                                    </td>
+                                    <!-- 8. ACTIONS -->
+                                    <td style="text-align:center;overflow:visible;" onclick="event.stopPropagation();">
+                                        <button type="button"
+                                                onclick="window.viewMerchandiseDetails('<?= addslashes($jom['transaction_id'] ?? $jom_id) ?>'); return false;"
+                                                class="txn-btn secondary"
+                                                style="width:100%;padding:5px 6px;font-size:11px;font-weight:700;cursor:pointer;">
+                                            <i class="fas fa-eye"></i> View
+                                        </button>
+                                        <?php if ($jom_is_void): ?>
+                                            <div style="margin-top:3px;"><span style="font-size:10px;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;padding:2px 5px;border-radius:4px;font-weight:800;white-space:nowrap;"><i class="fas fa-ban"></i> Voided</span></div>
+                                        <?php elseif ($jom_void_req): ?>
+                                            <div style="margin-top:3px;"><span style="font-size:10px;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;padding:2px 5px;border-radius:4px;font-weight:800;white-space:nowrap;"><i class="fas fa-clock"></i> Void Req.</span></div>
+                                        <?php elseif ($jom_adj_req): ?>
+                                            <div style="margin-top:3px;"><span style="font-size:10px;color:#d97706;background:#fef3c7;border:1px solid #fde68a;padding:2px 5px;border-radius:4px;font-weight:800;white-space:nowrap;"><i class="fas fa-clock"></i> Adj. Req.</span></div>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                            </div>
+
+                            <!-- Pagination Footer -->
+                            <div id="jomPaginationFooter" style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-top:1px solid #e2e8f0;background:#ffffff;border-radius:0 0 12px 12px;font-size:13px;color:#475569;flex-wrap:wrap;gap:12px;">
+                                <div><span id="jomShowingEntriesText" style="font-size:13px;color:#64748b;font-weight:600;">Showing 1–<?= min(10,count($jom_recent)) ?> of <?= count($jom_recent) ?> entries</span></div>
+                                <div style="display:flex;align-items:center;gap:16px;">
+                                    <div style="display:flex;align-items:center;gap:8px;">
+                                        <label style="margin:0;font-weight:600;color:#64748b;font-size:13px;">Rows per page:</label>
+                                        <select id="jomPerPage" onchange="jomChangePerPage()" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;font-weight:600;background:transparent;color:#334155;outline:none;cursor:pointer;">
+                                            <option value="10" selected>10</option>
+                                            <option value="20">20</option>
+                                            <option value="50">50</option>
+                                        </select>
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:6px;">
+                                        <button id="jomPrevBtn" onclick="jomGoPage(jomState.page-1)"
+                                                style="width:32px;height:32px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;cursor:not-allowed;color:#cbd5e1;display:flex;align-items:center;justify-content:center;">
+                                            <i class="fas fa-chevron-left"></i>
+                                        </button>
+                                        <span id="jomPageLabel" style="color:#334155;font-size:13px;font-weight:600;padding:0 4px;">Page 1 of <?= max(1,ceil(count($jom_recent)/10)) ?></span>
+                                        <button id="jomNextBtn" onclick="jomGoPage(jomState.page+1)"
+                                                style="width:32px;height:32px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;cursor:<?= count($jom_recent)>10?'pointer':'not-allowed' ?>;color:<?= count($jom_recent)>10?'#475569':'#cbd5e1' ?>;display:flex;align-items:center;justify-content:center;">
+                                            <i class="fas fa-chevron-right"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                    </div><!-- /merchTab_combined -->
+
                     <script>
                     (function(){
                         // Global capturing listener for Merchandise History action buttons
@@ -6705,59 +6993,99 @@ setTimeout(function() {
                         // ── Tab switcher ──────────────────────────────────────
                         window.switchMerchTab = function switchMerchTab(tab) {
                             var isHistory = (tab === 'history');
+                            var isCombined = (tab === 'combined');
+                            var isForm   = (!isHistory && !isCombined);
                             var formPanel = document.getElementById('merchTab_form');
                             var histPanel = document.getElementById('merchTab_history');
+                            var combPanel = document.getElementById('merchTab_combined');
                             var formBtn   = document.getElementById('merchTabBtn_form');
                             var histBtn   = document.getElementById('merchTabBtn_history');
+                            var combBtn   = document.getElementById('merchTabBtn_combined');
                             var joCard    = document.getElementById('joCard');
-                            if (!formPanel || !histPanel) return;
+                            if (!formPanel) return;
 
                             // Show/hide sub-tab panels
-                            formPanel.style.display = isHistory ? 'none' : 'block';
-                            histPanel.style.display = isHistory ? 'block' : 'none';
-                            if (joCard) joCard.style.display = isHistory ? 'none' : 'block';
+                            if (formPanel) formPanel.style.display = isForm     ? 'block' : 'none';
+                            if (histPanel) histPanel.style.display = isHistory  ? 'block' : 'none';
+                            if (combPanel) combPanel.style.display = isCombined ? 'block' : 'none';
+                            if (joCard) joCard.style.display = isForm ? 'block' : 'none';
 
-                            // When history is active: hide cart panel and use single column full width
+                            // Cart panel: hide when any history tab is active
                             var cartWrapper = document.querySelector('.cart-wrapper');
                             var cartPanel   = document.querySelector('.cart-panel');
-                            
                             if (cartWrapper) {
-                                if (isHistory) {
-                                    cartWrapper.classList.add('history-view');
-                                    if (cartPanel) cartPanel.style.display = 'none';
-                                } else {
+                                if (isForm) {
                                     cartWrapper.classList.remove('history-view');
                                     if (cartPanel) cartPanel.style.display = 'flex';
+                                } else {
+                                    cartWrapper.classList.add('history-view');
+                                    if (cartPanel) cartPanel.style.display = 'none';
                                 }
                             }
 
-                            // Tab button styles — use CSS classes to override global button rule
-                            if (formBtn) formBtn.className = 'txn-subtab-btn green ' + (isHistory ? 'inactive' : 'active');
-                            if (histBtn) histBtn.className = 'txn-subtab-btn green ' + (isHistory ? 'active' : 'inactive');
+                            // Tab button styles
+                            if (formBtn) formBtn.className = 'txn-subtab-btn green ' + (isForm     ? 'active' : 'inactive');
+                            if (histBtn) histBtn.className = 'txn-subtab-btn green ' + (isHistory  ? 'active' : 'inactive');
+                            if (combBtn) combBtn.className = 'txn-subtab-btn darkblue ' + (isCombined ? 'active' : 'inactive');
 
                             var headerBtns = document.getElementById('merchHistoryHeaderButtons');
-                            if (headerBtns) {
-                                headerBtns.style.display = isHistory ? 'flex' : 'none';
-                            }
+                            if (headerBtns) headerBtns.style.display = (!isForm) ? 'flex' : 'none';
 
-                            // Update URL so refresh keeps the tab open
+                            // Update URL
                             if (window.history && window.history.replaceState) {
                                 var url = new URL(window.location.href);
-                                if (isHistory) {
-                                    url.searchParams.set('mh_open', '1');
-                                } else {
-                                    url.searchParams.delete('mh_open');
-                                }
+                                url.searchParams.delete('mh_open');
+                                url.searchParams.delete('jom_open');
+                                if (isHistory)  url.searchParams.set('mh_open', '1');
+                                if (isCombined) url.searchParams.set('jom_open', '1');
                                 window.history.replaceState(null, '', url.toString());
                             }
                         };
                         var switchMerchTab = window.switchMerchTab;
 
-                        // Attach direct click listeners to ensure buttons work in all browser contexts
+                        // Attach direct click listeners
                         var mBtnForm = document.getElementById('merchTabBtn_form');
                         var mBtnHist = document.getElementById('merchTabBtn_history');
+                        var mBtnComb = document.getElementById('merchTabBtn_combined');
                         if (mBtnForm) mBtnForm.addEventListener('click', function(e) { e.preventDefault(); window.switchMerchTab('form'); });
                         if (mBtnHist) mBtnHist.addEventListener('click', function(e) { e.preventDefault(); window.switchMerchTab('history'); });
+                        if (mBtnComb) mBtnComb.addEventListener('click', function(e) { e.preventDefault(); window.switchMerchTab('combined'); });
+
+                        // ── JO + Merchandise History pagination ───────────────
+                        var jomState = { page: 1, per_page: 10 };
+                        function jomRender() {
+                            var rows = document.querySelectorAll('#jomTableBody .jom-row');
+                            var total = rows.length;
+                            var perPage = jomState.per_page;
+                            var page = jomState.page;
+                            var totalPages = Math.max(1, Math.ceil(total / perPage));
+                            if (page > totalPages) jomState.page = page = totalPages;
+                            if (page < 1) jomState.page = page = 1;
+                            var start = (page - 1) * perPage;
+                            var end   = start + perPage;
+                            rows.forEach(function(r, i) { r.style.display = (i >= start && i < end) ? '' : 'none'; });
+                            var s = document.getElementById('jomShowingEntriesText');
+                            if (s) s.textContent = 'Showing ' + (total===0?'0':(start+1)+'–'+Math.min(end,total)) + ' of ' + total + ' entries';
+                            var lbl = document.getElementById('jomPageLabel');
+                            if (lbl) lbl.textContent = 'Page ' + page + ' of ' + totalPages;
+                            var prev = document.getElementById('jomPrevBtn');
+                            var next = document.getElementById('jomNextBtn');
+                            if (prev) { prev.disabled=(page<=1); prev.style.cursor=prev.disabled?'not-allowed':'pointer'; prev.style.color=prev.disabled?'#cbd5e1':'#475569'; }
+                            if (next) { next.disabled=(page>=totalPages); next.style.cursor=next.disabled?'not-allowed':'pointer'; next.style.color=next.disabled?'#cbd5e1':'#475569'; }
+                        }
+                        window.jomState = jomState;
+                        window.jomGoPage = function(p) {
+                            var rows = document.querySelectorAll('#jomTableBody .jom-row');
+                            var totalPages = Math.max(1, Math.ceil(rows.length / (jomState.per_page||10)));
+                            if (p < 1 || p > totalPages) return;
+                            jomState.page = p; jomRender();
+                        };
+                        window.jomChangePerPage = function() {
+                            var sel = document.getElementById('jomPerPage');
+                            if (sel) jomState.per_page = parseInt(sel.value, 10);
+                            jomState.page = 1; jomRender();
+                        };
+                        jomRender();
                         // ── 10-SECOND REAL-TIME AUTO REFRESH FOR MERCHANDISE HISTORY ──
                         var _isRefreshingMH = false;
                         async function autoRefreshMerchandiseHistory() {
@@ -13927,10 +14255,39 @@ setTimeout(function() {
                 </div>
               </div>
 
+              <!-- Job Order Service Details (for Combined Transactions) -->
+              <div id="viewMTJobOrderSection" style="display:none;background:#f0f7ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:14px 16px;margin-bottom:18px;">
+                <div style="font-size:11px;font-weight:800;color:#1d4ed8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                  <i class="fas fa-wrench"></i> Job Order Service Details (Combined Transaction)
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                  <div style="display:grid;gap:6px;">
+                    <div style="display:grid;grid-template-columns:100px 1fr;gap:6px;align-items:baseline;">
+                      <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Service:</span>
+                      <span id="viewMTJOService" style="font-size:12.5px;color:#1e293b;font-weight:700;">—</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:100px 1fr;gap:6px;align-items:baseline;">
+                      <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Mechanic:</span>
+                      <span id="viewMTJOMechanic" style="font-size:12.5px;color:#334155;">—</span>
+                    </div>
+                  </div>
+                  <div style="display:grid;gap:6px;">
+                    <div style="display:grid;grid-template-columns:100px 1fr;gap:6px;align-items:baseline;">
+                      <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Plate No:</span>
+                      <span id="viewMTJOPlate" style="font-size:12px;font-weight:700;color:#1d4ed8;">—</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:100px 1fr;gap:6px;align-items:baseline;">
+                      <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Vehicle:</span>
+                      <span id="viewMTJOVehicle" style="font-size:12px;color:#334155;">—</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <!-- Product Line Items Table (NO ACTION COLUMN) -->
               <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:18px;">
                 <div style="background:#f1f5f9;padding:10px 14px;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#334155;display:flex;align-items:center;justify-content:space-between;">
-                  <span><i class="fas fa-boxes" style="margin-right:6px;color:#002F70;"></i> Purchased Merchandise Items</span>
+                  <span id="viewMTItemsHeading"><i class="fas fa-boxes" style="margin-right:6px;color:#002F70;"></i> Purchased Merchandise Items</span>
                   <span id="viewMTItemCountBadge" style="font-size:10.5px;color:#64748b;font-weight:600;"></span>
                 </div>
                 <div id="viewMTItems" style="max-height:220px;overflow-y:auto;">
@@ -14433,6 +14790,25 @@ window.viewMerchandiseDetails = function(txnId, btn) {
             setTxt('viewMTPayMethod', txn.payment_method || 'Cash');
             setHtml('viewMTPayStatus', txn.payment_status_badge || '—');
             setTxt('viewMTStaff', txn.staff_name || '—');
+
+            // Combined Transaction - Job Order Details handling
+            var isCombined = (txn.transaction_type === 'combined') || (txn.job_order_service && txn.job_order_service !== '');
+            var joSection = document.getElementById('viewMTJobOrderSection');
+            var itemsHeading = document.getElementById('viewMTItemsHeading');
+            if (joSection) {
+                if (isCombined) {
+                    joSection.style.display = 'block';
+                    setTxt('viewMTJOService', txn.job_order_service || '—');
+                    setTxt('viewMTJOMechanic', txn.job_order_mechanic_name || '—');
+                    setTxt('viewMTJOPlate', txn.job_order_vehicle_plate || '—');
+                    var vehicleInfo = [txn.job_order_vehicle_brand, txn.job_order_vehicle_model, txn.job_order_vehicle_type].filter(Boolean).join(' ');
+                    setTxt('viewMTJOVehicle', vehicleInfo || '—');
+                    if (itemsHeading) itemsHeading.innerHTML = '<i class="fas fa-boxes" style="margin-right:6px;color:#002F70;"></i> Purchased Items (Services & Merchandise)';
+                } else {
+                    joSection.style.display = 'none';
+                    if (itemsHeading) itemsHeading.innerHTML = '<i class="fas fa-boxes" style="margin-right:6px;color:#002F70;"></i> Purchased Merchandise Items';
+                }
+            }
 
             // Financials
             setTxt('viewMTSubtotal', txn.subtotal_display || ('₱' + parseFloat(txn.subtotal || 0).toFixed(2)));

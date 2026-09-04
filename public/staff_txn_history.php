@@ -95,15 +95,32 @@ require_login();
   max-width: 720px;
   width: 96%;
   max-height: 90vh;
-  overflow-y: auto;
-  padding: 28px;
+  overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
-.hist-modal h2 {
+.hist-modal-header {
+  padding: 20px 28px 16px;
+  border-bottom: 2px solid #e2e8f0;
+  flex-shrink: 0;
+}
+.hist-modal-header h2 {
   font-size: 16px;
   font-weight: 800;
   color: #002F70;
-  margin-bottom: 16px;
+  margin: 0;
+}
+.hist-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 28px;
+}
+.hist-modal-foot {
+  padding: 14px 28px 20px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  flex-shrink: 0;
 }
 .hist-sec-title {
   font-size: 12px;
@@ -338,9 +355,14 @@ require_login();
 
 <!-- Table -->
 <div class="txn-card" style="margin-top:6px">
-  <div class="txn-card-header">
-    <i class="fas fa-list-alt" style="color:#002F70"></i>
-    <h3>All Transactions</h3>
+  <div class="txn-card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <i class="fas fa-list-alt" style="color:#002F70"></i>
+      <h3 style="margin:0;">All Transactions</h3>
+    </div>
+    <span style="background:#f1f5f9;color:#475569;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid #cbd5e1;display:inline-flex;align-items:center;gap:5px;">
+      <i class="fas fa-eye" style="color:#002F70;"></i> Read-only • Click any row to view details
+    </span>
   </div>
   <div class="txn-card-body" style="padding:0">
 <?php if (empty($recent_merch)): ?>
@@ -353,15 +375,14 @@ require_login();
     <div class="vt-table-wrapper" style="width:100% !important;max-width:100% !important;overflow-x:hidden !important;box-sizing:border-box !important;border-radius:10px 10px 0 0;background:#fff;">
     <table class="txn-table" id="histTbl" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
       <colgroup>
-        <col style="width:11%;"><!-- TXN ID -->
-        <col style="width:13%;"><!-- CUSTOMER & VEHICLE -->
-        <col style="width:9%;"><!-- TYPE -->
-        <col style="width:16%;"><!-- PRODUCTS & SERVICES -->
-        <col style="width:8%;"><!-- FEES -->
-        <col style="width:12%;"><!-- TOTAL & PAYMENT -->
-        <col style="width:8%;"><!-- STATUS -->
-        <col style="width:12%;"><!-- DATE & TIME -->
-        <col style="width:11%;"><!-- ACTIONS -->
+        <col style="width:12%;"><!-- TXN ID -->
+        <col style="width:15%;"><!-- CUSTOMER & VEHICLE -->
+        <col style="width:11%;"><!-- TYPE -->
+        <col style="width:19%;"><!-- PRODUCTS & SERVICES -->
+        <col style="width:10%;"><!-- FEES -->
+        <col style="width:14%;"><!-- TOTAL & PAYMENT -->
+        <col style="width:9%;"><!-- STATUS -->
+        <col style="width:10%;"><!-- DATE & TIME -->
       </colgroup>
       <thead><tr>
         <th style="white-space:nowrap;">TXN ID</th>
@@ -372,7 +393,6 @@ require_login();
         <th style="white-space:nowrap;">TOTAL & PAYMENT</th>
         <th style="white-space:nowrap;text-align:center;">STATUS</th>
         <th style="white-space:nowrap;">DATE & TIME</th>
-        <th style="white-space:nowrap;text-align:center;">ACTIONS</th>
       </tr></thead>
       <tbody id="histTbody">
       <?php
@@ -594,13 +614,6 @@ require_login();
         <td style="padding:8px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
           <div style="font-size:11px;color:#334155;font-weight:600;white-space:nowrap;"><?= $ht_date ?: '—' ?></div>
         </td>
-
-        <!-- 9. Actions -->
-        <td style="padding:8px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;" onclick="event.stopPropagation();">
-          <button type="button" onclick="openHistModal(<?= $ht_id ?>)" class="hist-action-btn btn-view-act" style="width:100%;padding:4px 6px;font-size:10.5px;font-weight:600;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;">
-            <i class="fas fa-eye"></i> <span>View Details</span>
-          </button>
-        </td>
       </tr>
       <?php endforeach; ?>
       </tbody>
@@ -644,15 +657,23 @@ require_login();
 <!-- View Details Modal -->
 <div class="hist-modal-bg" id="histModalBg" onclick="if(event.target===this)closeHistModal()">
   <div class="hist-modal" id="histModal">
-    <button onclick="closeHistModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">&times;</button>
-    <h2><i class="fas fa-receipt" style="color:#002F70;margin-right:8px"></i>Transaction Details</h2>
-    <div id="histModalContent" style="color:#475569;font-size:13px">Loading...</div>
-    <div id="histModalFooter" style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px;border-top:1px solid #e2e8f0;padding-top:14px;">
+    <!-- Header -->
+    <div class="hist-modal-header">
+      <button onclick="closeHistModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">&times;</button>
+      <h2><i class="fas fa-receipt" style="color:#002F70;margin-right:8px"></i>Transaction Details</h2>
+    </div>
+    <!-- Body -->
+    <div class="hist-modal-body">
+      <div id="histModalContent" style="color:#475569;font-size:13px">Loading...</div>
+    </div>
+    <!-- Footer -->
+    <div class="hist-modal-foot" id="histModalFooter" style="display:flex;justify-content:flex-end;gap:10px;">
       <button id="modalPrintBtn" class="txn-btn primary" style="min-width:0;height:32px;padding:0 14px;font-size:12px;border-radius:6px;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-print"></i> Print Receipt</button>
       <button onclick="closeHistModal()" class="txn-btn secondary" style="min-width:0;height:32px;padding:0 14px;font-size:12px;border-radius:6px;">Close</button>
     </div>
   </div>
 </div>
+
 
 <script>
 (function(){
