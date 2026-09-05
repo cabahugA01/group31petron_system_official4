@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
     
     // Legacy support for existing form submissions
-    if ($action === 'submit_request' && in_array($role, ['staff'])) {
+    if ($action === 'submit_request' && in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
         $req_type = $_POST['type'] ?? '';
         $product = trim($_POST['product_name'] ?? '');
         $qty = (float)($_POST['qty'] ?? 0);

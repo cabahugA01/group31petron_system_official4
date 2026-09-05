@@ -61,8 +61,8 @@ try {
     $station_id = user_station_id();
     $role = role_key($me['role'] ?? '');
 
-    if (!in_array($role, ['staff', 'cashier', 'pump_attendant'], true)) {
-        shift_json_response(['error' => 'Access denied. Staff role required.'], 403);
+    if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'], true)) {
+        shift_json_response(['error' => 'Access denied. Authorized role required.'], 403);
     }
 
     $stmt = $pdo->prepare('SELECT * FROM labor_sessions WHERE user_id = ? AND station_id = ? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1');

@@ -100,8 +100,8 @@ switch ($action) {
         // ══════════════════════════════════════════════════════════════════════
         case 'encode_reading':
             if ($method !== 'POST') { respond(false, 'Method not allowed'); }
-            if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
-                respond(false, 'Only staff can encode readings.');
+            if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
+                respond(false, 'Unauthorized to encode readings.');
             }
 
             $fuel_type       = trim($_POST['fuel_type']       ?? '');

@@ -13,7 +13,7 @@ $me = current_user();
 $station_id = user_station_id();
 $role = role_key($me['role'] ?? '');
 
-if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
     echo json_encode(['success' => false, 'error' => 'Unauthorized access']);
     exit;
 }

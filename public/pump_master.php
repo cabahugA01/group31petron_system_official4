@@ -8,8 +8,8 @@ $station_id = user_station_id();
 $role = role_key($me['role'] ?? '');
 
 // Only managers and owners can access this page
-if (!in_array($role, ['manager', 'owner', 'superadmin'], true)) {
-    $_SESSION['error'] = 'Access denied. Manager/Owner role required.';
+if (!in_array($role, ['manager', 'owner', 'admin', 'superadmin'], true)) {
+    $_SESSION['error'] = 'Access denied. Manager/Admin role required.';
     header('Location: dashboard.php');
     exit;
 }
@@ -337,7 +337,7 @@ require __DIR__ . '/../partials/flash_toast.php';
                             <td><?php echo htmlspecialchars($fuel['latest_calibration']); ?> L</td>
                             <td><?php echo htmlspecialchars($fuel['last_updated']); ?></td>
                             <td>
-                                <?php if (in_array($role, ['manager', 'owner', 'superadmin'])): ?>
+                                <?php if (in_array($role, ['manager', 'owner', 'admin', 'superadmin'])): ?>
                                     <button class="edit-btn" onclick="editCalibration('<?php echo htmlspecialchars($fuel['fuel_type']); ?>')">
                                         <i class="fas fa-edit"></i> Edit
                                     </button>

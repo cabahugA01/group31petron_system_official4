@@ -19,7 +19,7 @@ require_login();
 $me = current_user();
 $role = role_key($me['role'] ?? 'staff');
 
-if (!in_array($role, ['manager', 'superadmin'])) {
+if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
     header('Location: dashboard.php');
     exit;
 }
@@ -31,8 +31,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['verify_password'])) {
         $password = $_POST['password_hash'] ?? '';
 
-        if ($role === 'manager') {
-            // Manager verifies with own password
+        if (in_array($role, ['manager', 'admin'])) {
+            // Manager or Admin verifies with own password
             $stmt = $pdo->prepare("SELECT password_hash FROM users WHERE id = ?");
             $stmt->execute([$me['id']]);
             $hash = $stmt->fetchColumn();

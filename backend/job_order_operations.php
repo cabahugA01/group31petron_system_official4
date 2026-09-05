@@ -704,10 +704,10 @@ class JobOrderOperations {
         try {
             $this->pdo->beginTransaction();
             
-            // RBAC: Manager or Super Admin only (Admin is read-only for hierarchy compliance)
+            // RBAC: Manager, Admin, or Super Admin
             $role = role_key($this->user['role'] ?? '');
-            if (!in_array($role, ['manager', 'superadmin'])) {
-                throw new Exception('Manager privileges required');
+            if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
+                throw new Exception('Manager or Admin privileges required');
             }
             
             $job = $this->getJobOrderDetails($job_id);
@@ -723,7 +723,7 @@ class JobOrderOperations {
             if ($role === 'superadmin') {
                 // Super Admin bypass - no password check needed
             } else {
-                // MANAGER: Verify manager password
+                // MANAGER or ADMIN: Verify password
                 $stmt = $this->pdo->prepare("
                     SELECT u.password FROM users u
                     WHERE u.id = ?

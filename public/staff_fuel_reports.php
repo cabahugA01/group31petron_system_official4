@@ -23,8 +23,8 @@ $role       = role_key($me['role'] ?? '');
 $station_name = 'Station';
 $station_location = '';
 
-// Only staff roles can access this page
-if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+// Staff, Manager, and Admin roles can access this page
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
     $_SESSION['error'] = 'Access denied.';
     header('Location: dashboard.php');
     exit;

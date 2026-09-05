@@ -24,7 +24,7 @@ $action = $_GET['action'] ?? '';
 try {
     switch ($action) {
         case 'create_request':
-            if ($method === 'POST' && in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+            if ($method === 'POST' && in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
                 create_stock_request();
             } else {
                 echo json_encode(['error' => 'Unauthorized']);
@@ -40,7 +40,7 @@ try {
             break;
             
         case 'approve_request':
-            if ($method === 'POST' && in_array($role, ['manager'])) {
+            if ($method === 'POST' && in_array($role, ['manager', 'admin', 'superadmin'])) {
                 approve_stock_request();
             } else {
                 echo json_encode(['error' => 'Unauthorized']);
@@ -48,7 +48,7 @@ try {
             break;
             
         case 'reject_request':
-            if ($method === 'POST' && in_array($role, ['manager'])) {
+            if ($method === 'POST' && in_array($role, ['manager', 'admin', 'superadmin'])) {
                 reject_stock_request();
             } else {
                 echo json_encode(['error' => 'Unauthorized']);
@@ -56,7 +56,7 @@ try {
             break;
             
         case 'get_my_requests':
-            if (in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+            if (in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
                 get_my_requests();
             } else {
                 echo json_encode(['error' => 'Unauthorized']);

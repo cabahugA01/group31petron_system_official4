@@ -14,29 +14,49 @@ $role = role_key($me['role'] ?? '');
 $staff_id = (int)$me['id'];
 $format = strtolower(trim($_GET['format'] ?? 'excel'));
 
-// Only staff roles can access
-if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+// Staff, Manager, and Admin can access
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
     die('Access denied');
 }
 
 try {
-    // Fetch merchandise transactions created by this staff member
-    $stmt = $pdo->prepare("
-        SELECT 
-            mt.transaction_id,
-            COALESCE(mt.customer_name, 'Walk-in') AS customer,
-            COALESCE(mt.item_sku, 'N/A') AS items,
-            COALESCE(mt.quantity, 0) AS quantity,
-            mt.total_amount AS amount,
-            COALESCE(mt.payment_method, 'Cash') AS payment_method,
-            COALESCE(mt.validation_status, 'Pending') AS status,
-            DATE_FORMAT(COALESCE(mt.transaction_date, mt.created_at), '%Y-%m-%d %H:%i') AS date_created
-        FROM merchandise_transactions mt
-        WHERE mt.staff_id = ?
-        ORDER BY COALESCE(mt.transaction_date, mt.created_at) DESC
-        LIMIT 1000
-    ");
-    $stmt->execute([$staff_id]);
+    $station_id = user_station_id();
+    $is_elevated = in_array($role, ['admin', 'manager', 'superadmin', 'developer']);
+    if ($is_elevated && $station_id > 0) {
+        $stmt = $pdo->prepare("
+            SELECT 
+                mt.transaction_id,
+                COALESCE(mt.customer_name, 'Walk-in') AS customer,
+                COALESCE(mt.item_sku, 'N/A') AS items,
+                COALESCE(mt.quantity, 0) AS quantity,
+                mt.total_amount AS amount,
+                COALESCE(mt.payment_method, 'Cash') AS payment_method,
+                COALESCE(mt.validation_status, 'Pending') AS status,
+                DATE_FORMAT(COALESCE(mt.transaction_date, mt.created_at), '%Y-%m-%d %H:%i') AS date_created
+            FROM merchandise_transactions mt
+            WHERE mt.station_id = ? OR mt.staff_id = ?
+            ORDER BY COALESCE(mt.transaction_date, mt.created_at) DESC
+            LIMIT 1000
+        ");
+        $stmt->execute([$station_id, $staff_id]);
+    } else {
+        $stmt = $pdo->prepare("
+            SELECT 
+                mt.transaction_id,
+                COALESCE(mt.customer_name, 'Walk-in') AS customer,
+                COALESCE(mt.item_sku, 'N/A') AS items,
+                COALESCE(mt.quantity, 0) AS quantity,
+                mt.total_amount AS amount,
+                COALESCE(mt.payment_method, 'Cash') AS payment_method,
+                COALESCE(mt.validation_status, 'Pending') AS status,
+                DATE_FORMAT(COALESCE(mt.transaction_date, mt.created_at), '%Y-%m-%d %H:%i') AS date_created
+            FROM merchandise_transactions mt
+            WHERE mt.staff_id = ?
+            ORDER BY COALESCE(mt.transaction_date, mt.created_at) DESC
+            LIMIT 1000
+        ");
+        $stmt->execute([$staff_id]);
+    }
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     if ($format === 'csv') {

@@ -28,7 +28,7 @@ try {
 
         // ── Staff: get low/critical/out-of-stock fuel types ──────────────────
         case 'get_low_stock':
-            if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+            if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
                 echo json_encode(['success' => false, 'message' => 'Access denied']); exit;
             }
             handle_get_low_stock($pdo, $station_id);
@@ -47,7 +47,7 @@ try {
 
         // ── Staff: list own fuel requests ─────────────────────────────────────
         case 'my_requests':
-            if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+            if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
                 echo json_encode(['success' => false, 'message' => 'Access denied']); exit;
             }
             handle_my_requests($pdo, $me, $station_id);

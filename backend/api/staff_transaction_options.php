@@ -11,8 +11,8 @@ try {
     $station_id = user_station_id();
     $role = role_key($me['role'] ?? '');
 
-    if (!in_array($role, ['staff', 'cashier', 'pump_attendant'], true)) {
-        throw new RuntimeException('Access denied. Staff role required.');
+    if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'], true)) {
+        throw new RuntimeException('Access denied. Authorized role required.');
     }
 
     $debug = [

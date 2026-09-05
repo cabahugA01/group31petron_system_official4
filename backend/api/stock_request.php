@@ -93,7 +93,7 @@ try {
 
         // ── Staff: create a new stock request ────────────────────────────────
         case 'create':
-            if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+            if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
                 echo json_encode(['success' => false, 'message' => 'Access denied']); exit;
             }
             if ($method !== 'POST') {
@@ -104,7 +104,7 @@ try {
 
         // ── Staff: list own requests ──────────────────────────────────────────
         case 'my_requests':
-            if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+            if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
                 echo json_encode(['success' => false, 'message' => 'Access denied']); exit;
             }
             handle_my_requests($pdo, $me);

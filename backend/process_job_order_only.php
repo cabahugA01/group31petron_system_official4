@@ -18,8 +18,8 @@ try {
     $station_id = user_station_id();
     $role = role_key($me['role'] ?? '');
     
-    // Verify staff permission
-    if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+    // Verify permission (staff, manager, admin)
+    if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
         throw new Exception('Unauthorized access');
     }
     

@@ -35,8 +35,8 @@ if ($user_id > 0) {
     } catch (Exception $e) {}
 }
 
-// Only staff can access this API
-if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+// Staff, Manager, Admin can access this API
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
     echo json_encode(['success' => false, 'message' => 'Access denied']);
     exit;
 }

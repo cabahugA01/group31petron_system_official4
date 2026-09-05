@@ -15,8 +15,8 @@ $role = role_key($me['role'] ?? '');
 $staff_id = (int)$me['id'];
 $station_id = (int)user_station_id();
 
-// Only staff roles can access
-if (!in_array($role, ['staff', 'cashier', 'pump_attendant'])) {
+// Staff, Manager, Admin can access
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) {
     echo json_encode(['success' => false, 'error' => 'Access denied']);
     exit;
 }

@@ -9,7 +9,7 @@ $role = role_key($me['role'] ?? '');
 $station_id = user_station_id();
 
 // Manager only
-if (!in_array($role, ['manager', 'superadmin'])) {
+if (!in_array($role, ['manager', 'admin', 'superadmin'])) {
     header("Location: dashboard.php");
     exit;
 }

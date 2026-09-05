@@ -7,7 +7,7 @@ require_login();
 $me = current_user();
 
 $role = function_exists('role_key') ? role_key($me['role'] ?? '') : strtolower(trim($me['role'] ?? ''));
-if (!in_array($role, ['staff'])) { header("Location: dashboard.php"); exit; }
+if (!in_array($role, ['staff', 'cashier', 'pump_attendant', 'manager', 'admin', 'superadmin', 'developer'])) { header("Location: dashboard.php"); exit; }
 
 include __DIR__ . '/../partials/header.php';
 ?>
