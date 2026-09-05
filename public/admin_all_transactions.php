@@ -499,6 +499,7 @@ overflow: hidden;
     background: #ffffff;
 .vt-table-wrapper {
     width: 100% !important;
+    max-width: 100% !important;
     overflow-x: hidden !important;
     background: #ffffff !important;
     border-radius: 10px !important;
@@ -511,19 +512,19 @@ overflow: hidden;
     table-layout: fixed !important; 
 }
 .vt-table thead th {
-    background: #002F70 !important; color: #ffffff !important; font-size: 11px !important;
-    font-weight: 700 !important; padding: 10px 8px !important; text-transform: uppercase !important;
+    background: #002F70 !important; color: #ffffff !important; font-size: 11.5px !important;
+    font-weight: 700 !important; padding: 11px 8px !important; text-transform: uppercase !important;
     white-space: nowrap !important;
     border-bottom: 2px solid #001f4d !important; vertical-align: middle !important;
     letter-spacing: 0.3px;
-    overflow: hidden !important;
     box-sizing: border-box !important;
 }
 .vt-table tbody td {
     padding: 10px 8px !important; vertical-align: middle !important; font-size: 12px !important;
     border-bottom: 1px solid #f1f5f9 !important; color: #334155;
-    overflow: hidden !important;
     box-sizing: border-box !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
 }
 .vt-table tbody tr:hover td { background: #f8fafc !important; }
 
@@ -668,15 +669,15 @@ overflow: hidden;
         <div class="vt-table-wrapper">
         <table class="vt-table">
             <colgroup>
-                <col style="width:15%;"><!-- OR NO. / TXN ID -->
-                <col style="width:13%;"><!-- CUSTOMER & VEHICLE -->
-                <col style="width:8%;"><!-- TYPE & SHIFT -->
-                <col style="width:15%;"><!-- PRODUCTS / SERVICES -->
-                <col style="width:6%;"><!-- FEES BREAKDOWN -->
-                <col style="width:10%;"><!-- TOTAL & PAYMENT -->
-                <col style="width:12%;"><!-- STAFF & DATE -->
-                <col style="width:11%;"><!-- STATUS -->
-                <col style="width:10%;"><!-- ACTIONS -->
+                <col style="width:12%;"><!-- OR NO. / TXN ID -->
+                <col style="width:11%;"><!-- CUSTOMER & VEHICLE -->
+                <col style="width:11%;"><!-- TYPE & SHIFT -->
+                <col style="width:18%;"><!-- PRODUCTS / SERVICES -->
+                <col style="width:8%;"><!-- FEES BREAKDOWN -->
+                <col style="width:11%;"><!-- TOTAL & PAYMENT -->
+                <col style="width:13%;"><!-- STAFF & DATE -->
+                <col style="width:8%;"><!-- STATUS -->
+                <col style="width:8%;"><!-- ACTIONS -->
             </colgroup>
             <thead>
                 <tr>
@@ -750,13 +751,13 @@ overflow: hidden;
             ?>
             <tr>
                 <!-- 1. OR No. / Txn ID -->
-                <td style="vertical-align:middle;padding:10px 8px;max-width:0;overflow:hidden;">
-                    <div style="font-weight:800;font-size:13px;color:#002F70;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?=htmlspecialchars($or_no)?></div>
+                <td style="vertical-align:middle;padding:10px 8px;box-sizing:border-box;">
+                    <div style="font-weight:800;font-size:13px;color:#002F70;line-height:1.2;white-space:nowrap;"><?=htmlspecialchars($or_no)?></div>
                     <div style="font-family:monospace;font-size:10.5px;font-weight:700;color:#64748b;margin-top:3px;word-break:break-all;overflow-wrap:anywhere;line-height:1.2;display:block;max-width:100%;"><?=htmlspecialchars($r['transaction_id'])?></div>
                 </td>
 
                 <!-- 2. Customer & Vehicle -->
-                <td style="vertical-align:middle;padding:10px 8px;max-width:0;overflow:hidden;">
+                <td style="vertical-align:middle;padding:10px 8px;box-sizing:border-box;">
                     <div style="font-weight:700;font-size:13px;color:#0f172a;line-height:1.25;word-break:break-word;"><?=htmlspecialchars($r['customer'])?></div>
                     <?php
                     $veh = trim($r['vehicle'] ?? '');

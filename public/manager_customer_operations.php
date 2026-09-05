@@ -79,11 +79,19 @@ try {
 
 function manager_has_table(PDO $pdo, string $table): bool {
     try {
-        $stmt = $pdo->prepare("SHOW TABLES LIKE ?");
-        $stmt->execute([$table]);
+        // MariaDB does not support prepared statements with SHOW TABLES LIKE ?
+        // Use $pdo->quote() to safely build the query string instead.
+        $clean = preg_replace('/[^a-zA-Z0-9_]/', '', $table);
+        $stmt  = $pdo->query("SHOW TABLES LIKE " . $pdo->quote($clean));
         return (bool)$stmt->fetchColumn();
     } catch (Throwable $e) {
-        return false;
+        // Fallback: try a cheap SELECT 1 to confirm the table exists
+        try {
+            $pdo->query("SELECT 1 FROM `" . preg_replace('/[^a-zA-Z0-9_]/', '', $table) . "` LIMIT 1");
+            return true;
+        } catch (Throwable $e2) {
+            return false;
+        }
     }
 }
 

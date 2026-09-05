@@ -1070,9 +1070,10 @@ include __DIR__ . '/../partials/header.php';
 .badge-purple{background:#7c3aed !important;color:#fff !important;border:none !important;}
 .badge i {margin-right:2px;}
 
-/* ── Compact, Full-Width Table (No Horizontal Scrolling, No Overlapping) ── */
+/* ── Compact, Full-Width Table (No Horizontal Scrolling) ── */
 .vt-table-wrapper {
     width: 100% !important;
+    max-width: 100% !important;
     overflow-x: hidden !important;
     background: #ffffff !important;
     border-radius: 10px !important;
@@ -1087,15 +1088,14 @@ include __DIR__ . '/../partials/header.php';
 .vt-table thead th {
     background: #002F70 !important;
     color: #ffffff !important;
-    font-size: 11px !important;
+    font-size: 11.5px !important;
     font-weight: 700 !important;
-    padding: 10px 8px !important;
+    padding: 11px 8px !important;
     text-transform: uppercase !important;
     letter-spacing: 0.3px !important;
     white-space: nowrap !important;
     border-bottom: 2px solid #001f4d !important;
     vertical-align: middle !important;
-    overflow: hidden !important;
     box-sizing: border-box !important;
 }
 .vt-table tbody td {
@@ -1103,8 +1103,9 @@ include __DIR__ . '/../partials/header.php';
     vertical-align: middle !important;
     font-size: 12px !important;
     border-bottom: 1px solid #f1f5f9 !important;
-    overflow: hidden !important;
     box-sizing: border-box !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
 }
 .vt-table tbody tr:hover td {
     background: #f8fafc !important;
@@ -1301,13 +1302,13 @@ try {
     <div class="vt-table-wrapper">
     <table class="vt-table">
         <colgroup>
-            <col style="width:10%;"><!-- OR NO. / TXN ID -->
-            <col style="width:12%;"><!-- CUSTOMER & VEHICLE -->
-            <col style="width:10%;"><!-- TYPE & SHIFT -->
-            <col style="width:13%;"><!-- PRODUCTS / SERVICES -->
+            <col style="width:12%;"><!-- OR NO. / TXN ID -->
+            <col style="width:11%;"><!-- CUSTOMER & VEHICLE -->
+            <col style="width:11%;"><!-- TYPE & SHIFT -->
+            <col style="width:18%;"><!-- PRODUCTS / SERVICES -->
             <col style="width:8%;"><!-- FEES BREAKDOWN -->
-            <col style="width:10%;"><!-- TOTAL & PAYMENT -->
-            <col style="width:21%;"><!-- STAFF & DATE -->
+            <col style="width:11%;"><!-- TOTAL & PAYMENT -->
+            <col style="width:13%;"><!-- STAFF & DATE -->
             <col style="width:8%;"><!-- STATUS -->
             <col style="width:8%;"><!-- ACTIONS -->
         </colgroup>
@@ -1448,14 +1449,14 @@ try {
                 ?>
                 <tr class="mvt-row">
                     <!-- 1. OR No. / Txn ID -->
-                    <td style="vertical-align:middle;padding:10px 8px;max-width:0;overflow:hidden;box-sizing:border-box;">
-                        <div style="font-weight:800;font-size:12px;color:#002F70;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?php echo htmlspecialchars($or_no); ?></div>
-                        <div style="font-family:monospace;font-size:9.5px;font-weight:700;color:#64748b;margin-top:3px;word-break:break-all;overflow-wrap:anywhere;white-space:normal !important;line-height:1.15;display:block;"><?php echo htmlspecialchars($r['txn_id']); ?></div>
+                    <td style="vertical-align:middle;padding:10px 8px;box-sizing:border-box;">
+                        <div style="font-weight:800;font-size:12px;color:#002F70;line-height:1.2;white-space:nowrap;"><?php echo htmlspecialchars($or_no); ?></div>
+                        <div style="font-family:monospace;font-size:9.5px;font-weight:700;color:#64748b;margin-top:3px;word-break:break-all;overflow-wrap:anywhere;line-height:1.2;display:block;"><?php echo htmlspecialchars($r['txn_id']); ?></div>
                     </td>
 
                     <!-- 2. Customer & Vehicle -->
-                    <td style="vertical-align:middle;padding:10px 8px;max-width:0;overflow:hidden;box-sizing:border-box;">
-                        <div style="font-weight:700;font-size:12px;color:#0f172a;line-height:1.25;word-break:break-word;overflow-wrap:break-word;white-space:normal !important;"><?php echo htmlspecialchars($r['customer']); ?></div>
+                    <td style="vertical-align:middle;padding:10px 8px;box-sizing:border-box;">
+                        <div style="font-weight:700;font-size:12px;color:#0f172a;line-height:1.25;word-break:break-word;overflow-wrap:break-word;"><?php echo htmlspecialchars($r['customer']); ?></div>
                         <?php
                         $veh = trim($r['vehicle_plate'] ?? '');
                         if ($veh !== '' && $veh !== '—' && $veh !== 'N/A'): ?>
@@ -1468,8 +1469,8 @@ try {
                     </td>
 
                     <!-- 3. Type & Shift -->
-                    <td style="vertical-align:middle;padding:10px 8px;max-width:0;overflow:hidden;box-sizing:border-box;">
-                        <div style="white-space:nowrap;"><span class="badge <?php echo $tBadge; ?>" style="font-size:11px;padding:3px 8px;display:inline-flex;align-items:center;white-space:nowrap;"><i class="fas <?php echo $tIcon; ?>" style="margin-right:4px;"></i> <?php echo htmlspecialchars($tLabel); ?></span></div>
+                    <td style="vertical-align:middle;padding:10px 8px;box-sizing:border-box;">
+                        <div><span class="badge <?php echo $tBadge; ?>" style="font-size:11px;padding:3.5px 8px;display:inline-flex;align-items:center;white-space:nowrap;"><i class="fas <?php echo $tIcon; ?>" style="margin-right:4px;"></i> <?php echo htmlspecialchars($tLabel); ?></span></div>
                         <?php 
                         $s_raw = trim($r['shift'] ?? '');
                         $s_val = strtolower($s_raw);
@@ -1486,7 +1487,7 @@ try {
                     </td>
 
                     <!-- 4. Products & Services -->
-                    <td style="vertical-align:middle;padding:10px 8px;font-size:12px;line-height:1.35;max-width:0;overflow:hidden;box-sizing:border-box;word-break:break-word;">
+                    <td style="vertical-align:middle;padding:10px 8px;font-size:12px;line-height:1.35;box-sizing:border-box;word-break:break-word;overflow-wrap:break-word;">
                         <?php
                         $has_p = !empty(trim($r['items'] ?? ''));
                         $has_s = !empty(trim($r['service_type'] ?? $r['job_order_service'] ?? ''));
@@ -1504,7 +1505,7 @@ try {
                     </td>
 
                     <!-- 5. Fees Breakdown -->
-                    <td style="vertical-align:middle;padding:10px 8px;font-size:11.5px;line-height:1.35;max-width:0;overflow:hidden;box-sizing:border-box;">
+                    <td style="vertical-align:middle;padding:10px 8px;font-size:11.5px;line-height:1.35;box-sizing:border-box;">
                         <?php
                         $s_cost = (float)($r['service_fee'] ?? 0);
                         $l_cost = (float)($r['labor_fee'] ?? 0);
@@ -1521,28 +1522,28 @@ try {
                     </td>
 
                     <!-- 6. Total & Payment -->
-                    <td style="vertical-align:middle;padding:10px 8px;max-width:0;overflow:hidden;box-sizing:border-box;">
+                    <td style="vertical-align:middle;padding:10px 8px;box-sizing:border-box;">
                         <div style="font-weight:800;font-size:13.5px;color:#002F70;line-height:1.2;white-space:nowrap;">₱<?php echo number_format((float)$r['amount'], 2); ?></div>
                         <?php
                         $p_st_val = vt_pay_status($r);
                         $is_paid = strtolower($p_st_val) === 'paid';
                         ?>
                         <div style="display:flex;align-items:center;gap:5px;margin-top:4px;flex-wrap:wrap;">
-                            <span style="color:#1e293b;font-weight:700;font-size:11px;"><?php echo htmlspecialchars($r['payment_method'] ?: 'Cash'); ?></span>
-                            <span style="background:<?php echo $is_paid ? '#dcfce7' : '#fee2e2'; ?>;color:<?php echo $is_paid ? '#15803d' : '#b91c1c'; ?>;font-weight:800;font-size:10px;padding:1px 5px;border-radius:4px;border:1px solid <?php echo $is_paid ? '#bbf7d0' : '#fecaca'; ?>;letter-spacing:0.3px;">
+                            <span style="color:#1e293b;font-weight:700;font-size:11px;white-space:nowrap;"><?php echo htmlspecialchars($r['payment_method'] ?: 'Cash'); ?></span>
+                            <span style="background:<?php echo $is_paid ? '#dcfce7' : '#fee2e2'; ?>;color:<?php echo $is_paid ? '#15803d' : '#b91c1c'; ?>;font-weight:800;font-size:10px;padding:1px 5px;border-radius:4px;border:1px solid <?php echo $is_paid ? '#bbf7d0' : '#fecaca'; ?>;letter-spacing:0.3px;white-space:nowrap;">
                                 <?php echo strtoupper(htmlspecialchars($p_st_val)); ?>
                             </span>
                         </div>
                     </td>
 
                     <!-- 7. Staff & Date -->
-                    <td style="vertical-align:middle;padding:10px 8px;max-width:0;overflow:hidden;box-sizing:border-box;">
-                        <div style="font-weight:700;font-size:12px;color:#0f172a;line-height:1.3;word-break:break-word;overflow-wrap:break-word;white-space:normal !important;display:block;"><?php echo htmlspecialchars($r['staff_name']); ?></div>
+                    <td style="vertical-align:middle;padding:10px 8px;box-sizing:border-box;">
+                        <div style="font-weight:700;font-size:12px;color:#0f172a;line-height:1.3;word-break:break-word;overflow-wrap:break-word;display:block;"><?php echo htmlspecialchars($r['staff_name']); ?></div>
                         <div style="font-size:10.5px;color:#475569;margin-top:3px;font-weight:500;white-space:nowrap;display:block;"><?php echo date('M d, Y', strtotime($r['txn_date'])); ?> &bull; <?php echo date('h:i A', strtotime($r['txn_date'])); ?></div>
                     </td>
 
                     <!-- 8. Status -->
-                    <td style="vertical-align:middle;text-align:center;padding:10px 4px;max-width:0;overflow:hidden;box-sizing:border-box;">
+                    <td style="vertical-align:middle;text-align:center;padding:10px 4px;box-sizing:border-box;">
                         <?php
                         $src_key = $r['_source'] . '_' . $r['row_id'];
                         $txn_key = $r['_source'] . '_' . $r['txn_id'];
@@ -1573,7 +1574,7 @@ try {
                     </td>
 
                     <!-- 9. Actions -->
-                    <td style="vertical-align:middle;text-align:center;padding:10px 6px;max-width:0;overflow:hidden;box-sizing:border-box;">
+                    <td style="vertical-align:middle;text-align:center;padding:10px 6px;box-sizing:border-box;">
                         <?php if ($show_actions): ?>
                         <div style="display:flex;flex-direction:column;gap:4px;align-items:stretch;">
                             <!-- 1. View Details (Blue Outline Button) -->
@@ -2297,16 +2298,13 @@ overflow: hidden;
 
 .vt-table { 
     width: 100% !important;
-    min-width: 100% !important;
-    max-width: 100% !important;
     border-collapse: collapse !important;
     table-layout: fixed !important;
 }
 .vt-table thead th { 
-    background:#002F70 !important;color:#fff !important;font-size:12px !important;font-weight:700 !important;text-transform:uppercase !important;
-    letter-spacing:.2px !important;padding:10px 6px !important;border-bottom:2px solid #001a3d !important;
+    background:#002F70 !important;color:#fff !important;font-size:11.5px !important;font-weight:700 !important;text-transform:uppercase !important;
+    letter-spacing:.3px !important;padding:11px 8px !important;border-bottom:2px solid #001a3d !important;
     text-align:left;vertical-align:middle;white-space:nowrap !important;
-    overflow:hidden; text-overflow:ellipsis;
 }
 .vt-table tbody td { 
     padding:10px 8px !important;
@@ -2315,7 +2313,6 @@ overflow: hidden;
     background:#fff;
     font-size:12px !important;
     line-height:1.35;
-    overflow:hidden !important;
     word-break:break-word !important;
     overflow-wrap:break-word !important;
     box-sizing:border-box !important;
@@ -2327,12 +2324,11 @@ body { overflow-x:hidden !important; max-width:100vw !important; }
 .content-wrapper { max-width:100% !important; overflow-x:hidden !important; }
 .card { max-width:100% !important; overflow:hidden !important; }
 
-/* Table wrapper - no horizontal scroll */
+/* Table wrapper - full width, no horizontal scroll */
 .vt-table-wrapper {
     width: 100% !important;
     max-width: 100% !important;
-    overflow-x: auto !important;
-    overflow-y: visible !important;
+    overflow-x: hidden !important;
     box-sizing: border-box !important;
 }
 

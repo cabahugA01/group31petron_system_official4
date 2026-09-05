@@ -6,6 +6,7 @@
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+header('Content-Type: text/html; charset=utf-8');
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();

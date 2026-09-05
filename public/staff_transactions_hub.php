@@ -4,6 +4,7 @@
  * Sidebar navigation for Fuel (internal) and Merchandise (customer-facing) transactions.
  */
 // Force browser to always load fresh — prevents stale JS/form state
+header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
@@ -3909,8 +3910,8 @@ setTimeout(function() {
             endforeach; // End fuel type loop
             ?>
 
-            <div class="fet-wrap" style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
-                <table class="fet" style="width:100%; min-width:1150px; border-collapse:collapse;">
+            <div class="fet-wrap" style="overflow-x:hidden; width:100%;">
+                <table class="fet" style="width:100%; table-layout:fixed; border-collapse:collapse;">
                     <colgroup>
                         <col style="width:17%;"><!-- NAME -->
                         <col style="width:14%;"><!-- BEGINNING -->
@@ -4107,7 +4108,7 @@ setTimeout(function() {
                         <td style="border:1px solid #e2e8f0;padding:8px 6px;background:#f8fafc;">
                             <span id="price_display_<?= $ft_id ?>"
                                   style="display:block;width:100%;box-sizing:border-box;padding:10px 10px;font-size:14.5px;font-weight:800;color:#334155;text-align:right;font-family:monospace;">
-                                ₱<?= number_format($price_per_liter, 2) ?>
+                                &#x20B1;<?= number_format($price_per_liter, 2) ?>
                             </span>
                             <input type="hidden"
                                    form="fuelForm_<?= $ft_id ?>"
@@ -4133,12 +4134,16 @@ setTimeout(function() {
 
                         <!-- TOTAL AMOUNT Column (Auto-calculated: Net Volume × Price/Liter) -->
                         <td style="border:1px solid #e2e8f0;padding:8px 6px;background:#eff6ff;">
-                            <input type="text"
-                                   id="amount_<?= $ft_id ?>"
-                                   style="width:100%;box-sizing:border-box;padding:10px 10px;font-size:15px;background:transparent;border:1.5px solid #93c5fd;border-radius:6px;text-align:right;font-weight:900;font-family:monospace;color:#1d4ed8;"
-                                   value="₱0.00"
-                                   readonly
-                                   title="Total Amount = Net Volume Sold × Price per Liter">
+                            <div style="position:relative;display:flex;align-items:center;background:#ffffff;border:1.5px solid #93c5fd;border-radius:6px;padding:0 8px;box-sizing:border-box;">
+                                <span style="font-size:14px;font-weight:800;color:#1d4ed8;font-family:sans-serif;user-select:none;flex-shrink:0;">&#x20B1;</span>
+                                <input type="text"
+                                       id="amount_<?= $ft_id ?>"
+                                       style="width:100%;box-sizing:border-box;padding:10px 0 10px 4px;font-size:15px;background:transparent;border:none;outline:none;text-align:right;font-weight:900;font-family:monospace;color:#1d4ed8;"
+                                       value="0.00"
+                                       readonly
+                                       autocomplete="off"
+                                       title="Total Amount = Net Volume Sold × Price per Liter">
+                            </div>
                             <input type="hidden"
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="total_amount"
@@ -4181,6 +4186,16 @@ setTimeout(function() {
             <script>
             (function() {
                 'use strict';
+
+                // Immediately purge any stale/corrupted drafts from localStorage for fuel meter readings
+                try {
+                    for (var i = localStorage.length - 1; i >= 0; i--) {
+                        var lk = localStorage.key(i);
+                        if (lk && (lk.indexOf('fuel_meter_readings') !== -1 || (localStorage.getItem(lk) && localStorage.getItem(lk).indexOf('Γé') !== -1))) {
+                            localStorage.removeItem(lk);
+                        }
+                    }
+                } catch(e) {}
 
                 /* ── Parse a formatted number string (may have commas) ── */
                 function parseNum(str) {
@@ -4244,7 +4259,7 @@ setTimeout(function() {
                     /* ── Update display fields ── */
                     vEl.value = fmtNum(volume);
                     if (vvEl) vvEl.value = volume.toFixed(2);
-                    aEl.value = '\u20b1' + fmtNum(amount);
+                    aEl.value = fmtNum(amount);
                     if (avEl) avEl.value = amount.toFixed(2);
                 }
 
@@ -4271,14 +4286,21 @@ setTimeout(function() {
                         inp.addEventListener('keyup',  fn);
                     });
 
-                    /* Run initial calc for each row (for auto-fetched beginning values) */
-                    [].slice.call(allEnding).concat([].slice.call(allBeg)).forEach(function(inp) {
-                        if (typeof window.formatOnBlur === 'function' && inp.value && inp.value.trim() !== '') {
-                            window.formatOnBlur(inp);
-                        }
-                        var m = inp.id.match(/^(?:ending|beginning)_(.+)$/);
-                        if (m) calcRow(m[1]);
-                    });
+                    /* Run initial calc for each row */
+                    var allFuelIds = <?= json_encode($all_ft_ids_js) ?>;
+                    if (Array.isArray(allFuelIds) && allFuelIds.length > 0) {
+                        allFuelIds.forEach(function(fid) {
+                            calcRow(fid);
+                        });
+                    } else {
+                        [].slice.call(allEnding).concat([].slice.call(allBeg)).forEach(function(inp) {
+                            if (typeof window.formatOnBlur === 'function' && inp.value && inp.value.trim() !== '') {
+                                window.formatOnBlur(inp);
+                            }
+                            var m = inp.id.match(/^(?:ending|beginning)_(.+)$/);
+                            if (m) calcRow(m[1]);
+                        });
+                    }
                 }
 
                 /* ── Expose globally so inline oninput handlers can call it ── */
@@ -4665,7 +4687,7 @@ setTimeout(function() {
                     if (calEl)       calEl.value       = '0.00';
                     if (volumeEl)    volumeEl.value    = '0.00';
                     if (volumeValEl) volumeValEl.value = '0.00';
-                    if (amountEl)    amountEl.value    = '₱0.00';
+                    if (amountEl)    amountEl.value    = '0.00';
                     if (amountValEl) amountValEl.value = '0.00';
 
                     // Switch to Meter Reading History tab so the new record is immediately visible
@@ -4721,7 +4743,7 @@ setTimeout(function() {
             if (calEl) calEl.value = '0.00';
             if (volumeEl) volumeEl.value = '0.00';
             if (volumeValueEl) volumeValueEl.value = '0.00';
-            if (amountEl) amountEl.value = '₱0.00';
+            if (amountEl) amountEl.value = '0.00';
             if (amountValueEl) amountValueEl.value = '0.00';
             if (msgEl) showRowMsg(msgEl, '', '');
         }
@@ -4944,7 +4966,7 @@ setTimeout(function() {
                         if (calEl)       calEl.value       = '0.00';
                         if (volumeEl)    volumeEl.value    = '0.00';
                         if (volumeValEl) volumeValEl.value = '0.00';
-                        if (amountEl)    amountEl.value    = '₱0.00';
+                        if (amountEl)    amountEl.value    = '0.00';
                         if (amountValEl) amountValEl.value = '0.00';
                     } else {
                         errorCount++;
@@ -5217,11 +5239,14 @@ setTimeout(function() {
                 'validated':          {color:'#16a34a',label:'Verified'},
                 'adjusted':           {color:'#2563eb',label:'Adjusted'},
                 'rejected':           {color:'#dc2626',label:'Rejected'},
+                'readings_submitted': {color:'#0284c7',label:'Submitted'},
+                'readings submitted': {color:'#0284c7',label:'Submitted'},
+                'submitted':          {color:'#0284c7',label:'Submitted'},
             };
             function badge(s) {
                 const k = (s||'').toLowerCase().trim();
-                const c = statusMap[k] || {color:'#64748b',label:s||'—'};
-                return `<span style="background:${c.color}18; color:${c.color}; border:1.5px solid ${c.color}40; font-weight:800; font-size:12px; padding:4px 10px; border-radius:6px; text-transform:uppercase; letter-spacing:.4px; white-space:nowrap; display:inline-block; vertical-align:middle;" title="${c.label}">${c.label}</span>`;
+                const c = statusMap[k] || {color:'#64748b',label:(s||'—').replace(/_/g, ' ')};
+                return `<span style="background:${c.color}18; color:${c.color}; border:1px solid ${c.color}40; font-weight:800; font-size:10px; padding:2px 6px; border-radius:4px; text-transform:uppercase; letter-spacing:.2px; white-space:nowrap; display:inline-block; vertical-align:middle;" title="${c.label}">${c.label}</span>`;
             }
             function fmt(n,d=2){ return Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:d,maximumFractionDigits:d}); }
 
@@ -5263,23 +5288,23 @@ setTimeout(function() {
                 return shiftPeriod;
             }
 
-            const TH  = 'padding:12px 10px; font-size:12.5px; font-weight:800; color:#ffffff; text-transform:uppercase; letter-spacing:.4px; white-space:nowrap;';
+            const TH  = 'padding:10px 5px; font-size:11px; font-weight:800; color:#ffffff; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; vertical-align:middle; box-sizing:border-box;';
             const THR = TH + ' text-align:right;';
 
-            let html = `<div style="overflow-x:auto; -webkit-overflow-scrolling:touch; border-bottom:1px solid #e2e8f0; background:#ffffff;">
-                <table id="todayReadingsTable" style="width:100%; min-width:1380px; border-collapse:collapse; font-size:13.5px; text-align:left;">
+            let html = `<div style="overflow-x:hidden; width:100%; border-bottom:1px solid #e2e8f0; background:#ffffff;">
+                <table id="todayReadingsTable" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:12px; text-align:left; box-sizing:border-box;">
                     <colgroup>
-                        <col style="width: 120px;">  <!-- Date -->
-                        <col style="width: 110px;">  <!-- Shift -->
-                        <col style="width: 160px;">  <!-- Name -->
-                        <col style="width: 115px;">  <!-- Beginning -->
-                        <col style="width: 115px;">  <!-- Ending -->
-                        <col style="width: 115px;">  <!-- Calibration -->
-                        <col style="width: 125px;">  <!-- Volume (L) -->
-                        <col style="width: 110px;">  <!-- Price/L -->
-                        <col style="width: 135px;">  <!-- Amount -->
-                        <col style="width: 140px;">  <!-- Encoded By -->
-                        <col style="width: 135px;">  <!-- Status -->
+                        <col style="width: 8%;">   <!-- Date -->
+                        <col style="width: 6.5%;"> <!-- Shift -->
+                        <col style="width: 12%;">  <!-- Name -->
+                        <col style="width: 7.5%;"> <!-- Beginning -->
+                        <col style="width: 7.5%;"> <!-- Ending -->
+                        <col style="width: 7.5%;"> <!-- Calibration -->
+                        <col style="width: 8.5%;"> <!-- Volume (L) -->
+                        <col style="width: 8%;">   <!-- Price/L -->
+                        <col style="width: 9.5%;"> <!-- Amount -->
+                        <col style="width: 12.5%;"><!-- Encoded By -->
+                        <col style="width: 13%;">  <!-- Status -->
                     </colgroup>
                     <thead>
                         <tr style="background:#002F70; border-bottom:2px solid #001f4d;">
@@ -5293,7 +5318,7 @@ setTimeout(function() {
                             <th style="${THR}" title="Price/L">Price/L</th>
                             <th style="${THR}" title="Amount">Amount</th>
                             <th style="${TH}" title="Encoded By">Encoded By</th>
-                            <th style="${TH}" title="Status">Status</th>
+                            <th style="${TH} text-align:center;" title="Status">Status</th>
                         </tr>
                     </thead>
                     <tbody>`;
@@ -5322,17 +5347,17 @@ setTimeout(function() {
                 const staffStr = r.staff_name || '—';
 
                 html += `<tr style="border-bottom:1px solid #e2e8f0; background:#ffffff; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='#f0f5ff';" onmouseout="this.style.backgroundColor='#ffffff';">
-                    <td style="padding:12px 10px; color:#0f172a; font-size:13px; font-weight:700; white-space:nowrap; vertical-align:middle;" title="${dateStr}">${dateStr}</td>
-                    <td style="padding:12px 10px; color:#334155; font-size:13px; font-weight:700; white-space:nowrap; vertical-align:middle;" title="${shiftStr}">${shiftStr}</td>
-                    <td style="padding:12px 10px; font-weight:800; color:#002F70; font-size:14px; white-space:nowrap; vertical-align:middle;" title="${fuelStr}">${fuelStr}</td>
-                    <td style="padding:12px 10px; text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; color:#1e293b; font-size:14px; font-weight:700; white-space:nowrap; vertical-align:middle;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
-                    <td style="padding:12px 10px; text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; color:#1e293b; font-weight:700; font-size:14px; white-space:nowrap; vertical-align:middle;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
-                    <td style="padding:12px 10px; text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; color:#475569; font-size:13.5px; font-weight:600; white-space:nowrap; vertical-align:middle;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
-                    <td style="padding:12px 10px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#0f172a; font-size:14px; white-space:nowrap; vertical-align:middle;" title="${fmt(r.volume_liters)} L">${fmt(r.volume_liters)} L</td>
-                    <td style="padding:12px 10px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:14px; font-weight:700; white-space:nowrap; vertical-align:middle;" title="₱${fmt(r.price_per_liter)}">₱${fmt(r.price_per_liter)}</td>
-                    <td style="padding:12px 10px; text-align:right; font-weight:900; font-variant-numeric:tabular-nums; color:#002F70; font-size:15px; white-space:nowrap; vertical-align:middle;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
-                    <td style="padding:12px 10px; color:#1e293b; font-weight:700; font-size:13.5px; white-space:nowrap; vertical-align:middle;" title="${staffStr}">${staffStr}</td>
-                    <td style="padding:12px 10px; font-size:12px; vertical-align:middle; white-space:nowrap;">${badge(r.status)}</td>
+                    <td style="padding:10px 5px; color:#0f172a; font-size:12px; font-weight:700; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="${dateStr}">${dateStr}</td>
+                    <td style="padding:10px 5px; color:#334155; font-size:12px; font-weight:700; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="${shiftStr}">${shiftStr}</td>
+                    <td style="padding:10px 5px; font-weight:800; color:#002F70; font-size:12px; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="${fuelStr}">${fuelStr}</td>
+                    <td style="padding:10px 5px; text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; color:#1e293b; font-size:12px; font-weight:700; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
+                    <td style="padding:10px 5px; text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; color:#1e293b; font-weight:700; font-size:12px; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
+                    <td style="padding:10px 5px; text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; color:#475569; font-size:11.5px; font-weight:600; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
+                    <td style="padding:10px 5px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#0f172a; font-size:12px; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="${fmt(r.volume_liters)} L">${fmt(r.volume_liters)} L</td>
+                    <td style="padding:10px 5px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:12px; font-weight:700; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="₱${fmt(r.price_per_liter)}">₱${fmt(r.price_per_liter)}</td>
+                    <td style="padding:10px 5px; text-align:right; font-weight:900; font-variant-numeric:tabular-nums; color:#002F70; font-size:12.5px; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
+                    <td style="padding:10px 5px; color:#1e293b; font-weight:700; font-size:11.5px; line-height:1.2; word-break:break-word; overflow-wrap:break-word; vertical-align:middle; box-sizing:border-box;" title="${staffStr}">${staffStr}</td>
+                    <td style="padding:10px 5px; font-size:11px; text-align:center; vertical-align:middle; white-space:nowrap; box-sizing:border-box;">${badge(r.status)}</td>
                 </tr>`;
             });
 

@@ -392,7 +392,7 @@ button.remove-v-btn i {
                 <i class="fas fa-inbox"></i> Pending Customer Requests
             </button>
             <button class="cust-tab" id="tab-archived" onclick="switchCustTab('archived')">
-                <i class="fas fa-archive"></i> Archiveived Customers
+                <i class="fas fa-archive"></i> Archived Customers
             </button>
         </div>
     </div>
@@ -519,7 +519,7 @@ button.remove-v-btn i {
     <!-- TAB 3: ARCHIVED CUSTOMERS -->
     <div class="cust-section" id="section-archived" style="display:none;">
         <div class="cust-section-head">
-            <h2><i class="fas fa-archive"></i> Archiveived Customers</h2>
+            <h2><i class="fas fa-archive"></i> Archived Customers</h2>
             <span class="cust-count" id="archivedCount">0 records</span>
         </div>
         <table class="cust-table">
@@ -1004,7 +1004,7 @@ button.remove-v-btn i {
         <div class="modal-actions">
             <button type="button" class="btn-plain muted" onclick="closeModal('customerViewModal')">Close</button>
             <button type="button" class="btn-plain primary" onclick="editFromCurrentView()"><i class="fas fa-edit"></i> Edit Customer</button>
-            <button type="button" id="vModalArchiveBtn" class="btn-plain danger" onclick="openArchiveFromView()"><i class="fas fa-archive"></i> Archiveive Customer</button>
+            <button type="button" id="vModalArchiveBtn" class="btn-plain danger" onclick="openArchiveFromView()"><i class="fas fa-archive"></i> Archive Customer</button>
         </div>
     </div>
 </div>
@@ -1061,7 +1061,7 @@ button.remove-v-btn i {
 <div class="modal-backdrop" id="archiveModal">
     <div class="cust-modal sm">
         <div class="modal-head">
-            <h3><i class="fas fa-archive"></i> Archiveive Customer</h3>
+            <h3><i class="fas fa-archive"></i> Archive Customer</h3>
             <button type="button" class="modal-close" onclick="closeModal('archiveModal')">&times;</button>
         </div>
         <form id="archiveForm">
@@ -1842,7 +1842,7 @@ function viewCustomer(id) {
                     archiveBtn.onclick = function() { restoreCustomer(c.id); };
                 } else {
                     archiveBtn.className = 'btn-plain danger';
-                    archiveBtn.innerHTML = '<i class="fas fa-archive"></i> Archiveive Customer';
+                    archiveBtn.innerHTML = '<i class="fas fa-archive"></i> Archive Customer';
                     archiveBtn.onclick = function() { openArchiveFromView(); };
                 }
             }
@@ -1857,7 +1857,7 @@ function viewCustomer(id) {
                     const isVArchived = (v.status || '').toLowerCase() === 'archived';
                     const vBtn = isVArchived
                         ? `<button type="button" class="btn-plain success" style="height:26px; padding:0 8px; font-size:10px;" onclick="restoreVehicle(${v.id})"><i class="fas fa-undo"></i> Restore</button>`
-                        : `<button type="button" class="btn-plain danger" style="height:26px; padding:0 8px; font-size:10px;" onclick="archiveVehicle(${v.id})"><i class="fas fa-archive"></i> Archiveive</button>`;
+                        : `<button type="button" class="btn-plain danger" style="height:26px; padding:0 8px; font-size:10px;" onclick="archiveVehicle(${v.id})"><i class="fas fa-archive"></i> Archive</button>`;
                     const statusBadge = isVArchived
                         ? `<span class="pill archived">ARCHIVED</span>`
                         : `<span class="pill ${h(v.status || 'active')}">${h(v.status || 'active')}</span>`;

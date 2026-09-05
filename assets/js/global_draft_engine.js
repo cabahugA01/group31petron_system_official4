@@ -43,6 +43,15 @@
             if (oldBanner) oldBanner.remove();
             container.querySelectorAll('.petron-draft-status-badge').forEach(function(b) { b.remove(); });
 
+            // Auto-purge any corrupted legacy draft strings from localStorage for this module
+            try {
+                const storageKey = `petron_draft_${USER_ID}_${moduleKey}`;
+                const raw = localStorage.getItem(storageKey);
+                if (raw && (raw.includes('Γé') || raw.includes('\u20b1') || moduleKey.includes('fuel_meter_readings'))) {
+                    localStorage.removeItem(storageKey);
+                }
+            } catch (e) {}
+
             // 1. Check and automatically restore existing draft on load
             this.checkForDraft(moduleKey, container, options);
 
@@ -103,6 +112,10 @@
                 const name = el.name || el.id;
                 if (!name || el.type === 'password' || el.type === 'submit' || el.type === 'button') return;
 
+                // Never collect calculated readonly fields (amount, volume, summary)
+                if (el.id && (el.id.startsWith('amount_') || el.id.startsWith('volume_') || el.id.startsWith('summary_total_'))) return;
+                if (el.readOnly && !el.dataset.allowDraft) return;
+
                 // Use ID if available to ensure unique keying across table rows or complex layouts
                 const key = el.id ? el.id : name;
 
@@ -155,14 +168,22 @@
             Object.keys(data).forEach(function(key) {
                 if (key.startsWith('_')) return; // Custom arrays or metadata
 
+                // NEVER restore calculated readonly fields!
+                if (key.startsWith('amount_') || key.startsWith('volume_') || key.startsWith('summary_total_')) return;
+
                 let el = document.getElementById(key);
                 if (!el && container.querySelector) {
                     el = container.querySelector(`[name="${key}"], #${key}`);
                 }
                 if (!el) return;
 
+                // Never overwrite readonly inputs with draft data
+                if (el.readOnly && !el.dataset.allowDraft) return;
+
                 const val = data[key];
                 if (val === undefined || val === null) return;
+                // Reject any corrupted strings
+                if (typeof val === 'string' && (val.includes('Γé') || val.includes('\u20b1'))) return;
 
                 if (el.type === 'checkbox') {
                     el.checked = !!val;
