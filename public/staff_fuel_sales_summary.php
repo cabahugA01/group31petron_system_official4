@@ -2972,8 +2972,22 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         margin: 3px 0;
     }
     
-    /* Hide prepared-by on screen, only show on print */
-    .print-only-signature { display: none !important; }
+    /* Prepared-by signature block — visible on screen and on print at bottom-right */
+    .print-only-signature,
+    .report-signature {
+        display: table !important;
+        width: 100% !important;
+        margin-top: 25px !important;
+        margin-bottom: 20px !important;
+        border: none !important;
+        border-collapse: collapse !important;
+        background: transparent !important;
+    }
+    .print-only-signature td,
+    .report-signature td {
+        border: none !important;
+        background: transparent !important;
+    }
 
     .controls {
         padding: 12px 20px;
@@ -3230,17 +3244,25 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     }
     
     .table-container {
-        overflow-x: visible;
+        overflow-x: hidden !important;
         margin-bottom: 20px;
-        width: 100%;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
     
-    table {
-        width: 100%;
-        border-collapse: collapse;
+    table,
+    .report-table,
+    .table-container table {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        table-layout: fixed !important;
+        border-collapse: collapse !important;
         background: white;
         border: 1px solid #000;
-        font-size: 11px;
+        font-size: 11.5px;
+        box-sizing: border-box !important;
     }
     
     thead {
@@ -3248,19 +3270,29 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         color: #000;
     }
     
-    th {
-        padding: 8px 6px;
+    th,
+    .table-container table th {
+        padding: 7px 5px !important;
         text-align: left;
         font-weight: 700;
-        font-size: 10px;
+        font-size: 11px !important;
         text-transform: uppercase;
         border: 1px solid #000;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+        white-space: normal !important;
+        box-sizing: border-box !important;
     }
     
-    td {
-        padding: 6px 6px;
+    td,
+    .table-container table td {
+        padding: 6px 5px !important;
         border: 1px solid #000;
-        font-size: 11px;
+        font-size: 11.5px !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+        white-space: normal !important;
+        box-sizing: border-box !important;
     }
     
     tbody tr {
@@ -3335,7 +3367,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     @media print {
         @page {
             size: letter portrait;
-            margin: 8mm 6mm 4mm 6mm;
+            margin: 5mm 5mm 4mm 5mm;
         }
 
         * {
@@ -3350,12 +3382,16 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             margin: 0 !important;
             padding: 0 !important;
             background: #fff !important;
-            overflow: visible !important;
+            overflow-x: hidden !important;
+            overflow-y: visible !important;
             height: auto !important;
+            width: 100% !important;
+            max-width: 100% !important;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
-            font-size: 8px !important;
+            font-size: 7px !important;
             color: #333 !important;
         }
+
 
         /* Hide all page UI — keep only sfss-print-only */
         body > *:not(.sfss-print-only) {
@@ -3380,20 +3416,23 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             position: static !important;
             width: 100% !important;
             max-width: 100% !important;
+            min-width: 0 !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #fff !important;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
-            font-size: 8px !important;
+            font-size: 7.5px !important;
             color: #333 !important;
-            page-break-after: avoid !important;
-            page-break-inside: avoid !important;
+            overflow: visible !important;
+            box-sizing: border-box !important;
         }
 
         .sfss-print-only *, .sfss-print-only *::before, .sfss-print-only *::after {
             box-shadow: none !important;
             text-shadow: none !important;
             background-image: none !important;
+            box-sizing: border-box !important;
+            max-width: 100% !important;
         }
 
         /* Hide icons and watermarks inside print container */
@@ -3411,112 +3450,140 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             font-size: 0 !important; margin: 0 !important; padding: 0 !important;
         }
 
-        /* ── Header — same as PO ── */
+        /* ── Header ── */
         .sfss-print-only .header {
             text-align: center !important;
-            border-bottom: none !important;
-            padding-top: 6px !important;
-            margin: 2px 0 4px 0 !important;
+            border-bottom: 2px solid #002F6C !important;
+            padding: 0 0 6px 0 !important;
+            margin: 0 0 8px 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
         }
         .sfss-print-only .header h1 {
             display: block !important;
-            font-size: 12px !important;
-            line-height: 1.1 !important;
-            font-weight: 700 !important;
-            color: #000 !important;
-            margin: 0 0 1px 0 !important;
+            font-size: 14px !important;
+            line-height: 1.2 !important;
+            font-weight: 800 !important;
+            color: #002F6C !important;
+            margin: 0 0 2px 0 !important;
         }
-        .sfss-print-only .header p {
-            display: block !important;
+        .sfss-print-only .header .rpt-address {
+            font-size: 9px !important;
+            font-weight: 700 !important;
+            color: #1e293b !important;
+            margin-bottom: 2px !important;
+        }
+        .sfss-print-only .header .rpt-date-range {
             font-size: 8.5px !important;
-            color: #333 !important;
-            margin: 0 !important;
+            color: #334155 !important;
+            font-weight: 600 !important;
         }
 
         /* ── Section titles ── */
         .sfss-print-only .section-title {
             display: block !important;
-            font-size: 8.5px !important;
-            line-height: 1.1 !important;
-            font-weight: 700 !important;
-            margin: 2px 0 1px 0 !important;
-            padding: 1px 3px !important;
+            font-size: 9px !important;
+            line-height: 1.2 !important;
+            font-weight: 800 !important;
+            margin: 8px 0 3px 0 !important;
+            padding: 2px 4px !important;
             border: none !important;
-            border-bottom: 1px solid #000 !important;
+            border-bottom: 1.5px solid #002F6C !important;
             background: #fff !important;
-            color: #000 !important;
+            color: #002F6C !important;
             page-break-after: avoid !important;
             text-transform: uppercase !important;
         }
 
-        /* ── Tables — compact layout to fit bond paper ── */
+        /* ── Tables — compact 100% layout to fit bond paper perfectly ── */
         .sfss-print-only .table-container {
             overflow: visible !important;
             width: 100% !important;
-            margin: 0 0 2px 0 !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            margin: 0 0 4px 0 !important;
             padding: 0 !important;
             border: none !important;
             background: transparent !important;
+            box-sizing: border-box !important;
         }
         .sfss-print-only table {
             width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            table-layout: fixed !important;
             border-collapse: collapse !important;
-            font-size: 8px !important;
-            line-height: 1.1 !important;
+            font-size: 7.5px !important;
+            line-height: 1.2 !important;
             margin: 0 !important;
+            box-sizing: border-box !important;
         }
         .sfss-print-only thead { display: table-header-group !important; }
         .sfss-print-only tbody { display: table-row-group !important; }
         .sfss-print-only tr { display: table-row !important; page-break-inside: avoid !important; }
         .sfss-print-only th {
             display: table-cell !important;
-            font-size: 8px !important;
-            line-height: 1.1 !important;
-            padding: 2px 3px !important;
-            border: 1px solid #000 !important;
+            font-size: 7.5px !important;
+            line-height: 1.2 !important;
+            padding: 3px 2px !important;
+            border: 0.5px solid #001a36 !important;
             background: #002F6C !important;
             color: #fff !important;
-            font-weight: 600 !important;
+            font-weight: 700 !important;
             text-align: center !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            white-space: normal !important;
+            box-sizing: border-box !important;
         }
         .sfss-print-only td {
             display: table-cell !important;
-            font-size: 8px !important;
-            line-height: 1.1 !important;
-            padding: 1.5px 3px !important;
-            border-bottom: 1px solid #cbd5e1 !important;
+            font-size: 7.5px !important;
+            line-height: 1.2 !important;
+            padding: 2.5px 2px !important;
+            border: 0.5px solid #cbd5e1 !important;
             vertical-align: middle !important;
             color: #0f172a !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            white-space: normal !important;
+            box-sizing: border-box !important;
         }
 
         /* Layout helpers */
-        .sfss-print-only .container { display: block !important; margin: 0 !important; padding: 0 !important; max-width: 100% !important; height: auto !important; min-height: 0 !important; }
-        .sfss-print-only .content   { display: block !important; margin: 0 !important; padding: 0 !important; height: auto !important; min-height: 0 !important; }
+        .sfss-print-only .container { display: block !important; margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; min-width: 0 !important; height: auto !important; }
+        .sfss-print-only .content   { display: block !important; margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; min-width: 0 !important; height: auto !important; }
         .sfss-print-only .sfss-empty-print-hide { display: none !important; }
         .sfss-print-only .font-bold  { font-weight: 700 !important; }
         .sfss-print-only .text-right { text-align: right !important; }
-        .sfss-print-only div  { display: block !important; height: auto !important; min-height: 0 !important; }
+        .sfss-print-only div  { height: auto !important; min-height: 0 !important; box-sizing: border-box !important; }
         .sfss-print-only span { display: inline !important; }
-        /* Kill all min-height / fixed heights that cause blank space */
-        .sfss-print-only, .sfss-print-only * {
-            min-height: 0 !important;
-            height: auto !important;
+
+        /* ── Force grid/flex containers to stack vertically in print (no horizontal overflow) ── */
+        .sfss-print-only [style*="display:grid"],
+        .sfss-print-only [style*="display: grid"],
+        .sfss-print-only [style*="grid-template-columns"],
+        .sfss-print-only [style*="display:flex"],
+        .sfss-print-only [style*="display: flex"] {
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
         }
-        .sfss-print-only .page,
-        .sfss-print-only .stock-page,
-        .sfss-print-only .tab-content,
-        .sfss-print-only .tab-content.active,
-        .sfss-print-only #fuel-tab,
-        .sfss-print-only #merchandise-tab {
-            min-height: 0 !important;
-            height: auto !important;
-            padding-bottom: 0 !important;
-            margin-bottom: 0 !important;
+        .sfss-print-only [style*="gap"] {
+            gap: 0 !important;
         }
-        /* Allow table inside prepared-by to render correctly */
-        .sfss-print-only table { display: table !important; height: auto !important; }
-        .sfss-print-only table tr { display: table-row !important; }
-        .sfss-print-only table td { display: table-cell !important; }
+        .sfss-print-only [style*="grid-template-columns"] > * {
+            width: 100% !important;
+            max-width: 100% !important;
+            margin-bottom: 8px !important;
+        }
+        /* Fix table-container that has inline padding/border — strip them in print */
+        .sfss-print-only .table-container[style] {
+            padding: 0 !important;
+            border: none !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+        }
         /* Hide all footer lines, fixed footers, and bottom borders on print */
         footer, .fixed-footer, .footer-sidebar-area, .footer-content, .afto-footer {
             display: none !important;
@@ -3529,14 +3596,22 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             padding: 0 !important;
         }
 
-        /* Show signature only on print */
+        /* ── Signature — right-aligned, compact margin so it stays on page ── */
         .print-only-signature { display: none !important; }
         .sfss-print-only .print-only-signature {
             display: table !important;
-            margin-top: 55px !important;
-            page-break-before: avoid !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            margin-top: 15px !important;
             page-break-inside: avoid !important;
             border: none !important;
+            border-collapse: collapse !important;
+        }
+        .sfss-print-only .print-only-signature td {
+            border: none !important;
+            font-size: 9px !important;
+            padding: 1px 2px !important;
         }
 
         /* Grand total row emphasis */
@@ -3707,17 +3782,27 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 1. Fuel Meter Reading Table -->
                 <div class="section-title">FUEL METER READING TABLE</div>
                 <div class="table-container mb-4">
-                    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                        <colgroup>
+                            <col style="width: 11%;">
+                            <col style="width: 14%;">
+                            <col style="width: 13%;">
+                            <col style="width: 13%;">
+                            <col style="width: 10%;">
+                            <col style="width: 12%;">
+                            <col style="width: 12%;">
+                            <col style="width: 15%;">
+                        </colgroup>
                         <thead>
                             <tr style="background:#002F6C; color:#fff;">
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">UGT No.</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Fuel Type</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Beginning Reading</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Ending Reading</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Calibration</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Net Volume (L)</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Selling Price/L</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Fuel Sales</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:left;">UGT No.</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:left;">Fuel Type</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:right;">Beginning Reading</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:right;">Ending Reading</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:right;">Calibration</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:right;">Net Volume (L)</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:right;">Selling Price/L</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:right;">Fuel Sales</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -3754,12 +3839,17 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 2. Fuel Sales Summary Table -->
                 <div class="section-title" style="margin-top:20px;">FUEL SALES SUMMARY</div>
                 <div class="table-container mb-4">
-                    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                        <colgroup>
+                            <col style="width: 40%;">
+                            <col style="width: 30%;">
+                            <col style="width: 30%;">
+                        </colgroup>
                         <thead>
                             <tr style="background:#002F6C; color:#fff;">
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Fuel Type</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Liters Sold</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Fuel Sales</th>
+                                <th style="padding:8px 8px; border:1px solid #001a36; text-align:left;">Fuel Type</th>
+                                <th style="padding:8px 8px; border:1px solid #001a36; text-align:right;">Liters Sold</th>
+                                <th style="padding:8px 8px; border:1px solid #001a36; text-align:right;">Fuel Sales</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -3790,13 +3880,18 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 3. Volume & Amount Summary -->
                 <div class="section-title" style="margin-top:24px;">VOLUME & AMOUNT SUMMARY</div>
                 <div class="table-container mb-4">
-                    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                        <colgroup>
+                            <col style="width: 55%;">
+                            <col style="width: 45%;">
+                        </colgroup>
                         <thead>
                             <tr style="background:#002F6C; color:#fff;">
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Summary</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Value</th>
+                                <th style="padding:8px 8px; border:1px solid #001a36; text-align:left;">Summary</th>
+                                <th style="padding:8px 8px; border:1px solid #001a36; text-align:right;">Value</th>
                             </tr>
                         </thead>
+
                         <tbody>
                             <tr>
                                 <td style="padding:8px 10px; border:1px solid #ddd; font-weight:700;">Total Liters Sold</td>
@@ -3813,11 +3908,15 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 4. Tank Summary -->
                 <div class="section-title" style="margin-top:24px;">TANK LITERS SUMMARY</div>
                 <div class="table-container mb-4">
-                    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                        <colgroup>
+                            <col style="width: 60%;">
+                            <col style="width: 40%;">
+                        </colgroup>
                         <thead>
                             <tr style="background:#002F6C; color:#fff;">
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Tank / Pump Name</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Liters Sold (L)</th>
+                                <th style="padding:8px 8px; border:1px solid #001a36; text-align:left;">Tank / Pump Name</th>
+                                <th style="padding:8px 8px; border:1px solid #001a36; text-align:right;">Liters Sold (L)</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -3876,7 +3975,11 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
                         <div>
                             <h4 style="font-size:13px; font-weight:700; color:#002F6C; margin:0 0 6px 0; text-transform:uppercase;"><i class="fas fa-money-bill-wave me-1"></i> Cash Summary</h4>
-                            <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                            <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                                <colgroup>
+                                    <col style="width: 50%;">
+                                    <col style="width: 50%;">
+                                </colgroup>
                                 <thead>
                                     <tr style="background:#f1f5f9; color:#334155;">
                                         <th style="padding:6px 10px; border:1px solid #cbd5e1; text-align:left;">Shift</th>
@@ -3897,7 +4000,11 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
                         <div>
                             <h4 style="font-size:13px; font-weight:700; color:#002F6C; margin:0 0 6px 0; text-transform:uppercase;"><i class="fas fa-file-invoice-dollar me-1"></i> Accounts Receivable Summary</h4>
-                            <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                            <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                                <colgroup>
+                                    <col style="width: 50%;">
+                                    <col style="width: 50%;">
+                                </colgroup>
                                 <thead>
                                     <tr style="background:#f1f5f9; color:#334155;">
                                         <th style="padding:6px 10px; border:1px solid #cbd5e1; text-align:left;">Shift</th>
@@ -3919,7 +4026,11 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
                     <!-- Overall Summary -->
                     <h4 style="font-size:13px; font-weight:700; color:#002F6C; margin:10px 0 6px 0; text-transform:uppercase;"><i class="fas fa-calculator me-1"></i> Overall Financial Summary</h4>
-                    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                        <colgroup>
+                            <col style="width: 60%;">
+                            <col style="width: 40%;">
+                        </colgroup>
                         <thead>
                             <tr style="background:#f1f5f9; color:#334155;">
                                 <th style="padding:6px 10px; border:1px solid #cbd5e1; text-align:left;">Field</th>
@@ -3942,18 +4053,19 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
 
                 <!-- PREPARED BY SIGNATURE -->
-                <table class="print-only-signature" style="width:100%; margin-top:55px; page-break-before:avoid; page-break-inside:avoid; border:none; border-collapse:collapse;">
+                <table class="print-only-signature" style="width:100%; margin-top:15px; page-break-inside:avoid; border:none; border-collapse:collapse;">
                     <tr>
                         <td style="border:none;"></td>
-                        <td style="border:none; width:200px; text-align:center;">
-                            <div style="font-size:9.5px; font-weight:700; color:#333; margin-bottom:10px;">PREPARED BY:</div>
-                            <div style="border-top:1px solid #000; padding-top:2px; font-weight:700; font-size:10px; color:#000;">
+                        <td style="border:none; width:220px; text-align:center;">
+                            <div style="font-size:11px; font-weight:700; color:#333; margin-bottom:28px;">PREPARED BY:</div>
+                            <div style="border-top:1.5px solid #000; padding-top:4px; font-weight:800; font-size:12px; color:#000;">
                                 <?= htmlspecialchars($cashier_name) ?>
                             </div>
-                            <div style="font-size:9px; color:#555; margin-top:1px;">Staff</div>
+                            <div style="font-size:10.5px; color:#555; margin-top:2px; font-weight:600;">Staff / Cashier</div>
                         </td>
                     </tr>
                 </table>
+
 
             </div>
         </div>
@@ -3982,17 +4094,27 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 1. Merchandise Transactions Table -->
                 <div class="section-title">MERCHANDISE TRANSACTIONS</div>
                 <div class="table-container mb-4">
-                    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                        <colgroup>
+                            <col style="width: 15%;">
+                            <col style="width: 10%;">
+                            <col style="width: 17%;">
+                            <col style="width: 18%;">
+                            <col style="width: 8%;">
+                            <col style="width: 11%;">
+                            <col style="width: 11%;">
+                            <col style="width: 10%;">
+                        </colgroup>
                         <thead>
                             <tr style="background:#002F6C; color:#fff;">
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Receipt No.</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Time</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Customer</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Product</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:center;">Qty</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Unit Price</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Amount</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:center;">Payment Method</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:left;">Receipt No.</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:left;">Time</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:left;">Customer</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:left;">Product</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:center;">Qty</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:right;">Unit Price</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:right;">Amount</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:center;">Payment Method</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -4044,19 +4166,31 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 2. Job Order Transactions Table -->
                 <div class="section-title" style="margin-top:20px;">JOB ORDER TRANSACTIONS (Service Sales)</div>
                 <div class="table-container mb-4">
-                    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                        <colgroup>
+                            <col style="width: 11%;">
+                            <col style="width: 8%;">
+                            <col style="width: 12%;">
+                            <col style="width: 10%;">
+                            <col style="width: 11%;">
+                            <col style="width: 9%;">
+                            <col style="width: 9%;">
+                            <col style="width: 9%;">
+                            <col style="width: 11%;">
+                            <col style="width: 10%;">
+                        </colgroup>
                         <thead>
                             <tr style="background:#002F6C; color:#fff;">
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">JO No.</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Time</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Customer</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Vehicle</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Mechanic</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Labor Fee</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Service Fee</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Parts Cost</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Total Amount</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:center;">Payment Method</th>
+                                <th style="padding:8px 5px; border:1px solid #001a36; text-align:left;">JO No.</th>
+                                <th style="padding:8px 5px; border:1px solid #001a36; text-align:left;">Time</th>
+                                <th style="padding:8px 5px; border:1px solid #001a36; text-align:left;">Customer</th>
+                                <th style="padding:8px 5px; border:1px solid #001a36; text-align:left;">Vehicle</th>
+                                <th style="padding:8px 5px; border:1px solid #001a36; text-align:left;">Mechanic</th>
+                                <th style="padding:8px 5px; border:1px solid #001a36; text-align:right;">Labor Fee</th>
+                                <th style="padding:8px 5px; border:1px solid #001a36; text-align:right;">Service Fee</th>
+                                <th style="padding:8px 5px; border:1px solid #001a36; text-align:right;">Parts Cost</th>
+                                <th style="padding:8px 5px; border:1px solid #001a36; text-align:right;">Total Amount</th>
+                                <th style="padding:8px 5px; border:1px solid #001a36; text-align:center;">Payment Method</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -4111,12 +4245,17 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 3. Payment Method Summary Table -->
                 <div class="section-title" style="margin-top:20px;">PAYMENT METHOD SUMMARY</div>
                 <div class="table-container mb-4">
-                    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                        <colgroup>
+                            <col style="width: 45%;">
+                            <col style="width: 25%;">
+                            <col style="width: 30%;">
+                        </colgroup>
                         <thead>
                             <tr style="background:#002F6C; color:#fff;">
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Payment Method</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:center;">Transactions</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Amount</th>
+                                <th style="padding:8px 8px; border:1px solid #001a36; text-align:left;">Payment Method</th>
+                                <th style="padding:8px 8px; border:1px solid #001a36; text-align:center;">Transactions</th>
+                                <th style="padding:8px 8px; border:1px solid #001a36; text-align:right;">Amount</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -4145,15 +4284,23 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 4. Accounts Receivable Summary (MY SHIFT ONLY) -->
                 <div class="section-title" style="margin-top:20px;">ACCOUNTS RECEIVABLE SUMMARY (MY SHIFT ONLY)</div>
                 <div class="table-container mb-4">
-                    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                        <colgroup>
+                            <col style="width: 25%;">
+                            <col style="width: 13%;">
+                            <col style="width: 18%;">
+                            <col style="width: 14%;">
+                            <col style="width: 18%;">
+                            <col style="width: 12%;">
+                        </colgroup>
                         <thead>
                             <tr style="background:#002F6C; color:#fff;">
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Customer</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Account Type</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Invoice No.</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Due Date</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:right;">Outstanding Balance</th>
-                                <th style="padding:8px 10px; border:1px solid #001a36; text-align:center;">Payment Status</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:left;">Customer</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:left;">Account Type</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:left;">Invoice No.</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:left;">Due Date</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:right;">Outstanding Balance</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:center;">Payment Status</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -4195,7 +4342,11 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 5. Shift Sales Summary (Merchandise & Service Summary) -->
                 <div class="section-title" style="margin-top:20px;">SHIFT SALES SUMMARY</div>
                 <div class="table-container mb-4">
-                    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                        <colgroup>
+                            <col style="width: 60%;">
+                            <col style="width: 40%;">
+                        </colgroup>
                         <thead>
                             <tr style="background:#002F6C; color:#fff;">
                                 <th style="padding:8px 10px; border:1px solid #001a36; text-align:left;">Description</th>
@@ -4236,15 +4387,15 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 </div>
 
                 <!-- PREPARED BY SIGNATURE -->
-                <table class="print-only-signature" style="width:100%; margin-top:25px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+                <table class="print-only-signature" style="width:100%; margin-top:15px; page-break-inside:avoid; border:none; border-collapse:collapse;">
                     <tr>
                         <td style="border:none;"></td>
                         <td style="border:none; width:220px; text-align:center;">
-                            <div style="font-size:10px; font-weight:700; color:#333; margin-bottom:25px;">PREPARED BY:</div>
-                            <div style="border-top:1px solid #000; padding-top:4px; font-weight:700; font-size:11px; color:#000;">
+                            <div style="font-size:11px; font-weight:700; color:#333; margin-bottom:28px;">PREPARED BY:</div>
+                            <div style="border-top:1.5px solid #000; padding-top:4px; font-weight:800; font-size:12px; color:#000;">
                                 <?= htmlspecialchars($cashier_name) ?>
                             </div>
-                            <div style="font-size:9.5px; color:#555; margin-top:2px;">Staff</div>
+                            <div style="font-size:10.5px; color:#555; margin-top:2px; font-weight:600;">Staff / Cashier</div>
                         </td>
                     </tr>
                 </table>

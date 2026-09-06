@@ -336,7 +336,7 @@ body,html{overflow-x:hidden;max-width:100%;}
 @media(max-width:768px){.inv-stats-row{grid-template-columns:repeat(2,1fr);}}
 /* ── Navigation Tabs - Matches Reports sub-tab design ── */
 .inv-tab-nav { display: flex !important; flex-wrap: wrap !important; margin-bottom: 22px !important; border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; border-bottom: 3px solid #00264D !important; gap: 0 !important; background: transparent !important; padding: 0 !important; width: 100% !important; }
-.inv-tab-btn { flex: 1 !important; min-width: 140px !important; padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-radius: 0 !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; text-align: center !important; cursor: pointer !important; margin-bottom: 0 !important; box-shadow: none !important; }
+.inv-tab-btn { flex: 1 !important; min-width: 140px !important; padding: 13px 18px !important; font-size: 13px !important; font-weight: 800 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-radius: 0 !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 8px !important; text-transform: uppercase !important; letter-spacing: 0.4px !important; text-align: center !important; cursor: pointer !important; margin-bottom: 0 !important; box-shadow: none !important; }
 .inv-tab-btn:last-child { border-right: none !important; }
 .inv-tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
 .inv-tab-btn.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; box-shadow: none !important; }
@@ -381,7 +381,7 @@ body,html{overflow-x:hidden;max-width:100%;}
 .inv-card{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;overflow:visible;}
 .inv-card-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e9ecef;flex-wrap:wrap;gap:8px;}
 .inv-card-title{font-size:1rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;}
-.inv-card-body{padding:16px 20px;}
+.inv-card-body{padding:12px 14px;}
 /* Ensure dropdowns open downward */
 .inv-filter-bar select { position: relative; }
 .stock-page { min-height: 100vh; }
@@ -401,18 +401,18 @@ body,html{overflow-x:hidden;max-width:100%;}
 .mv-none{color:#94a3b8;}
 
 /* ── Table ── */
-.table-wrap{overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch;}
-.table-wrap::-webkit-scrollbar{height:6px;}
-.table-wrap::-webkit-scrollbar-track{background:#f1f5f9;border-radius:4px;}
-.table-wrap::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px;}
-.table-wrap::-webkit-scrollbar-thumb:hover{background:#94a3b8;}
-#merchTable{width:100%!important;border-collapse:collapse;table-layout:auto !important;}
-#merchTable thead th{background:#002F70;color:#fff;padding:10px 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.2px;vertical-align:middle;box-sizing:border-box;line-height:1.3;text-align:left;white-space:nowrap;}
-#merchTable tbody td{padding:10px 8px;font-size:13px;border-bottom:1px solid #f1f5f9;vertical-align:middle;box-sizing:border-box;line-height:1.5;white-space:normal;word-break:break-word;overflow:visible;}
-#merchTable tbody tr:hover td{background:#f8faff;}
+.table-wrap{overflow-x:hidden!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important;}
+#merchTable, .cust-table{width:100%!important;max-width:100%!important;border-collapse:collapse!important;table-layout:fixed!important;box-sizing:border-box!important;}
+#merchTable thead th{background:#002F70!important;color:#fff!important;padding:10px 4px!important;font-size:11.5px!important;font-weight:800!important;text-transform:uppercase!important;letter-spacing:.2px!important;vertical-align:middle!important;box-sizing:border-box!important;line-height:1.25!important;text-align:left;white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important;}
+#merchTable tbody td{padding:8px 4px!important;font-size:12.5px!important;border-bottom:1px solid #f1f5f9!important;vertical-align:middle!important;box-sizing:border-box!important;line-height:1.35!important;white-space:normal;word-break:break-word;overflow:hidden;}
+#merchTable tbody tr:hover td{background:#f8faff!important;}
+#merchTable td code{font-family:inherit!important;}
+.cust-table thead th{background:#002F70!important;color:#fff!important;padding:12px 14px!important;font-size:13.5px!important;font-weight:800!important;text-transform:uppercase!important;letter-spacing:.3px!important;box-sizing:border-box!important;}
+.cust-table tbody td{padding:12px 14px!important;font-size:14px!important;box-sizing:border-box!important;vertical-align:middle!important;}
 @media(max-width:768px){
+  .table-wrap{overflow-x:auto!important;-webkit-overflow-scrolling:touch;}
   .inv-card-body{padding:8px;}
-  #merchTable thead th, #merchTable tbody td{font-size:11px;padding:8px 5px;}
+  #merchTable thead th, #merchTable tbody td{font-size:11px!important;padding:6px 3px!important;}
 }
 .mi-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:13000;align-items:center;justify-content:center;padding:24px 16px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 .mi-overlay.open{display:flex !important;}
@@ -734,30 +734,30 @@ body.modal-open .main {
         <div class="table-wrap">
             <table id="merchTable">
                 <colgroup>
-                    <col>  <!-- Batch ID -->
-                    <col>  <!-- SKU -->
-                    <col>  <!-- Product Name -->
-                    <col>  <!-- Category -->
-                    <col>  <!-- UOM -->
-                    <col>  <!-- Expiration Date -->
-                    <col>  <!-- Initial Stock -->
-                    <col>  <!-- Current Stock -->
-                    <col>  <!-- Reorder Level -->
-                    <col>  <!-- Status -->
-                    <col>  <!-- Last Updated -->
-                    <col>  <!-- Actions -->
+                    <col style="width: 8%;">   <!-- Batch ID -->
+                    <col style="width: 7.5%;"> <!-- SKU -->
+                    <col style="width: 19%;">  <!-- Product Name -->
+                    <col style="width: 9%;">   <!-- Category -->
+                    <col style="width: 5.5%;"> <!-- UOM -->
+                    <col style="width: 7.5%;"> <!-- Expiration Date -->
+                    <col style="width: 5.5%;"> <!-- Initial Stock -->
+                    <col style="width: 8.5%;"> <!-- Current Stock -->
+                    <col style="width: 6%;">   <!-- Reorder Level -->
+                    <col style="width: 8%;">   <!-- Status -->
+                    <col style="width: 7.5%;"> <!-- Last Updated -->
+                    <col style="width: 8%;">   <!-- Actions -->
                 </colgroup>
                 <thead>
                     <tr>
-                        <th>Batch ID</th>
-                        <th>SKU</th>
-                        <th>Product Name</th>
+                        <th style="text-align:left;padding-left:6px;">Batch ID</th>
+                        <th style="text-align:left;">SKU</th>
+                        <th style="text-align:left;">Product Name</th>
                         <th style="text-align:center;">Category</th>
                         <th style="text-align:center;">UOM</th>
                         <th style="text-align:center;">Exp. Date</th>
                         <th style="text-align:right;">Initial</th>
-                        <th style="text-align:center;">Current Stock</th>
-                        <th style="text-align:right;">Reorder</th>
+                        <th style="text-align:center;">Current</th>
+                        <th style="text-align:right;padding-right:6px;">Reorder</th>
                         <th style="text-align:center;">Status</th>
                         <th style="text-align:center;">Updated</th>
                         <th style="text-align:center;">Actions</th>
@@ -774,7 +774,7 @@ body.modal-open .main {
                     ksort($grouped);
                     foreach ($grouped as $cat_label => $items):
                     ?>
-                    <tr class="cat-header"><td colspan="12" style="font-weight:700; background:#e9ecef!important; color:#495057!important; text-transform:uppercase; font-size:11px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px; text-align:center;"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                    <tr class="cat-header"><td colspan="12" style="font-weight:800; background:#e2e8f0!important; color:#002F70!important; text-transform:uppercase; font-size:12px; letter-spacing:.5px; border-bottom:2px solid #cbd5e1; padding:7px 12px; text-align:center;"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                     <?php foreach ($items as $it):
                         $ts = $it['last_updated'] ? (new DateTime($it['last_updated']))->format('M d, Y') : '-';
                         $has_variance = ($it['variance'] !== null && (float)$it['variance'] != 0);
@@ -815,30 +815,31 @@ body.modal-open .main {
                         data-stock="<?php echo $it['stock']; ?>"
                         data-updated="<?php echo htmlspecialchars($it['last_updated']); ?>"
                         data-idx="<?php echo htmlspecialchars(json_encode($it)); ?>">
-                        <td><code style="font-size:12px;font-weight:700;color:#002F70;word-break:break-all;"><?php echo htmlspecialchars($batch_id); ?></code></td>
-                        <td><code style="font-size:12px;font-weight:600;word-break:break-all;"><?php echo htmlspecialchars($it['sku']); ?></code></td>
-                        <td style="white-space:normal;line-height:1.4;word-break:break-word;"><strong style="font-size:13px;color:#0f172a;"><?php echo htmlspecialchars($it['name']); ?></strong></td>
-                        <td style="text-align:center;font-size:12px;line-height:1.4;word-break:break-word;color:#475569;"><?php echo htmlspecialchars($it['category']); ?></td>
-                        <td style="text-align:center;font-size:12px;font-weight:600;color:#475569;word-break:break-word;"><?php echo htmlspecialchars($it['unit']); ?></td>
-                        <td style="text-align:center;font-size:12px;font-weight:600;word-break:break-word;color:<?php echo $exp_date !== 'N/A' ? '#0f172a' : '#94a3b8'; ?>;"><?php echo htmlspecialchars($exp_date); ?></td>
-                        <td style="text-align:right;font-size:13px;font-weight:700;color:#0f172a;"><?php echo number_format($initial_qty); ?></td>
-                        <td style="text-align:center;">
-                            <div class="fill-bar-wrap" style="height:6px;margin-bottom:4px;">
+                        <td style="padding:8px 4px 8px 6px;"><div style="font-size:12px;font-weight:800;color:#002F70;line-height:1.25;word-break:break-word;letter-spacing:-0.2px;"><?php echo str_replace('-', '-<wbr>', htmlspecialchars($batch_id)); ?></div></td>
+                        <td style="padding:8px 4px;"><div style="font-size:12px;font-weight:700;color:#334155;line-height:1.25;word-break:break-word;letter-spacing:-0.2px;"><?php echo str_replace('-', '-<wbr>', htmlspecialchars($it['sku'])); ?></div></td>
+                        <td style="white-space:normal;line-height:1.35;word-break:break-word;padding:8px 6px;"><strong style="font-size:13.5px;font-weight:800;color:#0f172a;display:block;"><?php echo htmlspecialchars($it['name']); ?></strong></td>
+                        <td style="text-align:center;font-size:12.5px;font-weight:600;line-height:1.3;word-break:break-word;color:#334155;padding:8px 4px;"><?php echo htmlspecialchars($it['category']); ?></td>
+                        <td style="text-align:center;font-size:12.5px;font-weight:700;line-height:1.25;color:#334155;word-break:break-word;padding:8px 3px;"><?php echo htmlspecialchars($it['unit']); ?></td>
+                        <td style="text-align:center;font-size:12px;font-weight:700;line-height:1.25;word-break:break-word;color:<?php echo $exp_date !== 'N/A' ? '#0f172a' : '#94a3b8'; ?>;padding:8px 3px;"><?php echo str_replace(', ', ',<br>', htmlspecialchars($exp_date)); ?></td>
+                        <td style="text-align:right;font-size:13.5px;font-weight:800;color:#0f172a;padding:8px 5px;"><?php echo number_format($initial_qty); ?></td>
+                        <td style="text-align:center;padding:8px 4px;">
+                            <div class="fill-bar-wrap" style="height:5px;margin-bottom:3px;">
                                 <div class="fill-bar-inner" style="width:<?php echo min(100, round($it['fill_pct'])); ?>%;background:<?php echo $display_color; ?>;"></div>
                             </div>
-                            <span style="font-size:12px;font-weight:700;color:#334155;word-break:break-word;"><?php echo number_format($it['stock']); ?> <?php echo htmlspecialchars($it['unit']); ?></span>
+                            <div style="font-size:13.5px;font-weight:800;color:#0f172a;line-height:1.15;"><?php echo number_format($it['stock']); ?></div>
+                            <div style="font-size:11px;font-weight:600;color:#64748b;line-height:1.1;"><?php echo htmlspecialchars($it['unit']); ?></div>
                         </td>
-                        <td style="text-align:right;font-size:13px;font-weight:600;color:#ea580c;"><?php echo number_format($it['reorder'] ?? 24); ?></td>
-                        <td style="text-align:center;">
-                            <span class="status-badge" style="background:<?php echo $display_color; ?>20;color:<?php echo $display_color; ?>;border:1px solid <?php echo $display_color; ?>40;font-size:11px;padding:4px 8px;font-weight:700;white-space:normal;word-break:break-word;display:inline-block;">
+                        <td style="text-align:right;font-size:13.5px;font-weight:800;color:#ea580c;padding:8px 6px;"><?php echo number_format($it['reorder'] ?? 24); ?></td>
+                        <td style="text-align:center;padding:8px 3px;">
+                            <span class="status-badge" style="background:<?php echo $display_color; ?>20;color:<?php echo $display_color; ?>;border:1.5px solid <?php echo $display_color; ?>50;font-size:11px;padding:3px 6px;font-weight:800;white-space:normal;line-height:1.2;border-radius:6px;display:inline-block;word-break:break-word;">
                                 <?php echo htmlspecialchars($display_status); ?>
                             </span>
                         </td>
-                        <td style="text-align:center;font-size:12px;color:#64748b;word-break:break-word;"><?php echo $ts; ?></td>
-                        <td style="padding:8px 6px;text-align:center;">
-                            <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
-                                <button type="button" class="txn-btn primary sm" onclick='viewDetails(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)' style="width:100%;padding:5px 8px;font-size:12px;height:26px;min-height:26px;gap:4px;font-weight:600;border-radius:4px;" title="View Details"><i class="fas fa-eye" style="font-size:11px;"></i> View</button>
-                                <button type="button" class="txn-btn warning sm" onclick='openAdjustmentModal(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)' style="width:100%;background:#16a34a!important;border-color:#16a34a!important;color:#fff!important;padding:5px 8px;font-size:12px;height:26px;min-height:26px;gap:4px;font-weight:600;border-radius:4px;" title="Adjust Stock"><i class="fas fa-edit" style="font-size:11px;"></i> Adjust</button>
+                        <td style="text-align:center;font-size:12px;font-weight:600;color:#64748b;padding:8px 3px;line-height:1.25;word-break:break-word;"><?php echo str_replace(', ', ',<br>', htmlspecialchars($ts)); ?></td>
+                        <td style="padding:6px 3px;text-align:center;">
+                            <div style="display:flex;flex-direction:column;gap:3px;align-items:center;width:100%;">
+                                <button type="button" class="txn-btn primary sm" onclick='viewDetails(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)' style="width:100%;padding:3px 4px;font-size:11.5px;height:24px;min-height:24px;gap:3px;font-weight:700;border-radius:4px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;" title="View Details"><i class="fas fa-eye" style="font-size:10px;"></i> View</button>
+                                <button type="button" class="txn-btn warning sm" onclick='openAdjustmentModal(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)' style="width:100%;background:#16a34a!important;border-color:#16a34a!important;color:#fff!important;padding:3px 4px;font-size:11.5px;height:24px;min-height:24px;gap:3px;font-weight:700;border-radius:4px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;" title="Adjust Stock"><i class="fas fa-edit" style="font-size:10px;"></i> Adjust</button>
                             </div>
                         </td>
                     </tr>
@@ -859,13 +860,19 @@ body.modal-open .main {
     </div>
     <div class="inv-card-body">
         <div class="table-wrap">
-            <table class="cust-table" style="width:100%;">
+            <table class="cust-table" style="width:100%;table-layout:fixed;">
+                <colgroup>
+                    <col style="width: 44%;">
+                    <col style="width: 19%;">
+                    <col style="width: 18%;">
+                    <col style="width: 19%;">
+                </colgroup>
                 <thead>
                     <tr style="background:#002F70; color:#fff;">
-                        <th style="padding:10px 12px;">Product</th>
-                        <th style="padding:10px 12px; text-align:center;">Current Stock</th>
-                        <th style="padding:10px 12px; text-align:center;">Reorder Level</th>
-                        <th style="padding:10px 12px; text-align:center;">Status</th>
+                        <th style="padding:12px 14px;">Product</th>
+                        <th style="padding:12px 14px; text-align:center;">Current Stock</th>
+                        <th style="padding:12px 14px; text-align:center;">Reorder Level</th>
+                        <th style="padding:12px 14px; text-align:center;">Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -875,24 +882,24 @@ body.modal-open .main {
                 });
                 if (empty($alert_items)):
                 ?>
-                    <tr><td colspan="4" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-check-circle" style="color:#16a34a; font-size:1.8em; display:block; margin-bottom:8px;"></i> No stock alerts found. All items are currently at optimal stock levels.</td></tr>
+                    <tr><td colspan="4" style="text-align:center; padding:36px; font-size:15px; color:#64748b;"><i class="fas fa-check-circle" style="color:#16a34a; font-size:2.2em; display:block; margin-bottom:10px;"></i> <strong>No stock alerts found.</strong> All items are currently at optimal stock levels.</td></tr>
                 <?php else: ?>
                     <?php foreach ($alert_items as $ait):
                         $ait_status = ($ait['status_key'] === 'out') ? 'Out of Stock' : (($ait['status_key'] === 'low' || $ait['status_key'] === 'critical') ? 'Low Stock' : 'Available');
                     ?>
-                    <tr style="border-bottom:1px solid #f1f5f9;">
-                        <td style="padding:10px 12px;">
-                            <strong><?php echo htmlspecialchars($ait['name']); ?></strong>
-                            <div style="font-size:11px; color:#64748b;">SKU: <?php echo htmlspecialchars($ait['sku']); ?> &middot; <?php echo htmlspecialchars($ait['category']); ?></div>
+                    <tr style="border-bottom:1px solid #e2e8f0;">
+                        <td style="padding:12px 14px;">
+                            <div style="font-size:15px; font-weight:800; color:#0f172a; line-height:1.35;"><?php echo htmlspecialchars($ait['name']); ?></div>
+                            <div style="font-size:13px; font-weight:600; color:#475569; margin-top:4px;"><span style="color:#002F70; font-weight:700;">SKU:</span> <?php echo htmlspecialchars($ait['sku']); ?> &middot; <span style="color:#002F70; font-weight:700;">Category:</span> <?php echo htmlspecialchars($ait['category']); ?></div>
                         </td>
-                        <td style="padding:10px 12px; text-align:center; font-weight:700; font-size:13px; color:#0f172a;">
-                            <?php echo number_format($ait['stock']); ?> <?php echo htmlspecialchars($ait['unit']); ?>
+                        <td style="padding:12px 14px; text-align:center;">
+                            <div style="font-size:16px; font-weight:800; color:#0f172a;"><?php echo number_format($ait['stock']); ?> <span style="font-size:13px; font-weight:600; color:#475569;"><?php echo htmlspecialchars($ait['unit']); ?></span></div>
                         </td>
-                        <td style="padding:10px 12px; text-align:center; font-weight:700; color:#dc2626;">
-                            <?php echo number_format($ait['reorder']); ?> <?php echo htmlspecialchars($ait['unit']); ?>
+                        <td style="padding:12px 14px; text-align:center;">
+                            <div style="font-size:16px; font-weight:800; color:#dc2626;"><?php echo number_format($ait['reorder']); ?> <span style="font-size:13px; font-weight:600; color:#475569;"><?php echo htmlspecialchars($ait['unit']); ?></span></div>
                         </td>
-                        <td style="padding:10px 12px; text-align:center;">
-                            <span class="status-badge" style="background:<?php echo $ait['color']; ?>20; color:<?php echo $ait['color']; ?>; border:1px solid <?php echo $ait['color']; ?>40;">
+                        <td style="padding:12px 14px; text-align:center;">
+                            <span class="status-badge" style="background:<?php echo $ait['color']; ?>25; color:<?php echo $ait['color']; ?>; border:1.5px solid <?php echo $ait['color']; ?>60; font-size:13px; font-weight:800; padding:6px 14px; border-radius:8px; text-transform:uppercase; letter-spacing:0.3px; display:inline-block;">
                                 <?php echo htmlspecialchars($ait_status); ?>
                             </span>
                         </td>
@@ -908,35 +915,43 @@ body.modal-open .main {
 <!-- ══ TAB: STOCK IN (READ ONLY) ══ -->
 <div class="inv-card" id="section-stockin" style="display:none;">
     <div class="inv-card-head">
-        <div class="inv-card-title"><i class="fas fa-arrow-down"></i> Approved Stock-In Records (Read Only)</div>
+        <div class="inv-card-title" style="font-size:1.15rem;font-weight:800;color:#002F70;"><i class="fas fa-arrow-down" style="color:#16a34a;"></i> Approved Stock-In Records (Read Only)</div>
     </div>
     <div class="inv-card-body">
         <div class="table-wrap">
-            <table class="cust-table" style="width:100%;">
+            <table class="cust-table" style="width:100%;table-layout:fixed;">
+                <colgroup>
+                    <col style="width: 15%;">
+                    <col style="width: 33%;">
+                    <col style="width: 13%;">
+                    <col style="width: 13%;">
+                    <col style="width: 13%;">
+                    <col style="width: 13%;">
+                </colgroup>
                 <thead>
                     <tr style="background:#002F70; color:#fff;">
-                        <th style="padding:10px 12px;">Stock-In No.</th>
-                        <th style="padding:10px 12px;">Product</th>
-                        <th style="padding:10px 12px; text-align:center;">Qty Received</th>
-                        <th style="padding:10px 12px; text-align:center;">Batch</th>
-                        <th style="padding:10px 12px; text-align:center;">Date</th>
-                        <th style="padding:10px 12px; text-align:center;">Received By</th>
+                        <th style="padding:12px 14px;">Stock-In No.</th>
+                        <th style="padding:12px 14px;">Product</th>
+                        <th style="padding:12px 14px; text-align:center;">Qty Received</th>
+                        <th style="padding:12px 14px; text-align:center;">Batch</th>
+                        <th style="padding:12px 14px; text-align:center;">Date</th>
+                        <th style="padding:12px 14px; text-align:center;">Received By</th>
                     </tr>
                 </thead>
                 <tbody>
                 <?php if (empty($stock_in_list)): ?>
-                    <tr><td colspan="6" style="text-align:center; padding:32px; color:#64748b;"><i class="fas fa-info-circle" style="font-size:1.8em; display:block; margin-bottom:8px;"></i> No approved stock-in records found.</td></tr>
+                    <tr><td colspan="6" style="text-align:center; padding:36px; font-size:15px; color:#64748b;"><i class="fas fa-info-circle" style="font-size:2.2em; display:block; margin-bottom:10px;"></i> <strong>No approved stock-in records found.</strong></td></tr>
                 <?php else: ?>
                     <?php foreach ($stock_in_list as $sin):
                         $sdate = !empty($sin['date_received']) ? (new DateTime($sin['date_received']))->format('M d, Y h:i A') : '—';
                     ?>
-                    <tr style="border-bottom:1px solid #f1f5f9;">
-                        <td style="padding:10px 12px;"><code style="font-size:11px; font-weight:700; color:#002F70;"><?php echo htmlspecialchars($sin['stock_in_no']); ?></code></td>
-                        <td style="padding:10px 12px;"><strong><?php echo htmlspecialchars($sin['product_name']); ?></strong></td>
-                        <td style="padding:10px 12px; text-align:center; font-weight:700; color:#16a34a; font-size:13px;">+<?php echo number_format($sin['qty_received']); ?></td>
-                        <td style="padding:10px 12px; text-align:center;"><span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600;"><?php echo htmlspecialchars($sin['batch_no']); ?></span></td>
-                        <td style="padding:10px 12px; text-align:center; font-size:11px; color:#64748b;"><?php echo $sdate; ?></td>
-                        <td style="padding:10px 12px; text-align:center; font-weight:600; color:#334155;"><?php echo htmlspecialchars($sin['received_by']); ?></td>
+                    <tr style="border-bottom:1px solid #e2e8f0;">
+                        <td style="padding:12px 14px;"><code style="font-size:13px; font-weight:800; color:#002F70;"><?php echo htmlspecialchars($sin['stock_in_no']); ?></code></td>
+                        <td style="padding:12px 14px;"><strong style="font-size:14.5px; font-weight:800; color:#0f172a; line-height:1.35; display:block;"><?php echo htmlspecialchars($sin['product_name']); ?></strong></td>
+                        <td style="padding:12px 14px; text-align:center; font-weight:800; color:#16a34a; font-size:15px;">+<?php echo number_format($sin['qty_received']); ?></td>
+                        <td style="padding:12px 14px; text-align:center;"><span style="background:#f1f5f9; color:#334155; padding:4px 10px; border-radius:6px; font-size:12.5px; font-weight:700; border:1px solid #cbd5e1;"><?php echo htmlspecialchars($sin['batch_no']); ?></span></td>
+                        <td style="padding:12px 14px; text-align:center; font-size:12.5px; font-weight:600; color:#475569;"><?php echo $sdate; ?></td>
+                        <td style="padding:12px 14px; text-align:center; font-size:13px; font-weight:700; color:#1e293b;"><?php echo htmlspecialchars($sin['received_by']); ?></td>
                     </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -2188,11 +2203,11 @@ function submitAdjustmentForm(e) {
             var doc = parser.parseFromString(html, 'text/html');
             
             // Update table body
-            var newTbody = doc.querySelector('#merchandiseTable tbody') || doc.querySelector('table tbody');
-            var curTbody = document.querySelector('#merchandiseTable tbody') || document.querySelector('table tbody');
+            var newTbody = doc.querySelector('#merchTableBody') || doc.querySelector('#merchandiseTable tbody') || doc.querySelector('table tbody');
+            var curTbody = document.querySelector('#merchTableBody') || document.querySelector('#merchandiseTable tbody') || document.querySelector('table tbody');
             if (newTbody && curTbody) {
                 curTbody.innerHTML = newTbody.innerHTML;
-                if (typeof filterMerchandiseTable === 'function') filterMerchandiseTable();
+                if (typeof applyFilters === 'function') applyFilters();
             }
             
             // Update top KPI cards if present

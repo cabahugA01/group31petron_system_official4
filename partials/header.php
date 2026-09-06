@@ -3157,13 +3157,28 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
     overflow-x: auto !important;
     width: 100% !important;
 }
-table {
-    width: 100% !important;
-    min-width: 1050px !important;
-    table-layout: auto !important;
+@media screen {
+    table:not(.report-table):not(.no-min-width):not(.print-table) {
+        width: 100% !important;
+        min-width: 1050px !important;
+        table-layout: auto !important;
+    }
+    table:not(.report-table):not(.no-min-width):not(.print-table) th,
+    table:not(.report-table):not(.no-min-width):not(.print-table) td {
+        white-space: nowrap !important;
+    }
 }
-table th, table td {
-    white-space: nowrap !important;
+@media print {
+    table {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        table-layout: fixed !important;
+    }
+    table th, table td {
+        white-space: normal !important;
+        word-break: break-word !important;
+    }
 }
 </style>
 
