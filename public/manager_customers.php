@@ -34,20 +34,26 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-/* ABSOLUTE NO TEXT OVERLAPPING RULE */
+/* ABSOLUTE NO TEXT OVERLAPPING RULE — main page sections only */
 .cust-section, .table-wrap, .table-responsive, .table-card, .card {
     overflow-x: auto !important;
     width: 100% !important;
 }
 
-table.cust-table, #mgrMerchTable, table.pricing-table, table.tbl-requests, table.table {
+/* min-width ONLY for main page tables — NOT inside modal */
+.cust-section table.cust-table,
+.cust-section #mgrMerchTable,
+.cust-section table.pricing-table,
+.cust-section table.tbl-requests,
+.cust-section table.table {
     table-layout: auto !important;
     width: 100% !important;
     min-width: 1050px !important;
     border-collapse: collapse !important;
 }
 
-table th {
+/* th white-space nowrap — main page only */
+.cust-section table th {
     padding: 9px 8px !important;
     font-size: 12.5px !important;
     font-weight: 800 !important;
@@ -56,7 +62,8 @@ table th {
     white-space: nowrap !important;
 }
 
-table td {
+/* td — main page only */
+.cust-section table td {
     padding: 9px 8px !important;
     font-size: 13.5px !important;
     line-height: 1.3 !important;
@@ -64,25 +71,29 @@ table td {
     overflow-wrap: break-word !important;
 }
 
-/* Customer ID Monospace Code */
-.cust-table td:first-child, .cust-table td code {
+/* Customer ID Monospace Code — main page only */
+.cust-section .cust-table td:first-child, .cust-section .cust-table td code {
     font-size: 12.5px !important;
     font-weight: 800 !important;
     font-family: monospace !important;
     white-space: nowrap !important;
 }
 
-/* Customer Name High Legibility */
-.cust-table td:nth-child(2) strong {
+/* Customer Name High Legibility — main page only */
+.cust-section .cust-table td:nth-child(2) strong {
     font-size: 14px !important;
     font-weight: 800 !important;
     color: #002F6C !important;
     white-space: nowrap !important;
 }
 
-/* Vehicles, Amounts, & Dates Never Overlap */
-td:nth-child(3), td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9), td:nth-child(10),
-th:nth-child(3), th:nth-child(4), th:nth-child(5), th:nth-child(6), th:nth-child(7), th:nth-child(8), th:nth-child(9), th:nth-child(10) {
+/* Vehicles, Amounts & Dates Never Overlap — main page only */
+.cust-section td:nth-child(3), .cust-section td:nth-child(4), .cust-section td:nth-child(5),
+.cust-section td:nth-child(6), .cust-section td:nth-child(7), .cust-section td:nth-child(8),
+.cust-section td:nth-child(9), .cust-section td:nth-child(10),
+.cust-section th:nth-child(3), .cust-section th:nth-child(4), .cust-section th:nth-child(5),
+.cust-section th:nth-child(6), .cust-section th:nth-child(7), .cust-section th:nth-child(8),
+.cust-section th:nth-child(9), .cust-section th:nth-child(10) {
     white-space: nowrap !important;
 }
 
@@ -202,21 +213,235 @@ th:nth-child(3), th:nth-child(4), th:nth-child(5), th:nth-child(6), th:nth-child
 .pill.fleet { background:#faf5ff; color:#6b21a8; }
 .pill.corporate { background:#f0f9ff; color:#0369a1; }
 
-/* Modals - Framed between Top Header and Bottom Footer, Centered in Main Layout */
-.modal-backdrop { display:none; position:fixed; top:0; right:0; bottom:0; left:250px; background:rgba(15,23,42,.6); z-index:99999; align-items:center; justify-content:center; padding-top:70px; padding-bottom:50px; overflow-x:auto !important; }
-.modal-backdrop.open { display:flex; }
-@media (max-width: 991px) {
-    .modal-backdrop { left:0 !important; }
+/* ══════════════════════════════════════════════════
+   MODAL — ZERO HORIZONTAL SCROLL, COMPRESSED DATA
+   ══════════════════════════════════════════════════ */
+.modal-backdrop {
+    display: none;
+    position: fixed !important;
+    top: 70px !important;
+    bottom: 40px !important;
+    left: 250px !important;
+    right: 0 !important;
+    background: rgba(15, 23, 42, 0.65) !important;
+    z-index: 11000 !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 16px 20px !important;
+    overflow: hidden !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
 }
-.cust-modal { width:min(920px, calc(100% - 32px)); max-height:calc(100vh - 130px); background:#fff; border-radius:10px; border:1px solid #e2e8f0; box-shadow:0 20px 50px rgba(0,0,0,.25); display:flex; flex-direction:column; overflow-x:auto !important; margin:auto !important; }
-.cust-modal.sm { width:min(480px, 94vw); }
-.cust-modal > form { display:flex; flex-direction:column; min-height:0; flex:1 1 auto; }
-.modal-head { padding:14px 20px; border-bottom:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:space-between; align-items:center; flex:0 0 auto; }
-.modal-head h3 { margin:0; color:#002f70; font-size:17px; font-weight:800; display:flex; align-items:center; gap:8px; }
-.modal-close { border:0; background:transparent; font-size:22px; line-height:1; color:#64748b; cursor:pointer; }
-.modal-body { padding:18px 22px; overflow-y:auto; flex:1 1 auto; }
-.modal-actions { padding:12px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:flex-end; gap:8px; flex:0 0 auto; }
-body.modal-open { overflow-x:auto !important; }
+.modal-backdrop.open { display: flex !important; }
+
+body.sidebar-collapsed .modal-backdrop {
+    left: 70px !important;
+}
+
+@media (max-width: 991px) {
+    .modal-backdrop {
+        left: 0 !important;
+        top: 60px !important;
+        bottom: 0 !important;
+        padding: 12px 10px !important;
+    }
+}
+
+.cust-modal {
+    width: min(1020px, 100%) !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    background: #fff;
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.35);
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    overflow-x: hidden !important;
+    margin: auto;
+    box-sizing: border-box !important;
+}
+.cust-modal.sm { width: min(500px, 100%) !important; }
+.cust-modal > form { display: flex !important; flex-direction: column !important; min-height: 0 !important; flex: 1 1 auto !important; overflow: hidden !important; box-sizing: border-box !important; width: 100% !important; max-width: 100% !important; }
+
+.modal-head { padding: 14px 20px !important; border-bottom: 1px solid #e2e8f0 !important; background: #f8fafc !important; display: flex !important; justify-content: space-between !important; align-items: center !important; flex: 0 0 auto !important; flex-shrink: 0 !important; box-sizing: border-box !important; min-width: 0 !important; width: 100% !important; min-height: 52px !important; }
+.modal-head h3 { margin: 0 !important; color: #002f70 !important; font-size: 16px !important; font-weight: 800 !important; display: flex !important; align-items: center !important; gap: 8px !important; min-width: 0 !important; white-space: nowrap !important; }
+.modal-close { border: 0; background: transparent; font-size: 22px; line-height: 1; color: #64748b; cursor: pointer; flex-shrink: 0; }
+
+/* Tabs Bar Container - MUST NEVER SHRINK OR CLIP VERTICALLY */
+.view-tabs-container {
+    padding: 12px 18px 0 18px !important;
+    background: #ffffff !important;
+    flex: 0 0 auto !important;
+    flex-shrink: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    min-height: 55px !important;
+}
+
+.modal-body,
+.cust-modal .modal-body {
+    padding: 14px 18px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+}
+.modal-actions { padding: 12px 20px !important; border-top: 1px solid #e2e8f0 !important; background: #f8fafc !important; display: flex !important; justify-content: flex-end !important; gap: 8px !important; flex: 0 0 auto !important; flex-shrink: 0 !important; box-sizing: border-box !important; width: 100% !important; }
+body.modal-open { overflow: hidden !important; overflow-x: hidden !important; }
+
+/* ── STRICT: ZERO HORIZONTAL SCROLLBAR ON ANY ELEMENT IN MODAL ── */
+.cust-modal,
+.cust-modal * {
+    box-sizing: border-box !important;
+    max-width: 100% !important;
+}
+.cust-modal .modal-body,
+.cust-modal .view-box,
+.cust-modal .view-panel,
+.cust-modal .table-container {
+    overflow-x: hidden !important;
+}
+
+/* ── COMPRESSED FIXED TABLES INSIDE MODAL — ALWAYS FIT 100% ── */
+.cust-modal table,
+.cust-modal table.cust-table,
+.cust-modal table.table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    border-collapse: collapse !important;
+    margin-top: 6px !important;
+}
+.cust-modal table th {
+    background: #002f70 !important;
+    color: #fff !important;
+    padding: 7px 6px !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.2px !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
+    vertical-align: middle !important;
+    line-height: 1.2 !important;
+}
+.cust-modal table td {
+    padding: 6px 6px !important;
+    font-size: 11.5px !important;
+    line-height: 1.3 !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
+    vertical-align: middle !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+}
+.cust-modal table td strong,
+.cust-modal table td code,
+.cust-modal table td span {
+    word-break: break-all !important;
+    overflow-wrap: anywhere !important;
+}
+.cust-modal table .pill {
+    padding: 2px 6px !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    white-space: nowrap !important;
+    display: inline-block !important;
+    line-height: 1.2 !important;
+}
+.cust-modal table .btn-plain {
+    height: 24px !important;
+    padding: 0 6px !important;
+    font-size: 10px !important;
+    white-space: nowrap !important;
+}
+
+/* ── VIEW GRID: two columns on desktop, single on narrow ── */
+.cust-modal .view-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+    width: 100% !important;
+}
+@media (max-width: 860px) {
+    .cust-modal .view-grid { grid-template-columns: 1fr !important; }
+}
+
+/* ── VIEW BOXES: compact padding ── */
+.cust-modal .view-box {
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    padding: 10px 12px !important;
+    background: #fff !important;
+    overflow: hidden !important;
+    min-width: 0 !important;
+    width: 100% !important;
+}
+.cust-modal .view-box h4 {
+    margin: 0 0 6px !important;
+    color: #002f70 !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    padding-bottom: 4px !important;
+}
+
+/* ── LOYALTY GRID: 4 columns wrapping cleanly ── */
+.cust-modal .loyalty-info-grid {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    width: 100% !important;
+}
+.cust-modal .loyalty-info-grid > div {
+    flex: 1 1 120px !important;
+    min-width: 90px !important;
+    padding: 6px 10px !important;
+}
+
+/* ── AR CARDS: flex-wrap, compressed ── */
+.cust-modal .ar-cards {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    margin-bottom: 12px !important;
+    width: 100% !important;
+}
+.cust-modal .ar-card {
+    flex: 1 1 100px !important;
+    min-width: 80px !important;
+    padding: 8px 10px !important;
+}
+
+/* ── AR TOTALS BAR: wrap cleanly ── */
+.cust-modal .ar-totals-bar {
+    flex-wrap: wrap !important;
+    padding: 8px 14px !important;
+    gap: 8px !important;
+}
+
+/* ── FORM GRID inside modal ── */
+.cust-modal .form-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+    min-width: 0 !important;
+    width: 100% !important;
+}
+@media (max-width: 600px) {
+    .cust-modal .form-grid { grid-template-columns: 1fr !important; }
+}
+
 
 .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .form-title { grid-column:1 / -1; color:#002f70; font-weight:800; font-size:12px; text-transform:uppercase; border-bottom:1px solid #e2e8f0; padding-bottom:4px; margin-top:10px; margin-bottom:2px; }
@@ -296,17 +521,74 @@ button.remove-v-btn i {
 }
 
 /* ── AR HISTORY STYLES ─────────────────────────────────────── */
-.view-tabs { display: flex !important; flex-wrap: wrap !important; margin-bottom: 0 !important; border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; border-bottom: 3px solid #00264D !important; gap: 0 !important; background: transparent !important; padding: 0 !important; width: 100% !important; }
-.view-tab, button.view-tab { flex: 1 !important; min-width: 120px !important; padding: 11px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-radius: 0 !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; text-align: center !important; cursor: pointer !important; margin-bottom: 0 !important; box-shadow: none !important; outline: none !important; }
-.view-tab:last-child, button.view-tab:last-child { border-right: none !important; }
-.view-tab:hover, button.view-tab:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
-.view-tab.active, button.view-tab.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; box-shadow: none !important; }
+.view-tabs {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    margin-bottom: 0 !important;
+    border: 1px solid #cbd5e1 !important;
+    border-bottom: none !important;
+    border-radius: 6px 6px 0 0 !important;
+    overflow: hidden !important;
+    background: #f1f5f9 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    box-sizing: border-box !important;
+}
+.view-tab, button.view-tab {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    height: 42px !important;
+    line-height: 42px !important;
+    padding: 0 12px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    color: #475569 !important;
+    background: #f8fafc !important;
+    border: none !important;
+    border-right: 1px solid #cbd5e1 !important;
+    border-radius: 0 !important;
+    text-decoration: none !important;
+    transition: all 0.15s ease !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    text-align: center !important;
+    cursor: pointer !important;
+    margin-bottom: 0 !important;
+    box-shadow: none !important;
+    outline: none !important;
+    white-space: nowrap !important;
+    box-sizing: border-box !important;
+}
+.view-tab:last-child, button.view-tab:last-child {
+    border-right: none !important;
+}
+.view-tab:hover, button.view-tab:hover {
+    background: #e2e8f0 !important;
+    color: #00264D !important;
+}
+.view-tab.active, button.view-tab.active {
+    background: #00264D !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    box-shadow: none !important;
+}
+.view-tab.active i, button.view-tab.active i {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+}
 .view-panel { display:none; }
 .view-panel.active { display:block; }
 
 /* AR Summary Cards */
-.ar-cards { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:16px; }
-.ar-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; }
+.ar-cards { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
+.ar-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; flex:1 1 120px; min-width:100px; box-sizing:border-box; }
 .ar-card .ac-label { font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:.4px; margin-bottom:4px; }
 .ar-card .ac-value { font-size:18px; font-weight:900; color:#002f70; line-height:1.1; }
 .ar-card.danger  .ac-value { color:#dc2626; }
@@ -392,7 +674,7 @@ button.remove-v-btn i {
                 <i class="fas fa-inbox"></i> Pending Customer Requests
             </button>
             <button class="cust-tab" id="tab-archived" onclick="switchCustTab('archived')">
-                <i class="fas fa-archive"></i> Archived Customers
+                <i class="fas fa-archive"></i> Archiveived Customers
             </button>
         </div>
     </div>
@@ -519,7 +801,7 @@ button.remove-v-btn i {
     <!-- TAB 3: ARCHIVED CUSTOMERS -->
     <div class="cust-section" id="section-archived" style="display:none;">
         <div class="cust-section-head">
-            <h2><i class="fas fa-archive"></i> Archived Customers</h2>
+            <h2><i class="fas fa-archive"></i> Archiveived Customers</h2>
             <span class="cust-count" id="archivedCount">0 records</span>
         </div>
         <table class="cust-table">
@@ -710,7 +992,7 @@ button.remove-v-btn i {
 
 <!-- MODAL: VIEW CUSTOMER -->
 <div class="modal-backdrop" id="customerViewModal">
-    <div class="cust-modal" style="width:min(1040px, calc(100% - 32px));">
+    <div class="cust-modal">
         <div class="modal-head">
             <div style="display:flex;align-items:center;gap:12px;flex:1;">
                 <h3><i class="fas fa-id-card"></i> <span id="vModalTitle">View Customer Profile</span></h3>
@@ -720,15 +1002,15 @@ button.remove-v-btn i {
         </div>
 
         <!-- View Tab Navigation -->
-        <div style="padding:14px 22px 0 22px; background:#fff;">
+        <div class="view-tabs-container" style="padding:12px 18px 0 18px; background:#fff; flex:0 0 auto !important; flex-shrink:0 !important;">
             <div class="view-tabs">
-                <button class="view-tab active" onclick="switchViewTab('profile')" id="vtab-profile">
+                <button type="button" class="view-tab active" onclick="switchViewTab('profile')" id="vtab-profile">
                     <i class="fas fa-user"></i> Profile
                 </button>
-                <button class="view-tab" onclick="switchViewTab('ar')" id="vtab-ar">
+                <button type="button" class="view-tab" onclick="switchViewTab('ar')" id="vtab-ar">
                     <i class="fas fa-file-invoice-dollar"></i> AR History
                 </button>
-                <button class="view-tab" onclick="switchViewTab('payments')" id="vtab-payments">
+                <button type="button" class="view-tab" onclick="switchViewTab('payments')" id="vtab-payments">
                     <i class="fas fa-money-bill-wave"></i> Payment History
                 </button>
             </div>
@@ -762,7 +1044,7 @@ button.remove-v-btn i {
                     <!-- Loyalty Program Summary -->
                     <div class="view-box" style="grid-column:1 / -1;">
                         <h4>Loyalty Program (Petron Rewards Card)</h4>
-                        <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; margin-top:8px;">
+                        <div class="loyalty-info-grid" style="margin-top:8px;">
                             <div class="info-row" style="flex-direction:column; align-items:flex-start; background:#f8fafc; padding:8px 12px; border-radius:6px; border:1px solid #e2e8f0;">
                                 <span style="font-size:11px; color:#64748b;">Program</span>
                                 <span style="font-weight:700; color:#002F70; font-size:13px;">Petron Rewards Card</span>
@@ -785,15 +1067,15 @@ button.remove-v-btn i {
                     <!-- Vehicles Table -->
                     <div class="view-box" style="grid-column:1 / -1;">
                         <h4>Registered Vehicles</h4>
-                        <table class="cust-table" style="margin-top:6px;">
+                        <table class="cust-table no-min-width" style="margin-top:6px;">
                             <thead>
                                 <tr>
-                                    <th>Plate No.</th>
-                                    <th>Vehicle Type</th>
-                                    <th>Brand</th>
-                                    <th>Model</th>
-                                    <th>Status</th>
-                                    <th style="text-align:right;">Actions</th>
+                                    <th style="width:20%;">Plate No.</th>
+                                    <th style="width:20%;">Vehicle Type</th>
+                                    <th style="width:18%;">Brand</th>
+                                    <th style="width:18%;">Model</th>
+                                    <th style="width:12%; text-align:center;">Status</th>
+                                    <th style="width:12%; text-align:right;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="vVehiclesBody">
@@ -805,14 +1087,14 @@ button.remove-v-btn i {
                     <!-- Transactions History -->
                     <div class="view-box" style="grid-column:1 / -1;">
                         <h4>Transaction History</h4>
-                        <table class="cust-table" style="margin-top:6px;">
+                        <table class="cust-table no-min-width" style="margin-top:6px;">
                             <thead>
                                 <tr>
-                                    <th>Transaction ID</th>
-                                    <th>Date</th>
-                                    <th>Type</th>
-                                    <th>Amount</th>
-                                    <th>Status</th>
+                                    <th style="width:28%;">Transaction ID</th>
+                                    <th style="width:22%;">Date</th>
+                                    <th style="width:18%;">Type</th>
+                                    <th style="width:18%; text-align:right;">Amount</th>
+                                    <th style="width:14%; text-align:center;">Status</th>
                                 </tr>
                             </thead>
                             <tbody id="vTxBody">
@@ -824,14 +1106,14 @@ button.remove-v-btn i {
                     <!-- Job Order History -->
                     <div class="view-box" style="grid-column:1 / -1;">
                         <h4>Job Order History</h4>
-                        <table class="cust-table" style="margin-top:6px;">
+                        <table class="cust-table no-min-width" style="margin-top:6px;">
                             <thead>
                                 <tr>
-                                    <th>JO No.</th>
-                                    <th>Vehicle</th>
-                                    <th>Service</th>
-                                    <th>Mechanic</th>
-                                    <th>Status</th>
+                                    <th style="width:28%;">JO No.</th>
+                                    <th style="width:16%;">Vehicle</th>
+                                    <th style="width:24%;">Service</th>
+                                    <th style="width:18%;">Mechanic</th>
+                                    <th style="width:14%; text-align:center;">Status</th>
                                 </tr>
                             </thead>
                             <tbody id="vJoBody">
@@ -842,19 +1124,19 @@ button.remove-v-btn i {
 
                     <!-- Loyalty Points History -->
                     <div class="view-box" style="grid-column:1 / -1;">
-                        <h4 style="display:flex; justify-content:space-between; align-items:center;">
+                        <h4 style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
                             <span>Loyalty Points History</span>
                             <span style="font-size:12px; font-weight:600; color:#16a34a;">Card #: <strong id="vLoyaltyCardNo">-</strong> | Points Balance: <strong id="vLoyaltyPointsBalance">0</strong></span>
                         </h4>
-                        <table class="cust-table" style="margin-top:6px;">
+                        <table class="cust-table no-min-width" style="margin-top:6px;">
                             <thead>
                                 <tr>
-                                    <th>Date</th>
-                                    <th>Reference</th>
-                                    <th>Transaction Type</th>
-                                    <th style="text-align:right;">Points Earned</th>
-                                    <th style="text-align:right;">Points Redeemed</th>
-                                    <th style="text-align:right;">Balance After</th>
+                                    <th style="width:16%;">Date</th>
+                                    <th style="width:22%;">Reference</th>
+                                    <th style="width:18%;">Transaction Type</th>
+                                    <th style="width:14%; text-align:right;">Points Earned</th>
+                                    <th style="width:15%; text-align:right;">Points Redeemed</th>
+                                    <th style="width:15%; text-align:right;">Balance After</th>
                                 </tr>
                             </thead>
                             <tbody id="vLoyaltyBody">
@@ -938,36 +1220,28 @@ button.remove-v-btn i {
                     </div>
                 </div>
 
-                <!-- Record Payment button (Manager/Admin only, shown via JS) -->
-                <div id="arPayBtnRow" style="display:none; justify-content:flex-end; margin-bottom:10px;">
-                    <button type="button" class="btn-plain success" onclick="openPaymentModal()" id="btnRecordPayment">
-                        <i class="fas fa-plus-circle"></i> Record Payment
-                    </button>
-                </div>
-
                 <!-- AR History Table -->
-                <div class="view-box" style="overflow-x: hidden;">
+                <div class="view-box" style="overflow:hidden;">
                     <h4 style="display:flex; align-items:center; justify-content:space-between;">
                         <span><i class="fas fa-list-alt" style="color:#002f70;"></i> AR History</span>
                         <span id="arRowCount" style="font-size:11px; font-weight:600; color:#64748b;"></span>
                     </h4>
-                    <table class="cust-table" style="margin-top:6px; min-width: 0;">
+                    <table class="cust-table no-min-width" style="min-width:0; margin-top:6px; table-layout:fixed; width:100%;">
                         <thead>
                             <tr>
-                                <th>Date</th>
-                                <th>Reference No.</th>
-                                <th>Type</th>
-                                <th>Description</th>
-                                <th style="text-align:right;">Amount</th>
-                                <th style="text-align:right;">Paid</th>
-                                <th style="text-align:right;">Balance</th>
-                                <th>Due Date</th>
-                                <th>Status</th>
-                                <th style="text-align:center;">Action</th>
+                                <th style="width:11%;">Date</th>
+                                <th style="width:14%;">Reference No.</th>
+                                <th style="width:10%;">Type</th>
+                                <th style="width:20%;">Description</th>
+                                <th style="width:11%; text-align:right;">Amount</th>
+                                <th style="width:9%; text-align:right;">Paid</th>
+                                <th style="width:10%; text-align:right;">Balance</th>
+                                <th style="width:8%; text-align:center;">Due Date</th>
+                                <th style="width:7%; text-align:center;">Status</th>
                             </tr>
                         </thead>
                         <tbody id="arHistoryBody">
-                            <tr><td colspan="10" class="empty"><i class="fas fa-spinner fa-spin"></i> Loading AR history...</td></tr>
+                            <tr><td colspan="9" class="empty"><i class="fas fa-spinner fa-spin"></i> Loading AR history...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -975,21 +1249,21 @@ button.remove-v-btn i {
 
             <!-- ═══ PANEL: PAYMENT HISTORY ════════════════════════════════════ -->
             <div class="view-panel" id="vpanel-payments">
-                <div class="view-box" style="overflow-x: hidden;">
+                <div class="view-box" style="overflow:hidden;">
                     <h4 style="display:flex; align-items:center; justify-content:space-between;">
                         <span><i class="fas fa-receipt" style="color:#002f70;"></i> Payment History</span>
                         <span id="payHistCount" style="font-size:11px; font-weight:600; color:#64748b;"></span>
                     </h4>
-                    <table class="cust-table" style="margin-top:6px; min-width:760px;">
+                    <table class="cust-table no-min-width" style="min-width:0; margin-top:6px; table-layout:fixed; width:100%;">
                         <thead>
                             <tr>
-                                <th>Date</th>
-                                <th>Receipt No.</th>
-                                <th>Reference No.</th>
-                                <th>Payment Method</th>
-                                <th>Source</th>
-                                <th style="text-align:right;">Amount Paid</th>
-                                <th>Remarks</th>
+                                <th style="width:13%;">Date</th>
+                                <th style="width:15%;">Receipt No.</th>
+                                <th style="width:15%;">Reference No.</th>
+                                <th style="width:13%;">Payment Method</th>
+                                <th style="width:12%;">Source</th>
+                                <th style="width:14%; text-align:right;">Amount Paid</th>
+                                <th style="width:18%;">Remarks</th>
                             </tr>
                         </thead>
                         <tbody id="arPaymentBody">
@@ -1842,7 +2116,7 @@ function viewCustomer(id) {
                     archiveBtn.onclick = function() { restoreCustomer(c.id); };
                 } else {
                     archiveBtn.className = 'btn-plain danger';
-                    archiveBtn.innerHTML = '<i class="fas fa-archive"></i> Archive Customer';
+                    archiveBtn.innerHTML = '<i class="fas fa-archive"></i> Archiveive Customer';
                     archiveBtn.onclick = function() { openArchiveFromView(); };
                 }
             }
@@ -1857,7 +2131,7 @@ function viewCustomer(id) {
                     const isVArchived = (v.status || '').toLowerCase() === 'archived';
                     const vBtn = isVArchived
                         ? `<button type="button" class="btn-plain success" style="height:26px; padding:0 8px; font-size:10px;" onclick="restoreVehicle(${v.id})"><i class="fas fa-undo"></i> Restore</button>`
-                        : `<button type="button" class="btn-plain danger" style="height:26px; padding:0 8px; font-size:10px;" onclick="archiveVehicle(${v.id})"><i class="fas fa-archive"></i> Archive</button>`;
+                        : `<button type="button" class="btn-plain danger" style="height:26px; padding:0 8px; font-size:10px;" onclick="archiveVehicle(${v.id})"><i class="fas fa-archive"></i> Archiveive</button>`;
                     const statusBadge = isVArchived
                         ? `<span class="pill archived">ARCHIVED</span>`
                         : `<span class="pill ${h(v.status || 'active')}">${h(v.status || 'active')}</span>`;
@@ -1868,7 +2142,7 @@ function viewCustomer(id) {
                             <td>${h(v.vehicle_type || 'N/A')}</td>
                             <td>${h(v.brand || 'N/A')}</td>
                             <td>${h(v.model || 'N/A')}</td>
-                            <td>${statusBadge}</td>
+                            <td style="text-align:center;">${statusBadge}</td>
                             <td style="text-align:right;">
                                 ${v.id ? vBtn : '-'}
                             </td>
@@ -1891,11 +2165,11 @@ function viewCustomer(id) {
                     const typeColor = typeColors[t.type] || '#475569';
                     return `
                     <tr>
-                        <td><strong>${h(t.transaction_id || '-')}</strong></td>
+                        <td style="word-break:break-all; font-family:monospace; font-size:11px;"><strong>${h(t.transaction_id || '-')}</strong></td>
                         <td>${h(t.date || '-')}</td>
                         <td><span style="font-weight:700; color:${typeColor};">${h(t.type || 'Merchandise')}</span></td>
-                        <td>${money(t.amount)}</td>
-                        <td><span class="pill ${tStatClass}">${h(t.status || 'Completed')}</span></td>
+                        <td style="text-align:right; font-weight:700;">${money(t.amount)}</td>
+                        <td style="text-align:center;"><span class="pill ${tStatClass}">${h(t.status || 'Completed')}</span></td>
                     </tr>
                 `}).join('');
             }
@@ -1912,11 +2186,11 @@ function viewCustomer(id) {
                         (jStat.includes('cancel') || jStat.includes('reject') ? 'archived' : 'walk-in');
                     return `
                     <tr>
-                        <td><strong>${h(j.jo_no || '-')}</strong></td>
+                        <td style="word-break:break-all; font-family:monospace; font-size:11px;"><strong>${h(j.jo_no || '-')}</strong></td>
                         <td>${h(j.vehicle || '-')}</td>
                         <td>${h(j.service || '-')}</td>
                         <td>${h(j.mechanic || 'Unassigned')}</td>
-                        <td><span class="pill ${jStatClass}">${h(j.status || 'Pending')}</span></td>
+                        <td style="text-align:center;"><span class="pill ${jStatClass}">${h(j.status || 'Pending')}</span></td>
                     </tr>
                 `}).join('');
             }
@@ -2046,16 +2320,6 @@ function loadARHistory(customerId) {
             document.getElementById('arJOTotal').innerText    = money(s.total_job_order_credit || 0);
             document.getElementById('arTotalAR').innerText    = money(s.outstanding_balance || 0);
 
-            // Record Payment button (Manager/Admin can record)
-            const payBtnRow = document.getElementById('arPayBtnRow');
-            if (payBtnRow) payBtnRow.style.display = 'flex';
-
-            // Store for modal reference
-            window.currentArRowsData = res.ar_rows || [];
-            if (res.payment_methods && res.payment_methods.length) {
-                window.currentPaymentMethodsData = res.payment_methods;
-            }
-
             // AR Rows table
             renderARTable(res.ar_rows || [], customerId);
 
@@ -2063,7 +2327,7 @@ function loadARHistory(customerId) {
             renderARPaymentHistory(res.payments || []);
         })
         .catch(() => {
-            document.getElementById('arHistoryBody').innerHTML = `<tr><td colspan="10" class="empty">Network error loading AR data.</td></tr>`;
+            document.getElementById('arHistoryBody').innerHTML = `<tr><td colspan="9" class="empty">Network error loading AR data.</td></tr>`;
         });
 }
 
@@ -2072,7 +2336,7 @@ function renderARTable(rows, customerId) {
     document.getElementById('arRowCount').innerText = rows.length + ' record(s)';
 
     if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="10" class="empty" style="padding:24px;"><i class="fas fa-file-invoice-dollar" style="font-size:24px; color:#cbd5e1; display:block; margin-bottom:6px;"></i>No AR records found. Credit purchases will appear here.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="empty" style="padding:24px;"><i class="fas fa-file-invoice-dollar" style="font-size:24px; color:#cbd5e1; display:block; margin-bottom:6px;"></i>No AR records found. Credit purchases will appear here.</td></tr>`;
         return;
     }
 
@@ -2091,28 +2355,17 @@ function renderARTable(rows, customerId) {
         const dueTxt  = r.due_date ? formatDateCell(r.due_date) : '—';
         const balNum  = parseFloat(r.balance) || 0;
 
-        const payBtn = balNum > 0
-            ? `<button type="button" class="btn-plain success" style="height:26px; padding:0 10px; font-size:11px; font-weight:700; white-space:nowrap; display:inline-flex; align-items:center; gap:4px;"
-                 onclick="openPaymentModal('${h(r.reference)}', ${balNum}, '${r.source}', ${r.db_id})">
-                 <i class="fas fa-money-bill-wave"></i> Pay
-               </button>`
-            : `<button type="button" class="btn-plain secondary" style="height:26px; padding:0 10px; font-size:11px; font-weight:600; color:#002f70; white-space:nowrap; display:inline-flex; align-items:center; gap:4px;"
-                 onclick="openPaymentModal('${h(r.reference)}', 0, '${r.source}', ${r.db_id})">
-                 <i class="fas fa-eye"></i> Details
-               </button>`;
-
         return `
         <tr>
             <td style="font-size:12px; color:#475569;">${h(r.date || '—')}</td>
             <td><strong style="color:#002f70;">${h(r.reference || '—')}</strong></td>
             <td>${txIcon}<span style="font-size:11px; font-weight:700;">${h(r.tx_type)}</span></td>
-            <td style="font-size:12px; max-width:180px; overflow-x:auto !important; text-overflow:ellipsis; white-space:nowrap;" title="${h(r.description)}">${h(r.description)}</td>
+            <td style="font-size:12px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${h(r.description)}">${h(r.description)}</td>
             <td style="text-align:right; font-weight:700;">${money(r.amount)}</td>
             <td style="text-align:right; color:#16a34a; font-weight:700;">${money(r.paid)}</td>
             <td style="text-align:right; color:${balNum > 0 ? '#dc2626' : '#16a34a'}; font-weight:800;">${money(balNum)}</td>
-            <td style="font-size:12px; white-space:nowrap;">${dueTxt}</td>
-            <td><span class="pill ${stClass}">${h(r.status)}</span></td>
-            <td style="white-space:nowrap; text-align:center;">${payBtn}</td>
+            <td style="font-size:12px; text-align:center;">${dueTxt}</td>
+            <td style="text-align:center;"><span class="pill ${stClass}">${h(r.status)}</span></td>
         </tr>`;
     }).join('');
 }
@@ -2151,13 +2404,13 @@ function renderARPaymentHistory(payments) {
 
         return `
         <tr>
-            <td style="font-size:12px; color:#475569; white-space:nowrap;">${h(p.pay_date ? p.pay_date.split(' ')[0] : '—')}</td>
+            <td style="font-size:12px; color:#475569;">${h(p.pay_date ? p.pay_date.split(' ')[0] : '—')}</td>
             <td><strong style="color:#002f70; font-size:12px;">${h(p.receipt_no || '—')}</strong></td>
-            <td style="font-size:11px; color:#475569; max-width:140px; overflow-x:auto !important; text-overflow:ellipsis; white-space:nowrap;" title="${h(p.reference_no || '')}">${h(p.reference_no || '—')}</td>
+            <td style="font-size:11px; color:#475569; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${h(p.reference_no || '')}">${h(p.reference_no || '—')}</td>
             <td><span style="display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:800; background:${mColor}22; color:${mColor}; border:1px solid ${mColor}44;">${h(p.payment_method || 'Cash')}</span></td>
             <td><span style="display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:800; background:${sColor}18; color:${sColor};">${h(sType)}</span></td>
             <td style="text-align:right; color:#16a34a; font-weight:800; font-size:13px;">${money(amt)}</td>
-            <td style="font-size:11px; color:#64748b; max-width:140px; overflow-x:auto !important; text-overflow:ellipsis; white-space:nowrap;" title="${h(p.remarks || '')}">${h(p.remarks || '—')}</td>
+            <td style="font-size:11px; color:#64748b; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${h(p.remarks || '')}">${h(p.remarks || '—')}</td>
         </tr>`;
     }).join('');
 
@@ -2223,7 +2476,9 @@ function openPaymentModal(reference = '', balance = 0, source = '', sourceId = 0
     openModal('arPaymentModal');
 }
 
-document.getElementById('arPaymentForm').onsubmit = function(e) {
+const arPayForm = document.getElementById('arPaymentForm');
+if (arPayForm) {
+    arPayForm.onsubmit = function(e) {
     e.preventDefault();
     const customerId = document.getElementById('payCustomerId').value;
     const amount     = parseFloat(document.getElementById('payAmount').value) || 0;
@@ -2259,7 +2514,8 @@ document.getElementById('arPaymentForm').onsubmit = function(e) {
             loadManagerCustomers(); // refresh outstanding balance in list
         })
         .catch(() => toast('Network error saving payment.', 'error'));
-};
+    };
+}
 
 function openArchiveModal(id) {
     document.getElementById('archiveCustId').value = id;

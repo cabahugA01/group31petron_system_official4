@@ -22,6 +22,20 @@ try {
       PDO::ATTR_EMULATE_PREPARES => false
     ]
   );
+  // Explicitly set UTF-8 connection for older MySQL versions
+  $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
+
+  // Self-healing: Automatically clean any legacy mojibake characters in notifications and logs
+  try {
+    static $mojibake_checked = false;
+    if (!$mojibake_checked) {
+      $mojibake_checked = true;
+      $pdo->exec("UPDATE notifications SET 
+        title = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(title, 'ΓÇö', '—'), 'ГÇÖ', '—'), 'ΓÇÖ', '—'), 'ΓÇô', '–'), 'â€”', '—'),
+        message = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(message, 'Γé▒', '₱'), 'â‚±', '₱'), 'ΓÇö', '—'), 'ГÇÖ', '—'), 'â€”', '—'), 'â€™', '\'')
+        WHERE BINARY title LIKE '%ΓÇ%' OR BINARY title LIKE '%ГÇ%' OR BINARY title LIKE '%â%' OR BINARY message LIKE '%Γé%' OR BINARY message LIKE '%â%'");
+    }
+  } catch (Throwable $e) {}
 } catch (PDOException $e) {
   error_log("Secure DB connection failure: " . $e->getMessage());
   http_response_code(500);

@@ -494,76 +494,315 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <style>
+html, body {
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+}
 .pagination-wrapper, .client-side-pagination, .petron-pagination-bar,
 .petron-rows-select-wrap, .rows-per-page { display: none !important; }
 
+/* Main Wrapper - Zero Horizontal Scrolling */
+.stock-page {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 16px !important;
+    overflow-x: hidden !important;
+}
+
+/* Card Container */
+.act-card-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    background: #ffffff !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 12px !important;
+    padding: 20px !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04) !important;
+    overflow-x: hidden !important;
+}
+
+/* Top Controls Bar */
+.act-controls-bar {
+    background: #ffffff !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 12px !important;
+    padding: 14px 18px !important;
+    margin-bottom: 16px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+    flex-wrap: wrap !important;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.03) !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-width: 100% !important;
+}
+.act-filters-group {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    flex-wrap: wrap !important;
+    flex: 1 1 auto !important;
+}
+.act-filter-item {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+.act-filter-label {
+    font-weight: 800 !important;
+    color: #002F6C !important;
+    font-size: 13px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
+}
+.act-filter-input, .act-filter-select {
+    height: 38px !important;
+    padding: 6px 10px !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 7px !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    color: #1e293b !important;
+    background: #ffffff !important;
+    outline: none !important;
+    box-sizing: border-box !important;
+}
+.act-filter-input:focus, .act-filter-select:focus {
+    border-color: #002F6C !important;
+    box-shadow: 0 0 0 3px rgba(0,47,108,0.12) !important;
+}
+.act-btn-apply {
+    height: 38px !important;
+    padding: 0 18px !important;
+    background: #002F6C !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    border: none !important;
+    border-radius: 7px !important;
+    font-size: 13.5px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    transition: background 0.15s !important;
+}
+.act-btn-apply:hover {
+    background: #001f4d !important;
+}
+
 /* Export Buttons Group */
-.rpt-export-group { display: flex !important; align-items: center !important; gap: 6px !important; margin-left: auto !important; white-space: nowrap !important; }
-.rpt-export-btn { padding: 7px 13px !important; font-size: 11px !important; font-weight: 700 !important; border-radius: 4px !important; cursor: pointer !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; background: #ffffff !important; border: 1px solid !important; transition: all 0.18s !important; text-decoration: none !important; }
-.rpt-btn-print  { color: #475569 !important; border-color: transparent !important; background: transparent !important; }
-.rpt-btn-print:hover  { background: #f1f5f9 !important; }
+.rpt-export-group {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin-left: auto !important;
+    flex-wrap: wrap !important;
+}
+.rpt-export-btn {
+    height: 38px !important;
+    padding: 0 14px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    border-radius: 7px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    background: #ffffff !important;
+    border: 1.5px solid !important;
+    transition: all 0.18s !important;
+    text-decoration: none !important;
+    box-sizing: border-box !important;
+}
+.rpt-btn-print  { color: #002F6C !important; border-color: #002F6C !important; background: #ffffff !important; }
+.rpt-btn-print:hover  { background: #002F6C !important; color: #ffffff !important; }
 .rpt-btn-pdf   { color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
-.rpt-btn-pdf:hover   { background: #fef2f2 !important; }
+.rpt-btn-pdf:hover   { background: #dc2626 !important; color: #ffffff !important; }
 .rpt-btn-excel { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
-.rpt-btn-excel:hover { background: #f0fdf4 !important; }
-.rpt-btn-csv   { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
-.rpt-btn-csv:hover   { background: #f0fdf4 !important; }
+.rpt-btn-excel:hover { background: #16a34a !important; color: #ffffff !important; }
+.rpt-btn-csv   { color: #0284c7 !important; border-color: #0284c7 !important; background: #ffffff !important; }
+.rpt-btn-csv:hover   { background: #0284c7 !important; color: #ffffff !important; }
+
+/* Table Wrapper & Proportional Layout */
+.act-table-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    margin-top: 14px !important;
+    border-radius: 8px !important;
+    border: 1.5px solid #cbd5e1 !important;
+}
+table.act-table {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    margin: 0 !important;
+}
+table.act-table th,
+table.act-table td {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    vertical-align: middle !important;
+}
+table.act-table th {
+    background: #002F6C !important;
+    color: #ffffff !important;
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.4px !important;
+    padding: 12px 14px !important;
+    border-bottom: 2px solid #001f4d !important;
+}
+table.act-table td {
+    padding: 12px 14px !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    color: #0f172a !important;
+    font-size: 14.5px !important;
+    background: #ffffff;
+}
+table.act-table tr:hover td {
+    background: #f8fafc !important;
+}
+table.act-table tr:last-child td {
+    border-bottom: none !important;
+}
+
+/* Senior-Friendly Readable Typography */
+.act-date-val {
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    color: #0f172a !important;
+    line-height: 1.3 !important;
+}
+.act-time-val {
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    color: #475569 !important;
+    margin-top: 2px !important;
+}
+.badge-module {
+    display: inline-block !important;
+    padding: 5px 11px !important;
+    border-radius: 6px !important;
+    font-size: 13.5px !important;
+    font-weight: 800 !important;
+    background: #eff6ff !important;
+    color: #002F6C !important;
+    border: 1.5px solid #bfdbfe !important;
+    letter-spacing: 0.2px !important;
+    line-height: 1.25 !important;
+}
+.act-title {
+    font-size: 15.5px !important;
+    font-weight: 800 !important;
+    color: #001f4d !important;
+    line-height: 1.35 !important;
+}
+.act-details {
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    color: #334155 !important;
+    line-height: 1.4 !important;
+    margin-top: 4px !important;
+}
+.act-ref-no {
+    font-family: 'Consolas', 'Courier New', monospace !important;
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    color: #002F6C !important;
+    letter-spacing: 0.3px !important;
+}
 
 /* Status Badges */
-.badge-status-success { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; background: #dcfce7; color: #15803d; }
-.badge-status-pending { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; background: #fef9c3; color: #a16207; }
-.badge-status-cancelled { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; background: #fee2e2; color: #b91c1c; }
-
-/* Module Badge */
-.badge-module { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background: #f1f5f9; color: #002F6C; border: 1px solid #cbd5e1; }
-
-/* Table styling */
-.act-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
-.act-table th { background: #002F6C; color: #ffffff; padding: 10px 14px; font-size: 12px; font-weight: 700; text-align: left; }
-.act-table td { padding: 10px 14px; border-bottom: 1px solid #e2e8f0; color: #1e293b; }
-.act-table tr:hover { background: #f8fafc; }
+.badge-status-success {
+    display: inline-block !important;
+    padding: 5px 14px !important;
+    border-radius: 16px !important;
+    font-size: 13.5px !important;
+    font-weight: 800 !important;
+    background: #dcfce7 !important;
+    color: #15803d !important;
+    border: 1.5px solid #86efac !important;
+}
+.badge-status-pending {
+    display: inline-block !important;
+    padding: 5px 14px !important;
+    border-radius: 16px !important;
+    font-size: 13.5px !important;
+    font-weight: 800 !important;
+    background: #fef9c3 !important;
+    color: #854d0e !important;
+    border: 1.5px solid #fde047 !important;
+}
+.badge-status-cancelled {
+    display: inline-block !important;
+    padding: 5px 14px !important;
+    border-radius: 16px !important;
+    font-size: 13.5px !important;
+    font-weight: 800 !important;
+    background: #fee2e2 !important;
+    color: #b91c1c !important;
+    border: 1.5px solid #fca5a5 !important;
+}
 
 @media print {
-    .str-signature-wrap, .sfss-print-only .str-signature-wrap { display: flex !important; justify-content: flex-end !important; page-break-inside: avoid !important; margin-top: 16px !important; padding: 0 !important; }
+    .str-signature-wrap, .sfss-print-only .str-signature-wrap { display: flex !important; justify-content: flex-end !important; page-break-inside: avoid !important; margin-top: 20px !important; padding: 0 !important; }
     .sfss-print-only .section { display: block !important; }
     @page { size: A4 portrait; margin: 10mm 12mm; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-shadow: none !important; }
-    html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; height: auto !important; font-size: 10px !important; }
+    html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; height: auto !important; font-size: 11px !important; }
     body > *:not(.sfss-print-only) { display: none !important; }
-    .stock-page .controls, nav, header, footer, aside, .sidebar, .main-sidebar, .main-header, .navbar, .topbar,
+    .stock-page .controls, .act-controls-bar, nav, header, footer, aside, .sidebar, .main-sidebar, .main-header, .navbar, .topbar,
     #toggleScrollBtn, .toggle-scroll-btn, .toast, .toast-container { display: none !important; }
-    .sfss-print-only { display: block !important; position: static !important; width: 100% !important; margin: 0 !important; padding: 0 !important; background: #fff !important; font-size: 10px !important; color: #333 !important; }
-    .sfss-print-only .act-table th { font-size: 9px !important; padding: 5px 8px !important; background: #002F6C !important; color: #fff !important; }
-    .sfss-print-only .act-table td { font-size: 9px !important; padding: 4px 8px !important; }
-    .sfss-print-only .str-signature-wrap { display: flex !important; justify-content: flex-end !important; page-break-inside: avoid !important; margin-top: 10px !important; padding: 0 !important; border: none !important; background: transparent !important; box-shadow: none !important; }
-    .sfss-print-only .str-sig-line { border-top: 1.5px solid #002F6C !important; width: 100% !important; margin-bottom: 3px !important; }
+    .sfss-print-only { display: block !important; position: static !important; width: 100% !important; margin: 0 !important; padding: 0 !important; background: #fff !important; font-size: 11px !important; color: #1e293b !important; }
+    .sfss-print-only .act-card-container { border: none !important; padding: 0 !important; box-shadow: none !important; }
+    .sfss-print-only .act-table-wrap { border: 1px solid #cbd5e1 !important; }
+    .sfss-print-only .act-table th { font-size: 11px !important; padding: 7px 10px !important; background: #002F6C !important; color: #fff !important; }
+    .sfss-print-only .act-table td { font-size: 11px !important; padding: 6px 10px !important; }
+    .sfss-print-only .act-date-val { font-size: 11px !important; }
+    .sfss-print-only .act-time-val { font-size: 10px !important; }
+    .sfss-print-only .act-title { font-size: 11px !important; }
+    .sfss-print-only .act-details { font-size: 10px !important; }
+    .sfss-print-only .act-ref-no { font-size: 11px !important; }
+    .sfss-print-only .badge-status-success, .sfss-print-only .badge-status-pending, .sfss-print-only .badge-status-cancelled { font-size: 10.5px !important; padding: 3px 8px !important; }
+    .sfss-print-only .badge-module { font-size: 10px !important; padding: 2px 6px !important; }
+    .sfss-print-only .str-signature-wrap { display: flex !important; justify-content: flex-end !important; page-break-inside: avoid !important; margin-top: 14px !important; padding: 0 !important; border: none !important; background: transparent !important; box-shadow: none !important; }
+    .sfss-print-only .str-sig-line { border-top: 1.5px solid #002F6C !important; width: 100% !important; margin-bottom: 4px !important; }
     .sfss-print-only, .sfss-print-only * { min-height: 0 !important; height: auto !important; }
 }
 </style>
 
-<div class="stock-page" style="padding: 20px;">
+<div class="stock-page">
 
     <!-- TOP CONTROLS & FILTERS -->
-    <div class="controls" style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+    <div class="act-controls-bar">
         
-        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <div class="act-filters-group">
             <!-- Business Date Range -->
-            <div style="display:flex; align-items:center; gap:6px;">
-                <label style="font-weight:700; color:#002F6C; font-size:11px; text-transform:uppercase;">From</label>
-                <input type="date" id="date_start" value="<?= htmlspecialchars($date_start) ?>" max="<?= $today ?>"
-                       style="padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; background:#fff;">
+            <div class="act-filter-item">
+                <label class="act-filter-label">From</label>
+                <input type="date" id="date_start" value="<?= htmlspecialchars($date_start) ?>" max="<?= $today ?>" class="act-filter-input">
             </div>
 
-            <div style="display:flex; align-items:center; gap:6px;">
-                <label style="font-weight:700; color:#002F6C; font-size:11px; text-transform:uppercase;">To</label>
-                <input type="date" id="date_end" value="<?= htmlspecialchars($date_end) ?>" max="<?= $today ?>"
-                       style="padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; background:#fff;">
+            <div class="act-filter-item">
+                <label class="act-filter-label">To</label>
+                <input type="date" id="date_end" value="<?= htmlspecialchars($date_end) ?>" max="<?= $today ?>" class="act-filter-input">
             </div>
 
             <!-- Shift -->
-            <div style="display:flex; align-items:center; gap:6px;">
-                <label style="font-weight:700; color:#002F6C; font-size:11px; text-transform:uppercase;">Shift</label>
-                <select id="filter_shift" style="padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; background:#fff;">
+            <div class="act-filter-item">
+                <label class="act-filter-label">Shift</label>
+                <select id="filter_shift" class="act-filter-select">
                     <option value="">All Shifts</option>
                     <option value="first"  <?= strtolower($filter_shift)==='first'  ? 'selected':'' ?>>Shift 1</option>
                     <option value="second" <?= strtolower($filter_shift)==='second' ? 'selected':'' ?>>Shift 2</option>
@@ -572,9 +811,9 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             </div>
 
             <!-- Module -->
-            <div style="display:flex; align-items:center; gap:6px;">
-                <label style="font-weight:700; color:#002F6C; font-size:11px; text-transform:uppercase;">Module</label>
-                <select id="filter_module" style="padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; background:#fff;">
+            <div class="act-filter-item">
+                <label class="act-filter-label">Module</label>
+                <select id="filter_module" class="act-filter-select">
                     <option value="">All Modules</option>
                     <option value="Sales"           <?= strtolower($filter_module)==='sales'           ? 'selected':'' ?>>Sales</option>
                     <option value="Fuel Management" <?= strtolower($filter_module)==='fuel management' ? 'selected':'' ?>>Fuel Management</option>
@@ -588,9 +827,9 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             </div>
 
             <!-- Activity Type -->
-            <div style="display:flex; align-items:center; gap:6px;">
-                <label style="font-weight:700; color:#002F6C; font-size:11px; text-transform:uppercase;">Activity</label>
-                <select id="filter_activity" style="padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; background:#fff;">
+            <div class="act-filter-item">
+                <label class="act-filter-label">Activity</label>
+                <select id="filter_activity" class="act-filter-select">
                     <option value="">All Activities</option>
                     <option value="Login"                          <?= strtolower($filter_activity)==='login'                          ? 'selected':'' ?>>Login</option>
                     <option value="Logout"                         <?= strtolower($filter_activity)==='logout'                         ? 'selected':'' ?>>Logout</option>
@@ -610,9 +849,9 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             </div>
 
             <!-- Status -->
-            <div style="display:flex; align-items:center; gap:6px;">
-                <label style="font-weight:700; color:#002F6C; font-size:11px; text-transform:uppercase;">Status</label>
-                <select id="filter_status" style="padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; background:#fff;">
+            <div class="act-filter-item">
+                <label class="act-filter-label">Status</label>
+                <select id="filter_status" class="act-filter-select">
                     <option value="">All Statuses</option>
                     <option value="Success"   <?= strtolower($filter_status)==='success'   ? 'selected':'' ?>>Success</option>
                     <option value="Pending"   <?= strtolower($filter_status)==='pending'   ? 'selected':'' ?>>Pending</option>
@@ -621,12 +860,11 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             </div>
 
             <!-- Search -->
-            <div style="display:flex; align-items:center; gap:6px;">
-                <input type="text" id="filter_search" value="<?= htmlspecialchars($filter_search) ?>" placeholder="Search..."
-                       style="padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; background:#fff; width:130px;">
+            <div class="act-filter-item">
+                <input type="text" id="filter_search" value="<?= htmlspecialchars($filter_search) ?>" placeholder="Search..." class="act-filter-input" style="width: 140px;">
             </div>
 
-            <button type="button" onclick="applyFilters()" style="padding:6px 14px; background:#002F6C; color:#fff; font-weight:700; border:none; border-radius:6px; font-size:12px; cursor:pointer;">
+            <button type="button" onclick="applyFilters()" class="act-btn-apply">
                 <i class="fas fa-filter"></i> Apply
             </button>
         </div>
@@ -651,74 +889,75 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
     <!-- PRINTABLE REPORT AREA -->
     <div class="print-area" id="actPrintArea">
-        <div class="container" style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:24px; box-shadow:0 1px 4px rgba(0,0,0,0.02);">
+        <div class="act-card-container">
             
             <!-- HEADER -->
-            <div class="header" style="text-align:center; margin-bottom:18px; border-bottom:2px solid #002F6C; padding-bottom:12px;">
-                <h1 style="font-size:20px; font-weight:800; color:#002F6C; margin:0 0 4px 0; letter-spacing:0.5px; font-family:'Segoe UI', sans-serif;">MY ACTIVITY REPORT</h1>
-                <div style="font-size:13px; font-weight:700; color:#1e293b; margin-bottom:4px;">
+            <div class="header" style="text-align:center; margin-bottom:20px; border-bottom:2.5px solid #002F6C; padding-bottom:14px;">
+                <h1 style="font-size:24px; font-weight:900; color:#002F6C; margin:0 0 6px 0; letter-spacing:0.5px; font-family:'Segoe UI', sans-serif;">MY ACTIVITY REPORT</h1>
+                <div style="font-size:15px; font-weight:800; color:#1e293b; margin-bottom:5px;">
                     <?= htmlspecialchars($station_name) ?><?= $station_location ? ' — ' . htmlspecialchars($station_location) : '' ?>
                 </div>
-                <div style="font-size:12px; color:#475569; font-weight:600;">
+                <div style="font-size:14px; color:#334155; font-weight:700;">
                     <span><strong>Period:</strong> <?= date('F d, Y', strtotime($date_start)) ?> – <?= date('F d, Y', strtotime($date_end)) ?></span>
                 </div>
             </div>
 
             <!-- ACTIVITY TABLE -->
-            <table class="act-table" id="activityTable">
-                <thead>
-                    <tr>
-                        <th style="width: 180px;">Date & Time</th>
-                        <th style="width: 160px;">Module</th>
-                        <th>Activity</th>
-                        <th style="width: 160px;">Reference No.</th>
-                        <th style="width: 110px; text-align: center;">Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (count($unique_activities) > 0): ?>
-                        <?php foreach ($unique_activities as $row): ?>
-                            <?php 
-                                $st_lower = strtolower($row['status']);
-                                $badge_class = 'badge-status-pending';
-                                if ($st_lower === 'success') {
-                                    $badge_class = 'badge-status-success';
-                                } elseif ($st_lower === 'cancelled' || $st_lower === 'canceled') {
-                                    $badge_class = 'badge-status-cancelled';
-                                }
-                            ?>
+            <div class="act-table-wrap">
+                <table class="act-table report-table no-min-width print-table" id="activityTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 18%;">Date & Time</th>
+                            <th style="width: 14%;">Module</th>
+                            <th style="width: 38%;">Activity & Details</th>
+                            <th style="width: 17%;">Reference No.</th>
+                            <th style="width: 13%; text-align: center;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (count($unique_activities) > 0): ?>
+                            <?php foreach ($unique_activities as $row): ?>
+                                <?php 
+                                    $st_lower = strtolower($row['status']);
+                                    $badge_class = 'badge-status-pending';
+                                    if ($st_lower === 'success') {
+                                        $badge_class = 'badge-status-success';
+                                    } elseif ($st_lower === 'cancelled' || $st_lower === 'canceled') {
+                                        $badge_class = 'badge-status-cancelled';
+                                    }
+                                ?>
+                                <tr>
+                                    <td>
+                                        <div class="act-date-val"><?= date('M d, Y', strtotime($row['datetime'])) ?></div>
+                                        <div class="act-time-val"><?= date('h:i:s A', strtotime($row['datetime'])) ?></div>
+                                    </td>
+                                    <td>
+                                        <span class="badge-module"><?= htmlspecialchars($row['module']) ?></span>
+                                    </td>
+                                    <td>
+                                        <div class="act-title"><?= htmlspecialchars($row['activity']) ?></div>
+                                        <?php if (!empty($row['details'])): ?>
+                                            <div class="act-details"><?= htmlspecialchars($row['details']) ?></div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <span class="act-ref-no"><?= htmlspecialchars($row['ref_no'] ?: '—') ?></span>
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <span class="<?= $badge_class ?>"><?= htmlspecialchars($row['status']) ?></span>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
                             <tr>
-                                <td style="font-weight: 600; color: #334155;">
-                                    <?= date('Y-m-d h:i A', strtotime($row['datetime'])) ?>
-                                </td>
-                                <td>
-                                    <span class="badge-module"><?= htmlspecialchars($row['module']) ?></span>
-                                </td>
-                                <td style="font-weight: 600; color: #0f172a;">
-                                    <?= htmlspecialchars($row['activity']) ?>
-                                    <?php if (!empty($row['details'])): ?>
-                                        <div style="font-size: 11px; font-weight: 400; color: #64748b; margin-top: 2px;">
-                                            <?= htmlspecialchars($row['details']) ?>
-                                        </div>
-                                    <?php endif; ?>
-                                </td>
-                                <td style="font-family: monospace; font-weight: 700; color: #002F6C;">
-                                    <?= htmlspecialchars($row['ref_no']) ?>
-                                </td>
-                                <td style="text-align: center;">
-                                    <span class="<?= $badge_class ?>"><?= htmlspecialchars($row['status']) ?></span>
+                                <td colspan="5" style="text-align: center; color: #475569; padding: 32px 16px; font-size: 15px; font-weight: 700; font-style: italic;">
+                                    No activity records found matching your selected filters.
                                 </td>
                             </tr>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <tr>
-                            <td colspan="5" style="text-align: center; color: #64748b; padding: 24px; font-style: italic;">
-                                No activity records found matching your selected filters.
-                            </td>
-                        </tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
 
             <!-- REPORT SIGNATURE: PREPARED BY ONLY (RIGHT-ALIGNED, SINGLE LINE, MATCHES TEXT WIDTH) -->
             <?php 
@@ -727,16 +966,16 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                     $clean_staff_name = trim($me['name'] ?? $me['username'] ?? 'Staff / Cashier');
                 }
             ?>
-            <div class="str-signature-wrap" style="display:none; justify-content:flex-end; margin-top:20px; padding:0 4px;">
+            <div class="str-signature-wrap" style="display:none; justify-content:flex-end; margin-top:24px; padding:0 4px;">
                 <div style="display:inline-flex; flex-direction:column; align-items:center; text-align:center; width:fit-content; max-width:100%;">
-                    <div style="font-size:11px; font-weight:800; color:#002F6C; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:28px; align-self:flex-start;">
+                    <div style="font-size:12px; font-weight:800; color:#002F6C; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:28px; align-self:flex-start;">
                         Prepared By:
                     </div>
-                    <div class="str-sig-line" style="border-top:1.5px solid #002F6C; width:100%; margin-bottom:4px;"></div>
-                    <div style="font-size:12px; font-weight:800; color:#1e293b; text-transform:uppercase; white-space:nowrap;">
+                    <div class="str-sig-line" style="border-top:2px solid #002F6C; width:100%; margin-bottom:5px;"></div>
+                    <div style="font-size:14px; font-weight:800; color:#1e293b; text-transform:uppercase; white-space:nowrap;">
                         <?= htmlspecialchars($clean_staff_name) ?>
                     </div>
-                    <div style="font-size:10px; color:#64748b; font-weight:600; margin-top:2px; white-space:nowrap;">
+                    <div style="font-size:12px; color:#475569; font-weight:700; margin-top:2px; white-space:nowrap;">
                         Signature over Printed Name
                     </div>
                 </div>

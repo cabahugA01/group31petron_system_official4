@@ -136,33 +136,38 @@ if ($date_to !== $date_from) {
 }
 
 // Helper: Check table existence
-function table_exists($pdo, $table) {
-    try {
-        $stmt = $pdo->query("SHOW TABLES LIKE '$table'");
-        return $stmt->rowCount() > 0;
-    } catch (Exception $e) {
-        return false;
+if (!function_exists('table_exists')) {
+    function table_exists($pdo, $table) {
+        try {
+            $stmt = $pdo->query("SHOW TABLES LIKE '$table'");
+            return $stmt->rowCount() > 0;
+        } catch (Exception $e) {
+            return false;
+        }
     }
 }
 
-function column_exists($pdo, $table, $column) {
-    try {
-        $stmt = $pdo->query("SHOW COLUMNS FROM `$table` LIKE '$column'");
-        return $stmt->rowCount() > 0;
-    } catch (Exception $e) {
-        return false;
+if (!function_exists('column_exists')) {
+    function column_exists($pdo, $table, $column) {
+        try {
+            $stmt = $pdo->query("SHOW COLUMNS FROM `$table` LIKE '$column'");
+            return $stmt->rowCount() > 0;
+        } catch (Exception $e) {
+            return false;
+        }
     }
 }
 
 /**
  * Normalize various shift_period values to Shift 1 (true) or Shift 2 (false).
- * Handles: 'Shift 1','Shift1','First Shift','1st','Morning','General','Day' â†’ shift1
- *          'Shift 2','Shift2','Second Shift','2nd','Evening','Afternoon','Night' â†’ shift2
+ * Handles: 'Shift 1','Shift1','First Shift','1st','Morning','General','Day' → shift1
+ *          'Shift 2','Shift2','Second Shift','2nd','Evening','Afternoon','Night' → shift2
  */
-function is_shift1(string $shift): bool {
-    $s = strtolower(trim($shift));
-    // Check shift2 keywords first (more specific)
-    $shift2_keywords = ['shift 2', 'shift2', '2nd', 'second', 'evening', 'afternoon', 'night', 'pm'];
+if (!function_exists('is_shift1')) {
+    function is_shift1(string $shift): bool {
+        $s = strtolower(trim($shift));
+        // Check shift2 keywords first (more specific)
+        $shift2_keywords = ['shift 2', 'shift2', '2nd', 'second', 'evening', 'afternoon', 'night', 'pm'];
     foreach ($shift2_keywords as $kw) {
         if (strpos($s, $kw) !== false) return false;
     }
@@ -176,96 +181,105 @@ function is_shift1(string $shift): bool {
     if ($s === '2') return false;
     // Last resort: contains digit 2 → shift2, else shift1
     return strpos($s, '2') === false;
+    }
 }
 
-function staff_report_fuel_display_name($fuel_type): string {
-    $name = trim((string)$fuel_type);
-    $normalized = strtoupper(preg_replace('/\s+/', ' ', $name));
-    
-    // Remove pump/nozzle numbers pattern like "DIESEL 1 - 1" â†’ "DIESEL"
-    // Patterns: "DIESEL 1 - 1", "TURBO DIESEL - 1", "XCS PLUS - 2", "XTRA UNL 1 - 2"
-    $name = preg_replace('/\s+\d+\s*-\s*\d+$/', '', $name); // Remove " 1 - 1", " 2 - 3" at end
-    $name = preg_replace('/\s*-\s*\d+$/', '', $name); // Remove " - 1", " - 2" at end
-    $name = trim($name);
-    
-    $normalized = strtoupper(preg_replace('/\s+/', ' ', $name));
-    if (strpos($normalized, 'TURBO') !== false && strpos($normalized, 'DIESEL') !== false) {
-        return 'Turbo Diesel';
+if (!function_exists('staff_report_fuel_display_name')) {
+    function staff_report_fuel_display_name($fuel_type): string {
+        $name = trim((string)$fuel_type);
+        $normalized = strtoupper(preg_replace('/\s+/', ' ', $name));
+        
+        // Remove pump/nozzle numbers pattern like "DIESEL 1 - 1" → "DIESEL"
+        // Patterns: "DIESEL 1 - 1", "TURBO DIESEL - 1", "XCS PLUS - 2", "XTRA UNL 1 - 2"
+        $name = preg_replace('/\s+\d+\s*-\s*\d+$/', '', $name); // Remove " 1 - 1", " 2 - 3" at end
+        $name = preg_replace('/\s*-\s*\d+$/', '', $name); // Remove " - 1", " - 2" at end
+        $name = trim($name);
+        
+        $normalized = strtoupper(preg_replace('/\s+/', ' ', $name));
+        if (strpos($normalized, 'TURBO') !== false && strpos($normalized, 'DIESEL') !== false) {
+            return 'Turbo Diesel';
+        }
+        if (strpos($normalized, 'KEROSENE') !== false) {
+            return 'Kerosene';
+        }
+        if (strpos($normalized, 'XCS') !== false) {
+            return 'XCS Plus';
+        }
+        if (strpos($normalized, 'XTRA') !== false && strpos($normalized, 'UNL') !== false) {
+            return 'Xtra UNL';
+        }
+        if (strpos($normalized, 'DIESEL') !== false) {
+            return 'Diesel';
+        }
+        return $name !== '' ? $name : 'Fuel';
     }
-    if (strpos($normalized, 'KEROSENE') !== false) {
-        return 'Kerosene';
-    }
-    if (strpos($normalized, 'XCS') !== false) {
-        return 'XCS Plus';
-    }
-    if (strpos($normalized, 'XTRA') !== false && strpos($normalized, 'UNL') !== false) {
-        return 'Xtra UNL';
-    }
-    if (strpos($normalized, 'DIESEL') !== false) {
-        return 'Diesel';
-    }
-    return $name !== '' ? $name : 'Fuel';
 }
 
-function get_exact_ugt_no(string $rawFuelType): string {
-    $s = strtoupper(trim($rawFuelType));
-    
-    // Explicit check for DIESEL 2 vs DIESEL 1
-    if (strpos($s, 'DIESEL 2') !== false || strpos($s, 'DIESEL-2') !== false || strpos($s, 'UGT #2') !== false || strpos($s, 'UGT-02') !== false || strpos($s, 'UGT 2') !== false) return 'UGT #2';
-    if (strpos($s, 'DIESEL 1') !== false || strpos($s, 'DIESEL-1') !== false || strpos($s, 'UGT #1') !== false || strpos($s, 'UGT-01') !== false || strpos($s, 'UGT 1') !== false) return 'UGT #1';
-    
-    // Explicit check for XTRA UNL 2 vs XTRA UNL 1
-    if (strpos($s, 'XTRA UNL 2') !== false || strpos($s, 'XTRA 2') !== false || strpos($s, 'UNL 2') !== false || strpos($s, 'UGT #6') !== false || strpos($s, 'UGT-06') !== false || strpos($s, 'UGT 6') !== false) return 'UGT #6';
-    if (strpos($s, 'XTRA UNL 1') !== false || strpos($s, 'XTRA 1') !== false || strpos($s, 'UNL 1') !== false || strpos($s, 'UGT #4') !== false || strpos($s, 'UGT-04') !== false || strpos($s, 'UGT 4') !== false) return 'UGT #4';
-    
-    // Check TURBO DIESEL
-    if (strpos($s, 'TURBO') !== false || strpos($s, 'UGT #5') !== false || strpos($s, 'UGT-05') !== false || strpos($s, 'UGT 5') !== false) return 'UGT #5';
-    
-    // Check XCS PLUS
-    if (strpos($s, 'XCS') !== false || strpos($s, 'UGT #3') !== false || strpos($s, 'UGT-03') !== false || strpos($s, 'UGT 3') !== false) return 'UGT #3';
-    
-    // Check KEROSENE
-    if (strpos($s, 'KEROSENE') !== false || strpos($s, 'UGT #7') !== false || strpos($s, 'UGT-07') !== false || strpos($s, 'UGT 7') !== false) return 'UGT #7';
-    
-    // Fallback checks
-    if (strpos($s, 'DIESEL') !== false) {
-        if (strpos($s, '2') !== false) return 'UGT #2';
+if (!function_exists('get_exact_ugt_no')) {
+    function get_exact_ugt_no(string $rawFuelType): string {
+        $s = strtoupper(trim($rawFuelType));
+        
+        // Explicit check for DIESEL 2 vs DIESEL 1
+        if (strpos($s, 'DIESEL 2') !== false || strpos($s, 'DIESEL-2') !== false || strpos($s, 'UGT #2') !== false || strpos($s, 'UGT-02') !== false || strpos($s, 'UGT 2') !== false) return 'UGT #2';
+        if (strpos($s, 'DIESEL 1') !== false || strpos($s, 'DIESEL-1') !== false || strpos($s, 'UGT #1') !== false || strpos($s, 'UGT-01') !== false || strpos($s, 'UGT 1') !== false) return 'UGT #1';
+        
+        // Explicit check for XTRA UNL 2 vs XTRA UNL 1
+        if (strpos($s, 'XTRA UNL 2') !== false || strpos($s, 'XTRA 2') !== false || strpos($s, 'UNL 2') !== false || strpos($s, 'UGT #6') !== false || strpos($s, 'UGT-06') !== false || strpos($s, 'UGT 6') !== false) return 'UGT #6';
+        if (strpos($s, 'XTRA UNL 1') !== false || strpos($s, 'XTRA 1') !== false || strpos($s, 'UNL 1') !== false || strpos($s, 'UGT #4') !== false || strpos($s, 'UGT-04') !== false || strpos($s, 'UGT 4') !== false) return 'UGT #4';
+        
+        // Check TURBO DIESEL
+        if (strpos($s, 'TURBO') !== false || strpos($s, 'UGT #5') !== false || strpos($s, 'UGT-05') !== false || strpos($s, 'UGT 5') !== false) return 'UGT #5';
+        
+        // Check XCS PLUS
+        if (strpos($s, 'XCS') !== false || strpos($s, 'UGT #3') !== false || strpos($s, 'UGT-03') !== false || strpos($s, 'UGT 3') !== false) return 'UGT #3';
+        
+        // Check KEROSENE
+        if (strpos($s, 'KEROSENE') !== false || strpos($s, 'UGT #7') !== false || strpos($s, 'UGT-07') !== false || strpos($s, 'UGT 7') !== false) return 'UGT #7';
+        
+        // Fallback checks
+        if (strpos($s, 'DIESEL') !== false) {
+            if (strpos($s, '2') !== false) return 'UGT #2';
+            return 'UGT #1';
+        }
+        if (strpos($s, 'XTRA') !== false || strpos($s, 'UNL') !== false) {
+            if (strpos($s, '2') !== false) return 'UGT #6';
+            return 'UGT #4';
+        }
         return 'UGT #1';
     }
-    if (strpos($s, 'XTRA') !== false || strpos($s, 'UNL') !== false) {
-        if (strpos($s, '2') !== false) return 'UGT #6';
-        return 'UGT #4';
-    }
-    return 'UGT #1';
 }
 
-function staff_report_user_display_sql(PDO $pdo, string $alias): string {
-    $parts = [];
-    if (column_exists($pdo, 'users', 'first_name') && column_exists($pdo, 'users', 'last_name')) {
-        $parts[] = "NULLIF(TRIM(CONCAT(COALESCE($alias.first_name,''),' ',COALESCE($alias.last_name,''))), '')";
+if (!function_exists('staff_report_user_display_sql')) {
+    function staff_report_user_display_sql(PDO $pdo, string $alias): string {
+        $parts = [];
+        if (column_exists($pdo, 'users', 'first_name') && column_exists($pdo, 'users', 'last_name')) {
+            $parts[] = "NULLIF(TRIM(CONCAT(COALESCE($alias.first_name,''),' ',COALESCE($alias.last_name,''))), '')";
+        }
+        if (column_exists($pdo, 'users', 'name')) {
+            $parts[] = "NULLIF($alias.name, '')";
+        }
+        if (column_exists($pdo, 'users', 'username')) {
+            $parts[] = "NULLIF($alias.username, '')";
+        }
+        $parts[] = "'N/A'";
+        return 'COALESCE(' . implode(', ', $parts) . ')';
     }
-    if (column_exists($pdo, 'users', 'name')) {
-        $parts[] = "NULLIF($alias.name, '')";
-    }
-    if (column_exists($pdo, 'users', 'username')) {
-        $parts[] = "NULLIF($alias.username, '')";
-    }
-    $parts[] = "'N/A'";
-    return 'COALESCE(' . implode(', ', $parts) . ')';
 }
 
-function staff_report_valid_merchandise_where(PDO $pdo, string $alias = 'mt'): string {
-    $checks = [];
-    if (column_exists($pdo, 'merchandise_transactions', 'validation_status')) {
-        $checks[] = "LOWER(COALESCE($alias.validation_status, '')) NOT IN ('voided','rejected','cancelled','canceled')";
+if (!function_exists('staff_report_valid_merchandise_where')) {
+    function staff_report_valid_merchandise_where(PDO $pdo, string $alias = 'mt'): string {
+        $checks = [];
+        if (column_exists($pdo, 'merchandise_transactions', 'validation_status')) {
+            $checks[] = "LOWER(COALESCE($alias.validation_status, '')) NOT IN ('voided','rejected','cancelled','canceled')";
+        }
+        if (column_exists($pdo, 'merchandise_transactions', 'workflow_status')) {
+            $checks[] = "LOWER(COALESCE($alias.workflow_status, '')) NOT IN ('voided','rejected','cancelled','canceled')";
+        }
+        if (column_exists($pdo, 'merchandise_transactions', 'void_reason')) {
+            $checks[] = "($alias.void_reason IS NULL OR TRIM($alias.void_reason) = '')";
+        }
+        return $checks ? implode(' AND ', $checks) : '1=1';
     }
-    if (column_exists($pdo, 'merchandise_transactions', 'workflow_status')) {
-        $checks[] = "LOWER(COALESCE($alias.workflow_status, '')) NOT IN ('voided','rejected','cancelled','canceled')";
-    }
-    if (column_exists($pdo, 'merchandise_transactions', 'void_reason')) {
-        $checks[] = "($alias.void_reason IS NULL OR TRIM($alias.void_reason) = '')";
-    }
-    return $checks ? implode(' AND ', $checks) : '1=1';
 }
 
 function staff_report_line_amount_sql(string $itemAlias = 'mti', string $txAlias = 'mt', string $sumAlias = 'mis'): string {
@@ -1985,6 +1999,13 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         }
     }
     
+    // Prepared by signature in CSV export
+    fputcsv($output, []);
+    fputcsv($output, []);
+    fputcsv($output, ['PREPARED BY:']);
+    fputcsv($output, [$cashier_name]);
+    fputcsv($output, ['Staff / Cashier']);
+    
     fclose($output);
     exit;
 }
@@ -2467,6 +2488,19 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     
     } // End if merchandise/fuel export type
     
+    // PREPARED BY SIGNATURE in Excel Export
+    echo '<br/><br/>';
+    echo '<table border="0" cellpadding="0" cellspacing="0" style="width:100%; border:none;">';
+    echo '<tr>';
+    echo '<td colspan="4" style="border:none;"></td>';
+    echo '<td colspan="4" align="center" style="border:none; text-align:center;">';
+    echo '<div style="font-size:11px; font-weight:bold; margin-bottom:28px;">PREPARED BY:</div>';
+    echo '<div style="border-top:1.5px solid #000; padding-top:4px; font-weight:bold; font-size:12px;">' . htmlspecialchars($cashier_name) . '</div>';
+    echo '<div style="font-size:10px; color:#555;">Staff / Cashier</div>';
+    echo '</td>';
+    echo '</tr>';
+    echo '</table>';
+    
     echo '</body>';
     echo '</html>';
     exit;
@@ -2930,325 +2964,274 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <style>
-    body {
-        margin: 0;
-        padding: 0;
-        background: white;
+    html, body {
+        max-width: 100vw !important;
+        overflow-x: hidden !important;
+    }
+    
+    .pagination-wrapper,
+    .client-side-pagination,
+    .petron-pagination-bar,
+    .petron-rows-select-wrap,
+    .rows-per-page {
+        display: none !important;
     }
     
     .main-content {
-        width: 100%;
-        max-width: 100%;
-        padding: 0;
-        margin: 0;
-    }
-    
-    .container {
-        max-width: 100%;
-        margin: 0;
-        padding: 0;
-        background: white;
-    }
-    
-    .header {
-        background: #fff;
-        color: #000;
-        padding: 15px 20px;
-        text-align: center;
-        border-bottom: 2px solid #000;
-        margin-bottom: 0;
-    }
-    
-    .header h1 {
-        font-size: 22px;
-        margin: 0 0 8px 0;
-        font-weight: 700;
-        color: #000;
-    }
-    
-    .header p {
-        font-size: 12px;
-        color: #000;
-        margin: 3px 0;
-    }
-    
-    /* Prepared-by signature block — visible on screen and on print at bottom-right */
-    .print-only-signature,
-    .report-signature {
-        display: table !important;
         width: 100% !important;
-        margin-top: 25px !important;
-        margin-bottom: 20px !important;
-        border: none !important;
-        border-collapse: collapse !important;
-        background: transparent !important;
+        max-width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
     }
-    .print-only-signature td,
-    .report-signature td {
-        border: none !important;
-        background: transparent !important;
+    
+    /* Page Layout - Compressed, Responsive, No Horizontal Scroll */
+    .stock-page {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        padding: 14px 16px 75px 16px !important;
+        margin-bottom: 0 !important;
+        overflow-x: hidden !important;
     }
-
+    
+    .sfss-card-container,
+    .container {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        background: #ffffff !important;
+        border: 1.5px solid #cbd5e1 !important;
+        border-radius: 12px !important;
+        padding: 16px 20px !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important;
+        overflow-x: hidden !important;
+    }
+    
+    /* Top Controls Bar - Unified & Compressed */
     .controls {
-        padding: 12px 20px;
-        background: #fff;
-        border-bottom: 1px solid #000;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 10px;
+        background: #ffffff !important;
+        border: 1.5px solid #cbd5e1 !important;
+        border-radius: 12px !important;
+        padding: 12px 16px !important;
+        margin-bottom: 12px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 10px !important;
+        flex-wrap: wrap !important;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.03) !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
+        max-width: 100% !important;
     }
     
     .date-controls {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        font-size: 12px;
-    }
-    
-    .date-controls label {
-        font-weight: 700;
-        color: #000;
-    }
-    
-    .date-controls input[type="date"] {
-        padding: 6px 10px;
-        border: 1px solid #000;
-        font-size: 12px;
-    }
-    
-    .btn {
-        padding: 7px 14px;
-        border-radius: 4px;
-        background: #ffffff;
-        border: 1px solid #00264D;
-        color: #00264D;
-        cursor: pointer;
-        font-size: 11px;
-        font-weight: 600;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        transition: all .2s;
-        white-space: nowrap;
-    }
-    
-    .btn:hover {
-        background: #00264D;
-        color: #ffffff;
-    }
-    
-    .btn-primary {
-        border-color: #00264D;
-        color: #00264D;
-    }
-    
-    .btn-primary:hover {
-        background: #00264D;
-        color: #ffffff;
-    }
-    
-    /* Export Buttons (Filter Button Style) */
-    .flt-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        padding: 6px 14px;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 600;
-        cursor: pointer;
-        border: 1px solid transparent;
-        transition: all 0.15s;
-        height: 34px;
-        line-height: 1;
-        white-space: nowrap;
-        text-decoration: none;
-        background: white !important;
-    }
-    .flt-btn-search { color: #002F70 !important; border-color: #002F70 !important; }
-    .flt-btn-search:hover { background: #002F70 !important; color: #fff !important; }
-    .flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
-    .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
-    .flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
-    .flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
-    .flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
-    .flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
-    .flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
-    .flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
-    .flt-btn-print  { color: #374151 !important; border-color: #374151 !important; }
-    .flt-btn-print:hover  { background: #374151 !important; color: #fff !important; }
-    
-    .tab-navigation {
-        display: flex;
-        gap: 0;
-        border-bottom: 2px solid #000;
-        background: #fff;
-    }
-    
-    .tab-btn {
-        padding: 12px 24px;
-        border: 1px solid #000;
-        border-bottom: none;
-        background: #fff;
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: 600;
-        color: #000;
-        transition: all 0.3s ease;
-    }
-    
-    .tab-btn:hover {
-        background: #f5f5f5;
-    }
-    
-    .tab-btn.active {
-        background: #000 !important;
-        color: #fff !important;
-        border-bottom: 2px solid #000;
-        margin-bottom: -2px;
-    }
-    
-    .tab-btn.active:hover,
-    .tab-btn.active:focus,
-    .tab-btn.active:active {
-        background: #000 !important;
-        color: #fff !important;
-    }
-
-    /* Export Group - Manager Design */
-    .rpt-export-group {
         display: flex !important;
+        gap: 10px !important;
         align-items: center !important;
-        gap: 6px !important;
-        margin-left: auto !important;
+        flex-wrap: wrap !important;
+        flex: 1 1 auto !important;
+    }
+    
+    .controls label,
+    .date-controls label {
+        font-weight: 800 !important;
+        color: #002F6C !important;
+        font-size: 13px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.3px !important;
         white-space: nowrap !important;
     }
-
-    .rpt-export-btn {
-        padding: 7px 13px !important;
-        font-size: 11px !important;
-        font-weight: 700 !important;
-        border-radius: 4px !important;
+    
+    .controls input[type="date"],
+    .controls input[type="text"],
+    .controls select,
+    .date-controls input[type="date"],
+    .date-controls input[type="text"],
+    .date-controls select {
+        height: 38px !important;
+        padding: 6px 10px !important;
+        border: 1.5px solid #cbd5e1 !important;
+        border-radius: 7px !important;
+        font-size: 13.5px !important;
+        font-weight: 600 !important;
+        color: #1e293b !important;
+        background: #ffffff !important;
+        outline: none !important;
+        box-sizing: border-box !important;
+    }
+    
+    .controls input:focus,
+    .controls select:focus {
+        border-color: #002F6C !important;
+        box-shadow: 0 0 0 3px rgba(0,47,108,0.12) !important;
+    }
+    
+    .btn,
+    .btn-primary {
+        height: 38px !important;
+        padding: 0 16px !important;
+        background: #002F6C !important;
+        color: #ffffff !important;
+        font-weight: 800 !important;
+        border: none !important;
+        border-radius: 7px !important;
+        font-size: 13.5px !important;
         cursor: pointer !important;
         display: inline-flex !important;
         align-items: center !important;
-        gap: 5px !important;
+        justify-content: center !important;
+        gap: 6px !important;
+        transition: background 0.15s !important;
+        box-sizing: border-box !important;
+        white-space: nowrap !important;
+    }
+    
+    .btn:hover,
+    .btn-primary:hover {
+        background: #001f4d !important;
+        color: #ffffff !important;
+    }
+    
+    /* Export Buttons (Manager Design) */
+    .rpt-export-group {
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+        margin-left: auto !important;
+        white-space: nowrap !important;
+    }
+    
+    .rpt-export-btn,
+    .flt-btn {
+        height: 38px !important;
+        padding: 0 14px !important;
+        font-size: 13px !important;
+        font-weight: 800 !important;
+        border-radius: 7px !important;
+        cursor: pointer !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 6px !important;
         background: #ffffff !important;
-        border: 1px solid !important;
+        border: 1.5px solid !important;
         transition: all 0.18s !important;
         text-decoration: none !important;
+        box-sizing: border-box !important;
+        white-space: nowrap !important;
     }
-
-    .rpt-btn-print  { color: #475569 !important; border-color: transparent !important; background: transparent !important; }
-    .rpt-btn-print:hover  { background: #f1f5f9 !important; }
+    .rpt-btn-print  { color: #002F6C !important; border-color: #002F6C !important; background: #ffffff !important; }
+    .rpt-btn-print:hover  { background: #002F6C !important; color: #ffffff !important; }
     .rpt-btn-pdf   { color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
-    .rpt-btn-pdf:hover   { background: #fef2f2 !important; }
+    .rpt-btn-pdf:hover   { background: #dc2626 !important; color: #ffffff !important; }
     .rpt-btn-excel { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
-    .rpt-btn-excel:hover { background: #f0fdf4 !important; }
-    .rpt-btn-csv   { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
-    .rpt-btn-csv:hover   { background: #f0fdf4 !important; }
-
-    /* Sub-Tab Nav - Horizontal strip matching Manager/Admin design */
+    .rpt-btn-excel:hover { background: #16a34a !important; color: #ffffff !important; }
+    .rpt-btn-csv   { color: #0284c7 !important; border-color: #0284c7 !important; background: #ffffff !important; }
+    .rpt-btn-csv:hover   { background: #0284c7 !important; color: #ffffff !important; }
+    
+    /* Sub-Tab Navigation */
     .rpt-subtab-nav {
         display: flex !important;
         flex-wrap: wrap !important;
-        margin-bottom: 22px !important;
-        border: 1px solid #d1d9e6 !important;
-        border-radius: 0 !important;
+        margin-bottom: 14px !important;
+        border: 1.5px solid #cbd5e1 !important;
+        border-radius: 8px !important;
         overflow: hidden !important;
-        border-bottom: 3px solid #00264D !important;
+        border-bottom: 3px solid #002F6C !important;
+        background: #ffffff !important;
     }
-
+    
     .rpt-subtab-btn {
         flex: 1 !important;
         min-width: 140px !important;
-        padding: 12px 16px !important;
-        font-size: 11.5px !important;
-        font-weight: 700 !important;
+        padding: 10px 18px !important;
+        font-size: 13.5px !important;
+        font-weight: 800 !important;
         color: #334155 !important;
         background: #ffffff !important;
         border: none !important;
-        border-right: 1px solid #d1d9e6 !important;
+        border-right: 1px solid #cbd5e1 !important;
         text-decoration: none !important;
         transition: all 0.15s ease !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        gap: 7px !important;
+        gap: 8px !important;
         text-transform: uppercase !important;
         letter-spacing: 0.3px !important;
         text-align: center !important;
         cursor: pointer !important;
     }
-
-    .rpt-subtab-btn:last-child {
-        border-right: none !important;
-    }
-
-    .rpt-subtab-btn:hover {
-        background: #f1f5f9 !important;
-        color: #00264D !important;
-        text-decoration: none !important;
-    }
-
-    .rpt-subtab-btn.active {
-        background: #00264D !important;
-        color: #ffffff !important;
-        font-weight: 800 !important;
-    }
-
-    .rpt-subtab-btn i {
-        font-size: 13px !important;
-    }
+    .rpt-subtab-btn:last-child { border-right: none !important; }
+    .rpt-subtab-btn:hover { background: #f1f5f9 !important; color: #002F6C !important; text-decoration: none !important; }
+    .rpt-subtab-btn.active { background: #002F6C !important; color: #ffffff !important; font-weight: 900 !important; }
+    .rpt-subtab-btn i { font-size: 14px !important; }
     
-    .tab-content {
-        display: none;
-    }
-    
-    .tab-content.active {
-        display: block;
-    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
     
     .print-area {
         background: #fff;
-        margin-bottom: 30px;
-        padding-bottom: 20px;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        width: 100% !important;
     }
     
-    .stock-page {
-        margin-bottom: 30px;
-        padding-bottom: 20px;
+    .header {
+        background: #fff;
+        color: #000;
+        padding: 10px 16px !important;
+        text-align: center;
+        border-bottom: 2.5px solid #002F6C !important;
+        margin-bottom: 12px !important;
+    }
+    .header h1 {
+        font-size: 22px !important;
+        margin: 0 0 3px 0 !important;
+        font-weight: 900 !important;
+        color: #002F6C !important;
+        letter-spacing: 0.5px !important;
+        font-family: 'Segoe UI', sans-serif !important;
+    }
+    .header .rpt-address {
+        font-size: 13.5px !important;
+        font-weight: 700 !important;
+        color: #1e293b !important;
+        margin-bottom: 3px !important;
+    }
+    .header .rpt-date-range {
+        font-size: 13px !important;
+        color: #475569 !important;
+        font-weight: 600 !important;
     }
     
     .content {
-        padding: 15px 20px 40px 20px !important;
-    }
-    
-    .tab-content {
-        padding-bottom: 30px !important;
-        margin-bottom: 30px !important;
+        padding: 0 !important;
+        width: 100% !important;
     }
     
     .section-title {
-        font-size: 16px;
-        font-weight: 700;
-        margin: 20px 0 10px 0;
-        color: #000;
-        padding-bottom: 8px;
-        border-bottom: 2px solid #000;
-        text-transform: uppercase;
+        font-size: 15px !important;
+        font-weight: 900 !important;
+        margin: 14px 0 8px 0 !important;
+        color: #002F6C !important;
+        padding: 6px 10px !important;
+        border-left: 4px solid #e30613 !important;
+        border-bottom: 2px solid #002F6C !important;
+        background: #f8fafc !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.3px !important;
     }
     
     .table-container {
-        overflow-x: hidden !important;
-        margin-bottom: 20px;
+        overflow: hidden !important;
+        margin-bottom: 14px !important;
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
+        border-radius: 8px !important;
+        border: 1.5px solid #cbd5e1 !important;
     }
     
     table,
@@ -3259,108 +3242,123 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         min-width: 0 !important;
         table-layout: fixed !important;
         border-collapse: collapse !important;
-        background: white;
-        border: 1px solid #000;
-        font-size: 11.5px;
+        background: white !important;
+        margin: 0 !important;
         box-sizing: border-box !important;
-    }
-    
-    thead {
-        background: #fff;
-        color: #000;
     }
     
     th,
     .table-container table th {
-        padding: 7px 5px !important;
-        text-align: left;
-        font-weight: 700;
-        font-size: 11px !important;
-        text-transform: uppercase;
-        border: 1px solid #000;
+        padding: 9px 7px !important;
+        background: #002F6C !important;
+        color: #ffffff !important;
+        font-weight: 800 !important;
+        font-size: 13.5px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.3px !important;
+        border: 1px solid #001f4d !important;
         word-break: break-word !important;
         overflow-wrap: break-word !important;
         white-space: normal !important;
         box-sizing: border-box !important;
+        vertical-align: middle !important;
     }
     
     td,
     .table-container table td {
-        padding: 6px 5px !important;
-        border: 1px solid #000;
-        font-size: 11.5px !important;
+        padding: 8px 7px !important;
+        border: 1px solid #e2e8f0 !important;
+        font-size: 14px !important;
+        color: #0f172a !important;
         word-break: break-word !important;
         overflow-wrap: break-word !important;
         white-space: normal !important;
         box-sizing: border-box !important;
+        vertical-align: middle !important;
     }
     
-    tbody tr {
-        background: #fff;
+    tbody tr:hover td {
+        background: #f8fafc !important;
     }
     
-    .text-right { text-align: right; }
-    .text-center { text-align: center; }
-    .font-bold { font-weight: 700; }
+    tr[style*="font-weight:800"] td,
+    tr[style*="font-weight: 800"] td,
+    .total-row td {
+        font-size: 15.5px !important;
+        font-weight: 900 !important;
+        background: #eff6ff !important;
+        border: 1.5px solid #002F6C !important;
+        color: #002F6C !important;
+    }
+    
+    .text-right { text-align: right !important; }
+    .text-center { text-align: center !important; }
+    .font-bold { font-weight: 800 !important; }
     
     .shift-boxes {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 15px;
-        margin: 20px 0;
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 14px !important;
+        margin: 14px 0 !important;
     }
-    
     .shift-box {
-        background: #fff;
-        padding: 15px;
-        border: 1px solid #000;
+        background: #fff !important;
+        padding: 14px !important;
+        border: 1.5px solid #cbd5e1 !important;
+        border-radius: 8px !important;
     }
-    
     .shift-box h3 {
-        font-size: 14px;
-        color: #000;
-        margin: 0 0 10px 0;
-        font-weight: 700;
-        border-bottom: 1px solid #000;
-        padding-bottom: 8px;
-        text-transform: uppercase;
+        font-size: 14px !important;
+        color: #002F6C !important;
+        margin: 0 0 8px 0 !important;
+        font-weight: 800 !important;
+        border-bottom: 1.5px solid #cbd5e1 !important;
+        padding-bottom: 6px !important;
+        text-transform: uppercase !important;
     }
-    
-    .shift-box table {
-        font-size: 11px;
-    }
-    
-    .shift-box td {
-        padding: 6px 4px;
-        border: none;
-        border-bottom: 1px solid #ddd;
-    }
+    .shift-box table { font-size: 13.5px !important; }
+    .shift-box td { padding: 6px 8px !important; font-size: 13.5px !important; }
     
     .summary-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 15px;
-        margin: 20px 0;
+        display: grid !important;
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 12px !important;
+        margin: 14px 0 !important;
     }
-    
     .summary-card {
-        background: #fff;
-        padding: 15px;
-        border: 1px solid #000;
-        text-align: center;
+        background: #fff !important;
+        padding: 14px !important;
+        border: 1.5px solid #cbd5e1 !important;
+        border-radius: 8px !important;
+        text-align: center !important;
     }
-    
     .summary-card .label {
-        font-size: 11px;
-        color: #000;
-        margin-bottom: 8px;
-        font-weight: 700;
+        font-size: 12px !important;
+        color: #475569 !important;
+        margin-bottom: 6px !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+    }
+    .summary-card .value {
+        font-size: 24px !important;
+        color: #002F6C !important;
+        font-weight: 900 !important;
     }
     
-    .summary-card .value {
-        font-size: 20px;
-        color: #000;
-        font-weight: 700;
+    /* Prepared-by signature block — HIDE on screen, ONLY show on print / export */
+    .print-only-signature,
+    .report-signature {
+        display: none !important;
+    }
+    
+    /* Floating button position adjustments */
+    #toggleScrollBtn {
+        bottom: 24px !important;
+        right: 20px !important;
+        opacity: 0.88 !important;
+    }
+    #toggleScrollBtn:hover {
+        opacity: 1 !important;
     }
     
     /* ── Print styles — matched to PO invoice (print_supplier_invoice.php) ── */
@@ -3596,8 +3594,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             padding: 0 !important;
         }
 
-        /* ── Signature — right-aligned, compact margin so it stays on page ── */
-        .print-only-signature { display: none !important; }
+        /* ── Signature — ONLY shown when printing ── */
+        .print-only-signature,
         .sfss-print-only .print-only-signature {
             display: table !important;
             width: 100% !important;
@@ -3608,6 +3606,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
             border: none !important;
             border-collapse: collapse !important;
         }
+        .print-only-signature td,
         .sfss-print-only .print-only-signature td {
             border: none !important;
             font-size: 9px !important;
@@ -3645,7 +3644,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
 <div class="stock-page">
 <!-- CONTROLS - OUTSIDE PRINTABLE AREA -->
-<div class="controls" style="background:transparent;padding:10px 0;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+<div class="controls">
     <div class="date-controls" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <label style="font-weight:700;color:#002F6C;font-size:12px;text-transform:uppercase;letter-spacing:.4px;">From</label>
         <input type="date" id="date_from" value="<?= htmlspecialchars($date_from) ?>" max="<?= $today ?>"
@@ -3764,7 +3763,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
          TAB 1 — FUEL SALES
     ═══════════════════════════════════════════════════════════════════════ -->
     <div id="fuel-tab" class="tab-content <?= $active_tab === 'fuel' ? 'active' : '' ?>">
-        <div class="container">
+        <div class="container sfss-card-container">
             <div class="header" style="text-align:center; margin-bottom:14px; border-bottom:2px solid #002F6C; padding-bottom:8px;">
                 <h1 style="font-size:18px; font-weight:800; color:#002F6C; margin:0 0 3px 0; letter-spacing:0.5px; font-family:'Segoe UI', sans-serif;">FUEL SALES REPORT</h1>
                 <div class="rpt-address" style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:4px;">
@@ -3782,13 +3781,13 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 1. Fuel Meter Reading Table -->
                 <div class="section-title">FUEL METER READING TABLE</div>
                 <div class="table-container mb-4">
-                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                    <table class="report-table no-min-width print-table" style="width:100%; border-collapse:collapse; table-layout:fixed;">
                         <colgroup>
-                            <col style="width: 11%;">
+                            <col style="width: 8%;">
                             <col style="width: 14%;">
                             <col style="width: 13%;">
                             <col style="width: 13%;">
-                            <col style="width: 10%;">
+                            <col style="width: 13%;">
                             <col style="width: 12%;">
                             <col style="width: 12%;">
                             <col style="width: 15%;">
@@ -3799,7 +3798,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                                 <th style="padding:8px 6px; border:1px solid #001a36; text-align:left;">Fuel Type</th>
                                 <th style="padding:8px 6px; border:1px solid #001a36; text-align:right;">Beginning Reading</th>
                                 <th style="padding:8px 6px; border:1px solid #001a36; text-align:right;">Ending Reading</th>
-                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:right;">Calibration</th>
+                                <th style="padding:8px 6px; border:1px solid #001a36; text-align:right; white-space:nowrap;">Calibration</th>
                                 <th style="padding:8px 6px; border:1px solid #001a36; text-align:right;">Net Volume (L)</th>
                                 <th style="padding:8px 6px; border:1px solid #001a36; text-align:right;">Selling Price/L</th>
                                 <th style="padding:8px 6px; border:1px solid #001a36; text-align:right;">Fuel Sales</th>
@@ -3821,9 +3820,9 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                                 <?php endforeach; ?>
                                 <tr style="font-weight:800; background:#e8f0fe; border-top:2px solid #002F6C;">
                                     <td colspan="5" style="padding:8px 10px; border:1px solid #002F6C; text-align:right; text-transform:uppercase;">TOTAL FUEL METER READINGS</td>
-                                    <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#15803d; font-size:13px;"><?= number_format($total_fuel_liters_sold, 2) ?> L</td>
+                                    <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#15803d;"><?= number_format($total_fuel_liters_sold, 2) ?> L</td>
                                     <td style="padding:8px 10px; border:1px solid #002F6C; text-align:center;">-</td>
-                                    <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C; font-size:14px;">₱<?= number_format($total_fuel_sales_amount, 2) ?></td>
+                                    <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C;">₱<?= number_format($total_fuel_sales_amount, 2) ?></td>
                                 </tr>
                             <?php else: ?>
                                 <tr>
@@ -3839,7 +3838,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 2. Fuel Sales Summary Table -->
                 <div class="section-title" style="margin-top:20px;">FUEL SALES SUMMARY</div>
                 <div class="table-container mb-4">
-                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                    <table class="report-table no-min-width print-table" style="width:100%; border-collapse:collapse; table-layout:fixed;">
                         <colgroup>
                             <col style="width: 40%;">
                             <col style="width: 30%;">
@@ -3863,8 +3862,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                                 <?php endforeach; ?>
                                 <tr style="font-weight:800; background:#e8f0fe; border-top:2px solid #002F6C;">
                                     <td style="padding:8px 10px; border:1px solid #002F6C; text-transform:uppercase;">TOTAL FUEL SALES SUMMARY</td>
-                                    <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#15803d; font-size:13px;"><?= number_format($total_fuel_liters_sold, 2) ?> L</td>
-                                    <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C; font-size:14px;">₱<?= number_format($total_fuel_sales_amount, 2) ?></td>
+                                    <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#15803d;"><?= number_format($total_fuel_liters_sold, 2) ?> L</td>
+                                    <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C;">₱<?= number_format($total_fuel_sales_amount, 2) ?></td>
                                 </tr>
                             <?php else: ?>
                                 <tr>
@@ -3880,7 +3879,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 3. Volume & Amount Summary -->
                 <div class="section-title" style="margin-top:24px;">VOLUME & AMOUNT SUMMARY</div>
                 <div class="table-container mb-4">
-                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                    <table class="report-table no-min-width print-table" style="width:100%; border-collapse:collapse; table-layout:fixed;">
                         <colgroup>
                             <col style="width: 55%;">
                             <col style="width: 45%;">
@@ -3895,11 +3894,11 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                         <tbody>
                             <tr>
                                 <td style="padding:8px 10px; border:1px solid #ddd; font-weight:700;">Total Liters Sold</td>
-                                <td style="padding:8px 10px; border:1px solid #ddd; text-align:right; font-weight:700; color:#15803d; font-size:13px;"><?= number_format($total_fuel_liters_sold, 2) ?> L</td>
+                                <td style="padding:8px 10px; border:1px solid #ddd; text-align:right; font-weight:700; color:#15803d;"><?= number_format($total_fuel_liters_sold, 2) ?> L</td>
                             </tr>
                             <tr style="background:#f8fafc;">
                                 <td style="padding:8px 10px; border:1px solid #ddd; font-weight:700;">Total Fuel Sales</td>
-                                <td style="padding:8px 10px; border:1px solid #ddd; text-align:right; font-weight:800; color:#002F6C; font-size:14px;">₱<?= number_format($total_fuel_sales_amount, 2) ?></td>
+                                <td style="padding:8px 10px; border:1px solid #ddd; text-align:right; font-weight:800; color:#002F6C;">₱<?= number_format($total_fuel_sales_amount, 2) ?></td>
                             </tr>
                         </tbody>
                     </table>
@@ -3908,7 +3907,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 4. Tank Summary -->
                 <div class="section-title" style="margin-top:24px;">TANK LITERS SUMMARY</div>
                 <div class="table-container mb-4">
-                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                    <table class="report-table no-min-width print-table" style="width:100%; border-collapse:collapse; table-layout:fixed;">
                         <colgroup>
                             <col style="width: 60%;">
                             <col style="width: 40%;">
@@ -3932,7 +3931,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                             <?php endforeach; ?>
                             <tr style="font-weight:800; background:#e8f0fe; border-top:2px solid #002F6C;">
                                 <td style="padding:8px 10px; border:1px solid #002F6C; text-transform:uppercase;">TOTAL TANK LITERS</td>
-                                <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C; font-size:13px;"><?= number_format($tot_tank_liters, 2) ?> L</td>
+                                <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C;"><?= number_format($tot_tank_liters, 2) ?> L</td>
                             </tr>
                         </tbody>
                     </table>
@@ -3975,7 +3974,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
                         <div>
                             <h4 style="font-size:13px; font-weight:700; color:#002F6C; margin:0 0 6px 0; text-transform:uppercase;"><i class="fas fa-money-bill-wave me-1"></i> Cash Summary</h4>
-                            <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                            <table class="report-table no-min-width print-table" style="width:100%; border-collapse:collapse; table-layout:fixed;">
                                 <colgroup>
                                     <col style="width: 50%;">
                                     <col style="width: 50%;">
@@ -4000,7 +3999,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
                         <div>
                             <h4 style="font-size:13px; font-weight:700; color:#002F6C; margin:0 0 6px 0; text-transform:uppercase;"><i class="fas fa-file-invoice-dollar me-1"></i> Accounts Receivable Summary</h4>
-                            <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                            <table class="report-table no-min-width print-table" style="width:100%; border-collapse:collapse; table-layout:fixed;">
                                 <colgroup>
                                     <col style="width: 50%;">
                                     <col style="width: 50%;">
@@ -4026,7 +4025,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
                     <!-- Overall Summary -->
                     <h4 style="font-size:13px; font-weight:700; color:#002F6C; margin:10px 0 6px 0; text-transform:uppercase;"><i class="fas fa-calculator me-1"></i> Overall Financial Summary</h4>
-                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                    <table class="report-table no-min-width print-table" style="width:100%; border-collapse:collapse; table-layout:fixed;">
                         <colgroup>
                             <col style="width: 60%;">
                             <col style="width: 40%;">
@@ -4046,22 +4045,22 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                             <tr><td style="padding:6px 10px; border:1px solid #ddd;">LESS: A/R SHIFT 2</td><td style="padding:6px 10px; border:1px solid #ddd; text-align:right; color:#dc2626;">- ₱<?= number_format($c_ar2, 2) ?></td></tr>
                             <?php endif; ?>
                             <tr style="font-weight:700; background:#f0fdf4;"><td style="padding:6px 10px; border:1px solid #bbf7d0; color:#15803d;">NET CASH / REMAINING AMOUNT</td><td style="padding:6px 10px; border:1px solid #bbf7d0; text-align:right; color:#15803d;">₱<?= number_format($disp_net_cash, 2) ?></td></tr>
-                            <tr style="font-weight:800; background:#e0f2fe;"><td style="padding:8px 10px; border:1px solid #7dd3fc; font-size:13px; color:#0369a1;">TOTAL CASH IN BANK</td><td style="padding:8px 10px; border:1px solid #7dd3fc; text-align:right; font-size:14px; color:#0369a1;">₱<?= number_format($disp_bank_cash, 2) ?></td></tr>
+                            <tr style="font-weight:800; background:#e0f2fe;"><td style="padding:8px 10px; border:1px solid #7dd3fc; color:#0369a1;">TOTAL CASH IN BANK</td><td style="padding:8px 10px; border:1px solid #7dd3fc; text-align:right; color:#0369a1;">₱<?= number_format($disp_bank_cash, 2) ?></td></tr>
                         </tbody>
                     </table>
                 </div>
 
 
                 <!-- PREPARED BY SIGNATURE -->
-                <table class="print-only-signature" style="width:100%; margin-top:15px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+                <table class="print-only-signature report-table no-min-width print-table" style="width:100%; margin-top:15px; page-break-inside:avoid; border:none; border-collapse:collapse;">
                     <tr>
                         <td style="border:none;"></td>
-                        <td style="border:none; width:220px; text-align:center;">
-                            <div style="font-size:11px; font-weight:700; color:#333; margin-bottom:28px;">PREPARED BY:</div>
-                            <div style="border-top:1.5px solid #000; padding-top:4px; font-weight:800; font-size:12px; color:#000;">
+                        <td style="border:none; width:260px; text-align:center;">
+                            <div style="font-size:13px; font-weight:700; color:#333; margin-bottom:28px;">PREPARED BY:</div>
+                            <div style="border-top:1.5px solid #000; padding-top:4px; font-weight:800; font-size:14px; color:#000;">
                                 <?= htmlspecialchars($cashier_name) ?>
                             </div>
-                            <div style="font-size:10.5px; color:#555; margin-top:2px; font-weight:600;">Staff / Cashier</div>
+                            <div style="font-size:12.5px; color:#555; margin-top:2px; font-weight:600;">Staff / Cashier</div>
                         </td>
                     </tr>
                 </table>
@@ -4076,7 +4075,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
          TAB 2 — MERCHANDISE & SERVICE SALES
     ═══════════════════════════════════════════════════════════════════════ -->
     <div id="merchandise-tab" class="tab-content <?= $active_tab === 'merchandise' ? 'active' : '' ?>">
-        <div class="container">
+        <div class="container sfss-card-container">
             <div class="header" style="text-align:center; margin-bottom:14px; border-bottom:2px solid #002F6C; padding-bottom:8px;">
                 <h1 style="font-size:18px; font-weight:800; color:#002F6C; margin:0 0 3px 0; letter-spacing:0.5px; font-family:'Segoe UI', sans-serif;">MERCHANDISE & SERVICE SALES REPORT</h1>
                 <div class="rpt-address" style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:4px;">
@@ -4094,7 +4093,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 1. Merchandise Transactions Table -->
                 <div class="section-title">MERCHANDISE TRANSACTIONS</div>
                 <div class="table-container mb-4">
-                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                    <table class="report-table no-min-width print-table" style="width:100%; border-collapse:collapse; table-layout:fixed;">
                         <colgroup>
                             <col style="width: 15%;">
                             <col style="width: 10%;">
@@ -4123,7 +4122,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                                     <tr>
                                         <?php
                                             $raw_tid = $mt['transaction_id'] ?? '';
-                                            $mt_date = !empty($mt['created_at']) ? date('Ymd', strtotime($mt['created_at'])) : date('Ymd');
+                                             $mt_date = !empty($mt['created_at']) ? date('Ymd', strtotime($mt['created_at'])) : date('Ymd');
                                             if (!empty($mt['transaction_number'])) {
                                                 $receipt_display = $mt['transaction_number'];
                                             } elseif (!empty($raw_tid) && !is_numeric(trim($raw_tid)) && strpos($raw_tid, '-') !== false) {
@@ -4136,20 +4135,20 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                                             }
                                         ?>
                                         <td style="padding:7px 10px; border:1px solid #ddd;"><code><?= htmlspecialchars($receipt_display) ?></code></td>
-                                        <td style="padding:7px 10px; border:1px solid #ddd; font-size:11px; color:#64748b;"><?= !empty($mt['created_at']) ? date('h:i A', strtotime($mt['created_at'])) : '-' ?></td>
+                                        <td style="padding:7px 10px; border:1px solid #ddd; color:#64748b;"><?= !empty($mt['created_at']) ? date('h:i A', strtotime($mt['created_at'])) : '-' ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd;"><?= htmlspecialchars($mt['customer_name'] ?? $mt['customer'] ?? 'Walk-in') ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd; font-weight:600;"><?= htmlspecialchars($mt['product_name'] ?? $mt['item_sku'] ?? 'Merchandise') ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd; text-align:center; font-weight:700;"><?= (float)($mt['stock_out'] ?? $mt['quantity'] ?? 1) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($mt['unit_price'] ?? 0), 2) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd; text-align:right; font-weight:800; color:#002F6C;">₱<?= number_format((float)($mt['total_amount'] ?? 0), 2) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd; text-align:center;">
-                                            <span class="badge bg-secondary" style="font-size:10px; padding:3px 8px;"><?= htmlspecialchars($mt['payment_method'] ?? 'Cash') ?></span>
+                                            <span class="badge bg-secondary" style="font-size:12px; padding:4px 8px;"><?= htmlspecialchars($mt['payment_method'] ?? 'Cash') ?></span>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
                                 <tr style="font-weight:800; background:#e8f0fe; border-top:2px solid #002F6C;">
                                     <td colspan="6" style="padding:8px 10px; border:1px solid #002F6C; text-align:right; text-transform:uppercase;">TOTAL MERCHANDISE SALES</td>
-                                    <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C; font-size:13px;">₱<?= number_format($merch_sales_summary_total, 2) ?></td>
+                                    <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C;">₱<?= number_format($merch_sales_summary_total, 2) ?></td>
                                     <td style="padding:8px 10px; border:1px solid #002F6C;"></td>
                                 </tr>
                             <?php else: ?>
@@ -4166,7 +4165,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 2. Job Order Transactions Table -->
                 <div class="section-title" style="margin-top:20px;">JOB ORDER TRANSACTIONS (Service Sales)</div>
                 <div class="table-container mb-4">
-                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                    <table class="report-table no-min-width print-table" style="width:100%; border-collapse:collapse; table-layout:fixed;">
                         <colgroup>
                             <col style="width: 11%;">
                             <col style="width: 8%;">
@@ -4213,22 +4212,22 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                                             if (empty($mech_display)) $mech_display = '—';
                                         ?>
                                         <td style="padding:7px 10px; border:1px solid #ddd;"><code><?= htmlspecialchars($jo_no_display) ?></code></td>
-                                        <td style="padding:7px 10px; border:1px solid #ddd; font-size:11px; color:#64748b;"><?= !empty($st['created_at']) ? date('h:i A', strtotime($st['created_at'])) : '-' ?></td>
+                                        <td style="padding:7px 10px; border:1px solid #ddd; color:#64748b;"><?= !empty($st['created_at']) ? date('h:i A', strtotime($st['created_at'])) : '-' ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd;"><?= htmlspecialchars($st['customer_name'] ?? 'Walk-in') ?></td>
-                                        <td style="padding:7px 10px; border:1px solid #ddd; font-size:11px;"><?= htmlspecialchars($veh_display) ?></td>
+                                        <td style="padding:7px 10px; border:1px solid #ddd;"><?= htmlspecialchars($veh_display) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd;"><?= htmlspecialchars($mech_display) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($st['labor_fee'] ?? 0), 2) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($st['service_fee'] ?? 0), 2) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd; text-align:right;">₱<?= number_format((float)($st['parts_cost'] ?? 0), 2) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd; text-align:right; font-weight:800; color:#002F6C;">₱<?= number_format((float)($st['total_amount'] ?? 0), 2) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd; text-align:center;">
-                                            <span class="badge bg-secondary" style="font-size:10px; padding:3px 8px;"><?= htmlspecialchars($st['payment_method'] ?? 'Cash') ?></span>
+                                            <span class="badge bg-secondary" style="font-size:12px; padding:4px 8px;"><?= htmlspecialchars($st['payment_method'] ?? 'Cash') ?></span>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
                                 <tr style="font-weight:800; background:#e8f0fe; border-top:2px solid #002F6C;">
                                     <td colspan="8" style="padding:8px 10px; border:1px solid #002F6C; text-align:right; text-transform:uppercase;">TOTAL SERVICE REVENUE</td>
-                                    <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C; font-size:13px;">₱<?= number_format($service_revenue_summary_total + $parts_sales_summary_total, 2) ?></td>
+                                    <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C;">₱<?= number_format($service_revenue_summary_total + $parts_sales_summary_total, 2) ?></td>
                                     <td style="padding:8px 10px; border:1px solid #002F6C;"></td>
                                 </tr>
                             <?php else: ?>
@@ -4245,7 +4244,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 3. Payment Method Summary Table -->
                 <div class="section-title" style="margin-top:20px;">PAYMENT METHOD SUMMARY</div>
                 <div class="table-container mb-4">
-                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                    <table class="report-table no-min-width print-table" style="width:100%; border-collapse:collapse; table-layout:fixed;">
                         <colgroup>
                             <col style="width: 45%;">
                             <col style="width: 25%;">
@@ -4274,8 +4273,8 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                             <?php endforeach; ?>
                             <tr style="font-weight:800; background:#e8f0fe; border-top:2px solid #002F6C;">
                                 <td style="padding:8px 10px; border:1px solid #002F6C; text-transform:uppercase;">TOTAL PAYMENT COLLECTIONS</td>
-                                <td style="padding:8px 10px; border:1px solid #002F6C; text-align:center; font-size:13px;"><?= $total_pm_count ?></td>
-                                <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C; font-size:14px;">₱<?= number_format($total_pm_amount, 2) ?></td>
+                                <td style="padding:8px 10px; border:1px solid #002F6C; text-align:center;"><?= $total_pm_count ?></td>
+                                <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C;">₱<?= number_format($total_pm_amount, 2) ?></td>
                             </tr>
                         </tbody>
                     </table>
@@ -4284,7 +4283,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 4. Accounts Receivable Summary (MY SHIFT ONLY) -->
                 <div class="section-title" style="margin-top:20px;">ACCOUNTS RECEIVABLE SUMMARY (MY SHIFT ONLY)</div>
                 <div class="table-container mb-4">
-                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                    <table class="report-table no-min-width print-table" style="width:100%; border-collapse:collapse; table-layout:fixed;">
                         <colgroup>
                             <col style="width: 25%;">
                             <col style="width: 13%;">
@@ -4316,16 +4315,16 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                                         <td style="padding:7px 10px; border:1px solid #ddd; font-weight:700;"><?= htmlspecialchars($arR['customer_name']) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd;"><?= htmlspecialchars($arR['account_type']) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd;"><code><?= htmlspecialchars($arR['invoice_no']) ?></code></td>
-                                        <td style="padding:7px 10px; border:1px solid #ddd; font-size:11px;"><?= !empty($arR['due_date']) ? date('M d, Y', strtotime($arR['due_date'])) : '-' ?></td>
+                                        <td style="padding:7px 10px; border:1px solid #ddd;"><?= !empty($arR['due_date']) ? date('M d, Y', strtotime($arR['due_date'])) : '-' ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd; text-align:right; font-weight:800; color:#dc2626;">₱<?= number_format($bal, 2) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd; text-align:center;">
-                                            <span class="badge <?= $stClass ?>" style="font-size:10px; padding:3px 8px;"><?= htmlspecialchars($arR['payment_status'] ?? 'Unpaid') ?></span>
+                                            <span class="badge <?= $stClass ?>" style="font-size:12px; padding:4px 8px;"><?= htmlspecialchars($arR['payment_status'] ?? 'Unpaid') ?></span>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
                                 <tr style="font-weight:800; background:#fee2e2; border-top:2px solid #dc2626;">
                                     <td colspan="4" style="padding:8px 10px; border:1px solid #dc2626; text-align:right; text-transform:uppercase;">TOTAL SHIFT RECEIVABLES</td>
-                                    <td style="padding:8px 10px; border:1px solid #dc2626; text-align:right; color:#dc2626; font-size:13px;">₱<?= number_format($total_ar_shift_bal, 2) ?></td>
+                                    <td style="padding:8px 10px; border:1px solid #dc2626; text-align:right; color:#dc2626;"><?= number_format($total_ar_shift_bal, 2) ?></td>
                                     <td style="padding:8px 10px; border:1px solid #dc2626;"></td>
                                 </tr>
                             <?php else: ?>
@@ -4342,7 +4341,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <!-- 5. Shift Sales Summary (Merchandise & Service Summary) -->
                 <div class="section-title" style="margin-top:20px;">SHIFT SALES SUMMARY</div>
                 <div class="table-container mb-4">
-                    <table class="report-table" style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+                    <table class="report-table no-min-width print-table" style="width:100%; border-collapse:collapse; table-layout:fixed;">
                         <colgroup>
                             <col style="width: 60%;">
                             <col style="width: 40%;">
@@ -4379,23 +4378,23 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                                 <td style="padding:7px 10px; border:1px solid #ddd; text-align:right; font-weight:700;">₱<?= number_format($fleet_sales_summary_total, 2) ?></td>
                             </tr>
                             <tr style="font-weight:800; background:#e8f0fe; border-top:2px solid #002F6C;">
-                                <td style="padding:8px 10px; border:1px solid #002F6C; text-transform:uppercase; font-size:13px;">OVERALL SHIFT SALES</td>
-                                <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C; font-size:15px;">₱<?= number_format($overall_shift_sales_summary_total, 2) ?></td>
+                                <td style="padding:8px 10px; border:1px solid #002F6C; text-transform:uppercase;">OVERALL SHIFT SALES</td>
+                                <td style="padding:8px 10px; border:1px solid #002F6C; text-align:right; color:#002F6C;">₱<?= number_format($overall_shift_sales_summary_total, 2) ?></td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
 
                 <!-- PREPARED BY SIGNATURE -->
-                <table class="print-only-signature" style="width:100%; margin-top:15px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+                <table class="print-only-signature report-table no-min-width print-table" style="width:100%; margin-top:15px; page-break-inside:avoid; border:none; border-collapse:collapse;">
                     <tr>
                         <td style="border:none;"></td>
-                        <td style="border:none; width:220px; text-align:center;">
-                            <div style="font-size:11px; font-weight:700; color:#333; margin-bottom:28px;">PREPARED BY:</div>
-                            <div style="border-top:1.5px solid #000; padding-top:4px; font-weight:800; font-size:12px; color:#000;">
+                        <td style="border:none; width:260px; text-align:center;">
+                            <div style="font-size:13px; font-weight:700; color:#333; margin-bottom:28px;">PREPARED BY:</div>
+                            <div style="border-top:1.5px solid #000; padding-top:4px; font-weight:800; font-size:14px; color:#000;">
                                 <?= htmlspecialchars($cashier_name) ?>
                             </div>
-                            <div style="font-size:10.5px; color:#555; margin-top:2px; font-weight:600;">Staff / Cashier</div>
+                            <div style="font-size:12.5px; color:#555; margin-top:2px; font-weight:600;">Staff / Cashier</div>
                         </td>
                     </tr>
                 </table>

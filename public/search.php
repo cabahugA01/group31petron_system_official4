@@ -89,45 +89,45 @@ $COLORS = [
 $is_manager = in_array($role, ['manager', 'admin', 'superadmin', 'developer']);
 
 if (!empty($query)) {
-    $like = "%{$query}%";
+    $like      = "%{$query}%";
+    $date_like = '%' . str_replace(['/', '-', ' '], '%', $query) . '%';
 
     // ════════════════════════════════════════════════════════
-    // 1. TRANSACTIONS
-    //    Fields: transaction_id, date, status, fuel_type, payment_method
+    // 1. TRANSACTIONS  (merchandise + fuel)
     // ════════════════════════════════════════════════════════
     if (is_module_enabled('transactions') || in_array($role, ['superadmin', 'developer'])) {
 
-        // Merchandise transactions
+        // -- Merchandise transactions --
         try {
-            $sw = $station_id ? "AND mt.station_id = {$station_id}" : '';
+            $sw   = $station_id ? "AND mt.station_id = {$station_id}" : '';
             $stmt = $pdo->prepare(
                 "SELECT mt.id, mt.transaction_id, mt.status,
                         mt.created_at, mt.payment_method,
-                        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name
+                        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name
                  FROM merchandise_transactions mt
                  LEFT JOIN users u ON u.id = mt.staff_id
                  WHERE (mt.transaction_id LIKE ?
-                     OR mt.status LIKE ?
+                     OR mt.status         LIKE ?
                      OR mt.payment_method LIKE ?
-                     OR u.username LIKE ?
+                     OR u.username        LIKE ?
                      OR DATE(mt.created_at) LIKE ?)
                    {$sw}
                  ORDER BY mt.created_at DESC LIMIT 10"
             );
-            $date_like = '%' . str_replace(['/', '-', ' '], '%', $query) . '%';
             $stmt->execute([$like, $like, $like, $like, $date_like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $txn_id = $r['transaction_id'] ?? ('#' . $r['id']);
                 $ts     = date('M d, Y H:i', strtotime($r['created_at']));
-                
-                $txn_q = urlencode($txn_id);
-                $txn_link = 'staff_transactions_hub.php?section=history&hsearch=' . $txn_q;
-                if ($role === 'manager') {
-                    $txn_link = 'pending_transactions.php?search=' . $txn_q;
-                } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                $txn_q  = urlencode($txn_id);
+
+                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
                     $txn_link = 'admin_transactions_oversight.php?search=' . $txn_q;
+                } elseif ($role === 'manager') {
+                    $txn_link = 'manager_transaction_monitoring.php?search=' . $txn_q;
+                } else {
+                    $txn_link = 'staff_transactions_hub.php?section=history&hsearch=' . $txn_q;
                 }
-                
+
                 $results[] = [
                     'type'     => 'Transaction',
                     'title'    => "Transaction {$txn_id}",
@@ -140,34 +140,34 @@ if (!empty($query)) {
             }
         } catch (Exception $e) {}
 
-        // Fuel transactions
+        // -- Fuel transactions --
         try {
-            $sw = $station_id ? "AND ft.station_id = {$station_id}" : '';
+            $sw   = $station_id ? "AND ft.station_id = {$station_id}" : '';
             $stmt = $pdo->prepare(
                 "SELECT ft.id, ft.status, ft.fuel_type,
                         ft.transaction_date, ft.shift_period
                  FROM fuel_transactions ft
-                 WHERE (ft.fuel_type LIKE ?
-                     OR ft.status LIKE ?
+                 WHERE (ft.fuel_type    LIKE ?
+                     OR ft.status       LIKE ?
                      OR ft.shift_period LIKE ?
                      OR CAST(ft.id AS CHAR) LIKE ?
                      OR DATE(ft.transaction_date) LIKE ?)
                    {$sw}
                  ORDER BY ft.transaction_date DESC LIMIT 10"
             );
-            $date_like = '%' . str_replace(['/', '-', ' '], '%', $query) . '%';
             $stmt->execute([$like, $like, $like, $like, $date_like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $ts = date('M d, Y H:i', strtotime($r['transaction_date']));
-                
+                $ts     = date('M d, Y H:i', strtotime($r['transaction_date']));
                 $fuel_q = urlencode($r['id']);
-                $txn_link = 'staff_transactions_hub.php?section=fuel';
-                if ($role === 'manager') {
-                    $txn_link = 'manager_fuel_transaction_validation.php?search=' . $fuel_q;
-                } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
+
+                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
                     $txn_link = 'admin_fuel_transactions_oversight.php?search=' . $fuel_q;
+                } elseif ($role === 'manager') {
+                    $txn_link = 'manager_fuel_transaction_validation.php?search=' . $fuel_q;
+                } else {
+                    $txn_link = 'staff_transactions_hub.php?section=fuel';
                 }
-                
+
                 $results[] = [
                     'type'     => 'Transaction',
                     'title'    => "Fuel Transaction #{$r['id']} — {$r['fuel_type']}",
@@ -182,21 +182,19 @@ if (!empty($query)) {
     }
 
     // ════════════════════════════════════════════════════════
-    // 2. CUSTOMERS
-    //    Fields: name, customer_id, phone, email, status
+    // 2. CUSTOMERS  (name, phone, email, customer_code, status)
     // ════════════════════════════════════════════════════════
     if (is_module_enabled('customers') || in_array($role, ['superadmin', 'developer'])) {
         try {
-            $sw = $station_id ? "AND c.station_id = {$station_id}" : '';
+            $sw   = $station_id ? "AND c.station_id = {$station_id}" : '';
             $stmt = $pdo->prepare(
-                "SELECT c.id, c.name, c.phone, c.email, c.status,
-                        c.customer_code
+                "SELECT c.id, c.name, c.phone, c.email, c.status, c.customer_code
                  FROM customers c
-                 WHERE (c.name LIKE ?
-                     OR c.phone LIKE ?
-                     OR c.email LIKE ?
+                 WHERE (c.name          LIKE ?
+                     OR c.phone         LIKE ?
+                     OR c.email         LIKE ?
                      OR c.customer_code LIKE ?
-                     OR c.status LIKE ?)
+                     OR c.status        LIKE ?)
                    {$sw}
                  ORDER BY c.name ASC LIMIT 10"
             );
@@ -204,10 +202,13 @@ if (!empty($query)) {
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $contact = $r['phone'] ?: ($r['email'] ?: 'No contact');
                 $code    = $r['customer_code'] ? " · ID: {$r['customer_code']}" : '';
-                
-                $cust_q = urlencode($r['name']);
-                $cust_link = ($role === 'staff') ? ('staff_customer_list.php?search=' . $cust_q) : ('manager_customers.php?search=' . $cust_q);
-                
+                $cust_q  = urlencode($r['name']);
+
+                // admin & above share the manager_customers page (no separate admin version exists)
+                $cust_link = ($role === 'staff')
+                    ? 'staff_customer_list.php?search=' . $cust_q
+                    : 'manager_customers.php?search='   . $cust_q;
+
                 $results[] = [
                     'type'     => 'Customer',
                     'title'    => $r['name'],
@@ -222,31 +223,31 @@ if (!empty($query)) {
     }
 
     // ════════════════════════════════════════════════════════
-    // 2.5 VEHICLES (Plate Number, Brand, Model)
+    // 2.5 VEHICLES  (plate number, brand, model, color)
     // ════════════════════════════════════════════════════════
     try {
-        $sw = $station_id ? "AND (c.station_id = {$station_id} OR c.station_id IS NULL)" : '';
+        $sw   = $station_id ? "AND (c.station_id = {$station_id} OR c.station_id IS NULL)" : '';
         $stmt = $pdo->prepare(
             "SELECT cv.id, cv.plate_number, cv.brand, cv.model, cv.color,
-                    c.name AS owner_name, c.id AS owner_id
+                    c.name AS owner_name
              FROM customer_vehicles cv
              LEFT JOIN customers c ON c.id = cv.customer_id
              WHERE (cv.plate_number LIKE ?
-                 OR cv.brand LIKE ?
-                 OR cv.model LIKE ?
-                 OR cv.color LIKE ?)
+                 OR cv.brand        LIKE ?
+                 OR cv.model        LIKE ?
+                 OR cv.color        LIKE ?)
                {$sw}
              ORDER BY cv.plate_number ASC LIMIT 10"
         );
         $stmt->execute([$like, $like, $like, $like]);
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $owner = $r['owner_name'] ? " · Owner: {$r['owner_name']}" : '';
-            $desc  = trim("{$r['brand']} {$r['model']} {$r['color']}");
-            if (empty($desc)) $desc = 'Vehicle';
-            
-            $veh_q = urlencode($r['plate_number']);
-            $veh_link = ($role === 'staff') ? ('staff_customer_list.php?search=' . $veh_q) : ('manager_customers.php?search=' . $veh_q);
-            
+            $owner   = $r['owner_name'] ? " · Owner: {$r['owner_name']}" : '';
+            $desc    = trim("{$r['brand']} {$r['model']} {$r['color']}") ?: 'Vehicle';
+            $veh_q   = urlencode($r['plate_number']);
+            $veh_link = ($role === 'staff')
+                ? 'staff_customer_list.php?search=' . $veh_q
+                : 'manager_customers.php?search='   . $veh_q;
+
             $results[] = [
                 'type'     => 'Vehicle',
                 'title'    => "Vehicle {$r['plate_number']}",
@@ -260,7 +261,7 @@ if (!empty($query)) {
     } catch (Exception $e) {}
 
     // ════════════════════════════════════════════════════════
-    // 3. PRODUCTS & INVENTORY
+    // 3. PRODUCTS & INVENTORY  (active products only)
     // ════════════════════════════════════════════════════════
     if (is_module_enabled('inventory') || in_array($role, ['superadmin', 'developer'])) {
         try {
@@ -272,9 +273,10 @@ if (!empty($query)) {
                      FROM inventory_products ip
                      LEFT JOIN station_inventory si
                             ON si.product_id = ip.id AND si.station_id = ?
-                     WHERE (ip.product_name LIKE ?
-                         OR ip.sku LIKE ?
-                         OR ip.category LIKE ?
+                     WHERE ip.status = 'active'
+                       AND (ip.product_name LIKE ?
+                         OR ip.sku          LIKE ?
+                         OR ip.category     LIKE ?
                          OR CAST(COALESCE(si.stock_level, ip.stock) AS CHAR) LIKE ?)
                      ORDER BY ip.product_name ASC LIMIT 10"
                 );
@@ -284,44 +286,52 @@ if (!empty($query)) {
                     "SELECT id, product_name, sku, category,
                             stock AS stock_level, unit_price
                      FROM inventory_products
-                     WHERE (product_name LIKE ?
-                         OR sku LIKE ?
-                         OR category LIKE ?
+                     WHERE status = 'active'
+                       AND (product_name LIKE ?
+                         OR sku          LIKE ?
+                         OR category     LIKE ?
                          OR CAST(stock AS CHAR) LIKE ?)
                      ORDER BY product_name ASC LIMIT 10"
                 );
                 $stmt->execute([$like, $like, $like, $like]);
             }
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $stock  = (int)($r['stock_level'] ?? 0);
-                $avail  = $stock > 0 ? "In Stock ({$stock})" : 'Out of Stock';
-                
+                $stock      = (int)($r['stock_level'] ?? 0);
+                $avail      = $stock > 0 ? "In Stock ({$stock})" : 'Out of Stock';
                 $p_q        = urlencode($r['product_name']);
                 $cat_lower  = strtolower(trim((string)($r['category'] ?? '')));
                 $name_lower = strtolower(trim((string)($r['product_name'] ?? '')));
-                
+
                 $is_fuel = (strpos($cat_lower, 'fuel') !== false ||
-                            strpos($name_lower, 'diesel') !== false ||
-                            strpos($name_lower, 'xcs') !== false ||
-                            strpos($name_lower, 'kerosene') !== false ||
-                            strpos($name_lower, 'xtra') !== false ||
-                            strpos($name_lower, 'unleaded') !== false ||
-                            strpos($name_lower, 'gasoline') !== false);
-                
+                            strpos($name_lower, 'diesel')    !== false ||
+                            strpos($name_lower, 'xcs')       !== false ||
+                            strpos($name_lower, 'kerosene')  !== false ||
+                            strpos($name_lower, 'xtra')      !== false ||
+                            strpos($name_lower, 'unleaded')  !== false ||
+                            strpos($name_lower, 'gasoline')  !== false);
+
                 if ($is_fuel) {
-                    $inv_link = ($role === 'staff')
-                        ? ('staff_inventory_fuel.php?search=' . $p_q)
-                        : (($role === 'manager') ? ('manager_inventory_fuel.php?search=' . $p_q) : ('admin_inventory_fuel.php?search=' . $p_q));
+                    if (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                        $inv_link = 'admin_inventory_fuel.php?search=' . $p_q;
+                    } elseif ($role === 'manager') {
+                        $inv_link = 'manager_inventory_fuel.php?search=' . $p_q;
+                    } else {
+                        $inv_link = 'staff_inventory_fuel.php?search=' . $p_q;
+                    }
                     $icon  = 'fas fa-gas-pump';
                     $color = '#f97316';
                 } else {
-                    $inv_link = ($role === 'staff')
-                        ? ('staff_inventory_merchandise.php?search=' . $p_q)
-                        : (($role === 'manager') ? ('manager_inventory_merchandise.php?search=' . $p_q) : ('admin_inventory_merchandise.php?search=' . $p_q));
+                    if (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                        $inv_link = 'admin_inventory_merchandise.php?search=' . $p_q;
+                    } elseif ($role === 'manager') {
+                        $inv_link = 'manager_inventory_merchandise.php?search=' . $p_q;
+                    } else {
+                        $inv_link = 'staff_inventory_merchandise.php?search=' . $p_q;
+                    }
                     $icon  = $ICONS['Product'];
                     $color = $COLORS['Product'];
                 }
-                
+
                 $results[] = [
                     'type'     => 'Product',
                     'title'    => $r['product_name'],
@@ -332,23 +342,36 @@ if (!empty($query)) {
                     'color'    => $color,
                 ];
             }
-            // Also search direct fuel_inventory table
+
+            // Also search fuel_inventory tanks directly
             try {
-                $sw_fuel = $station_id ? "WHERE fi.station_id = {$station_id}" : '';
-                $stmt_fuel = $pdo->prepare(
-                    "SELECT fi.id, fi.fuel_type, fi.current_level, fi.capacity, fi.price_per_liter
-                     FROM fuel_inventory fi
-                     {$sw_fuel}
-                     " . ($sw_fuel ? "AND" : "WHERE") . " (fi.fuel_type LIKE ? OR CAST(fi.current_level AS CHAR) LIKE ?)
-                     ORDER BY fi.fuel_type ASC LIMIT 5"
-                );
-                $stmt_fuel->execute([$like, $like]);
+                if ($station_id) {
+                    $stmt_fuel = $pdo->prepare(
+                        "SELECT fi.id, fi.fuel_type, fi.current_level, fi.capacity, fi.price_per_liter
+                         FROM fuel_inventory fi
+                         WHERE fi.station_id = ?
+                           AND (fi.fuel_type LIKE ? OR CAST(fi.current_level AS CHAR) LIKE ?)
+                         ORDER BY fi.fuel_type ASC LIMIT 5"
+                    );
+                    $stmt_fuel->execute([$station_id, $like, $like]);
+                } else {
+                    $stmt_fuel = $pdo->prepare(
+                        "SELECT fi.id, fi.fuel_type, fi.current_level, fi.capacity, fi.price_per_liter
+                         FROM fuel_inventory fi
+                         WHERE (fi.fuel_type LIKE ? OR CAST(fi.current_level AS CHAR) LIKE ?)
+                         ORDER BY fi.fuel_type ASC LIMIT 5"
+                    );
+                    $stmt_fuel->execute([$like, $like]);
+                }
                 foreach ($stmt_fuel->fetchAll(PDO::FETCH_ASSOC) as $fr) {
                     $fq = urlencode($fr['fuel_type']);
-                    $fuel_inv_link = ($role === 'staff')
-                        ? ('staff_inventory_fuel.php?search=' . $fq)
-                        : (($role === 'manager') ? ('manager_inventory_fuel.php?search=' . $fq) : ('admin_inventory_fuel.php?search=' . $fq));
-                    
+                    if (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                        $fuel_inv_link = 'admin_inventory_fuel.php?search=' . $fq;
+                    } elseif ($role === 'manager') {
+                        $fuel_inv_link = 'manager_inventory_fuel.php?search=' . $fq;
+                    } else {
+                        $fuel_inv_link = 'staff_inventory_fuel.php?search=' . $fq;
+                    }
                     $results[] = [
                         'type'     => 'Product',
                         'title'    => $fr['fuel_type'],
@@ -364,32 +387,41 @@ if (!empty($query)) {
     }
 
     // ════════════════════════════════════════════════════════
-    // 4. JOB ORDERS
-    //    Fields: job_order_id, assigned staff, status, customer_name, service_type
+    // 4. JOB ORDERS  (job_order_id, customer, service, status)
     // ════════════════════════════════════════════════════════
     if (is_module_enabled('job_orders') || in_array($role, ['superadmin', 'developer'])) {
         try {
             $sw = $station_id ? "AND jo.station_id = {$station_id}" : '';
-            // Staff only see their own; manager/admin see all
-            $uf = $role === 'staff' ? "AND (jo.created_by = {$user_id} OR jo.assigned_to = {$user_id})" : '';
+            $uf = $role === 'staff'
+                ? "AND (jo.created_by = {$user_id} OR jo.assigned_to = {$user_id})"
+                : '';
             $stmt = $pdo->prepare(
                 "SELECT jo.id, jo.job_order_id, jo.status,
-                        jo.customer_name, jo.service_type,
-                        jo.created_at, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name
+                        jo.customer_name, jo.service_type, jo.created_at,
+                        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name
                  FROM job_orders jo
                  LEFT JOIN users u ON u.id = jo.created_by
-                 WHERE (jo.job_order_id LIKE ?
+                 WHERE (jo.job_order_id  LIKE ?
                      OR jo.customer_name LIKE ?
-                     OR jo.service_type LIKE ?
-                     OR jo.status LIKE ?
-                     OR u.username LIKE ?)
+                     OR jo.service_type  LIKE ?
+                     OR jo.status        LIKE ?
+                     OR u.username       LIKE ?)
                    {$sw} {$uf}
                  ORDER BY jo.created_at DESC LIMIT 10"
             );
             $stmt->execute([$like, $like, $like, $like, $like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $jo_num = $r['job_order_id'] ?? ('#' . $r['id']);
-                $jo_link = $is_manager ? ('manager_validated_transactions.php?type=job_order&search=' . urlencode($jo_num)) : ('staff_transactions_hub.php?section=history&hsearch=' . urlencode($jo_num));
+                $jo_num  = $r['job_order_id'] ?? ('#' . $r['id']);
+                $jo_q    = urlencode($jo_num);
+
+                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
+                    $jo_link = 'admin_transactions_oversight.php?search=' . $jo_q;
+                } elseif ($role === 'manager') {
+                    $jo_link = 'manager_job_orders.php?search=' . $jo_q;
+                } else {
+                    $jo_link = 'staff_transactions_hub.php?section=history&hsearch=' . $jo_q;
+                }
+
                 $results[] = [
                     'type'     => 'Job Order',
                     'title'    => "Job Order {$jo_num}",
@@ -404,39 +436,41 @@ if (!empty($query)) {
     }
 
     // ════════════════════════════════════════════════════════
-    // 5. DELIVERIES
-    //    Fields: delivery_id, assigned staff/driver, status, supplier
+    // 5. DELIVERIES  (id, supplier, status, delivery_type)
     // ════════════════════════════════════════════════════════
     if (is_module_enabled('deliveries') || in_array($role, ['superadmin', 'developer'])) {
         try {
             $sw = $station_id ? "AND do2.station_id = {$station_id}" : '';
-            $uf = $role === 'staff' ? "AND (do2.encoded_by = {$user_id} OR do2.assigned_to = {$user_id})" : '';
+            $uf = $role === 'staff'
+                ? "AND (do2.encoded_by = {$user_id} OR do2.assigned_to = {$user_id})"
+                : '';
             $stmt = $pdo->prepare(
                 "SELECT do2.id, do2.status, do2.supplier,
                         do2.delivery_date, do2.delivery_type,
-                        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name
+                        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name
                  FROM deliveries_oversight do2
                  LEFT JOIN users u ON u.id = do2.encoded_by
                  WHERE (CAST(do2.id AS CHAR) LIKE ?
-                     OR do2.status LIKE ?
-                     OR do2.supplier LIKE ?
+                     OR do2.status        LIKE ?
+                     OR do2.supplier      LIKE ?
                      OR do2.delivery_type LIKE ?
-                     OR u.username LIKE ?)
+                     OR u.username        LIKE ?)
                    {$sw} {$uf}
                  ORDER BY do2.delivery_date DESC LIMIT 10"
             );
             $stmt->execute([$like, $like, $like, $like, $like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $dt = $r['delivery_date'] ? date('M d, Y', strtotime($r['delivery_date'])) : 'TBD';
-                
+                $dt    = $r['delivery_date'] ? date('M d, Y', strtotime($r['delivery_date'])) : 'TBD';
                 $del_q = urlencode($r['id']);
-                $del_link = 'staff_record_delivery.php?search=' . $del_q;
-                if ($role === 'manager') {
-                    $del_link = 'manager_merchandise_deliveries.php?search=' . $del_q;
-                } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
+
+                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
                     $del_link = 'admin_merchandise_deliveries_oversight.php?search=' . $del_q;
+                } elseif ($role === 'manager') {
+                    $del_link = 'manager_merchandise_deliveries.php?search=' . $del_q;
+                } else {
+                    $del_link = 'staff_delivery_history.php?search=' . $del_q;
                 }
-                
+
                 $results[] = [
                     'type'     => 'Delivery',
                     'title'    => "Delivery #{$r['id']} — {$r['supplier']}",
@@ -451,8 +485,7 @@ if (!empty($query)) {
     }
 
     // ════════════════════════════════════════════════════════
-    // 6. CALENDAR / SCHEDULE
-    //    Fields: event title, date/time, assigned staff, event_type
+    // 6. CALENDAR / SCHEDULE  (title, event_type, date)
     // ════════════════════════════════════════════════════════
     if (is_module_enabled('calendar') || in_array($role, ['superadmin', 'developer'])) {
         try {
@@ -466,32 +499,32 @@ if (!empty($query)) {
                         u.username AS assigned_name
                  FROM calendar_events ce
                  LEFT JOIN users u ON u.id = ce.user_id
-                 WHERE (ce.title LIKE ?
-                     OR ce.event_type LIKE ?
+                 WHERE (ce.title       LIKE ?
+                     OR ce.event_type  LIKE ?
                      OR ce.description LIKE ?
-                     OR u.username LIKE ?
+                     OR u.username     LIKE ?
                      OR DATE(ce.start_time) LIKE ?)
                    {$sw} {$uf}
                  ORDER BY ce.start_time DESC LIMIT 10"
             );
-            $date_like = '%' . str_replace(['/', '-', ' '], '%', $query) . '%';
             $stmt->execute([$like, $like, $like, $like, $date_like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $start = $r['start_time'] ? date('M d, Y h:i A', strtotime($r['start_time'])) : 'TBD';
                 $end   = $r['end_time']   ? date('h:i A', strtotime($r['end_time']))           : '';
                 $range = $end ? "{$start} – {$end}" : $start;
-                
-                $cal_link = 'staff_calendar.php';
-                if ($role === 'manager') {
-                    $cal_link = 'manager_calendar.php';
-                } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
+
+                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
                     $cal_link = 'admin_calendar.php';
+                } elseif ($role === 'manager') {
+                    $cal_link = 'manager_calendar.php';
+                } else {
+                    $cal_link = 'staff_calendar.php';
                 }
-                
+
                 $results[] = [
                     'type'     => 'Calendar',
                     'title'    => $r['title'] ?: ucfirst($r['event_type'] ?? 'Event'),
-                    'subtitle' => "{$range}" . ($r['assigned_name'] ? " · {$r['assigned_name']}" : ''),
+                    'subtitle' => $range . ($r['assigned_name'] ? " · {$r['assigned_name']}" : ''),
                     'meta'     => $r['event_type'] ?? '',
                     'link'     => $cal_link,
                     'icon'     => $ICONS['Calendar'],
@@ -502,8 +535,7 @@ if (!empty($query)) {
     }
 
     // ════════════════════════════════════════════════════════
-    // 7. REPORTS (staff view)
-    //    Fields: daily transaction summary, job order completion
+    // 7. REPORTS  (activity_logs with report/summary keywords)
     // ════════════════════════════════════════════════════════
     if (is_module_enabled('reports') || in_array($role, ['superadmin', 'developer'])) {
         try {
@@ -511,8 +543,7 @@ if (!empty($query)) {
             $stmt = $pdo->prepare(
                 "SELECT al.id, al.action, al.details, al.created_at
                  FROM activity_logs al
-                 WHERE (al.action LIKE ?
-                     OR al.details LIKE ?)
+                 WHERE (al.action LIKE ? OR al.details LIKE ?)
                    AND (al.action LIKE '%Summary%'
                      OR al.action LIKE '%Report%'
                      OR al.action LIKE '%Completion%'
@@ -525,16 +556,17 @@ if (!empty($query)) {
             $stmt->execute([$like, $like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $ts = date('M d, Y H:i', strtotime($r['created_at']));
-                
-                $report_link = 'staff_reports.php';
-                if ($role === 'manager') {
-                    $report_link = 'manager_reports.php';
+
+                if (in_array($role, ['superadmin', 'developer'])) {
+                    $report_link = 'reports_technical.php';
                 } elseif ($role === 'admin') {
                     $report_link = 'admin_reports.php';
-                } elseif (in_array($role, ['superadmin', 'developer'])) {
-                    $report_link = 'reports_technical.php';
+                } elseif ($role === 'manager') {
+                    $report_link = 'manager_reports.php';
+                } else {
+                    $report_link = 'staff_reports.php';
                 }
-                
+
                 $results[] = [
                     'type'     => 'Report',
                     'title'    => $r['action'],
@@ -549,19 +581,19 @@ if (!empty($query)) {
     }
 
     // ════════════════════════════════════════════════════════
-    // 8. PRODUCT MANAGEMENT (manager/admin only)
-    //    Fields: product name, pricing, category
+    // 8. PRODUCT MANAGEMENT  (manager / admin — pricing view)
+    //    Active products only
     // ════════════════════════════════════════════════════════
     if ($is_manager) {
         try {
             $stmt = $pdo->prepare(
                 "SELECT ip.id, ip.product_name, ip.sku, ip.category,
-                        ip.unit_price, ip.cost_price,
-                        ip.stock AS stock_level
+                        ip.unit_price, ip.cost_price, ip.stock AS stock_level
                  FROM inventory_products ip
-                 WHERE (ip.product_name LIKE ?
-                     OR ip.sku LIKE ?
-                     OR ip.category LIKE ?
+                 WHERE ip.status = 'active'
+                   AND (ip.product_name LIKE ?
+                     OR ip.sku          LIKE ?
+                     OR ip.category     LIKE ?
                      OR CAST(ip.unit_price AS CHAR) LIKE ?
                      OR CAST(ip.cost_price AS CHAR) LIKE ?)
                  ORDER BY ip.product_name ASC LIMIT 10"
@@ -570,10 +602,12 @@ if (!empty($query)) {
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $price = $r['unit_price'] ? '₱' . number_format($r['unit_price'], 2) : 'No price';
                 $cost  = $r['cost_price']  ? ' · Cost: ₱' . number_format($r['cost_price'], 2) : '';
-                
-                $pm_q = urlencode($r['product_name']);
-                $prod_mgmt_link = ($role === 'manager') ? ('manager_set_prices.php?tab=merch&search=' . $pm_q) : ('admin_set_prices.php?tab=merch&search=' . $pm_q);
-                
+                $pm_q  = urlencode($r['product_name']);
+
+                $prod_mgmt_link = in_array($role, ['admin', 'superadmin', 'developer'])
+                    ? 'admin_set_prices.php?tab=merch&search='   . $pm_q
+                    : 'manager_set_prices.php?tab=merch&search=' . $pm_q;
+
                 $results[] = [
                     'type'     => 'Product Mgmt',
                     'title'    => $r['product_name'],
@@ -588,29 +622,28 @@ if (!empty($query)) {
     }
 
     // ════════════════════════════════════════════════════════
-    // 9. FUEL MANAGEMENT (manager/admin only)
-    //    Fields: pump ID, tank level, refill logs, fuel type
+    // 9. FUEL MANAGEMENT  (manager / admin — tanks + pump readings)
     // ════════════════════════════════════════════════════════
     if ($is_manager) {
-        // Fuel inventory tanks
+        // Fuel tanks
         try {
-            $sw2 = $station_id ? "AND fi.station_id = {$station_id}" : '';
+            $sw2  = $station_id ? "AND fi.station_id = {$station_id}" : '';
             $stmt = $pdo->prepare(
-                "SELECT fi.id, fi.fuel_type, fi.current_level, fi.capacity,
-                        fi.station_id
+                "SELECT fi.id, fi.fuel_type, fi.current_level, fi.capacity, fi.station_id
                  FROM fuel_inventory fi
                  WHERE (fi.fuel_type LIKE ?
                      OR CAST(fi.current_level AS CHAR) LIKE ?
-                     OR CAST(fi.capacity AS CHAR) LIKE ?)
+                     OR CAST(fi.capacity      AS CHAR) LIKE ?)
                    {$sw2}
                  ORDER BY fi.fuel_type ASC LIMIT 8"
             );
             $stmt->execute([$like, $like, $like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $pct  = $r['capacity'] > 0 ? round(($r['current_level'] / $r['capacity']) * 100) : 0;
-                
-                $fuel_mgmt_link = ($role === 'manager') ? 'manager_set_prices.php?tab=fuel' : 'admin_set_prices.php?tab=fuel';
-                
+                $fuel_mgmt_link = in_array($role, ['admin', 'superadmin', 'developer'])
+                    ? 'admin_set_prices.php?tab=fuel'
+                    : 'manager_set_prices.php?tab=fuel';
+
                 $results[] = [
                     'type'     => 'Fuel Management',
                     'title'    => "Fuel Tank — {$r['fuel_type']}",
@@ -623,9 +656,9 @@ if (!empty($query)) {
             }
         } catch (Exception $e) {}
 
-        // Fuel pump readings
+        // Pump daily readings
         try {
-            $sw2 = $station_id ? "AND fdr.station_id = {$station_id}" : '';
+            $sw2  = $station_id ? "AND fdr.station_id = {$station_id}" : '';
             $stmt = $pdo->prepare(
                 "SELECT fdr.id, fdr.pump_number, fdr.computed_liters,
                         fdr.reading_date, fp.fuel_type
@@ -637,14 +670,14 @@ if (!empty($query)) {
                    {$sw2}
                  ORDER BY fdr.reading_date DESC LIMIT 8"
             );
-            $date_like2 = '%' . str_replace(['/', '-', ' '], '%', $query) . '%';
-            $stmt->execute([$like, $like, $date_like2]);
+            $stmt->execute([$like, $like, $date_like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $dt   = date('M d, Y', strtotime($r['reading_date']));
                 $pump = $r['pump_number'] ?? $r['id'];
-                
-                $fuel_mgmt_link = ($role === 'manager') ? 'manager_set_prices.php?tab=fuel' : 'admin_set_prices.php?tab=fuel';
-                
+                $fuel_mgmt_link = in_array($role, ['admin', 'superadmin', 'developer'])
+                    ? 'admin_set_prices.php?tab=fuel'
+                    : 'manager_set_prices.php?tab=fuel';
+
                 $results[] = [
                     'type'     => 'Fuel Management',
                     'title'    => "Pump #{$pump} Reading — {$dt}",
@@ -659,17 +692,16 @@ if (!empty($query)) {
     }
 
     // ════════════════════════════════════════════════════════
-    // 10. STATIONS (superadmin / developer only)
-    //     Fields: name, address, status, station code
+    // 10. STATIONS  (superadmin / developer only)
     // ════════════════════════════════════════════════════════
     if (in_array($role, ['superadmin', 'developer'])) {
         try {
             $stmt = $pdo->prepare(
                 "SELECT id, name, address, status, station_code
                  FROM stations
-                 WHERE (name LIKE ?
-                     OR address LIKE ?
-                     OR status LIKE ?
+                 WHERE (name         LIKE ?
+                     OR address      LIKE ?
+                     OR status       LIKE ?
                      OR station_code LIKE ?)
                  ORDER BY name ASC LIMIT 8"
             );
@@ -690,8 +722,7 @@ if (!empty($query)) {
     }
 
     // ════════════════════════════════════════════════════════
-    // 11. ADMINS / USERS (superadmin / developer only)
-    //     Fields: name, username, role, email, status
+    // 11. ADMINS / USERS  (superadmin / developer only)
     // ════════════════════════════════════════════════════════
     if (in_array($role, ['superadmin', 'developer'])) {
         try {
@@ -700,12 +731,12 @@ if (!empty($query)) {
                         COALESCE(NULLIF(CONCAT(first_name,' ',last_name),' '), username) AS full_name,
                         role, email, status
                  FROM users
-                 WHERE (username LIKE ?
+                 WHERE (username   LIKE ?
                      OR first_name LIKE ?
-                     OR last_name LIKE ?
-                     OR email LIKE ?
-                     OR role LIKE ?
-                     OR status LIKE ?)
+                     OR last_name  LIKE ?
+                     OR email      LIKE ?
+                     OR role       LIKE ?
+                     OR status     LIKE ?)
                  ORDER BY full_name ASC LIMIT 10"
             );
             $stmt->execute([$like, $like, $like, $like, $like, $like]);
@@ -725,27 +756,25 @@ if (!empty($query)) {
     }
 
     // ════════════════════════════════════════════════════════
-    // 12. SYSTEM LOGS (superadmin / developer only)
-    //     Source: activity_logs — action, details, IP
+    // 12. SYSTEM LOGS  (superadmin / developer only)
     // ════════════════════════════════════════════════════════
     if (in_array($role, ['superadmin', 'developer'])) {
         try {
             $stmt = $pdo->prepare(
-                "SELECT al.id, al.action, al.details, al.ip_address,
-                        al.created_at,
+                "SELECT al.id, al.action, al.details, al.ip_address, al.created_at,
                         COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'System') AS user_name
                  FROM activity_logs al
                  LEFT JOIN users u ON u.id = al.user_id
-                 WHERE (al.action LIKE ?
-                     OR al.details LIKE ?
+                 WHERE (al.action     LIKE ?
+                     OR al.details    LIKE ?
                      OR al.ip_address LIKE ?
-                     OR u.username LIKE ?)
+                     OR u.username    LIKE ?)
                  ORDER BY al.created_at DESC LIMIT 8"
             );
             $stmt->execute([$like, $like, $like, $like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $ts = date('M d, Y H:i', strtotime($r['created_at']));
-                $ip = $r['ip_address'] ? " · IP: {$r['ip_address']}" : '';
+                $ts  = date('M d, Y H:i', strtotime($r['created_at']));
+                $ip  = $r['ip_address'] ? " · IP: {$r['ip_address']}" : '';
                 $results[] = [
                     'type'     => 'System Log',
                     'title'    => $r['action'],
@@ -760,23 +789,21 @@ if (!empty($query)) {
     }
 
     // ════════════════════════════════════════════════════════
-    // 13. SECURITY EVENTS (superadmin / developer only)
-    //     Source: activity_logs — failed logins, unauthorized
+    // 13. SECURITY EVENTS  (superadmin / developer only)
     // ════════════════════════════════════════════════════════
     if (in_array($role, ['superadmin', 'developer'])) {
         try {
             $stmt = $pdo->prepare(
-                "SELECT al.id, al.action, al.details, al.ip_address,
-                        al.created_at,
+                "SELECT al.id, al.action, al.details, al.ip_address, al.created_at,
                         COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS user_name
                  FROM activity_logs al
                  LEFT JOIN users u ON u.id = al.user_id
-                 WHERE (al.action LIKE ?
-                     OR al.details LIKE ?
+                 WHERE (al.action     LIKE ?
+                     OR al.details    LIKE ?
                      OR al.ip_address LIKE ?)
-                   AND (al.action LIKE '%fail%' OR al.action LIKE '%Failed%'
+                   AND (al.action LIKE '%fail%'   OR al.action LIKE '%Failed%'
                      OR al.action LIKE '%Unauthorized%' OR al.action LIKE '%unauthorized%'
-                     OR al.action LIKE '%lock%' OR al.action LIKE '%suspicious%'
+                     OR al.action LIKE '%lock%'   OR al.action LIKE '%suspicious%'
                      OR al.details LIKE '%denied%' OR al.details LIKE '%brute%')
                  ORDER BY al.created_at DESC LIMIT 8"
             );
@@ -798,8 +825,7 @@ if (!empty($query)) {
     }
 
     // ════════════════════════════════════════════════════════
-    // 14. AUDIT TRAIL (superadmin / developer / admin / manager)
-    //     Source: activity_logs / audit_logs
+    // 14. AUDIT TRAIL  (superadmin / developer / admin / manager)
     // ════════════════════════════════════════════════════════
     if (in_array($role, ['superadmin', 'developer', 'admin', 'manager'])) {
         try {
@@ -809,48 +835,41 @@ if (!empty($query)) {
                             COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'System') AS user_name
                      FROM activity_logs al
                      LEFT JOIN users u ON u.id = al.user_id
-                     WHERE (al.action LIKE ?
-                         OR al.details LIKE ?)
-                       AND (al.action LIKE '%Config%' OR al.action LIKE '%Setting%'
-                         OR al.action LIKE '%Export%' OR al.action LIKE '%Deploy%'
-                         OR al.action LIKE '%Backup%' OR al.action LIKE '%Restore%'
+                     WHERE (al.action LIKE ? OR al.details LIKE ?)
+                       AND (al.action LIKE '%Config%'   OR al.action LIKE '%Setting%'
+                         OR al.action LIKE '%Export%'   OR al.action LIKE '%Deploy%'
+                         OR al.action LIKE '%Backup%'   OR al.action LIKE '%Restore%'
                          OR al.action LIKE '%Integration%' OR al.action LIKE '%Module%')
                      ORDER BY al.created_at DESC LIMIT 8"
                 );
                 $stmt->execute([$like, $like]);
+                $audit_link = 'superadmin_audit_trail.php';
             } elseif ($role === 'admin') {
                 $stmt = $pdo->prepare(
                     "SELECT al.id, al.action_type AS action, al.action_details AS details, al.created_at,
                             COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'System') AS user_name
                      FROM audit_logs al
                      LEFT JOIN users u ON u.id = al.user_id
-                     WHERE (al.action_type LIKE ?
-                         OR al.action_details LIKE ?)
+                     WHERE (al.action_type LIKE ? OR al.action_details LIKE ?)
                        AND u.station_id = ?
                      ORDER BY al.created_at DESC LIMIT 8"
                 );
                 $stmt->execute([$like, $like, $station_id]);
+                $audit_link = 'admin_audit_trail.php';
             } else { // manager
                 $stmt = $pdo->prepare(
                     "SELECT al.id, al.action_type AS action, al.action_details AS details, al.created_at,
                             COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'System') AS user_name
                      FROM audit_logs al
                      LEFT JOIN users u ON u.id = al.user_id
-                     WHERE (al.action_type LIKE ?
-                         OR al.action_details LIKE ?)
+                     WHERE (al.action_type LIKE ? OR al.action_details LIKE ?)
                        AND al.user_id = ?
                      ORDER BY al.created_at DESC LIMIT 8"
                 );
                 $stmt->execute([$like, $like, $user_id]);
-            }
-            
-            $audit_link = 'superadmin_audit_trail.php';
-            if ($role === 'admin') {
-                $audit_link = 'admin_audit_trail.php';
-            } elseif ($role === 'manager') {
                 $audit_link = 'manager_audit_trail.php';
             }
-            
+
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $ts = date('M d, Y H:i', strtotime($r['created_at']));
                 $results[] = [

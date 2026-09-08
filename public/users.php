@@ -942,7 +942,7 @@ include __DIR__ . '/../partials/header.php';
 
 /* --- FORM & INPUT STYLES --- */
 .form-section-title {
-    font-size: 11px !important;
+    font-size: 13px !important;
     font-weight: 800 !important;
     text-transform: uppercase !important;
     letter-spacing: 0.6px !important;
@@ -971,28 +971,28 @@ include __DIR__ . '/../partials/header.php';
 .form-group {
     display: flex !important;
     flex-direction: column !important;
-    gap: 4px !important;
-    margin-bottom: 10px !important;
+    gap: 5px !important;
+    margin-bottom: 12px !important;
 }
 
 .form-group .lbl,
 .lbl {
-    font-size: 10.5px !important;
+    font-size: 13px !important;
     font-weight: 700 !important;
     color: #475569 !important;
     text-transform: uppercase !important;
     letter-spacing: 0.4px !important;
-    margin-bottom: 2px !important;
+    margin-bottom: 3px !important;
 }
 
 .form-group input.inp,
 .form-group select.inp,
 .inp {
-    height: 38px !important;
-    padding: 0 12px !important;
+    height: 42px !important;
+    padding: 0 14px !important;
     border: 1px solid #cbd5e1 !important;
     border-radius: 8px !important;
-    font-size: 13px !important;
+    font-size: 14px !important;
     color: #1e293b !important;
     background: #ffffff !important;
     outline: none !important;
@@ -1009,8 +1009,8 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .btn-dice {
-    height: 38px !important;
-    width: 38px !important;
+    height: 42px !important;
+    width: 42px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -1018,6 +1018,7 @@ include __DIR__ . '/../partials/header.php';
     border: 1px solid #cbd5e1 !important;
     border-radius: 8px !important;
     color: #002F70 !important;
+    font-size: 16px !important;
     cursor: pointer !important;
     flex-shrink: 0 !important;
     transition: all 0.15s !important;
@@ -1033,10 +1034,10 @@ include __DIR__ . '/../partials/header.php';
     background: #ffffff !important;
     border: 1px solid #cbd5e1 !important;
     color: #334155 !important;
-    font-size: 13px !important;
-    font-weight: 600 !important;
-    padding: 0 16px !important;
-    height: 36px !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    padding: 0 18px !important;
+    height: 40px !important;
     border-radius: 7px !important;
     cursor: pointer !important;
     display: inline-flex !important;
@@ -1058,11 +1059,11 @@ include __DIR__ . '/../partials/header.php';
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 7px !important;
-    padding: 0 18px !important;
-    height: 36px !important;
+    gap: 8px !important;
+    padding: 0 20px !important;
+    height: 40px !important;
     border-radius: 7px !important;
-    font-size: 13px !important;
+    font-size: 14px !important;
     font-weight: 700 !important;
     cursor: pointer !important;
     transition: all .15s ease-in-out !important;
@@ -1088,14 +1089,15 @@ include __DIR__ . '/../partials/header.php';
     background-color: #002F70 !important;
     border: 1px solid #002F70 !important;
     color: #ffffff !important;
-    font-size: 13px !important;
+    font-size: 14px !important;
     font-weight: 700 !important;
-    padding: 9px 20px !important;
+    padding: 10px 22px !important;
+    height: 40px !important;
     border-radius: 7px !important;
     cursor: pointer !important;
     display: inline-flex !important;
     align-items: center !important;
-    gap: 7px !important;
+    gap: 8px !important;
     transition: all 0.15s !important;
 }
 .btn-plain-submit i,
@@ -1113,9 +1115,9 @@ include __DIR__ . '/../partials/header.php';
     background: transparent !important;
     border: 1px solid #dc3545 !important;
     color: #dc3545 !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    padding: 8px 18px !important;
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    padding: 9px 20px !important;
     border-radius: 6px !important;
     cursor: pointer !important;
     display: inline-flex !important;
@@ -1132,9 +1134,9 @@ include __DIR__ . '/../partials/header.php';
     background: transparent !important;
     border: 1px solid #16a34a !important;
     color: #16a34a !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    padding: 8px 18px !important;
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    padding: 9px 20px !important;
     border-radius: 6px !important;
     cursor: pointer !important;
     display: inline-flex !important;
@@ -1158,13 +1160,13 @@ include __DIR__ . '/../partials/header.php';
 }
 .um-tab-btn {
     flex: 1 !important; min-width: 140px !important;
-    padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important;
+    padding: 14px 20px !important; font-size: 14px !important; font-weight: 700 !important;
     color: #334155 !important; background: #ffffff !important;
     border: none !important; border-right: 1px solid #d1d9e6 !important;
     border-radius: 0 !important; text-decoration: none !important;
     transition: all 0.15s ease !important;
     display: inline-flex !important; align-items: center !important;
-    justify-content: center !important; gap: 7px !important;
+    justify-content: center !important; gap: 8px !important;
     text-transform: uppercase !important; letter-spacing: 0.3px !important;
     text-align: center !important; cursor: pointer !important;
     margin-bottom: 0 !important; box-shadow: none !important;
@@ -1178,9 +1180,9 @@ include __DIR__ . '/../partials/header.php';
 .um-badge-cnt {
     background: #dc2626 !important;
     color: #ffffff !important;
-    padding: 2px 7px;
+    padding: 3px 9px;
     border-radius: 12px;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     line-height: 1;
 }
@@ -1188,15 +1190,15 @@ include __DIR__ . '/../partials/header.php';
 .action-btn,
 .btn-archive,
 .btn-restore {
-    border-radius: 4px !important;
-    padding: 5px 12px !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
+    border-radius: 6px !important;
+    padding: 6px 14px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
     cursor: pointer !important;
     transition: all .2s !important;
     background: transparent !important;
     box-shadow: none !important;
-    width: 80px !important;
+    width: 88px !important;
     text-align: center !important;
 }
 
@@ -1260,7 +1262,7 @@ include __DIR__ . '/../partials/header.php';
 
 .page-head {
     display:flex; justify-content:space-between; gap:16px; align-items:center;
-    margin-top:0 !important; margin-bottom:25px !important;
+    margin-top: 18px !important; margin-bottom: 25px !important;
     padding:0 !important; border:none !important; width:100%;
 }
 .page-head h1, .page-head .h1 {
@@ -1271,7 +1273,7 @@ include __DIR__ . '/../partials/header.php';
     display:flex !important; align-items:center !important; gap:10px !important; line-height:1.2 !important;
 }
 .um-wrap {
-    padding: 0 !important;
+    padding: 15px 0 0 0 !important;
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
@@ -1347,21 +1349,21 @@ include __DIR__ . '/../partials/header.php';
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
-    padding: 10px 14px;
+    padding: 12px 16px;
 }
 .info-lbl {
-    font-size: 10.5px;
-    font-weight: 700;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
     color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.4px;
     display: block;
-    margin-bottom: 3px;
+    margin-bottom: 4px;
 }
 .info-val {
-    font-size: 13px;
+    font-size: 15px !important;
     color: #0f172a;
-    font-weight: 600;
+    font-weight: 700 !important;
 }
 
 
@@ -1374,20 +1376,20 @@ include __DIR__ . '/../partials/header.php';
     white-space: nowrap !important;
 }
 .rpt-export-btn {
-    padding: 7px 13px !important;
-    font-size: 11px !important;
+    padding: 8px 14px !important;
+    font-size: 13px !important;
     font-weight: 700 !important;
-    border-radius: 4px !important;
+    border-radius: 6px !important;
     cursor: pointer !important;
     display: inline-flex !important;
     align-items: center !important;
-    gap: 5px !important;
+    gap: 6px !important;
     background: #ffffff !important;
     border: 1px solid !important;
     transition: all 0.18s !important;
     text-decoration: none !important;
 }
-.rpt-btn-print  { color: #475569 !important; border-color: transparent !important; background: transparent !important; }
+.rpt-btn-print  { color: #475569 !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
 .rpt-btn-print:hover  { background: #f1f5f9 !important; color: #475569 !important; }
 .rpt-btn-pdf   { color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
 .rpt-btn-pdf:hover   { background: #fef2f2 !important; color: #dc2626 !important; }
@@ -1424,10 +1426,10 @@ include __DIR__ . '/../partials/header.php';
     margin-left: auto !important;
 }
 .um-flt-item {
-    height: 32px !important;
+    height: 38px !important;
     border: 1px solid #cbd5e1 !important;
-    border-radius: 4px !important;
-    font-size: 12px !important;
+    border-radius: 6px !important;
+    font-size: 13.5px !important;
     background: #ffffff !important;
     color: #334155 !important;
     display: inline-block !important;
@@ -1438,6 +1440,10 @@ include __DIR__ . '/../partials/header.php';
 
 /* Filter Button High Contrast White Text */
 .rpt-btn-apply {
+    height: 38px !important;
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    border-radius: 6px !important;
     background: #00264D !important;
     background-color: #00264D !important;
     color: #ffffff !important;
@@ -1489,20 +1495,20 @@ setTimeout(function() {
     <!-- LEFT SIDE: Search employee, All Roles, All Status, Filter, Clear -->
     <div class="um-filter-left">
         <!-- 1. Search employee -->
-        <div style="position: relative; width: 190px; display: inline-block;">
-            <i class="fas fa-search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 12px;"></i>
-            <input type="text" id="empSearchInput" onkeyup="filterEmployeeTable()" placeholder="Search employee..." class="um-flt-item" style="padding-left: 30px; width: 190px !important;">
+        <div style="position: relative; width: 220px; display: inline-block;">
+            <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 14px;"></i>
+            <input type="text" id="empSearchInput" onkeyup="filterEmployeeTable()" placeholder="Search employee..." class="um-flt-item" style="padding-left: 34px; width: 220px !important;">
         </div>
         
         <!-- 2. All Roles -->
-        <select id="empRoleFilter" onchange="filterEmployeeTable()" class="um-flt-item" style="width: 110px !important; padding: 0 8px;">
+        <select id="empRoleFilter" onchange="filterEmployeeTable()" class="um-flt-item" style="width: 125px !important; padding: 0 10px;">
             <option value="">All Roles</option>
             <option value="manager">Manager</option>
             <option value="staff">Staff</option>
         </select>
         
         <!-- 3. All Status -->
-        <select id="empStatusFilter" onchange="filterEmployeeTable()" class="um-flt-item" style="width: 110px !important; padding: 0 8px;">
+        <select id="empStatusFilter" onchange="filterEmployeeTable()" class="um-flt-item" style="width: 125px !important; padding: 0 10px;">
             <option value="">All Status</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
@@ -1510,19 +1516,19 @@ setTimeout(function() {
         </select>
 
         <!-- 4. Filter Button -->
-        <button type="button" onclick="filterEmployeeTable()" class="rpt-btn-apply" style="height: 32px !important; padding: 0 14px !important; font-size: 12px !important; font-weight: 700 !important; border-radius: 4px !important; background: #00264D !important; color: #ffffff !important; border: 1px solid #00264D !important; display: inline-flex !important; align-items: center !important; gap: 6px !important;">
+        <button type="button" onclick="filterEmployeeTable()" class="rpt-btn-apply" style="height: 38px !important; padding: 0 16px !important; font-size: 13.5px !important; font-weight: 700 !important; border-radius: 6px !important; background: #00264D !important; color: #ffffff !important; border: 1px solid #00264D !important; display: inline-flex !important; align-items: center !important; gap: 7px !important;">
             <i class="fas fa-filter" style="color: #ffffff !important;"></i> <span style="color: #ffffff !important;">Filter</span>
         </button>
 
         <!-- 5. Clear Button -->
-        <button type="button" onclick="clearEmployeeFilters()" class="btn-plain-cancel" style="height: 32px !important; padding: 0 12px !important; font-size: 12px !important; border-radius: 4px !important;" title="Reset all filters">
+        <button type="button" onclick="clearEmployeeFilters()" class="btn-plain-cancel" style="height: 38px !important; padding: 0 14px !important; font-size: 13.5px !important; border-radius: 6px !important;" title="Reset all filters">
             <i class="fas fa-undo"></i> Clear
         </button>
     </div>
 
     <!-- RIGHT SIDE: Print, PDF, Excel, CSV ONLY -->
     <div class="um-filter-right">
-        <div class="rpt-export-group" style="margin-left: 0 !important; gap: 4px !important;">
+        <div class="rpt-export-group" style="margin-left: 0 !important; gap: 6px !important;">
             <button type="button" class="rpt-export-btn rpt-btn-print" onclick="triggerEmployeeExport('print')">
                 <i class="fas fa-print"></i> Print
             </button>
@@ -1562,18 +1568,18 @@ setTimeout(function() {
     <?php 
     $display_list = ($current_tab === 'active') ? $active_users : $archived_users; 
     ?>
-    <div class="card">
-        <div class="table-wrap">
-            <table class="table">
+    <div class="card" style="border-radius:10px; overflow:hidden; border:1px solid #cbd5e1; box-shadow: 0 2px 8px rgba(0,0,0,.06);">
+        <div class="table-wrap" style="overflow-x:hidden !important; width:100% !important;">
+            <table class="table no-min-width" style="width:100%; table-layout:fixed; border-collapse:collapse;">
                 <thead>
                     <tr>
-                        <th>EMPLOYEE ID</th>
-                        <th>NAME</th>
-                        <th>USERNAME</th>
-                        <th>ROLE</th>
-                        <?php if($my_role === 'superadmin'): ?><th>STATION</th><?php endif; ?>
-                        <th>STATUS</th>
-                        <th>ACTIONS</th>
+                        <th style="width:<?php echo $my_role === 'superadmin' ? '9%' : '10%'; ?>; padding:13px 12px; font-size:14px; font-weight:800; white-space:nowrap;">EMPLOYEE ID</th>
+                        <th style="width:<?php echo $my_role === 'superadmin' ? '23%' : '26%'; ?>; padding:13px 12px; font-size:14px; font-weight:800;">NAME</th>
+                        <th style="width:<?php echo $my_role === 'superadmin' ? '23%' : '27%'; ?>; padding:13px 12px; font-size:14px; font-weight:800;">USERNAME</th>
+                        <th style="width:<?php echo $my_role === 'superadmin' ? '9%' : '11%'; ?>; padding:13px 12px; font-size:14px; font-weight:800; white-space:nowrap;">ROLE</th>
+                        <?php if($my_role === 'superadmin'): ?><th style="width:12%; padding:13px 12px; font-size:14px; font-weight:800;">STATION</th><?php endif; ?>
+                        <th class="text-center" style="width:<?php echo $my_role === 'superadmin' ? '10%' : '12%'; ?>; padding:13px 12px; font-size:14px; font-weight:800; text-align:center; white-space:nowrap;">STATUS</th>
+                        <th class="text-center" style="width:14%; padding:13px 12px; font-size:14px; font-weight:800; text-align:center; white-space:nowrap;">ACTIONS</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1582,13 +1588,13 @@ setTimeout(function() {
                         $rawStatus   = strtolower(trim($u['status'] ?? 'active'));
                         $statusLabel = ucfirst($rawStatus);
                         if ($rawStatus === 'active') {
-                            $statusStyle = 'background:#16a34a!important;color:#fff;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;display:inline-block;';
+                            $statusStyle = 'background:#16a34a!important;color:#fff;font-weight:700;padding:5px 14px;border-radius:6px;font-size:13px;display:inline-block;letter-spacing:0.3px;white-space:nowrap;';
                         } elseif ($rawStatus === 'inactive') {
-                            $statusStyle = 'background:#dc2626!important;color:#fff;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;display:inline-block;';
+                            $statusStyle = 'background:#dc2626!important;color:#fff;font-weight:700;padding:5px 14px;border-radius:6px;font-size:13px;display:inline-block;letter-spacing:0.3px;white-space:nowrap;';
                         } elseif (in_array($rawStatus, ['archived','disabled','locked'], true)) {
-                            $statusStyle = 'background:#dc2626!important;color:#fff;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;display:inline-block;';
+                            $statusStyle = 'background:#dc2626!important;color:#fff;font-weight:700;padding:5px 14px;border-radius:6px;font-size:13px;display:inline-block;letter-spacing:0.3px;white-space:nowrap;';
                         } else {
-                            $statusStyle = 'background:#64748b!important;color:#fff;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;display:inline-block;';
+                            $statusStyle = 'background:#64748b!important;color:#fff;font-weight:700;padding:5px 14px;border-radius:6px;font-size:13px;display:inline-block;letter-spacing:0.3px;white-space:nowrap;';
                         }
                         $roleKey     = role_key($u['role'] ?? 'staff');
                         $roleLabel   = normalize_role($u['role'] ?? $roleKey);
@@ -1599,25 +1605,25 @@ setTimeout(function() {
                         if (empty($fullName)) $fullName = $u['username'] ?? 'Unknown';
                     ?>
                     <tr>
-                        <td style="font-family: monospace; font-weight: 700; color: #0f172a;"><?php echo htmlspecialchars($u['employee_id'] ?? '—'); ?></td>
+                        <td style="font-family: monospace; font-weight: 700; color: #0f172a; font-size: 14px; white-space: nowrap;"><?php echo htmlspecialchars($u['employee_id'] ?? '—'); ?></td>
                         <td>
-                            <div style="font-weight:700; color:#0f172a;"><?php echo htmlspecialchars($fullName); ?></div>
-                            <div class="muted" style="font-size:0.85em; color:#64748b;"><?php echo htmlspecialchars($u['email'] ?? ''); ?></div>
+                            <div style="font-weight:700; color:#0f172a; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="<?php echo htmlspecialchars($fullName); ?>"><?php echo htmlspecialchars($fullName); ?></div>
+                            <div class="muted" style="font-size:13px; color:#64748b; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="<?php echo htmlspecialchars($u['email'] ?? ''); ?>"><?php echo htmlspecialchars($u['email'] ?? ''); ?></div>
                         </td>
-                        <td style="font-weight: 500; color: #475569;">@<?php echo htmlspecialchars($u['username'] ?? '—'); ?></td>
-                        <td style="font-weight:600; color:#334155;"><?php echo htmlspecialchars($roleLabel); ?></td>
+                        <td style="font-weight: 600; color: #475569; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="@<?php echo htmlspecialchars($u['username'] ?? '—'); ?>">@<?php echo htmlspecialchars($u['username'] ?? '—'); ?></td>
+                        <td style="font-weight:600; color:#334155; font-size:14.5px; white-space:nowrap;"><?php echo htmlspecialchars($roleLabel); ?></td>
 
                         <?php if($my_role === 'superadmin'): ?>
-                            <td><?php echo htmlspecialchars($u['station_name'] ?? 'Unassigned'); ?></td>
+                            <td style="font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><?php echo htmlspecialchars($u['station_name'] ?? 'Unassigned'); ?></td>
                         <?php endif; ?>
-                        <td>
+                        <td class="text-center" style="text-align:center; white-space:nowrap;">
                             <span style="<?php echo $statusStyle; ?>">
                                 <?php echo htmlspecialchars($statusLabel); ?>
                             </span>
                         </td>
 
-                        <td>
-                            <div style="display:flex; flex-direction:column; gap:5px; align-items:center;">
+                        <td class="text-center" style="text-align:center;">
+                            <div style="display:flex; flex-direction:column; gap:6px; align-items:center; justify-content:center;">
 
                                 <button class="action-btn btn-view" onclick="openViewEmployeeModal(<?php echo (int)$u['id']; ?>)" title="View Employee Details">
                                     <i class="fas fa-eye"></i> View

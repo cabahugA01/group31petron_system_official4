@@ -7,6 +7,20 @@ ob_end_clean();
 
 require_login();
 
+if (!function_exists('sanitize_optional_field')) {
+    function sanitize_optional_field(?string $val): string {
+        if ($val === null) return 'N/A';
+        $trimmed = trim($val);
+        if ($trimmed === '') return 'N/A';
+        $lower = strtolower($trimmed);
+        $invalid_placeholders = ['none', 'null', 'n/a', '-', 'unknown', 'not available', 'not_available', 'undefined', 'n.a.', 'n/a.'];
+        if (in_array($lower, $invalid_placeholders, true)) {
+            return 'N/A';
+        }
+        return $trimmed;
+    }
+}
+
 function manager_send_json(array $data): void {
     while (ob_get_level()) {
         @ob_end_clean();

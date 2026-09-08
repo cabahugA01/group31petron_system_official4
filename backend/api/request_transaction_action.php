@@ -49,15 +49,19 @@ if (!in_array($record_source, ['merchandise_transactions','job_orders'])) $recor
 
 try {
     if ($record_source === 'job_orders') {
-        $chk = $pdo->prepare("SELECT id, status, customer_name FROM job_orders WHERE id = ? AND station_id = ? LIMIT 1");
+        $chk = $pdo->prepare("SELECT id, status, customer_name, job_order_number FROM job_orders WHERE id = ? AND station_id = ? LIMIT 1");
         $chk->execute([$transaction_id, $station_id]);
         $txn = $chk->fetch(PDO::FETCH_ASSOC);
         $txn_status = $txn['status'] ?? '';
+        $is_combined = false;
+        $txn_ref_code = $txn['job_order_number'] ?? ('JO-'.$transaction_id);
     } else {
-        $chk = $pdo->prepare("SELECT id, workflow_status, validation_status, customer_name FROM merchandise_transactions WHERE id = ? AND station_id = ? LIMIT 1");
+        $chk = $pdo->prepare("SELECT id, workflow_status, validation_status, customer_name, transaction_type, transaction_id FROM merchandise_transactions WHERE id = ? AND station_id = ? LIMIT 1");
         $chk->execute([$transaction_id, $station_id]);
         $txn = $chk->fetch(PDO::FETCH_ASSOC);
         $txn_status = $txn['validation_status'] ?? ($txn['workflow_status'] ?? '');
+        $is_combined = (strtolower($txn['transaction_type'] ?? '') === 'combined');
+        $txn_ref_code = $txn['transaction_id'] ?? ('TXN-'.$transaction_id);
     }
     if (!$txn) { echo json_encode(['success'=>false,'error'=>'Transaction not found']); exit; }
     
@@ -96,34 +100,38 @@ try {
 
     $customer_name = $txn['customer_name'] ?? ('TXN #'.$transaction_id);
     $staff_name    = $me['name'] ?? $me['username'] ?? 'Staff';
-    $notif_msg     = "{$staff_name} requested a {$request_type} for {$customer_name}. Reason: {$full_reason}";
+    $type_label    = $is_combined ? 'Combined Transaction' : ($record_source === 'job_orders' ? 'Job Order' : 'Merchandise Transaction');
+    $notif_title   = "New {$request_type} Request (" . ($is_combined ? 'Combined' : ($record_source === 'job_orders' ? 'JO' : 'Merch')) . ")";
+    $notif_msg     = "{$staff_name} requested {$request_type} for {$type_label} {$txn_ref_code} ({$customer_name}). Reason: {$full_reason}";
+
     // ── Notify manager(s) — event-driven ────────────────────────
     $ref_t = ($request_type === 'Void') ? 'void_request' : 'transaction_adjustment';
     $redirect_p = ($ref_t === 'void_request') ? 'manager_voided_transactions.php?id=' . $request_id : 'manager_shift_transactions.php?id=' . $request_id;
     notify_manager(
         $pdo, $station_id,
         'warning', $ref_t, 'high',
-        "New {$request_type} Request",
-        "{$staff_name} requested {$request_type} for {$customer_name}. Reason: {$full_reason}",
+        $notif_title,
+        $notif_msg,
         "txn_req_{$request_type}_{$request_id}",
         $redirect_p,
         $ref_t, (int)$request_id
     );
 
     if(function_exists('log_activity')) {
-        log_activity($pdo,$user_id,"Request {$request_type}","Req#{$request_id}|{$request_type}|TXN#{$transaction_id}|{$full_reason}");
+        log_activity($pdo,$user_id,"Request {$request_type}","Req#{$request_id}|{$request_type}|{$type_label}|TXN#{$transaction_id}|{$full_reason}");
     }
 
     require_once __DIR__ . '/../audit_logging.php';
     log_structured_audit([
-        'user_id'        => $user_id,
-        'user_role'      => $role,
-        'action'         => "{$request_type} Requested",
-        'module'         => 'Transactions',
-        'transaction_id' => (string)$transaction_id,
-        'request_id'     => (int)$request_id,
-        'reason'         => $full_reason,
-        'station_id'     => $station_id
+        'user_id'          => $user_id,
+        'user_role'        => $role,
+        'action'           => "{$request_type} Requested",
+        'module'           => 'Transactions',
+        'transaction_id'   => (string)$txn_ref_code,
+        'transaction_type' => $is_combined ? 'combined' : ($record_source === 'job_orders' ? 'job_order' : 'merchandise'),
+        'request_id'       => (int)$request_id,
+        'reason'           => $full_reason,
+        'station_id'       => $station_id
     ]);
 
     echo json_encode([

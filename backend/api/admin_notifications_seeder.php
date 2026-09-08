@@ -365,6 +365,8 @@ if ($action === 'list') {
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($rows as &$n) {
+        $n['title']   = function_exists('clean_mojibake') ? clean_mojibake((string)($n['title'] ?? '')) : (string)($n['title'] ?? '');
+        $n['message'] = function_exists('clean_mojibake') ? clean_mojibake((string)($n['message'] ?? '')) : (string)($n['message'] ?? '');
         $n['time_ago']  = time_ago_adm($n['created_at']);
         $n['is_unread'] = ($n['status'] === 'unread');
     }

@@ -19,6 +19,11 @@ $role       = role_key($me['role'] ?? '');
 $station_id = user_station_id();
 
 // ── Access control ──────────────────────────────────────────────────────────
+if (in_array($role, ['admin', 'superadmin'])) {
+    $qs = !empty($_SERVER['QUERY_STRING']) ? '?' . $_SERVER['QUERY_STRING'] : '';
+    header('Location: admin_set_prices.php' . $qs);
+    exit;
+}
 if ($role !== 'manager') {
     header('Location: dashboard.php');
     exit;
@@ -691,9 +696,9 @@ body, html { overflow-x: hidden; max-width: 100%; }
     font-size: 14px; font-weight: 600; white-space: nowrap;
 }
 
-/* == MODAL STYLES (Transaction Module Design) == */
-.modal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:9999; background:rgba(0,0,0,0.55); backdrop-filter:blur(4px); }
-.modal-card { position:relative; background:#fff; border-radius:16px; max-width:600px; width:90%; max-height:90vh; overflow:hidden; box-shadow:0 24px 64px rgba(0,0,0,.3); animation:modalSlideIn .18s ease; }
+/* == MODAL STYLES (Transaction Module Design - Centered within Content Layout Area) == */
+.modal { position:fixed; top:70px; left:250px; right:0; bottom:40px; display:none; align-items:center; justify-content:center; z-index:9999; background:rgba(0,0,0,0.55); backdrop-filter:blur(4px); padding:20px; box-sizing:border-box; transition: left 0.3s ease; }
+.modal-card { position:relative; background:#fff; border-radius:16px; max-width:600px; width:90%; max-height:calc(100% - 20px); overflow:hidden; box-shadow:0 24px 64px rgba(0,0,0,.3); animation:modalSlideIn .18s ease; }
 @keyframes modalSlideIn { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
 .modal-head { display:flex; justify-content:space-between; align-items:center; padding:15px 20px; background:#fff; border-bottom:2px solid #e2e8f0; color:#1e293b; }
 .modal-head .modal-icon { width:34px; height:34px; background:#f1f5f9; border-radius:8px; display:flex; align-items:center; justify-content:center; margin-right:10px; }
@@ -1464,17 +1469,17 @@ function switchTab(name) {
 (function() {
     var urlParams = new URLSearchParams(window.location.search);
     var tabFromUrl = urlParams.get('tab');
-    var savedTab = null;
-    try { savedTab = sessionStorage.getItem('petron_manager_active_tab'); } catch (e) {}
 
-    var targetTab = tabFromUrl || savedTab;
-    if (targetTab && ['fuel', 'merch', 'services'].indexOf(targetTab) !== -1) {
-        switchTab(targetTab);
+    // Only restore from URL param — never from sessionStorage.
+    // sessionStorage would cause the page to jump to the last-visited tab
+    // even when navigating fresh from the sidebar (where no ?tab= param exists).
+    if (tabFromUrl && ['fuel', 'merch', 'services'].indexOf(tabFromUrl) !== -1) {
+        switchTab(tabFromUrl);
     } else {
-        var activeSec = document.getElementById('activeSection');
-        var activeTab = activeSec ? activeSec.value : 'fuel';
-        if (!activeTab || ['fuel', 'merch', 'services'].indexOf(activeTab) === -1) activeTab = 'fuel';
-        switchTab(activeTab);
+        // Fresh navigation (no ?tab= param) — always start on Fuel Products.
+        // Also clear any stale sessionStorage so future fresh navigations stay clean.
+        try { sessionStorage.removeItem('petron_manager_active_tab'); } catch (e) {}
+        switchTab('fuel');
     }
 })();
 
@@ -1565,8 +1570,8 @@ document.addEventListener('DOMContentLoaded', function() {
      ══════════════════════════════════════════════════════════════════════════ -->
 
 <!-- Add Product Modal (Landscape Layout) -->
-<div id="addProductModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
-    <div style="background:#fff;border-radius:12px;width:92%;max-width:760px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;overflow:hidden;">
+<div id="addProductModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+    <div style="background:#fff;border-radius:12px;width:92%;max-width:760px;max-height:calc(100% - 20px);overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;">
         <!-- Modal Header -->
         <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
             <h3 style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;letter-spacing:0.3px;">
@@ -1723,8 +1728,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 <!-- Edit Fuel Modal — Full Edit (Landscape Grid Layout) -->
-<div id="editPriceModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
-  <div style="background:#fff;border-radius:12px;width:92%;max-width:760px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;overflow:hidden;">
+<div id="editPriceModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:12px;width:92%;max-width:760px;max-height:calc(100% - 20px);overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;">
     <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
       <h3 style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;letter-spacing:0.3px;">
         <i class="fas fa-edit" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:18px;"></i>
@@ -1796,10 +1801,10 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 <!-- View Fuel Details Modal (Matches Add Fuel Product Modal Centering & Dimensions Exactly) -->
-<div id="viewFuelModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:flex-start;justify-content:center;padding:85px 20px 70px 20px;box-sizing:border-box;overflow-y:auto;">
-    <div style="background:#fff;border-radius:12px;width:92%;max-width:880px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:0 auto;overflow:hidden;max-height:calc(100vh - 155px);display:flex;flex-direction:column;">
+<div id="viewFuelModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;overflow-y:auto;">
+    <div style="background:#fff;border-radius:12px;width:94%;max-width:1000px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:0 auto;overflow:hidden;max-height:calc(100% - 20px);display:flex;flex-direction:column;">
         <!-- Header -->
-        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:flex-start;flex-shrink:0;">
             <h3 style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;letter-spacing:0.3px;">
                 <i class="fas fa-gas-pump" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:18px;"></i>
                 <span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;">FUEL PRODUCT SPECIFICATION &amp; HISTORY</span>
@@ -1874,16 +1879,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;">
                     <i class="fas fa-history" style="color:#002F6C;"></i> Price Change History
                 </h4>
-                <div style="overflow-x: hidden;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box;">
-                    <table style="width:100%;border-collapse:collapse;font-size:14.5px;">
+                <div class="modal-table-wrap" style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box;">
+                    <table class="no-min-width" style="width:100% !important;min-width:0 !important;border-collapse:collapse;font-size:13.5px;">
                         <thead>
-                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:14px;letter-spacing:0.3px;">
-                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Effective Date</th>
-                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Price</th>
-                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Requested By</th>
-                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Approved By</th>
-                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Status</th>
-                                <th style="padding:10px 12px;text-align:center;border-bottom:1.5px solid #cbd5e1;">Action</th>
+                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:13px;letter-spacing:0.3px;">
+                                <th style="padding:8px 10px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Effective Date</th>
+                                <th style="padding:8px 10px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Price</th>
+                                <th style="padding:8px 10px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Requested By</th>
+                                <th style="padding:8px 10px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Approved By</th>
+                                <th style="padding:8px 10px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Status</th>
+                                <th style="padding:8px 10px;text-align:center;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Action</th>
                             </tr>
                         </thead>
                         <tbody id="priceHistoryBody">
@@ -1898,15 +1903,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;">
                     <i class="fas fa-sliders-h" style="color:#002F6C;"></i> Configuration Change History
                 </h4>
-                <div style="overflow-x: hidden;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box;">
-                    <table style="width:100%;border-collapse:collapse;font-size:14.5px;">
+                <div class="modal-table-wrap" style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box;">
+                    <table class="no-min-width" style="width:100% !important;min-width:0 !important;border-collapse:collapse;font-size:13.5px;">
                         <thead>
-                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:14px;letter-spacing:0.3px;">
-                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Date</th>
-                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Field Changed</th>
-                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Old Value</th>
-                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">New Value</th>
-                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Changed By</th>
+                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:13px;letter-spacing:0.3px;">
+                                <th style="padding:8px 10px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Date</th>
+                                <th style="padding:8px 10px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Field Changed</th>
+                                <th style="padding:8px 10px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Old Value</th>
+                                <th style="padding:8px 10px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">New Value</th>
+                                <th style="padding:8px 10px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Changed By</th>
                             </tr>
                         </thead>
                         <tbody id="configHistoryBody">
@@ -1921,15 +1926,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;">
                     <i class="fas fa-toggle-on" style="color:#002F6C;"></i> Status Change History
                 </h4>
-                <div style="overflow-x: hidden;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box;">
-                    <table style="width:100%;border-collapse:collapse;font-size:14.5px;">
+                <div class="modal-table-wrap" style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box;">
+                    <table class="no-min-width" style="width:100% !important;min-width:0 !important;border-collapse:collapse;font-size:13.5px;">
                         <thead>
-                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:14px;letter-spacing:0.3px;">
-                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Date</th>
-                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Old Status</th>
-                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">New Status</th>
-                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Reason</th>
-                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;">Changed By</th>
+                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:13px;letter-spacing:0.3px;">
+                                <th style="padding:8px 10px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Date</th>
+                                <th style="padding:8px 10px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Old Status</th>
+                                <th style="padding:8px 10px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">New Status</th>
+                                <th style="padding:8px 10px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Reason</th>
+                                <th style="padding:8px 10px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Changed By</th>
                             </tr>
                         </thead>
                         <tbody id="statusHistoryBody">
@@ -1945,16 +1950,16 @@ document.addEventListener('DOMContentLoaded', function() {
             <button type="button" onclick="editFuelFromView()" style="background:#002F6C !important;color:#ffffff !important;border:none !important;padding:8px 20px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
                 <i class="fas fa-edit"></i> Edit Product
             </button>
-            <button type="button" onclick="closeViewFuelModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 20px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">
-                <i class="fas fa-times"></i> Close
+            <button type="button" onclick="closeViewFuelModal()" style="background:transparent !important;color:#1e293b !important;border:1.5px solid #cbd5e1 !important;padding:8px 20px;border-radius:6px;font-size:15px;font-weight:700;cursor:pointer;">
+                Close
             </button>
         </div>
     </div>
 </div>
 
 <!-- Professional Confirmation Modal -->
-<div id="confirmationModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;">
-    <div style="background:#fff;border-radius:12px;width:90%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden;animation:modalSlideIn .18s ease;">
+<div id="confirmationModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+    <div style="background:#fff;border-radius:12px;width:90%;max-width:480px;max-height:calc(100% - 20px);overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.35);animation:modalSlideIn .18s ease;">
         <!-- Header -->
         <div style="background:linear-gradient(135deg,#dc2626,#991b1b);padding:18px 24px;display:flex;align-items:center;gap:12px;">
             <div style="width:42px;height:42px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;">
@@ -2031,14 +2036,13 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 <!-- Restore Price Modal (Confirmation & Audit Dialog) -->
-<div id="restorePriceModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:10000;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
-  <div style="background:#fff;border-radius:12px;width:92%;max-width:540px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;overflow:hidden;">
+<div id="restorePriceModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.65);z-index:10000;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:12px;width:92%;max-width:540px;max-height:calc(100% - 20px);box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;overflow:hidden;">
     <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
       <h3 style="margin:0;font-size:16px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;">
         <i class="fas fa-undo" style="color:#ffffff !important;"></i>
         <span>RESTORE HISTORICAL PRICE</span>
       </h3>
-      <button type="button" onclick="closeRestorePriceModal()" style="background:rgba(255,255,255,0.15);border:none;color:#ffffff;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:16px;">&times;</button>
     </div>
     <form id="restorePriceForm" style="padding:20px 24px;">
       <input type="hidden" id="restoreFuelId">
@@ -2091,13 +2095,12 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 <!-- Add Merchandise Modal -->
-<div id="addMerchandiseModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:12px;width:90%;max-width:650px;max-height:92vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
+<div id="addMerchandiseModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:12px;width:90%;max-width:650px;max-height:calc(100% - 20px);overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
     <div style="background:linear-gradient(135deg,#002F6C,#004494);border-radius:12px 12px 0 0;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;">
       <h3 style="margin:0;font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
         <i class="fas fa-plus-circle"></i> ADD NEW MERCHANDISE PRODUCT
       </h3>
-      <button onclick="closeAddMerchandiseModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:16px;">&times;</button>
     </div>
     <form id="addMerchandiseForm" style="padding:22px;">
       <!-- Row 1: Product Name + SKU -->
@@ -2176,13 +2179,13 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 <!-- Edit Merchandise Modal — Full Edit -->
-<div id="editMerchPriceModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:12px;width:90%;max-width:650px;max-height:92vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
+<div id="editMerchPriceModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:12px;width:90%;max-width:650px;max-height:calc(100% - 20px);overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
     <div style="background:#002F6C;border-radius:12px 12px 0 0;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;">
       <h3 style="margin:0;font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
         <i class="fas fa-edit"></i> EDIT MERCHANDISE PRODUCT
       </h3>
-      <button onclick="closeEditMerchPriceModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:16px;">&times;</button>
+
     </div>
     <form id="editMerchPriceForm" style="padding:22px;">
       <input type="hidden" id="editMerchId">
@@ -2268,15 +2271,19 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 <!-- View Merchandise Specification & History Modal -->
-<div id="viewMerchModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:flex-start;justify-content:center;padding:85px 20px 70px 20px;box-sizing:border-box;overflow-y:auto;">
-    <div style="background:#fff;border-radius:12px;width:92%;max-width:920px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:0 auto;overflow:hidden;max-height:calc(100vh - 155px);display:flex;flex-direction:column;">
+<div id="viewMerchModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;overflow-y:auto;">
+    <div style="background:#fff;border-radius:12px;width:94%;max-width:1000px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:0 auto;overflow:hidden;max-height:calc(100% - 20px);display:flex;flex-direction:column;">
         <!-- Header -->
-        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-            <h3 style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;display:flex;align-items:center;gap:10px;">
-                <i class="fas fa-box" style="color:#ffffff !important;font-size:18px;"></i>
-                <span id="vm_title" style="color:#ffffff !important;">MERCHANDISE SPECIFICATION &amp; HISTORY</span>
-            </h3>
-            <button onclick="closeViewMerchModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:16px;">&times;</button>
+        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;gap:14px;flex-shrink:0;">
+            <i class="fas fa-box" style="color:#ffffff !important;font-size:22px;flex-shrink:0;"></i>
+            <div>
+                <h3 id="vm_title" style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;letter-spacing:0.3px;">
+                    MERCHANDISE SPECIFICATION &amp; HISTORY
+                </h3>
+                <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:3px;font-family:monospace;letter-spacing:0.5px;font-weight:500;">
+                    SKU / CODE: <span id="vm_code_sub" style="color:#ffffff;font-weight:700;">-</span>
+                </div>
+            </div>
         </div>
 
         <!-- Body Content -->
@@ -2287,19 +2294,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h4 style="margin:0 0 14px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
                     <i class="fas fa-info-circle"></i> Product Specification &amp; Overview
                 </h4>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;font-size:15.5px;">
-                    <div><span style="color:#64748b;font-weight:600;">SKU / Code:</span><br><code id="vm_sku" style="font-weight:800;color:#4f46e5;">-</code></div>
-                    <div><span style="color:#64748b;font-weight:600;">Barcode:</span><br><strong id="vm_barcode">-</strong></div>
-                    <div><span style="color:#64748b;font-weight:600;">Product Name:</span><br><strong id="vm_name" style="color:#0f172a;">-</strong></div>
-                    <div><span style="color:#64748b;font-weight:600;">Category:</span><br><strong id="vm_category">-</strong></div>
-                    <div><span style="color:#64748b;font-weight:600;">Brand:</span><br><strong id="vm_brand">-</strong></div>
-                    <div><span style="color:#64748b;font-weight:600;">Unit (UOM):</span><br><strong id="vm_unit">-</strong></div>
-                    <div><span style="color:#64748b;font-weight:600;">Current Selling Price:</span><br><strong id="vm_price" style="color:#002F6C;font-size:15px;">-</strong></div>
-                    <div><span style="color:#64748b;font-weight:600;">Current Cost Price:</span><br><strong id="vm_cost" style="color:#16a34a;font-size:14px;">-</strong> <small style="color:#94a3b8;font-size:15.5px;">(from latest approved Stock-In)</small></div>
-                    <div><span style="color:#64748b;font-weight:600;">Total Stock (All Batches):</span><br><strong id="vm_stock" style="font-size:14px;">-</strong></div>
-                    <div><span style="color:#64748b;font-weight:600;">Batch Count:</span><br><strong id="vm_batch_count">-</strong></div>
-                    <div><span style="color:#64748b;font-weight:600;">Reorder Level:</span><br><strong id="vm_reorder">-</strong></div>
-                    <div><span style="color:#64748b;font-weight:600;">Status:</span><br><span id="vm_status">-</span></div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;font-size:14.5px;">
+                    <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">SKU / Code:</span><br><code id="vm_sku" style="font-weight:800;color:#4f46e5;">-</code></div>
+                    <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Barcode:</span><br><strong id="vm_barcode" style="color:#0f172a;">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Product Name:</span><br><strong id="vm_name" style="color:#0f172a;">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Category:</span><br><strong id="vm_category" style="color:#0f172a;">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Brand:</span><br><strong id="vm_brand" style="color:#0f172a;">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Unit (UOM):</span><br><strong id="vm_unit" style="color:#0f172a;">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Current Selling Price:</span><br><strong id="vm_price" style="color:#002F6C;font-size:15px;font-weight:800;">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Current Cost Price:</span><br><strong id="vm_cost" style="color:#16a34a;font-size:14px;font-weight:800;">-</strong> <small style="color:#94a3b8;font-size:12px;">(latest approved Stock-In)</small></div>
+                    <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Total Stock:</span><br><strong id="vm_stock" style="font-size:14px;color:#0f172a;">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Batch Count:</span><br><strong id="vm_batch_count" style="color:#0f172a;">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Reorder Level:</span><br><strong id="vm_reorder" style="color:#d97706;">-</strong></div>
+                    <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Status:</span><br><span id="vm_status">-</span></div>
                 </div>
             </div>
 
@@ -2308,14 +2315,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h4 style="margin:0 0 10px 0;font-size:14px;color:#0f172a;font-weight:700;display:flex;align-items:center;gap:8px;">
                     <i class="fas fa-layer-group" style="color:#0284c7;"></i> Batch Summary <small style="color:#64748b;font-weight:400;">(Read Only)</small>
                 </h4>
-                <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-                    <table style="width:100%;border-collapse:collapse;font-size:14.5px;text-align:left;">
+                <div class="modal-table-wrap" style="border:1px solid #e2e8f0;border-radius:8px;overflow-x:auto;width:100%;box-sizing:border-box;">
+                    <table class="no-min-width" style="width:100% !important;min-width:0 !important;border-collapse:collapse;font-size:13.5px;text-align:left;">
                         <thead>
                             <tr style="background:#f1f5f9;color:#334155;font-weight:700;">
-                                <th style="padding:8px 12px;">Batch No.</th>
-                                <th style="padding:8px 12px;">Remaining Qty</th>
-                                <th style="padding:8px 12px;">Expiration</th>
-                                <th style="padding:8px 12px;">Status</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Batch No.</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Remaining Qty</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Expiration</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Status</th>
                             </tr>
                         </thead>
                         <tbody id="vm_batches_body">
@@ -2330,17 +2337,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h4 style="margin:0 0 10px 0;font-size:14px;color:#0f172a;font-weight:700;display:flex;align-items:center;gap:8px;">
                     <i class="fas fa-history" style="color:#4f46e5;"></i> Price History
                 </h4>
-                <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-                    <table style="width:100%;border-collapse:collapse;font-size:14.5px;text-align:left;">
+                <div class="modal-table-wrap" style="border:1px solid #e2e8f0;border-radius:8px;overflow-x:auto;width:100%;box-sizing:border-box;">
+                    <table class="no-min-width" style="width:100% !important;min-width:0 !important;border-collapse:collapse;font-size:13.5px;text-align:left;">
                         <thead>
                             <tr style="background:#f1f5f9;color:#334155;font-weight:700;">
-                                <th style="padding:8px 12px;">Date</th>
-                                <th style="padding:8px 12px;">Old Price</th>
-                                <th style="padding:8px 12px;">New Price</th>
-                                <th style="padding:8px 12px;">Requested By</th>
-                                <th style="padding:8px 12px;">Approved By</th>
-                                <th style="padding:8px 12px;">Status</th>
-                                <th style="padding:8px 12px;text-align:center;">Action</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Date</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Old Price</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">New Price</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Requested By</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Approved By</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Status</th>
+                                <th style="padding:8px 10px;text-align:center;white-space:nowrap;">Action</th>
                             </tr>
                         </thead>
                         <tbody id="vm_price_history_body">
@@ -2355,15 +2362,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h4 style="margin:0 0 10px 0;font-size:14px;color:#0f172a;font-weight:700;display:flex;align-items:center;gap:8px;">
                     <i class="fas fa-sliders-h" style="color:#d97706;"></i> Configuration History
                 </h4>
-                <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-                    <table style="width:100%;border-collapse:collapse;font-size:14.5px;text-align:left;">
+                <div class="modal-table-wrap" style="border:1px solid #e2e8f0;border-radius:8px;overflow-x:auto;width:100%;box-sizing:border-box;">
+                    <table class="no-min-width" style="width:100% !important;min-width:0 !important;border-collapse:collapse;font-size:13.5px;text-align:left;">
                         <thead>
                             <tr style="background:#f1f5f9;color:#334155;font-weight:700;">
-                                <th style="padding:8px 12px;">Date</th>
-                                <th style="padding:8px 12px;">Field</th>
-                                <th style="padding:8px 12px;">Old Value</th>
-                                <th style="padding:8px 12px;">New Value</th>
-                                <th style="padding:8px 12px;">Changed By</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Date</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Field</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Old Value</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">New Value</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Changed By</th>
                             </tr>
                         </thead>
                         <tbody id="vm_config_history_body">
@@ -2378,14 +2385,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h4 style="margin:0 0 10px 0;font-size:14px;color:#0f172a;font-weight:700;display:flex;align-items:center;gap:8px;">
                     <i class="fas fa-power-off" style="color:#dc2626;"></i> Status History
                 </h4>
-                <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-                    <table style="width:100%;border-collapse:collapse;font-size:14.5px;text-align:left;">
+                <div class="modal-table-wrap" style="border:1px solid #e2e8f0;border-radius:8px;overflow-x:auto;width:100%;box-sizing:border-box;">
+                    <table class="no-min-width" style="width:100% !important;min-width:0 !important;border-collapse:collapse;font-size:13.5px;text-align:left;">
                         <thead>
                             <tr style="background:#f1f5f9;color:#334155;font-weight:700;">
-                                <th style="padding:8px 12px;">Date</th>
-                                <th style="padding:8px 12px;">Old Status</th>
-                                <th style="padding:8px 12px;">New Status</th>
-                                <th style="padding:8px 12px;">Changed By</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Date</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Old Status</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">New Status</th>
+                                <th style="padding:8px 10px;white-space:nowrap;">Changed By</th>
                             </tr>
                         </thead>
                         <tbody id="vm_status_history_body">
@@ -2402,19 +2409,18 @@ document.addEventListener('DOMContentLoaded', function() {
             <button type="button" onclick="editMerchFromView()" style="background:#002F6C !important;color:#fff !important;border:none;padding:8px 20px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
                 <i class="fas fa-edit"></i> Edit Product
             </button>
-            <button onclick="closeViewMerchModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1;padding:8px 20px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">Close</button>
+            <button onclick="closeViewMerchModal()" style="background:transparent !important;color:#1e293b !important;border:1.5px solid #cbd5e1 !important;padding:8px 20px;border-radius:6px;font-size:15px;font-weight:700;cursor:pointer;">Close</button>
         </div>
     </div>
 </div>
 
 <!-- View Batches Modal -->
-<div id="viewBatchesModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:12px;width:95%;max-width:900px;max-height:92vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
+<div id="viewBatchesModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:12px;width:95%;max-width:900px;max-height:calc(100% - 20px);overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3);">
     <div style="background:linear-gradient(135deg,#0369a1,#0284c7);border-radius:12px 12px 0 0;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;">
       <h3 style="margin:0;font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
         <i class="fas fa-layer-group"></i> <span id="viewBatchesTitle">Product Batches</span>
       </h3>
-      <button onclick="document.getElementById('viewBatchesModal').style.display='none'" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:16px;">&times;</button>
     </div>
     <div id="viewBatchesContent" style="padding:22px;">
       <div style="text-align:center;color:#94a3b8;padding:30px;"><i class="fas fa-spinner fa-spin" style="font-size:24px;"></i><br>Loading batches...</div>
@@ -2425,8 +2431,8 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- ══════════════════════════════════════════════════════════
      ADD SERVICE MODAL
      ══════════════════════════════════════════════════════════ -->
-<div id="addServiceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;align-items:center;justify-content:center;padding:30px 16px;box-sizing:border-box;">
-  <div style="background:#fff;border-radius:14px;width:100%;max-width:580px;max-height:calc(85vh - 20px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.35);margin:auto;animation:slideDown 0.25s ease-out;">
+<div id="addServiceModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px 24px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:14px;width:100%;max-width:720px;max-height:calc(100% - 20px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.35);margin:auto;animation:slideDown 0.25s ease-out;">
     <!-- Header -->
     <div style="flex-shrink:0;background:linear-gradient(135deg,#002F6C,#0052A5);border-radius:14px 14px 0 0;padding:16px 22px;">
       <h3 style="margin:0;font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
@@ -2437,16 +2443,16 @@ document.addEventListener('DOMContentLoaded', function() {
     <form id="addServiceForm" style="flex:1 1 auto;overflow-y:auto;padding:22px;display:flex;flex-direction:column;justify-content:space-between;">
       <div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-          <div style="grid-column:1/-1;">
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Name <span style="color:#dc2626;">*</span></label>
+          <div>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Name <span style="color:#dc2626;">*</span></label>
             <input type="text" id="addSvcName" required placeholder="e.g. Change Oil - Mineral"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;font-weight:500;box-sizing:border-box;"
+              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:500;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&]/g, '');">
           </div>
-          <div style="grid-column:1/-1;">
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Category <span style="color:#dc2626;">*</span></label>
-            <select id="addSvcCategory" required onchange="toggleCustomCategoryInput('add')" style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
+          <div>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Category <span style="color:#dc2626;">*</span></label>
+            <select id="addSvcCategory" required onchange="toggleCustomCategoryInput('add')" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
               <option value="">-- Select Category --</option>
               <option value="Lubrication">Lubrication</option>
@@ -2467,49 +2473,49 @@ document.addEventListener('DOMContentLoaded', function() {
             <!-- Custom Category Input -->
             <div id="addSvcCustomWrap" style="display:none;margin-top:8px;">
               <input type="text" id="addSvcCustomCategory" placeholder="Type custom category name (e.g. Car Audio & Accessories)..."
-                style="width:100%;padding:9px 12px;border:1.5px solid #0284c7;border-radius:8px;font-size:15.5px;background:#f0f9ff;box-sizing:border-box;color:#0369a1;font-weight:600;"
+                style="width:100%;padding:8px 12px;border:1.5px solid #0284c7;border-radius:8px;font-size:14.5px;background:#f0f9ff;box-sizing:border-box;color:#0369a1;font-weight:600;"
                 oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
             </div>
           </div>
           <div>
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Fee (₱) <span style="color:#dc2626;">*</span></label>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Fee (₱) <span style="color:#dc2626;">*</span></label>
             <input type="number" id="addSvcServiceFee" step="0.01" min="0" required placeholder="0.00"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
+              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
-            <small style="color:#94a3b8;font-size:14px;">Parts/materials fee</small>
+            <small style="color:#94a3b8;font-size:12.5px;">Parts/materials fee</small>
           </div>
           <div>
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Labor Fee (₱) <span style="color:#dc2626;">*</span></label>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Labor Fee (₱) <span style="color:#dc2626;">*</span></label>
             <input type="number" id="addSvcLaborFee" step="0.01" min="0" required placeholder="0.00"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
+              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
-            <small style="color:#94a3b8;font-size:14px;">Mechanic labor fee</small>
+            <small style="color:#94a3b8;font-size:12.5px;">Mechanic labor fee</small>
           </div>
           <div>
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins)</label>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins)</label>
             <input type="number" id="addSvcDuration" min="5" max="480" step="5" value="60" placeholder="60"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
+              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
           </div>
           <div>
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics</label>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics</label>
             <input type="number" id="addSvcMechanics" min="1" max="10" value="1" placeholder="1"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
+              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
           </div>
           <div style="grid-column:1/-1;">
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Description <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Description <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
             <textarea id="addSvcDescription" rows="2" placeholder="Brief description of the service..."
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;resize:vertical;box-sizing:border-box;"
+              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;resize:vertical;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"></textarea>
           </div>
         </div>
       </div>
       <!-- Footer Actions -->
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:14px;border-top:1px solid #e2e8f0;margin-top:auto;">
-        <button type="button" onclick="closeAddServiceModal()" style="background:#f1f5f9 !important;color:#0f172a !important;border:1px solid #cbd5e1 !important;padding:10px 20px;border-radius:8px;font-size:15.5px;font-weight:600;cursor:pointer;">Cancel</button>
-        <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
+        <button type="button" onclick="closeAddServiceModal()" style="background:#f1f5f9 !important;color:#0f172a !important;border:1px solid #cbd5e1 !important;padding:9px 22px;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;">Cancel</button>
+        <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:9px 26px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
           <i class="fas fa-check-circle"></i> Add Service
         </button>
       </div>
@@ -2520,17 +2526,17 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- ══════════════════════════════════════════════════════════
      EDIT SERVICE MODAL
      ══════════════════════════════════════════════════════════ -->
-<div id="editServiceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;align-items:center;justify-content:center;padding:30px 16px;box-sizing:border-box;">
-  <div style="background:#fff;border-radius:14px;width:100%;max-width:600px;max-height:calc(85vh - 20px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.35);margin:auto;animation:slideDown 0.25s ease-out;">
+<div id="editServiceModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px 24px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:14px;width:100%;max-width:720px;max-height:calc(100% - 20px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.35);margin:auto;animation:slideDown 0.25s ease-out;">
     <!-- Header -->
     <div style="flex-shrink:0;background:linear-gradient(135deg,#002F6C,#0052A5);border-radius:14px 14px 0 0;padding:16px 22px;">
       <h3 style="margin:0;font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
         <i class="fas fa-edit"></i> Edit Service
       </h3>
-      <div id="editSvcCodeDisplay" style="font-size:14.5px;color:rgba(255,255,255,.7);margin-top:3px;font-family:monospace;"></div>
+      <div id="editSvcCodeDisplay" style="font-size:14px;color:rgba(255,255,255,.7);margin-top:3px;font-family:monospace;"></div>
     </div>
     <!-- Approval Notice -->
-    <div id="editSvcApprovalNotice" style="display:none;flex-shrink:0;background:#fef3c7;border-bottom:1px solid #fde68a;padding:10px 22px;font-size:14.5px;color:#92400e;display:flex;align-items:center;gap:8px;">
+    <div id="editSvcApprovalNotice" style="display:none;flex-shrink:0;background:#fef3c7;border-bottom:1px solid #fde68a;padding:10px 22px;font-size:14px;color:#92400e;display:flex;align-items:center;gap:8px;">
       <i class="fas fa-exclamation-triangle"></i>
       <span><strong>Fee changes require Admin approval.</strong> Non-fee fields (name, category, duration, etc.) will save immediately.</span>
     </div>
@@ -2539,16 +2545,16 @@ document.addEventListener('DOMContentLoaded', function() {
       <div>
         <input type="hidden" id="editSvcId">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-          <div style="grid-column:1/-1;">
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Name <span style="color:#dc2626;">*</span></label>
+          <div>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Name <span style="color:#dc2626;">*</span></label>
             <input type="text" id="editSvcName" required
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;font-weight:500;box-sizing:border-box;"
+              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:500;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&]/g, '');">
           </div>
-          <div style="grid-column:1/-1;">
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Category <span style="color:#dc2626;">*</span></label>
-            <select id="editSvcCategory" required onchange="toggleCustomCategoryInput('edit')" style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
+          <div>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Category <span style="color:#dc2626;">*</span></label>
+            <select id="editSvcCategory" required onchange="toggleCustomCategoryInput('edit')" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
               <option value="">-- Select Category --</option>
               <option value="Lubrication">Lubrication</option>
@@ -2569,60 +2575,60 @@ document.addEventListener('DOMContentLoaded', function() {
             <!-- Custom Category Input -->
             <div id="editSvcCustomWrap" style="display:none;margin-top:8px;">
               <input type="text" id="editSvcCustomCategory" placeholder="Type custom category name..."
-                style="width:100%;padding:9px 12px;border:1.5px solid #0284c7;border-radius:8px;font-size:15.5px;background:#f0f9ff;box-sizing:border-box;color:#0369a1;font-weight:600;"
+                style="width:100%;padding:8px 12px;border:1.5px solid #0284c7;border-radius:8px;font-size:14.5px;background:#f0f9ff;box-sizing:border-box;color:#0369a1;font-weight:600;"
                 oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
             </div>
           </div>
           <div>
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Fee (₱) <span style="color:#dc2626;">*</span></label>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Fee (₱) <span style="color:#dc2626;">*</span></label>
             <input type="number" id="editSvcServiceFee" step="0.01" min="0" required placeholder="0.00"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
+              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="checkSvcFeeChange()">
-            <small style="color:#94a3b8;font-size:14px;">Parts/materials fee</small>
+            <small style="color:#94a3b8;font-size:12.5px;">Parts/materials fee</small>
           </div>
           <div>
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Labor Fee (₱) <span style="color:#dc2626;">*</span></label>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Labor Fee (₱) <span style="color:#dc2626;">*</span></label>
             <input type="number" id="editSvcLaborFee" step="0.01" min="0" required placeholder="0.00"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
+              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="checkSvcFeeChange()">
-            <small style="color:#94a3b8;font-size:14px;">Mechanic labor fee</small>
+            <small style="color:#94a3b8;font-size:12.5px;">Mechanic labor fee</small>
           </div>
           <div>
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins)</label>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins)</label>
             <input type="number" id="editSvcDuration" min="5" max="480" step="5"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
+              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="this.value = this.value.replace(/[^0-9]/g, '');">
           </div>
           <div>
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics</label>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics</label>
             <input type="number" id="editSvcMechanics" min="1" max="10"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
+              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="this.value = this.value.replace(/[^0-9]/g, '');">
           </div>
-          <div style="grid-column:1/-1;">
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Description</label>
-            <textarea id="editSvcDescription" rows="2"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;resize:vertical;box-sizing:border-box;"
-              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
-              oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&\:\;'\"]/g, '');"></textarea>
-          </div>
           <div>
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Status</label>
-            <select id="editSvcActive" style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;">
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Status</label>
+            <select id="editSvcActive" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;">
               <option value="1">Active</option>
               <option value="0">Inactive</option>
             </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Description</label>
+            <textarea id="editSvcDescription" rows="1"
+              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;resize:vertical;box-sizing:border-box;"
+              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+              oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&\:\;'\"]/g, '');"></textarea>
           </div>
         </div>
       </div>
       <!-- Footer Actions -->
       <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:14px;border-top:1px solid #e2e8f0;margin-top:auto;">
-        <button type="button" onclick="closeEditServiceModal()" style="background:#f1f5f9 !important;color:#0f172a !important;border:1px solid #cbd5e1;padding:10px 20px;border-radius:8px;font-size:15.5px;font-weight:600;cursor:pointer;">Cancel</button>
-        <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
+        <button type="button" onclick="closeEditServiceModal()" style="background:#f1f5f9 !important;color:#0f172a !important;border:1px solid #cbd5e1;padding:9px 22px;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;">Cancel</button>
+        <button type="submit" style="background:#002F6C;color:#fff;border:none;padding:9px 26px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
           <i class="fas fa-save"></i> Save Changes
         </button>
       </div>
@@ -2633,67 +2639,56 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- ══════════════════════════════════════════════════════════
      VIEW SERVICE MODAL (with Fee History)
      ══════════════════════════════════════════════════════════ -->
-<div id="viewServiceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;align-items:center;justify-content:center;padding:30px 16px;box-sizing:border-box;">
-  <div style="background:#fff;border-radius:14px;width:100%;max-width:620px;max-height:calc(85vh - 20px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.35);margin:auto;animation:slideDown 0.25s ease-out;">
-    <!-- Header (Fixed Top) -->
-    <div style="flex-shrink:0;background:#002F6C;border-radius:14px 14px 0 0;padding:22px 28px;">
-      <h3 style="margin:0;font-size:17px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
-        <i class="fas fa-tools"></i> Service Details
-      </h3>
-      <div id="viewSvcCodeDisplay" style="font-size:14.5px;color:rgba(255,255,255,.75);margin-top:5px;font-family:monospace;letter-spacing:0.5px;"></div>
+<div id="viewServiceModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;overflow-y:auto;">
+  <div style="background:#fff;border-radius:12px;width:92%;max-width:880px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:0 auto;overflow:hidden;max-height:calc(100% - 20px);display:flex;flex-direction:column;">
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
+      <i class="fas fa-tools" style="color:#ffffff !important;font-size:20px;flex-shrink:0;"></i>
+      <div>
+        <h3 style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;letter-spacing:0.3px;">
+          SERVICE SPECIFICATION &amp; HISTORY
+        </h3>
+        <div id="viewSvcCodeDisplay" style="font-size:13px;color:rgba(255,255,255,0.75);margin-top:3px;font-family:monospace;letter-spacing:0.5px;font-weight:500;"></div>
+      </div>
     </div>
-    <!-- Scrollable Content Body -->
-    <div style="flex:1 1 auto;overflow-y:auto;padding:22px;">
-      <!-- Info Grid -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
-        <div style="grid-column:1/-1;background:#f8fafc;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Service Name</div>
-          <div id="viewSvcName" style="font-size:16px;font-weight:700;color:#1e293b;"></div>
-          <div id="viewSvcDesc" style="font-size:14.5px;color:#64748b;margin-top:4px;"></div>
-        </div>
-        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Category</div>
-          <div id="viewSvcCategory" style="font-size:15.5px;font-weight:600;color:#003d7a;"></div>
-        </div>
-        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Status</div>
-          <div id="viewSvcStatus"></div>
-        </div>
-        <div style="background:#e8f5e9;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Service Fee</div>
-          <div id="viewSvcServiceFee" style="font-size:20px;font-weight:800;color:#002F6C;"></div>
-        </div>
-        <div style="background:#e0f2fe;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Labor Fee</div>
-          <div id="viewSvcLaborFee" style="font-size:20px;font-weight:800;color:#0369a1;"></div>
-        </div>
-        <div style="background:#f0fdf4;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Total Fee</div>
-          <div id="viewSvcTotalFee" style="font-size:20px;font-weight:800;color:#15803d;"></div>
-        </div>
-        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Duration</div>
-          <div id="viewSvcDuration" style="font-size:14px;font-weight:600;color:#334155;"></div>
-        </div>
-        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Required Mechanics</div>
-          <div id="viewSvcMechanics" style="font-size:14px;font-weight:600;color:#334155;"></div>
+
+    <!-- Body Content -->
+    <div style="padding:20px 24px;overflow-y:auto;overflow-x:hidden;flex:1 1 auto;background:#ffffff;min-height:0;box-sizing:border-box;">
+      
+      <!-- 1. Service Specification & Overview (Corporate Clean Grid — No Summary Cards) -->
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:20px;">
+        <h4 style="margin:0 0 14px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
+          <i class="fas fa-info-circle"></i> Service Specification &amp; Overview
+        </h4>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;font-size:14.5px;">
+          <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Service Name:</span><br><strong id="viewSvcName" style="color:#0f172a;font-size:15px;">-</strong></div>
+          <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Category:</span><br><strong id="viewSvcCategory" style="color:#0f172a;">-</strong></div>
+          <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Status:</span><br><span id="viewSvcStatus">-</span></div>
+          <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Service Fee:</span><br><strong id="viewSvcServiceFee" style="color:#002F6C;font-size:15px;font-weight:800;">₱0.00</strong></div>
+          <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Labor Fee:</span><br><strong id="viewSvcLaborFee" style="color:#002F6C;font-size:15px;font-weight:800;">₱0.00</strong></div>
+          <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Total Fee:</span><br><strong id="viewSvcTotalFee" style="color:#16a34a;font-size:16px;font-weight:800;">₱0.00</strong></div>
+          <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Est. Duration:</span><br><strong id="viewSvcDuration" style="color:#334155;">-</strong></div>
+          <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Required Mechanics:</span><br><strong id="viewSvcMechanics" style="color:#334155;">-</strong></div>
+          <div style="grid-column:1/-1;"><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Description:</span><br><span id="viewSvcDesc" style="color:#475569;font-size:14px;line-height:1.5;">-</span></div>
         </div>
       </div>
 
-      <!-- Fee History -->
-      <div style="border-top:1px solid #e2e8f0;padding-top:18px;">
-        <div style="font-size:15.5px;font-weight:700;color:#334155;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
-          <i class="fas fa-history" style="color:#0369a1;"></i> Fee Change History
-        </div>
-        <div id="viewSvcHistory" style="min-height:60px;">
-          <div style="text-align:center;color:#94a3b8;padding:20px;"><i class="fas fa-spinner fa-spin"></i> Loading history...</div>
+      <!-- 2. Fee Change History -->
+      <div style="margin-bottom:10px;">
+        <h4 style="margin:0 0 10px 0;font-size:14px;color:#0f172a;font-weight:700;display:flex;align-items:center;gap:8px;">
+          <i class="fas fa-history" style="color:#0284c7;"></i> Fee Change History
+        </h4>
+        <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#fff;">
+          <div id="viewSvcHistory" style="min-height:50px;">
+            <div style="text-align:center;color:#94a3b8;padding:20px;"><i class="fas fa-spinner fa-spin"></i> Loading history...</div>
+          </div>
         </div>
       </div>
     </div>
-    <!-- Footer (Fixed Bottom) -->
-    <div style="flex-shrink:0;padding:14px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;align-items:center;background:#f8fafc;border-radius:0 0 14px 14px;">
-      <button type="button" onclick="closeViewServiceModal()" style="background:#f1f5f9 !important;color:#0f172a !important;border:1px solid #cbd5e1;padding:9px 28px;border-radius:8px;font-size:15.5px;font-weight:600;cursor:pointer;">Close</button>
+
+    <!-- Footer: Close button with NO background color, visible dark text -->
+    <div style="flex-shrink:0;padding:14px 24px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;align-items:center;background:#ffffff;border-radius:0 0 12px 12px;">
+      <button type="button" onclick="closeViewServiceModal()" style="background:transparent !important;background-color:transparent !important;color:#1e293b !important;border:1.5px solid #cbd5e1 !important;padding:9px 28px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;transition:all 0.15s ease;" onmouseover="this.style.background='#f1f5f9';this.style.borderColor='#94a3b8';" onmouseout="this.style.background='transparent';this.style.borderColor='#cbd5e1';">Close</button>
     </div>
   </div>
 </div>
@@ -2761,6 +2756,81 @@ div[id$="Modal"] textarea {
     font-size: 12px !important;
     text-transform: uppercase !important;
     letter-spacing: 0.3px !important;
+}
+
+/* ══════════════════════════════════════════════════════════
+   MODAL POSITIONING — MAIN LAYOUT CENTERING ONLY
+   Do not cover or include sidebar navigation in modal centering.
+   Modals are strictly centered in the content layout area.
+   ══════════════════════════════════════════════════════════ */
+div[id$="Modal"],
+.modal,
+.cust-modal {
+    position: fixed !important;
+    top: 70px !important;
+    left: 250px !important;
+    right: 0 !important;
+    bottom: 40px !important;
+    width: auto !important;
+    height: auto !important;
+    box-sizing: border-box !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: left 0.3s ease !important;
+}
+
+body.sidebar-collapsed div[id$="Modal"],
+body.sidebar-collapsed .modal,
+body.sidebar-collapsed .cust-modal,
+.sidebar-collapsed div[id$="Modal"],
+.sidebar-collapsed .modal,
+.sidebar-collapsed .cust-modal {
+    left: 70px !important;
+}
+
+@media (max-width: 991px) {
+    div[id$="Modal"],
+    .modal,
+    .cust-modal {
+        left: 0 !important;
+        top: 60px !important;
+    }
+}
+
+/* ══════════════════════════════════════════════════════════
+   MODAL TABLES — ZERO CLIPPING, FULL VISIBILITY
+   Exempt all tables inside modals from 1050px min-width rule
+   ══════════════════════════════════════════════════════════ */
+div[id$="Modal"] table,
+div[id$="Modal"] table.no-min-width,
+.modal table,
+.modal table.no-min-width,
+table.no-min-width {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: auto !important;
+}
+
+div[id$="Modal"] th,
+div[id$="Modal"] td,
+.modal th,
+.modal td {
+    padding: 8px 10px !important;
+    font-size: 13.5px !important;
+}
+
+div[id$="Modal"] th,
+.modal th {
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+}
+
+div[id$="Modal"] .modal-table-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
 }
 </style>
 
@@ -3669,7 +3739,7 @@ function viewMerchandiseDetails(id) {
     var modal = document.getElementById('viewMerchModal');
     modal.style.display = 'flex';
     // Loading placeholders
-    ['vm_sku','vm_barcode','vm_name','vm_category','vm_brand','vm_unit','vm_price','vm_cost','vm_stock','vm_batch_count','vm_reorder'].forEach(function(el){
+    ['vm_sku','vm_barcode','vm_name','vm_category','vm_brand','vm_unit','vm_price','vm_cost','vm_stock','vm_batch_count','vm_reorder','vm_code_sub'].forEach(function(el){
         var e = document.getElementById(el); if(e) e.textContent = '...';
     });
     document.getElementById('vm_status').innerHTML = '...';
@@ -3683,7 +3753,9 @@ function viewMerchandiseDetails(id) {
     .then(data => {
         if (!data.success) { alert(data.message || 'Failed to load details'); closeViewMerchModal(); return; }
         var p = data.product;
-        document.getElementById('vm_title').textContent = (p.name || 'Product') + ' — SPECIFICATION & HISTORY';
+        document.getElementById('vm_title').textContent = (p.name || 'Product').toUpperCase() + ' — SPECIFICATION & HISTORY';
+        var codeSub = document.getElementById('vm_code_sub');
+        if (codeSub) codeSub.textContent = p.sku || p.barcode || '—';
         document.getElementById('vm_sku').textContent = p.sku || '—';
         document.getElementById('vm_barcode').textContent = p.barcode || '—';
         document.getElementById('vm_name').textContent = p.name || '—';
@@ -4511,8 +4583,8 @@ function activateService(id, serviceName) {
 </script>
 
 <!-- Custom Status/Notification Modal Dialog (Replaces native browser alert popups) -->
-<div id="statusNotificationModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:10001;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
-  <div style="background:#fff;border-radius:14px;width:90%;max-width:440px;box-shadow:0 20px 50px rgba(0,0,0,.4);margin:auto;overflow:hidden;text-align:center;animation:statusPopIn .2s ease-out;">
+<div id="statusNotificationModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.65);z-index:10001;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:14px;width:90%;max-width:440px;max-height:calc(100% - 20px);box-shadow:0 20px 50px rgba(0,0,0,.4);margin:auto;overflow:hidden;text-align:center;animation:statusPopIn .2s ease-out;">
     <div id="statusNotificationHeader" style="padding:22px 20px 14px 20px;background:#f0fdf4;">
       <div id="statusNotificationIcon" style="width:54px;height:54px;border-radius:50%;background:#dcfce7;color:#16a34a;display:flex;align-items:center;justify-content:center;margin:0 auto 12px auto;font-size:24px;">
         <i class="fas fa-check-circle"></i>
@@ -4533,6 +4605,23 @@ function activateService(id, serviceName) {
 @keyframes statusPopIn {
     from { opacity: 0; transform: scale(0.92); }
     to { opacity: 1; transform: scale(1); }
+}
+
+/* ── Ensure modal header titles are strictly left-aligned across all modals ── */
+#viewFuelModal > div > div:first-child,
+#viewMerchModal > div > div:first-child,
+#viewServiceModal > div > div:first-child,
+#viewBatchesModal > div > div:first-child {
+    justify-content: flex-start !important;
+    text-align: left !important;
+}
+#viewFuelModal h3,
+#viewMerchModal h3,
+#viewServiceModal h3,
+#viewBatchesModal h3,
+[id*="Modal"] .modal-header h3,
+[id*="Modal"] .modal-header h4 {
+    text-align: left !important;
 }
 </style>
 

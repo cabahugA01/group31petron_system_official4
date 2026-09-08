@@ -162,8 +162,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     ['id' => 'staff_record_delivery',       'label' => 'Record Delivery',       'href' => 'staff_record_delivery.php',       'ico' => 'fas fa-truck-loading',     'permissions' => ['manage_inventory', 'manage_deliveries'], 'desc' => 'Record merchandise and fuel delivery receipts.'],
                     ['id' => 'mgr_stock_in',                 'label' => 'Stock-In',              'href' => 'manager_stock_in.php',            'ico' => 'fas fa-download',          'permissions' => ['manage_inventory', 'view_inventory'], 'desc' => 'Approve pending staff-recorded deliveries and update inventory.'],
                     ['id' => 'mgr_stock_review',             'label' => 'Purchase Management',   'href' => 'manager_stock_request_review.php','ico' => 'fas fa-clipboard-check',  'permissions' => ['manage_inventory', 'view_inventory'], 'desc' => 'Review stock requests and manage procurement workflow.'],
-                    ['id' => 'staff_stock_requests',        'label' => 'Stock Requests',        'href' => 'staff_stock_requests.php',        'ico' => 'fas fa-clipboard-list',    'permissions' => ['manage_inventory', 'view_inventory'], 'desc' => 'Submit and monitor stock replenishment requests.'],
-                    ['id' => 'admin_purchase_orders',       'label' => 'Purchase Orders',       'href' => 'admin_purchase_orders.php',       'ico' => 'fas fa-file-invoice-dollar','permissions' => ['manage_purchase_orders', 'view_all_reports'], 'desc' => 'Manage station purchase orders and supplier procurement.'],
                 ],
             ],
             // 6. Customers — Customer Management Module

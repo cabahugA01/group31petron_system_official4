@@ -1194,14 +1194,22 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-/* ── No-overlap fix for Merchandise Inventory Table ── */
+/* ── No-overlap and Senior Typography Fix for Merchandise Inventory & Stock Alerts ── */
 .mim-wrap, .main-content, .table-wrap, .table-responsive {
     overflow-x: hidden !important;
     max-width: 100% !important;
+    box-sizing: border-box !important;
 }
 
 /* Force fixed layout so columns don't steal space from neighbors */
-table#mgrMerchTable, table.merch-tbl {
+table#mgrMerchTable, 
+table#mgrAlertTable, 
+table#mgrMerchMovTable, 
+table#mgrStaffAdjTable,
+table.merch-tbl, 
+table.alert-tbl,
+table.staff-adj-tbl,
+table.report-table.no-min-width.print-table {
     table-layout: fixed !important;
     width: 100% !important;
     max-width: 100% !important;
@@ -1212,15 +1220,58 @@ table#mgrMerchTable, table.merch-tbl {
 /* All header and data cells: clear boundaries, high legibility for users */
 table#mgrMerchTable th,
 table#mgrMerchTable td,
+table#mgrAlertTable th,
+table#mgrAlertTable td,
+table#mgrMerchMovTable th,
+table#mgrMerchMovTable td,
+table#mgrStaffAdjTable th,
+table#mgrStaffAdjTable td,
 table.merch-tbl th,
-table.merch-tbl td {
+table.merch-tbl td,
+table.alert-tbl th,
+table.alert-tbl td,
+table.staff-adj-tbl th,
+table.staff-adj-tbl td {
     overflow: hidden !important;
-    text-overflow: ellipsis !important;
     max-width: 0 !important;
     box-sizing: border-box !important;
+    vertical-align: middle !important;
 }
 
-/* Product & details cells: allow clean multi-line wrapping */
+/* Header Cells styling - Clear, prominent, bold */
+table#mgrMerchTable thead th,
+table#mgrAlertTable thead th,
+table#mgrMerchMovTable thead th,
+table#mgrStaffAdjTable thead th,
+table.alert-tbl thead th,
+table.staff-adj-tbl thead th {
+    padding: 11px 8px !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .3px !important;
+    color: #ffffff !important;
+    background: #002F70 !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+}
+
+/* Data Cells base typography */
+table#mgrMerchTable tbody td,
+table#mgrAlertTable tbody td,
+table#mgrMerchMovTable tbody td,
+table#mgrStaffAdjTable tbody td,
+table.alert-tbl tbody td,
+table.staff-adj-tbl tbody td {
+    padding: 11px 8px !important;
+    font-size: 13.5px !important;
+    line-height: 1.4 !important;
+    color: #0f172a;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+/* Product & details cells in mgrMerchTable: clean multi-line wrapping */
 table#mgrMerchTable td:nth-child(2),
 table.merch-tbl td:nth-child(2),
 table#mgrMerchTable td:nth-child(4),
@@ -1230,32 +1281,80 @@ table.merch-tbl td:nth-child(4) {
     overflow-wrap: break-word !important;
     max-width: 0 !important;
 }
+
+/* Stock Alerts Table (mgrAlertTable): specific clean wrapping without overflow */
+table#mgrAlertTable td:nth-child(2),
+table.alert-tbl td:nth-child(2) {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    max-width: 0 !important;
+    font-size: 14px !important;
+    font-weight: 800 !important;
+    line-height: 1.35 !important;
+}
+
+table#mgrAlertTable td:nth-child(3),
+table.alert-tbl td:nth-child(3) {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+}
+
+table#mgrAlertTable td:nth-child(8),
+table.alert-tbl td:nth-child(8) {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+}
+
+/* Staff Inventory Adjustments Table (mgrStaffAdjTable): specific clean wrapping */
+table#mgrStaffAdjTable td:nth-child(3),
+table.staff-adj-tbl td:nth-child(3) {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    max-width: 0 !important;
+    font-size: 14px !important;
+    font-weight: 800 !important;
+    line-height: 1.35 !important;
+}
+
+table#mgrStaffAdjTable td:nth-child(7),
+table.staff-adj-tbl td:nth-child(7) {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+}
 </style>
 
 <style>
 /* Header standardization */
 body { overflow-x: hidden; }
 .mim-wrap { width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden !important; padding: 0 !important; margin: 0 !important; }
-/* Prevent horizontal scrollbar on main merchandise table */
 .table-wrap { overflow-x: hidden !important; width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; }
-#mgrMerchTable { width: 100% !important; max-width: 100% !important; table-layout: fixed !important; border-collapse: collapse !important; }
-#mgrMerchTable thead th { padding: 10px 8px !important; font-size: 11.5px !important; font-weight: 800 !important; text-transform: uppercase !important; letter-spacing: .3px !important; white-space: nowrap !important; color: #ffffff !important; background: #002F70 !important; }
-#mgrMerchTable tbody td { padding: 9px 8px !important; font-size: 12.5px !important; border-bottom: 1px solid #f1f5f9; vertical-align: middle !important; }
+
 .int-head { display: flex !important; align-items: center !important; justify-content: space-between !important; flex-wrap: wrap !important; gap: 15px !important; margin-top: 0 !important; margin-bottom: 25px !important; padding: 0 !important; border: none !important; width: 100% !important; }
-.int-head h1 { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important; font-size: 24px !important; font-weight: 700 !important; color: #002f70 !important; margin: 0 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; display: flex !important; align-items: center !important; gap: 10px !important; line-height: 1.2 !important; }
-.int-head .sub { font-size:13px; color:#64748b; margin-top:4px; }
-.ato-btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 16px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent; text-decoration:none; transition:all .15s; height:36px; white-space:nowrap; background:white !important; }
+.int-head h1 { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important; font-size: 26px !important; font-weight: 800 !important; color: #002f70 !important; margin: 0 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; display: flex !important; align-items: center !important; gap: 10px !important; line-height: 1.2 !important; }
+.int-head .sub { font-size:14px; color:#64748b; margin-top:4px; }
+.ato-btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 18px; border-radius:7px; font-size:14px; font-weight:700; cursor:pointer; border:1px solid transparent; text-decoration:none; transition:all .15s; height:40px; white-space:nowrap; background:white !important; }
 .ato-btn-back { color:#4b5563 !important; border-color:#6b7280 !important; }
 .ato-btn-back:hover { background:#6b7280 !important; color:#fff !important; }
 
-/* Tabs Layout - Matches Reports sub-tab design */
+/* Tabs Layout - Prominent and readable for elderly */
 .tab-nav { display: flex !important; flex-wrap: wrap !important; margin-bottom: 22px !important; border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; border-bottom: 3px solid #00264D !important; gap: 0 !important; }
-.tab-btn { flex: 1 !important; min-width: 140px !important; padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-bottom: none !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; text-align: center !important; cursor: pointer !important; margin-bottom: 0 !important; }
+.tab-btn { flex: 1 !important; min-width: 150px !important; padding: 13px 18px !important; font-size: 13.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-bottom: none !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 8px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; text-align: center !important; cursor: pointer !important; margin-bottom: 0 !important; }
 .tab-btn:last-child { border-right: none !important; }
 .tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
 .tab-btn.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; border-bottom: none !important; }
 
-.cat-header td { font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:.8em; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px; text-align:center; }
+.cat-header td { font-weight:800 !important; background:#e2e8f0 !important; color:#002F70 !important; text-transform:uppercase; font-size:13.5px !important; letter-spacing:.5px; border-bottom:2px solid #cbd5e1; padding:10px 14px !important; text-align:center; }
 .merch-row:hover { background:#f8f9fa; }
 .inv-filter-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
 .inv-filter-bar select, .inv-filter-bar input[type="text"] { padding:8px 11px; border:1px solid #ced4da; border-radius:5px; font-size:13px; font-family:inherit; color:#1e293b; }
@@ -1581,7 +1680,7 @@ body { overflow-x: hidden; }
         </div>
     </div>
     <div class="table-wrap" style="width:100% !important;max-width:100% !important;overflow-x:hidden !important;box-sizing:border-box !important;">
-        <table class="table" id="mgrMerchTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
+        <table class="table report-table no-min-width print-table merch-tbl" id="mgrMerchTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
         <colgroup>
             <col style="width:11%;"><!-- ITEM IDENTIFIERS -->
             <col style="width:23%;"><!-- PRODUCT & CATEGORY -->
@@ -1818,7 +1917,7 @@ body { overflow-x: hidden; }
         </div>
     </div>
     <div class="table-wrap" style="width:100% !important;max-width:100% !important;overflow-x:hidden !important;box-sizing:border-box !important;">
-        <table class="table" id="mgrMerchMovTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
+        <table class="table report-table no-min-width print-table merch-mov-tbl" id="mgrMerchMovTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
             <colgroup>
                 <col style="width:10%;">
                 <col style="width:14%;">
@@ -1887,36 +1986,36 @@ body { overflow-x: hidden; }
 
 <!-- Stock Alerts Summary Cards -->
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:20px;">
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
-        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Low Stock Items</div>
-        <div style="font-size:26px;font-weight:800;color:#002F70;margin-top:4px;"><?= number_format($summary_alert_low) ?></div>
+    <div style="background:#fff;border-radius:8px;padding:18px 22px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1.5px solid #e2e8f0;">
+        <div style="font-size:13px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Low Stock Items</div>
+        <div style="font-size:28px;font-weight:900;color:#002F70;margin-top:4px;"><?= number_format($summary_alert_low) ?></div>
     </div>
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
-        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Critical Stock Items</div>
-        <div style="font-size:26px;font-weight:800;color:#002F70;margin-top:4px;"><?= number_format($summary_alert_critical) ?></div>
+    <div style="background:#fff;border-radius:8px;padding:18px 22px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1.5px solid #e2e8f0;">
+        <div style="font-size:13px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Critical Stock Items</div>
+        <div style="font-size:28px;font-weight:900;color:#002F70;margin-top:4px;"><?= number_format($summary_alert_critical) ?></div>
     </div>
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
-        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock Items</div>
-        <div style="font-size:26px;font-weight:800;color:#002F70;margin-top:4px;"><?= number_format($summary_out) ?></div>
+    <div style="background:#fff;border-radius:8px;padding:18px 22px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1.5px solid #e2e8f0;">
+        <div style="font-size:13px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock Items</div>
+        <div style="font-size:28px;font-weight:900;color:#002F70;margin-top:4px;"><?= number_format($summary_out) ?></div>
     </div>
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
-        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Variance Alerts</div>
-        <div style="font-size:26px;font-weight:800;color:#002F70;margin-top:4px;"><?= number_format($summary_variance) ?></div>
+    <div style="background:#fff;border-radius:8px;padding:18px 22px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1.5px solid #e2e8f0;">
+        <div style="font-size:13px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Variance Alerts</div>
+        <div style="font-size:28px;font-weight:900;color:#002F70;margin-top:4px;"><?= number_format($summary_variance) ?></div>
     </div>
 </div>
 <!-- Stock Alerts Table Card -->
-<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;">
-    <div style="padding:14px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-        <div style="font-size:1rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;">
+<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1.5px solid #e9ecef;margin-bottom:20px;">
+    <div style="padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div style="font-size:16px;font-weight:800;color:#002F70;display:flex;align-items:center;gap:8px;">
             <i class="fas fa-exclamation-triangle" style="color:#fd7e14;"></i> Stock Alerts
             <?php $total_alerts = $summary_alert_low + $summary_alert_critical + $summary_out + $summary_variance; ?>
             <?php if ($total_alerts > 0): ?>
-            <span style="background:#dc3545;color:#fff;border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700;"><?= $total_alerts ?> items</span>
+            <span style="background:#dc3545;color:#fff;border-radius:12px;padding:4px 12px;font-size:13px;font-weight:800;"><?= $total_alerts ?> items</span>
             <?php endif; ?>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <input type="text" id="alertSearch" placeholder="Search Product or SKU..." oninput="filterAlertTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:190px;">
-            <select id="alertCatFilter" onchange="filterAlertTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <input type="text" id="alertSearch" placeholder="Search Product or SKU..." oninput="filterAlertTable()" style="height:40px;padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:14px;font-weight:600;width:210px;">
+            <select id="alertCatFilter" onchange="filterAlertTable()" style="height:40px;padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:14px;font-weight:600;">
                 <option value="">All Categories</option>
                 <?php foreach (array_keys($categories_list) as $cat): ?>
                 <option value="<?php echo strtolower(htmlspecialchars($cat)); ?>"><?php echo htmlspecialchars($cat); ?></option>
@@ -1925,27 +2024,27 @@ body { overflow-x: hidden; }
         </div>
     </div>
     <div class="table-wrap" style="width:100% !important;max-width:100% !important;overflow-x:hidden !important;box-sizing:border-box !important;">
-        <table class="table" id="mgrAlertTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
+        <table class="table report-table no-min-width print-table alert-tbl" id="mgrAlertTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
             <colgroup>
                 <col style="width:10%;">
-                <col style="width:20%;">
-                <col style="width:11%;">
+                <col style="width:26%;">
                 <col style="width:10%;">
-                <col style="width:10%;">
-                <col style="width:9%;">
-                <col style="width:12%;">
+                <col style="width:8%;">
+                <col style="width:8%;">
+                <col style="width:7%;">
+                <col style="width:13%;">
                 <col style="width:18%;">
             </colgroup>
             <thead>
                 <tr>
-                    <th style="white-space:nowrap;color:#fff;">SKU</th>
-                    <th style="white-space:nowrap;color:#fff;">Product Name</th>
-                    <th style="white-space:nowrap;color:#fff;text-align:center;">Category</th>
-                    <th style="white-space:nowrap;color:#fff;text-align:right;">Current Stock</th>
-                    <th style="white-space:nowrap;color:#fff;text-align:right;">Reorder Level</th>
-                    <th style="white-space:nowrap;color:#fff;text-align:right;">Variance</th>
-                    <th style="white-space:nowrap;color:#fff;text-align:center;">Status</th>
-                    <th style="white-space:nowrap;color:#fff;">Recommended Action</th>
+                    <th style="color:#fff;">SKU</th>
+                    <th style="color:#fff;">Product Name</th>
+                    <th style="color:#fff;text-align:center;">Category</th>
+                    <th style="color:#fff;text-align:right;">Current Stock</th>
+                    <th style="color:#fff;text-align:right;">Reorder Level</th>
+                    <th style="color:#fff;text-align:right;">Variance</th>
+                    <th style="color:#fff;text-align:center;">Status</th>
+                    <th style="color:#fff;">Recommended Action</th>
                 </tr>
             </thead>
             <tbody id="alertTableBody">
@@ -1963,7 +2062,7 @@ body { overflow-x: hidden; }
                 }
                 if (empty($cat_alerts)) continue;
             ?>
-                <tr class="cat-header no-paginate"><td colspan="8"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                <tr class="cat-header no-paginate"><td colspan="8" style="background:#e2e8f0 !important;color:#002F70 !important;font-size:13.5px !important;font-weight:800 !important;text-align:center;padding:10px 14px;letter-spacing:.5px;border-bottom:2px solid #cbd5e1;"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
                 <?php foreach ($cat_alerts as $item):
                     $alert_count++;
                     $stock    = (float)($item['stock_level'] ?? 0);
@@ -2004,19 +2103,19 @@ body { overflow-x: hidden; }
                     data-sku="<?php echo strtolower(htmlspecialchars($item['sku'] ?? '')); ?>"
                     data-cat="<?php echo strtolower(htmlspecialchars($item['category_name'] ?? '')); ?>"
                     data-alert-type="<?php echo $alert_type_cls; ?>">
-                    <td><code style="font-size:11px;font-weight:600;color:#475569;"><?php echo htmlspecialchars($item['sku'] ?? ''); ?></code></td>
-                    <td><strong style="color:#0f172a;"><?php echo htmlspecialchars($item['name']); ?></strong></td>
-                    <td style="text-align:center;color:#475569;"><?php echo htmlspecialchars($item['category_name'] ?? ''); ?></td>
-                    <td style="text-align:right;font-weight:800;font-size:15px;color:<?php echo $sc; ?>;"><?php echo number_format($stock, 0); ?></td>
-                    <td style="text-align:right;font-weight:600;color:#475569;"><?php echo number_format($reorder, 0); ?></td>
-                    <td style="text-align:right;<?php echo $var_style; ?>"><?php echo $var_text; ?></td>
+                    <td><code style="font-size:12.5px;font-weight:700;color:#334155;"><?php echo htmlspecialchars($item['sku'] ?? ''); ?></code></td>
+                    <td style="white-space:normal !important;word-break:break-word !important;overflow-wrap:break-word !important;"><strong style="font-size:14px;font-weight:800;color:#0f172a;line-height:1.35;"><?php echo htmlspecialchars($item['name']); ?></strong></td>
+                    <td style="text-align:center;font-size:13px;font-weight:600;color:#475569;white-space:normal !important;word-break:break-word !important;"><?php echo htmlspecialchars($item['category_name'] ?? ''); ?></td>
+                    <td style="text-align:right;font-weight:900;font-size:16px;color:<?php echo $sc; ?>;"><?php echo number_format($stock, 0); ?></td>
+                    <td style="text-align:right;font-weight:700;font-size:14px;color:#475569;"><?php echo number_format($reorder, 0); ?></td>
+                    <td style="text-align:right;font-size:14px;<?php echo $var_style; ?>"><?php echo $var_text; ?></td>
                     <td style="text-align:center;">
-                        <span style="display:inline-flex;align-items:center;gap:5px;background:<?php echo $sc; ?>18;color:<?php echo $sc; ?>;border:1px solid <?php echo $sc; ?>40;padding:4px 10px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;white-space:nowrap;">
+                        <span style="display:inline-flex;align-items:center;gap:5px;background:<?php echo $sc; ?>18;color:<?php echo $sc; ?>;border:1.5px solid <?php echo $sc; ?>50;padding:5px 12px;border-radius:20px;font-size:11.5px;font-weight:800;text-transform:uppercase;white-space:nowrap;">
                             <i class="fas <?php echo $icon; ?>"></i> <?php echo $st; ?>
                         </span>
                     </td>
-                    <td>
-                        <span style="font-size:12px;color:<?php echo $rec_color; ?>;font-weight:600;display:flex;align-items:center;gap:5px;">
+                    <td style="white-space:normal !important;word-break:break-word !important;overflow-wrap:break-word !important;">
+                        <span style="font-size:13px;color:<?php echo $rec_color; ?>;font-weight:700;display:flex;align-items:center;gap:6px;">
                             <i class="fas <?php echo $rec_icon; ?>"></i> <?php echo htmlspecialchars($recommended); ?>
                         </span>
                     </td>
@@ -2042,32 +2141,43 @@ body { overflow-x: hidden; }
 <?php if ($active_tab === 'requests' || $active_tab === 'adjustments'): ?>
 
 <!-- ══ PENDING INVENTORY ADJUSTMENTS (STAFF ADJUSTMENTS FOR MANAGER APPROVAL) ══ -->
-<div class="tbl-card" style="margin-bottom:24px; background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; overflow:hidden;">
-    <div class="tbl-hd" style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px; background:#fff; border-bottom:1px solid #e9ecef;">
-        <div class="tbl-title" style="font-size:14px; font-weight:700; color:#00264D; display:flex; align-items:center; gap:8px;">
-            <i class="fas fa-sliders" style="color:#fd7e14;"></i> Staff Inventory Adjustments (Pending Approval)
+<div class="tbl-card" style="margin-bottom:24px; background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1.5px solid #e9ecef; overflow:hidden;">
+    <div class="tbl-hd" style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; background:#fff; border-bottom:1px solid #e9ecef;">
+        <div class="tbl-title" style="font-size:16px; font-weight:800; color:#00264D; display:flex; align-items:center; gap:8px;">
+            <i class="fas fa-sliders-h" style="color:#fd7e14;"></i> Staff Inventory Adjustments (Pending Approval)
         </div>
-
     </div>
-    <div class="table-wrap">
-        <table class="table" style="width:100%; margin:0;">
+    <div class="table-wrap" style="width:100% !important;max-width:100% !important;overflow-x:hidden !important;box-sizing:border-box !important;">
+        <table class="table report-table no-min-width print-table staff-adj-tbl" id="mgrStaffAdjTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
+            <colgroup>
+                <col style="width:7%;">
+                <col style="width:10%;">
+                <col style="width:18%;">
+                <col style="width:9%;">
+                <col style="width:8%;">
+                <col style="width:8%;">
+                <col style="width:16%;">
+                <col style="width:9%;">
+                <col style="width:7%;">
+                <col style="width:8%;">
+            </colgroup>
             <thead>
-                <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0; color:#475569; font-size:11px; text-transform:uppercase;">
-                    <th style="padding:12px;">Adj ID</th>
-                    <th style="padding:12px;">Date</th>
-                    <th style="padding:12px;">Product</th>
-                    <th style="text-align:center; padding:12px;">Type</th>
-                    <th style="text-align:right; padding:12px;">Current Stock</th>
-                    <th style="text-align:right; padding:12px;">Qty Change</th>
-                    <th style="padding:12px;">Reason / Remarks</th>
-                    <th style="padding:12px;">Requested By</th>
-                    <th style="text-align:center; padding:12px;">Status</th>
-                    <th style="text-align:center; padding:12px;">Actions</th>
+                <tr>
+                    <th style="color:#fff;">Adj ID</th>
+                    <th style="color:#fff;">Date</th>
+                    <th style="color:#fff;">Product</th>
+                    <th style="text-align:center;color:#fff;">Type</th>
+                    <th style="text-align:right;color:#fff;">Current Stock</th>
+                    <th style="text-align:right;color:#fff;">Qty Change</th>
+                    <th style="color:#fff;">Reason / Remarks</th>
+                    <th style="color:#fff;">Requested By</th>
+                    <th style="text-align:center;color:#fff;">Status</th>
+                    <th style="text-align:center;color:#fff;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($merchandise_adjustments)): ?>
-                    <tr><td colspan="10" class="empty-state" style="text-align:center; padding:28px; color:#64748b;"><i class="fas fa-sliders" style="margin-right:6px;"></i>No staff inventory adjustment requests found.</td></tr>
+                    <tr><td colspan="10" class="empty-state" style="text-align:center; padding:36px; color:#64748b; font-size:14px; font-weight:600;"><i class="fas fa-sliders-h" style="font-size:24px;display:block;margin-bottom:8px;color:#94a3b8;"></i>No staff inventory adjustment requests found.</td></tr>
                 <?php else: ?>
                     <?php foreach ($merchandise_adjustments as $adj):
                         $st = strtolower($adj['status'] ?? 'pending');
@@ -2076,27 +2186,33 @@ body { overflow-x: hidden; }
                         $change_color = (int)$adj['quantity_change'] > 0 ? '#16a34a' : '#dc2626';
                     ?>
                     <tr style="border-bottom:1px solid #f1f5f9; <?= $st === 'pending' ? 'background:#fffdfa;' : '' ?>">
-                        <td style="padding:10px 12px;"><code style="font-size:11px; font-weight:700; color:#002F70;">ADJ-<?= str_pad($adj['id'], 4, '0', STR_PAD_LEFT) ?></code></td>
-                        <td style="padding:10px 12px; font-size:11px; color:#64748b; white-space:nowrap;"><?= date('M d, Y h:i A', strtotime($adj['requested_at'])) ?></td>
-                        <td style="padding:10px 12px;"><strong><?= htmlspecialchars($adj['product_name']) ?></strong><br><code style="font-size:9px; color:#94a3b8;"><?= htmlspecialchars($adj['sku'] ?? '') ?></code></td>
-                        <td style="text-align:center; padding:10px 12px;"><span style="font-weight:700; color:#002F70; font-size:12px;"><?= htmlspecialchars($adj['adjustment_type']) ?></span></td>
-                        <td style="text-align:right; font-weight:600; color:#475569; padding:10px 12px;"><?= number_format($adj['current_stock']) ?></td>
-                        <td style="text-align:right; font-weight:800; color:<?= $change_color ?>; font-size:14px; padding:10px 12px;"><?= $change_fmt ?></td>
-                        <td style="font-size:12px; color:#334155; max-width:220px; white-space:normal; padding:10px 12px;"><?= htmlspecialchars($adj['reason'] ?: '-') ?></td>
-                        <td style="padding:10px 12px;"><strong><?= htmlspecialchars($adj['staff_name'] ?? 'Staff') ?></strong></td>
-                        <td style="text-align:center; padding:10px 12px;"><span class="status-badge <?= $badge_cls ?>" style="font-weight:700; font-size:11px; text-transform:uppercase; padding:3px 8px; border-radius:4px;"><?= htmlspecialchars($adj['status']) ?></span></td>
-                        <td style="text-align:center; padding:10px 12px;">
+                        <td><code style="font-size:12px; font-weight:700; color:#002F70;">ADJ-<?= str_pad($adj['id'], 4, '0', STR_PAD_LEFT) ?></code></td>
+                        <td>
+                            <div style="font-size:12.5px; font-weight:700; color:#0f172a;"><?= date('M d, Y', strtotime($adj['requested_at'])) ?></div>
+                            <div style="font-size:11.5px; font-weight:600; color:#64748b;"><?= date('h:i A', strtotime($adj['requested_at'])) ?></div>
+                        </td>
+                        <td style="white-space:normal !important;word-break:break-word !important;overflow-wrap:break-word !important;">
+                            <strong style="font-size:13.5px; font-weight:800; color:#0f172a; line-height:1.35;"><?= htmlspecialchars($adj['product_name']) ?></strong>
+                            <?php if (!empty($adj['sku'])): ?><br><code style="font-size:11.5px; font-weight:600; color:#64748b;"><?= htmlspecialchars($adj['sku']) ?></code><?php endif; ?>
+                        </td>
+                        <td style="text-align:center;"><span style="font-weight:700; color:#002F70; font-size:12.5px;"><?= htmlspecialchars($adj['adjustment_type']) ?></span></td>
+                        <td style="text-align:right; font-weight:700; font-size:14px; color:#475569;"><?= number_format($adj['current_stock']) ?></td>
+                        <td style="text-align:right; font-weight:900; color:<?= $change_color ?>; font-size:15px;"><?= $change_fmt ?></td>
+                        <td style="white-space:normal !important;word-break:break-word !important;overflow-wrap:break-word !important; font-size:13px; color:#334155; line-height:1.35;"><?= htmlspecialchars($adj['reason'] ?: '—') ?></td>
+                        <td><strong style="font-size:13px; font-weight:700; color:#0f172a;"><?= htmlspecialchars($adj['staff_name'] ?? 'Staff') ?></strong></td>
+                        <td style="text-align:center;"><span class="status-badge <?= $badge_cls ?>" style="font-weight:800; font-size:11.5px; text-transform:uppercase; padding:4px 10px; border-radius:12px;"><?= htmlspecialchars($adj['status']) ?></span></td>
+                        <td style="text-align:center;">
                             <?php if ($st === 'pending'): ?>
-                                <div style="display:flex; gap:6px; justify-content:center;">
-                                    <button type="button" onclick="openApproveAdjModal(<?= $adj['id'] ?>, '<?= htmlspecialchars(addslashes($adj['product_name'])) ?>', <?= (int)$adj['current_stock'] ?>, <?= (int)$adj['quantity_change'] ?>)" style="background:#28a745!important; color:#fff!important; border:none!important; font-size:11px; padding:5px 10px; border-radius:4px; cursor:pointer; font-weight:700;">
+                                <div style="display:flex; flex-direction:column; gap:4px; align-items:center;">
+                                    <button type="button" onclick="openApproveAdjModal(<?= $adj['id'] ?>, '<?= htmlspecialchars(addslashes($adj['product_name'])) ?>', <?= (int)$adj['current_stock'] ?>, <?= (int)$adj['quantity_change'] ?>)" style="background:#16a34a!important; color:#fff!important; border:none!important; font-size:11.5px; padding:5px 8px; border-radius:4px; cursor:pointer; font-weight:700; width:100%; display:inline-flex; align-items:center; justify-content:center; gap:4px;">
                                         <i class="fas fa-check"></i> Approve
                                     </button>
-                                    <button type="button" class="txn-btn secondary sm" onclick="openRejectAdjModal(<?= $adj['id'] ?>, '<?= htmlspecialchars(addslashes($adj['product_name'])) ?>')" style="background:#dc3545!important; color:#fff!important; border:none!important; font-size:11px; padding:5px 10px; border-radius:4px; cursor:pointer; font-weight:700;">
+                                    <button type="button" onclick="openRejectAdjModal(<?= $adj['id'] ?>, '<?= htmlspecialchars(addslashes($adj['product_name'])) ?>')" style="background:#dc2626!important; color:#fff!important; border:none!important; font-size:11.5px; padding:5px 8px; border-radius:4px; cursor:pointer; font-weight:700; width:100%; display:inline-flex; align-items:center; justify-content:center; gap:4px;">
                                         <i class="fas fa-times"></i> Reject
                                     </button>
                                 </div>
                             <?php else: ?>
-                                <span style="font-size:11px; color:#94a3b8; font-weight:600;"><i class="fas fa-check-double" style="margin-right:2px;"></i> Processed</span>
+                                <span style="font-size:12px; color:#94a3b8; font-weight:700;"><i class="fas fa-check-double" style="margin-right:2px;"></i> Processed</span>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -3576,7 +3692,6 @@ function filterMgrByCard(val) {
             <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:8px;">
                 <i class="fas fa-box"></i> <span id="pdmTitle">View Product</span>
             </div>
-            <button onclick="closeProductModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1;">&times;</button>
         </div>
         <!-- Sub-tabs -->
         <div style="display:flex;border-bottom:2px solid #e2e8f0;background:#f8fafc;flex-shrink:0;padding:0 16px;">
@@ -3631,19 +3746,18 @@ function filterMgrByCard(val) {
         </div>
         <!-- Footer -->
         <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:10px;background:#f8fafc;flex-shrink:0;">
-            <button onclick="closeProductModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;"><i class="fas fa-times"></i> Close</button>
+            <button onclick="closeProductModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;">Close</button>
         </div>
     </div>
 </div>
 
-<!-- â•â• ADJUST STOCK MODAL â•â• -->
+<!-- ══ ADJUST STOCK MODAL ══ -->
 <div class="modal-overlay" id="adjustStockModal" style="z-index:10001; padding-top:90px; padding-bottom:50px; box-sizing:border-box;">
     <div style="background:#fff;border-radius:14px;width:96%;max-width:560px;max-height:calc(100vh - 160px);overflow-y:auto;box-shadow:0 24px 40px rgba(0,0,0,.18);">
         <div style="padding:18px 24px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">
             <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:8px;">
                 <i class="fas fa-sliders-h" style="color:#fd7e14;"></i> Adjust Stock
             </div>
-            <button onclick="closeAdjustModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;">&times;</button>
         </div>
         <div style="padding:22px;">
             <div class="form-group">

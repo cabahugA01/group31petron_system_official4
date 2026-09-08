@@ -222,9 +222,9 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td style="padding:6px 10px;">Shift 1</td><td style="padding:6px 10px; text-align:right;">₱<?= number_format($c_cash1, 2) ?></td></tr>
-                                    <tr><td style="padding:6px 10px;">Shift 2</td><td style="padding:6px 10px; text-align:right;">₱<?= number_format($c_cash2, 2) ?></td></tr>
-                                    <tr style="font-weight:700; background:#f8fafc;"><td>Total Cash</td><td style="text-align:right; color:#002F6C;" class="fw-bold text-success">₱<?= number_format($c_totcash, 2) ?></td></tr>
+                                    <tr><td style="padding:6px 10px; text-align:left;">Shift 1</td><td style="padding:6px 10px; text-align:right;">₱<?= number_format($c_cash1, 2) ?></td></tr>
+                                    <tr><td style="padding:6px 10px; text-align:left;">Shift 2</td><td style="padding:6px 10px; text-align:right;">₱<?= number_format($c_cash2, 2) ?></td></tr>
+                                    <tr style="font-weight:700; background:#f8fafc;"><td style="text-align:left;">Total Cash</td><td style="text-align:right; color:#002F6C;" class="fw-bold text-success">₱<?= number_format($c_totcash, 2) ?></td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -239,9 +239,9 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr><td style="padding:6px 10px;">Shift 1</td><td style="padding:6px 10px; text-align:right;">₱<?= number_format($c_ar1, 2) ?></td></tr>
-                                    <tr><td style="padding:6px 10px;">Shift 2</td><td style="padding:6px 10px; text-align:right;">₱<?= number_format($c_ar2, 2) ?></td></tr>
-                                    <tr style="font-weight:700; background:#f8fafc;"><td>Total A/R</td><td style="text-align:right; color:#002F6C;" class="fw-bold text-primary">₱<?= number_format($c_totar, 2) ?></td></tr>
+                                    <tr><td style="padding:6px 10px; text-align:left;">Shift 1</td><td style="padding:6px 10px; text-align:right;">₱<?= number_format($c_ar1, 2) ?></td></tr>
+                                    <tr><td style="padding:6px 10px; text-align:left;">Shift 2</td><td style="padding:6px 10px; text-align:right;">₱<?= number_format($c_ar2, 2) ?></td></tr>
+                                    <tr style="font-weight:700; background:#f8fafc;"><td style="text-align:left;">Total A/R</td><td style="text-align:right; color:#002F6C;" class="fw-bold text-primary">₱<?= number_format($c_totar, 2) ?></td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -257,11 +257,11 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                             </tr>
                         </thead>
                         <tbody>
-                            <tr><td style="padding:6px 10px; font-weight:700;">TOTAL FUEL AMOUNT SALES</td><td style="padding:6px 10px; text-align:right; font-weight:700; color:#002F6C;">₱<?= number_format($c_fuel, 2) ?></td></tr>
-                            <tr><td style="padding:6px 10px;">LESS: A/R SHIFT 1</td><td style="padding:6px 10px; text-align:right;" class="text-danger">- ₱<?= number_format($c_ar1, 2) ?></td></tr>
-                            <tr><td style="padding:6px 10px;">LESS: A/R SHIFT 2</td><td style="padding:6px 10px; text-align:right;" class="text-danger">- ₱<?= number_format($c_ar2, 2) ?></td></tr>
-                            <tr style="font-weight:700; background:#f0fdf4;"><td style="padding:6px 10px; color:#15803d;">NET CASH / REMAINING AMOUNT</td><td style="padding:6px 10px; text-align:right;" class="fw-bold text-success">₱<?= number_format($c_net, 2) ?></td></tr>
-                            <tr style="font-weight:800; background:#e0f2fe;"><td style="padding:8px 10px; font-size:13px; color:#0369a1;">TOTAL CASH IN BANK</td><td style="padding:8px 10px; text-align:right; font-size:14px;" class="fw-bold text-primary">₱<?= number_format($c_bank, 2) ?></td></tr>
+                            <tr><td style="padding:6px 10px; font-weight:700; text-align:left;">TOTAL FUEL AMOUNT SALES</td><td style="padding:6px 10px; text-align:right; font-weight:700; color:#002F6C;">₱<?= number_format($c_fuel, 2) ?></td></tr>
+                            <tr><td style="padding:6px 10px; text-align:left;">LESS: A/R SHIFT 1</td><td style="padding:6px 10px; text-align:right;" class="text-danger">- ₱<?= number_format($c_ar1, 2) ?></td></tr>
+                            <tr><td style="padding:6px 10px; text-align:left;">LESS: A/R SHIFT 2</td><td style="padding:6px 10px; text-align:right;" class="text-danger">- ₱<?= number_format($c_ar2, 2) ?></td></tr>
+                            <tr style="font-weight:700; background:#f0fdf4;"><td style="padding:6px 10px; color:#15803d; text-align:left;">NET CASH / REMAINING AMOUNT</td><td style="padding:6px 10px; text-align:right;" class="fw-bold text-success">₱<?= number_format($c_net, 2) ?></td></tr>
+                            <tr style="font-weight:800; background:#e0f2fe;"><td style="padding:8px 10px; font-size:13px; color:#0369a1; text-align:left;">TOTAL CASH IN BANK</td><td style="padding:8px 10px; text-align:right; font-size:14px;" class="fw-bold text-primary">₱<?= number_format($c_bank, 2) ?></td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -2116,36 +2116,73 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
 
                 <?php elseif ($tab === 'approval_logs'): ?>
                     <thead><tr>
-                        <th style="width:125px;">Date / Time</th>
-                        <th style="width:115px;">Request Ref</th>
-                        <th style="width:160px;">Workflow / Type</th>
-                        <th style="width:130px;">Action / Decision</th>
-                        <th style="width:130px;">Requested By</th>
-                        <th style="width:130px;">Reviewed By</th>
-                        <th>Details / Feedback</th>
-                        <th style="width:85px;">Status</th>
+                        <th style="width:140px;min-width:130px;">Date / Time</th>
+                        <th style="width:135px;min-width:120px;">Request Ref</th>
+                        <th style="width:170px;min-width:150px;">Workflow / Type</th>
+                        <th style="width:145px;min-width:135px;">Action / Decision</th>
+                        <th style="width:140px;min-width:125px;">Requested By</th>
+                        <th style="width:140px;min-width:125px;">Reviewed By</th>
+                        <th style="min-width:240px;">Details / Feedback</th>
+                        <th style="width:110px;min-width:95px;">Status</th>
                     </tr></thead>
                     <tbody>
                     <?php if (empty($rows)): ?>
-                        <tr><td colspan="8" class="text-center py-4 text-muted">No approval logs found for this period.</td></tr>
+                        <tr><td colspan="8" class="text-center py-4 text-muted" style="font-size:13.5px;">No approval logs found for this period.</td></tr>
                     <?php else: foreach ($rows as $r):
                         $act = strtolower($r['action'] ?? '');
                         $act_cls = match(true) {
-                            str_contains($act, 'approv') => 'bg-success',
-                            str_contains($act, 'reject') => 'bg-danger',
+                            str_contains($act, 'approv') => 'bg-success text-white',
+                            str_contains($act, 'reject') => 'bg-danger text-white',
                             str_contains($act, 'revis')  => 'bg-info text-dark',
                             default                      => 'bg-warning text-dark',
                         };
+                        $act_icon = match(true) {
+                            str_contains($act, 'approv') => '<i class="fas fa-check-circle me-1"></i>',
+                            str_contains($act, 'reject') => '<i class="fas fa-times-circle me-1"></i>',
+                            str_contains($act, 'revis')  => '<i class="fas fa-edit me-1"></i>',
+                            default                      => '<i class="fas fa-hourglass-half me-1"></i>',
+                        };
+
+                        $stat_low = strtolower($r['status'] ?? '');
+                        $stat_cls = match(true) {
+                            str_contains($stat_low, 'approv') || in_array($stat_low, ['official','completed','fulfilled','validated','verified','resolved','accepted']) => 'bg-success text-white',
+                            str_contains($stat_low, 'reject') || str_contains($stat_low, 'cancel') || str_contains($stat_low, 'return') => 'bg-danger text-white',
+                            default => 'bg-secondary text-white',
+                        };
+
+                        $dt_raw = $r['datetime'] ?? '';
+                        $dt_ts  = !empty($dt_raw) && $dt_raw !== 'N/A' ? strtotime($dt_raw) : false;
+                        $dt_d   = $dt_ts ? date('M d, Y', $dt_ts) : ($dt_raw ?: 'N/A');
+                        $dt_t   = $dt_ts ? date('h:i A', $dt_ts) : '';
                     ?>
                         <tr>
-                            <td><small><?= htmlspecialchars($r['datetime'] ?? 'N/A') ?></small></td>
-                            <td><code style="font-size:10px;font-weight:700;"><?= htmlspecialchars($r['request_no'] ?? 'N/A') ?></code></td>
-                            <td><span class="badge bg-primary" style="font-size:10px;"><?= htmlspecialchars($r['request_type'] ?? 'Request') ?></span></td>
-                            <td><span class="badge <?= $act_cls ?>" style="font-size:10px;"><?= htmlspecialchars($r['action'] ?? 'Pending Review') ?></span></td>
-                            <td><?= htmlspecialchars($r['requested_by'] ?? 'Staff') ?></td>
-                            <td><?= htmlspecialchars($r['reviewed_by'] ?? '—') ?></td>
-                            <td><small class="text-muted"><?= htmlspecialchars($r['details'] ?? '—') ?></small></td>
-                            <td><span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars(ucfirst($r['status'] ?? 'Pending')) ?></span></td>
+                            <td>
+                                <div style="font-weight:700;font-size:13px;color:#1e293b;white-space:nowrap;"><?= htmlspecialchars($dt_d) ?></div>
+                                <?php if ($dt_t): ?>
+                                    <div style="font-size:12px;color:#64748b;margin-top:2px;white-space:nowrap;"><i class="far fa-clock me-1"></i><?= htmlspecialchars($dt_t) ?></div>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <code style="font-size:12px;font-weight:800;color:#0f172a;background:#f1f5f9;padding:3px 7px;border-radius:4px;border:1px solid #e2e8f0;"><?= htmlspecialchars($r['request_no'] ?? 'N/A') ?></code>
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border" style="font-size:11.5px;font-weight:700;padding:5px 8px;"><?= htmlspecialchars($r['request_type'] ?? 'Request') ?></span>
+                            </td>
+                            <td>
+                                <span class="badge <?= $act_cls ?>" style="font-size:11.5px;font-weight:700;padding:5px 9px;"><?= $act_icon ?><?= htmlspecialchars($r['action'] ?? 'Pending Review') ?></span>
+                            </td>
+                            <td style="font-size:13px;font-weight:600;color:#1e293b;">
+                                <?= htmlspecialchars($r['requested_by'] ?? 'Staff') ?>
+                            </td>
+                            <td style="font-size:13px;font-weight:600;color:#334155;">
+                                <?= htmlspecialchars($r['reviewed_by'] ?? '—') ?>
+                            </td>
+                            <td style="font-size:12.5px;color:#334155;line-height:1.45;word-wrap:break-word;white-space:normal;">
+                                <?= htmlspecialchars($r['details'] ?? '—') ?>
+                            </td>
+                            <td>
+                                <span class="badge <?= $stat_cls ?>" style="font-size:11.5px;font-weight:700;padding:4px 8px;"><?= htmlspecialchars(ucfirst($r['status'] ?? 'Pending')) ?></span>
+                            </td>
                         </tr>
                     <?php endforeach; endif; ?>
                     </tbody>

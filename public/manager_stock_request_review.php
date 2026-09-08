@@ -551,7 +551,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $staff_ids,
                     'PR Returned',
                     "Purchase Request {$display_pr_name} was returned by the manager. Reason: {$reason}.",
-                    'staff_stock_requests.php',
+                    'staff_inventory_merchandise.php',
                     'warning',
                     'warning'
                 );
@@ -1303,16 +1303,31 @@ body .main,
 .status-cancelled { background: #fee2e2; color: #b91c1c; }
 
 /* Modal Design with Scrollable Body and Sticky Footer */
+/* Centered strictly within the main layout area (excluding sidebar) */
 .modal-overlay {
     position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
+    top: 0;
+    left: 250px !important;
+    right: 0 !important;
+    bottom: 0 !important;
     background: rgba(15, 23, 42, 0.65);
     display: none;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
     z-index: 10005;
-    padding: 24px 20px 80px 20px;
+    padding: 85px 25px 35px 25px !important;
+    box-sizing: border-box !important;
     overflow-y: auto !important;
+    transition: left 0.25s ease;
+}
+body.sidebar-collapsed .modal-overlay {
+    left: 70px !important;
+}
+@media (max-width: 991px) {
+    .modal-overlay {
+        left: 0 !important;
+        padding: 80px 15px 30px 15px !important;
+    }
 }
 .modal-overlay.open {
     display: flex !important;
@@ -1321,13 +1336,13 @@ body .main,
     background: #fff;
     border-radius: 16px;
     width: 100%;
-    max-width: 950px;
-    max-height: calc(100vh - 110px);
+    max-width: 980px;
+    max-height: calc(100vh - 130px);
     display: flex;
     flex-direction: column;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
     animation: modalFadeIn 0.2s ease-out;
-    margin: 15px auto 60px auto;
+    margin: auto;
 }
 @keyframes modalFadeIn {
     from { opacity: 0; transform: scale(0.96); }
@@ -2562,20 +2577,32 @@ function switchPendingSubTab(type) {
         var url = new URL(window.location);
         url.searchParams.set('tab', type);
         window.history.replaceState({}, '', url);
-        localStorage.setItem('pr_review_active_subtab', type);
     } catch(e) {}
 }
 
 document.addEventListener('DOMContentLoaded', function() {
     var urlParams = new URLSearchParams(window.location.search);
-    var tabParam = urlParams.get('tab');
-    var subtabParam = urlParams.get('subtab');
+    var tabParam = (urlParams.get('tab') || '').toLowerCase();
+    var subtabParam = (urlParams.get('subtab') || '').toLowerCase();
     var highlightId = urlParams.get('highlight');
     var actionParam = urlParams.get('action');
 
-    // Determine subtab: subtab param overrides saved
-    var savedTab = subtabParam || localStorage.getItem('pr_review_active_subtab') || 'merch';
-    switchPendingSubTab(savedTab);
+    // Clean up any stale localStorage so it never hijacks sidebar navigation
+    try { localStorage.removeItem('pr_review_active_subtab'); } catch(e) {}
+
+    // Only open History if explicitly requested in URL (?tab=history)
+    var targetTab = 'pr';
+    if (tabParam === 'history') {
+        targetTab = 'history';
+    } else if (tabParam === 'fuel' || subtabParam === 'fuel') {
+        targetTab = 'fuel';
+    } else if (tabParam === 'merch' || subtabParam === 'merch') {
+        targetTab = 'merch';
+    } else {
+        // Default on fresh open or sidebar navigation is always Purchase Request
+        targetTab = 'pr';
+    }
+    switchPendingSubTab(targetTab);
 
     // Auto-open and scroll to highlighted request from dashboard
     if (highlightId) {
@@ -3406,7 +3433,7 @@ function onDirectFuelSelect(selectElem) {
 
 <!-- DIRECT CREATE PURCHASE ORDER MODAL -->
 <div id="directPoModal" class="modal-overlay">
-    <div class="modal-box" style="max-width: 1020px; width: 95vw; margin-top: 20px; margin-bottom: 70px; max-height: calc(100vh - 120px);">
+    <div class="modal-box" style="max-width: 980px; width: 100%; margin: auto; max-height: calc(100vh - 130px);">
         <div class="modal-header" style="background: #002F6C; padding: 18px 24px; border-radius: 16px 16px 0 0;">
             <h2 class="modal-title" style="margin: 0; font-size: 18px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 10px;">
                 <i class="fas fa-file-invoice" style="color: #60a5fa;"></i> Create Direct Purchase Order
@@ -3585,7 +3612,7 @@ function onDirectFuelSelect(selectElem) {
 
                 <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
                     <button type="button" onclick="closeModal('directPoModal')" class="btn-cancel-inline">Cancel</button>
-                    <button type="submit" class="btn-forward" style="padding: 10px 24px; background: #1d4ed8 !important; border-color: #1d4ed8 !important;">
+                    <button type="submit" class="btn-forward" style="padding: 10px 24px;">
                         <i class="fas fa-check-circle"></i> Issue & Create Fuel PO
                     </button>
                 </div>

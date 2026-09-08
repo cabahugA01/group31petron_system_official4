@@ -343,6 +343,8 @@ try {
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                 foreach ($rows as &$n) {
+                    $n['title'] = function_exists('clean_mojibake') ? clean_mojibake((string)($n['title'] ?? '')) : (string)($n['title'] ?? '');
+                    $n['message'] = function_exists('clean_mojibake') ? clean_mojibake((string)($n['message'] ?? '')) : (string)($n['message'] ?? '');
                     $n['time_ago'] = time_ago($n['created_at']);
                     $n['is_unread'] = ($n['status'] === 'unread');
                     if (empty($n['redirect_url']) || $n['redirect_url'] === '#' || $n['redirect_url'] === 'null') {

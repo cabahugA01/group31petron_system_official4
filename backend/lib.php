@@ -22,6 +22,19 @@ if (!function_exists('is_system_in_maintenance_mode')) {
     }
 }
 
+if (!function_exists('sanitize_optional_field')) {
+    function sanitize_optional_field(?string $val): string {
+        if ($val === null) return 'N/A';
+        $trimmed = trim($val);
+        if ($trimmed === '') return 'N/A';
+        $lower = strtolower($trimmed);
+        $invalid_placeholders = ['none', 'null', 'n/a', '-', 'unknown', 'not available', 'not_available', 'undefined', 'n.a.', 'n/a.'];
+        if (in_array($lower, $invalid_placeholders, true)) {
+            return 'N/A';
+        }
+        return $trimmed;
+    }
+}
 
 // Simple JSON-based storage helpers (no DB required)
 function data_path($file){ return __DIR__ . '/../data/' . $file; }
@@ -48,6 +61,61 @@ function json_response($data, $code=200){
   }
   echo json_encode($data);
   exit;
+}
+
+if (!function_exists('clean_mojibake')) {
+    /**
+     * Automatically cleans corrupted mojibake and encoding artifacts.
+     * Restores CP437, Cyrillic CP866/1251, and Windows-1252 misinterpretations of UTF-8:
+     * e.g. "ΓÇö" -> "—", "ГÇÖ" -> "—", "Γé▒" -> "₱", "â‚±" -> "₱", "â€”" -> "—"
+     */
+    function clean_mojibake(?string $str): string {
+        if ($str === null || $str === '') {
+            return '';
+        }
+        static $map = [
+            // Em dash / En dash / hyphens
+            'ΓÇö'  => '—',
+            'ΓÇÖ'  => '—',
+            'ГÇÖ'  => '—',
+            'ГÇö'  => '—',
+            'ΓÇô'  => '–',
+            'â€”'  => '—',
+            'â€“'  => '–',
+            
+            // Peso sign
+            'Γé▒'  => '₱',
+            'â‚±'  => '₱',
+            
+            // Single quotes / apostrophes
+            'â€™'  => "'",
+            'â€˜'  => "'",
+            'ΓÇÿ'  => "'",
+            'â€²'  => "'",
+            
+            // Double quotes
+            'â€œ'  => '"',
+            'â€'  => '"',
+            'ΓÇ£'  => '"',
+            'ΓÇ¥'  => '"',
+            
+            // Bullet / middot
+            'â€¢'  => '•',
+            'ΓÇó'  => '•',
+            'Â·'   => '·',
+            
+            // Accented characters
+            'Ã©'   => 'é',
+            'Ã¨'   => 'è',
+            'Ã±'   => 'ñ',
+            'Ã‘'   => 'Ñ',
+            'Ã¡'   => 'á',
+            'Ã³'   => 'ó',
+            'Ãº'   => 'ú',
+            'Ã­'   => 'í',
+        ];
+        return strtr($str, $map);
+    }
 }
 
 if (!function_exists('is_user_archived_status')) {
@@ -1495,6 +1563,7 @@ function render_no_station_page(string $back_url = 'admin_dashboard.php'): void 
 function log_activity($pdo, $user_id, $action, $details) {
   try {
     if(!($pdo instanceof PDO)) return;
+    $details = function_exists('clean_mojibake') ? clean_mojibake((string)$details) : (string)$details;
     $stmt = $pdo->prepare("INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)");
     $stmt->execute([$user_id, $action, $details, $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0']);
   } catch (Exception $e) { /* Fail silently to not disrupt flow */ }
@@ -2810,6 +2879,8 @@ function notify(
     string $shift_period = ''
 ): void {
     if ($user_id <= 0) return;
+    $title   = function_exists('clean_mojibake') ? clean_mojibake($title) : $title;
+    $message = function_exists('clean_mojibake') ? clean_mojibake($message) : $message;
     try {
         static $migrated = false;
         if (!$migrated) {
@@ -2879,8 +2950,8 @@ function notify_transaction_submission(
         $shift = trim((string)($data['shift_period'] ?? $data['shift_name'] ?? ''));
 
         $or_no = 'OR-' . date('Y') . '-' . str_pad($db_id > 0 ? $db_id : mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
-        $title = "New {$type_label} Transaction — {$or_no}";
-        $message = "Staff {$staff} submitted a {$type_label} transaction ({$txn_id}) for {$customer} totaling ₱" . number_format($total_amount, 2) . ".";
+        $title = clean_mojibake("New {$type_label} Transaction — {$or_no}");
+        $message = clean_mojibake("Staff {$staff} submitted a {$type_label} transaction ({$txn_id}) for {$customer} totaling ₱" . number_format($total_amount, 2) . ".");
 
         $source_key = "txn_sub_{$station_id}_" . ($db_id > 0 ? $db_id : preg_replace('/[^a-zA-Z0-9_]/', '_', $txn_id));
 
@@ -3003,7 +3074,7 @@ function notification_redirect_url(string $ref_type, int $ref_id, string $role):
     $map = [
         // Staff
         'stock_request' => [
-            'staff'    => "staff_stock_requests.php{$id}",
+            'staff'    => "staff_inventory_merchandise.php{$id}",
             'manager'  => "manager_inventory_stock_requests.php{$id}",
             'admin'    => "admin_approve_stock_requests.php{$id}",
         ],

@@ -908,9 +908,10 @@ require_once __DIR__ . '/../partials/header.php';
     body[data-page="dashboard"] .main,
     body[data-page="staff_dashboard"] .main,
     .main {
-        padding: 20px 24px 60px 24px !important;
+        padding: 10px 18px 90px 18px !important;
         background: #F8FAFC;
         box-sizing: border-box;
+        overflow-x: hidden !important;
     }
 
     .stf-dash-wrapper {
@@ -920,6 +921,8 @@ require_once __DIR__ . '/../partials/header.php';
         padding: 0;
         color: var(--text-dark);
         font-family: inherit;
+        overflow-x: hidden !important;
+        box-sizing: border-box;
     }
 
     /* Header (Manager Style Parity Spacing) */
@@ -928,25 +931,27 @@ require_once __DIR__ . '/../partials/header.php';
         justify-content: space-between;
         align-items: center;
         flex-wrap: wrap;
-        gap: 16px;
-        margin-bottom: 24px;
+        gap: 12px;
+        margin-bottom: 12px;
     }
     .stf-header-left h1 {
-        font-size: 24px;
-        font-weight: 800;
-        color: var(--petron-blue);
-        margin: 0;
-        text-transform: uppercase;
-        letter-spacing: -0.5px;
+        font-family: inherit !important;
+        font-size: 24px !important;
+        font-weight: normal !important;
+        color: var(--petron-blue) !important;
+        margin: 0 !important;
+        text-transform: uppercase !important;
+        letter-spacing: -0.5px !important;
+        line-height: 1.2 !important;
     }
 .stf-filter-bar {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     background: var(--card-bg);
-    padding: 8px 14px;
+    padding: 6px 12px;
     border-radius: 8px;
-    border: 1px solid var(--border-color);
+    border: 1.5px solid var(--border-color);
     box-shadow: 0 1px 3px rgba(0,0,0,0.03);
 }
 .stf-filter-group {
@@ -955,20 +960,22 @@ require_once __DIR__ . '/../partials/header.php';
     gap: 6px;
 }
 .stf-filter-group label {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--text-muted);
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    color: var(--petron-blue) !important;
     text-transform: uppercase;
 }
 .stf-filter-group input[type="date"] {
-    border: 1px solid #CBD5E1;
+    border: 1.5px solid #CBD5E1;
     border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 12px;
+    padding: 5px 8px;
+    font-size: 13.5px !important;
     color: var(--text-dark);
-    font-weight: 600;
+    font-weight: 700 !important;
     outline: none;
     background: #FFFFFF;
+    height: 36px;
+    box-sizing: border-box;
 }
 .stf-filter-btn {
     background: var(--petron-blue);
@@ -976,12 +983,14 @@ require_once __DIR__ . '/../partials/header.php';
     border: none;
     border-radius: 6px;
     padding: 7px 16px;
-    font-size: 12px;
-    font-weight: 700;
+    font-size: 13.5px !important;
+    font-weight: 800 !important;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 6px;
+    height: 36px;
+    box-sizing: border-box;
     transition: background 0.2s ease;
 }
 .stf-filter-btn:hover {
@@ -992,8 +1001,8 @@ require_once __DIR__ . '/../partials/header.php';
 .stf-kpi-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
-    margin-bottom: 24px;
+    gap: 10px 14px;
+    margin-bottom: 14px;
 }
 @media (max-width: 1200px) {
     .stf-kpi-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1004,9 +1013,9 @@ require_once __DIR__ . '/../partials/header.php';
 
 .stf-kpi-card {
     background: var(--card-bg, #FFFFFF);
-    border: 1px solid var(--border-color, #E2E8F0);
+    border: 1.5px solid var(--border-color, #E2E8F0);
     border-radius: 10px;
-    padding: 16px 18px;
+    padding: 12px 14px 10px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.03);
     display: flex;
     flex-direction: column;
@@ -1020,38 +1029,39 @@ require_once __DIR__ . '/../partials/header.php';
 .stf-kpi-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 10px;
+    align-items: center;
+    margin-bottom: 6px;
 }
 .stf-kpi-title {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--text-muted, #64748B);
+    font-size: 12.5px !important;
+    font-weight: 800 !important;
+    color: #334155 !important;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
 }
 .stf-kpi-icon {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 16px;
+    font-size: 15px;
     background: var(--icon-bg, #EFF6FF);
     color: var(--icon-color, var(--petron-blue));
+    flex-shrink: 0;
 }
 .stf-kpi-value {
-    font-size: 22px;
-    font-weight: 800;
-    color: var(--text-dark, #0F172A);
+    font-size: 26px !important;
+    font-weight: 900 !important;
+    color: #002F6C !important;
     line-height: 1.1;
-    margin-bottom: 6px;
+    margin-bottom: 2px;
 }
 .stf-kpi-sub {
-    font-size: 11px;
-    color: var(--text-muted, #64748B);
-    font-weight: 500;
+    font-size: 12px !important;
+    color: #475569 !important;
+    font-weight: 600 !important;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1061,8 +1071,8 @@ require_once __DIR__ . '/../partials/header.php';
 .stf-grid-2col {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 20px;
-    margin-bottom: 24px;
+    gap: 12px 16px;
+    margin-bottom: 14px;
 }
 @media (max-width: 1024px) {
     .stf-grid-2col { grid-template-columns: 1fr; }
@@ -1071,7 +1081,7 @@ require_once __DIR__ . '/../partials/header.php';
 /* Standard Section Cards */
 .stf-card {
     background: var(--card-bg, #FFFFFF);
-    border: 1px solid var(--border-color, #E2E8F0);
+    border: 1.5px solid var(--border-color, #E2E8F0);
     border-radius: 10px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.03);
     display: flex;
@@ -1079,7 +1089,7 @@ require_once __DIR__ . '/../partials/header.php';
     overflow: hidden;
 }
 .stf-card-header {
-    padding: 14px 18px;
+    padding: 10px 16px;
     border-bottom: 1px solid var(--border-color, #E2E8F0);
     display: flex;
     justify-content: space-between;
@@ -1087,8 +1097,8 @@ require_once __DIR__ . '/../partials/header.php';
     background: #FAFCFE;
 }
 .stf-card-header h2 {
-    font-size: 14px;
-    font-weight: 700;
+    font-size: 15.5px !important;
+    font-weight: 800 !important;
     color: var(--petron-blue);
     margin: 0;
     display: flex;
@@ -1096,7 +1106,7 @@ require_once __DIR__ . '/../partials/header.php';
     gap: 8px;
 }
 .stf-card-body {
-    padding: 18px;
+    padding: 12px 16px;
     flex: 1;
 }
 
@@ -1104,26 +1114,26 @@ require_once __DIR__ . '/../partials/header.php';
 .stf-metric-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 .stf-metric-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 12px;
+    padding: 7px 12px;
     background: #F8FAFC;
     border-radius: 6px;
-    border: 1px solid #F1F5F9;
+    border: 1px solid #E2E8F0;
 }
 .stf-metric-label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-muted);
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    color: #1e293b !important;
 }
 .stf-metric-value {
-    font-size: 13px;
-    font-weight: 800;
-    color: var(--text-dark);
+    font-size: 14.5px !important;
+    font-weight: 800 !important;
+    color: #002F6C !important;
 }
 
 /* Badges */
@@ -1131,10 +1141,10 @@ require_once __DIR__ . '/../partials/header.php';
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 3px 8px;
-    border-radius: 12px;
-    font-size: 11px;
-    font-weight: 700;
+    padding: 4px 10px !important;
+    border-radius: 14px !important;
+    font-size: 12.5px !important;
+    font-weight: 800 !important;
     line-height: 1;
 }
 .stf-badge-success { background: #DCFCE7; color: #15803D; }
@@ -1143,42 +1153,70 @@ require_once __DIR__ . '/../partials/header.php';
 .stf-badge-info    { background: #E0F2FE; color: #0369A1; }
 .stf-badge-neutral { background: #F1F5F9; color: #475569; }
 
-/* Tables */
+/* Tables: 100% width, fixed layout, readable font, strict cell containment */
 .stf-table-responsive {
     width: 100%;
-    overflow-x: auto;
+    overflow-x: hidden !important;
 }
 .stf-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 13px !important;
+    table-layout: fixed !important;
 }
 .stf-table th {
-    background: #F8FAFC;
-    color: #475569;
-    font-weight: 700;
-    text-transform: uppercase;
-    font-size: 11px;
-    letter-spacing: 0.3px;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border-color);
+    background: #F8FAFC !important;
+    color: #1E293B !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    font-size: 11.5px !important;
+    letter-spacing: 0.3px !important;
+    padding: 9px 10px !important;
+    border-bottom: 2px solid var(--border-color) !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    line-height: 1.25 !important;
+    vertical-align: middle !important;
+    white-space: nowrap !important;
     text-align: left;
 }
+.stf-table th.text-right, .stf-table td.text-right,
+.stf-table th[style*="text-align:right"], .stf-table th[style*="text-align: right"],
+.stf-table th[style*="text-align:right;"], .stf-table th[style*="text-align: right;"] {
+    text-align: right !important;
+}
+.stf-table th.text-center, .stf-table td.text-center,
+.stf-table th[style*="text-align:center"], .stf-table th[style*="text-align: center"],
+.stf-table th[style*="text-align:center;"], .stf-table th[style*="text-align: center;"] {
+    text-align: center !important;
+}
+.stf-table th.text-left, .stf-table td.text-left,
+.stf-table th[style*="text-align:left"], .stf-table th[style*="text-align: left"],
+.stf-table th[style*="text-align:left;"], .stf-table th[style*="text-align: left;"] {
+    text-align: left !important;
+}
 .stf-table td {
-    padding: 10px 14px;
-    border-bottom: 1px solid #F1F5F9;
-    color: var(--text-dark);
-    vertical-align: middle;
+    padding: 8px 10px !important;
+    border-bottom: 1px solid #F1F5F9 !important;
+    color: var(--text-dark) !important;
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
+    vertical-align: middle !important;
+    overflow: hidden !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+    box-sizing: border-box !important;
+    text-align: left;
 }
 .stf-table tr:hover td {
-    background: #F8FAFC;
+    background: #F8FAFC !important;
 }
 
 /* Quick Actions Grid */
 .stf-quick-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: 12px;
+    gap: 10px;
 }
 @media (max-width: 1200px) {
     .stf-quick-grid { grid-template-columns: repeat(4, 1fr); }
@@ -1188,14 +1226,14 @@ require_once __DIR__ . '/../partials/header.php';
 }
 .stf-quick-btn {
     background: #FFFFFF;
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 16px 12px;
+    border: 1.5px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 8px;
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
-    gap: 10px;
+    gap: 8px;
     text-decoration: none;
     color: var(--text-dark);
     transition: all 0.2s;
@@ -1208,15 +1246,15 @@ require_once __DIR__ . '/../partials/header.php';
     color: var(--petron-blue);
 }
 .stf-quick-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
     background: #EFF6FF;
     color: var(--petron-blue);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
+    font-size: 16px;
     transition: all 0.2s;
 }
 .stf-quick-btn:hover .stf-quick-icon {
@@ -1224,8 +1262,8 @@ require_once __DIR__ . '/../partials/header.php';
     color: #FFFFFF;
 }
 .stf-quick-text {
-    font-size: 12px;
-    font-weight: 700;
+    font-size: 13px !important;
+    font-weight: 800 !important;
     line-height: 1.3;
 }
 
@@ -1234,7 +1272,7 @@ require_once __DIR__ . '/../partials/header.php';
     display: flex;
     align-items: flex-start;
     gap: 12px;
-    padding: 12px;
+    padding: 10px 12px;
     border-bottom: 1px solid #F1F5F9;
     text-decoration: none;
     color: inherit;
@@ -1262,8 +1300,16 @@ require_once __DIR__ . '/../partials/header.php';
 /* Chart Canvas Wrapper */
 .stf-chart-wrap {
     position: relative;
-    height: 240px;
+    height: 210px;
     width: 100%;
+}
+
+/* ── Floating scroll button safe placement ── */
+#toggleScrollBtn,
+.toggle-scroll-btn {
+    right: 12px !important;
+    bottom: 48px !important;
+    z-index: 995 !important;
 }
 </style>
 
@@ -1438,7 +1484,7 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="stf-card">
             <div class="stf-card-header">
                 <h2><i class="fas fa-gas-pump" style="color:#ED1C24;"></i> Fuel Management Status (17 Active Pumps)</h2>
-                <a href="staff_transactions_hub.php?section=fuel" style="font-size:11px; font-weight:700; color:var(--petron-blue); text-decoration:none;">Encode Readings</a>
+                <a href="staff_transactions_hub.php?section=fuel" style="font-size:12.5px; font-weight:800; color:var(--petron-blue); text-decoration:none;">Encode Readings</a>
             </div>
             <div class="stf-card-body">
                 <div class="stf-metric-list" style="margin-bottom:14px;">
@@ -1452,20 +1498,26 @@ require_once __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
 
-                <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; margin-bottom:6px;">Fuel Inventory Tank Levels (Liters)</div>
+                <div style="font-size:12.5px; font-weight:800; color:#334155; text-transform:uppercase; margin-bottom:6px;">Fuel Inventory Tank Levels (Liters)</div>
                 <div class="stf-table-responsive">
-                    <table class="stf-table">
+                    <table class="stf-table report-table no-min-width print-table">
+                        <colgroup>
+                            <col style="width: 28%;">
+                            <col style="width: 28%;">
+                            <col style="width: 24%;">
+                            <col style="width: 20%;">
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th>Fuel Type</th>
-                                <th style="text-align:right;">Available Volume</th>
-                                <th style="text-align:right;">Capacity</th>
-                                <th>Status</th>
+                                <th class="text-left" style="text-align:left;">Fuel Type</th>
+                                <th class="text-right" style="text-align:right;">Available Volume</th>
+                                <th class="text-right" style="text-align:right;">Capacity</th>
+                                <th class="text-center" style="text-align:center;">Status</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($fuel_tanks)): ?>
-                                <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:12px;">No active fuel tanks found.</td></tr>
+                                <tr><td colspan="4" class="text-center" style="text-align:center; color:var(--text-muted); padding:12px;">No active fuel tanks found.</td></tr>
                             <?php else: ?>
                                 <?php foreach (array_slice($fuel_tanks, 0, 4) as $ft): 
                                     $lvl = (float)($ft['current_level'] ?? 0);
@@ -1475,10 +1527,10 @@ require_once __DIR__ . '/../partials/header.php';
                                     $status_text = $lvl <= 0 ? 'Out of Fuel' : ($lvl <= $reorder ? 'Low Level' : 'Optimal');
                                 ?>
                                     <tr>
-                                        <td><strong><?= stf_h($ft['fuel_type']) ?></strong></td>
-                                        <td style="text-align:right; font-weight:700; color:var(--petron-blue);"><?= number_format($lvl, 2) ?> L</td>
-                                        <td style="text-align:right; color:var(--text-muted);"><?= number_format($cap) ?> L</td>
-                                        <td><span class="stf-badge stf-badge-<?= $status_pill ?>"><?= $status_text ?></span></td>
+                                        <td class="text-left" style="text-align:left;"><strong><?= stf_h($ft['fuel_type']) ?></strong></td>
+                                        <td class="text-right" style="text-align:right; font-weight:700; color:var(--petron-blue);"><?= number_format($lvl, 2) ?> L</td>
+                                        <td class="text-right" style="text-align:right; color:var(--text-muted);"><?= number_format($cap) ?> L</td>
+                                        <td class="text-center" style="text-align:center;"><span class="stf-badge stf-badge-<?= $status_pill ?>"><?= $status_text ?></span></td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -1492,49 +1544,55 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="stf-card">
             <div class="stf-card-header">
                 <h2><i class="fas fa-shopping-cart" style="color:#0284C7;"></i> Merchandise Sales Overview</h2>
-                <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise&mh_open=1" style="font-size:11px; font-weight:700; color:var(--petron-blue); text-decoration:none;"><i class="fas fa-history"></i> Merchandise History</a>
+                <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise&mh_open=1" style="font-size:12.5px; font-weight:800; color:var(--petron-blue); text-decoration:none;"><i class="fas fa-history"></i> Merchandise History</a>
             </div>
             <div class="stf-card-body">
                 <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-bottom:14px;">
                     <div style="background:#EFF6FF; border:1px solid #BFDBFE; padding:8px 12px; border-radius:8px; text-align:center;">
-                        <span style="font-size:11px; color:#1E40AF; font-weight:700; text-transform:uppercase;">Sales Today</span>
+                        <span style="font-size:12px; color:#1E40AF; font-weight:800; text-transform:uppercase;">Sales Today</span>
                         <div style="font-size:16px; font-weight:800; color:#1E40AF;"><?= stf_money($merch_sales_today) ?></div>
                     </div>
                     <div style="background:#F0FDFA; border:1px solid #99F6E4; padding:8px 12px; border-radius:8px; text-align:center;">
-                        <span style="font-size:11px; color:#0F766E; font-weight:700; text-transform:uppercase;">Transactions</span>
+                        <span style="font-size:12px; color:#0F766E; font-weight:800; text-transform:uppercase;">Transactions</span>
                         <div style="font-size:16px; font-weight:800; color:#0F766E;"><?= number_format($merch_tx_count) ?></div>
                     </div>
                     <div style="background:#ECFDF5; border:1px solid #A7F3D0; padding:8px 12px; border-radius:8px; text-align:center;">
-                        <span style="font-size:11px; color:#15803D; font-weight:700; text-transform:uppercase;">Items Sold</span>
+                        <span style="font-size:12px; color:#15803D; font-weight:800; text-transform:uppercase;">Items Sold</span>
                         <div style="font-size:16px; font-weight:800; color:#15803D;"><?= number_format($merch_items_released) ?> pcs</div>
                     </div>
                 </div>
 
-                <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; margin-bottom:6px;">Recent Merchandise Transactions</div>
+                <div style="font-size:12.5px; font-weight:800; color:#334155; text-transform:uppercase; margin-bottom:6px;">Recent Merchandise Transactions</div>
                 <div class="stf-table-responsive">
-                    <table class="stf-table">
+                    <table class="stf-table report-table no-min-width print-table">
+                        <colgroup>
+                            <col style="width: 32%;">
+                            <col style="width: 30%;">
+                            <col style="width: 22%;">
+                            <col style="width: 16%;">
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th>Transaction No.</th>
-                                <th>Customer</th>
-                                <th style="text-align:right;">Amount</th>
-                                <th>Payment</th>
+                                <th class="text-left" style="text-align:left;">Transaction No.</th>
+                                <th class="text-left" style="text-align:left;">Customer</th>
+                                <th class="text-right" style="text-align:right;">Amount</th>
+                                <th class="text-center" style="text-align:center;">Payment</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($recent_merch_transactions)): ?>
-                                <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:12px;">No merchandise transactions yet today.</td></tr>
+                                <tr><td colspan="4" class="text-center" style="text-align:center; color:var(--text-muted); padding:12px;">No merchandise transactions yet today.</td></tr>
                             <?php else: ?>
                                 <?php foreach ($recent_merch_transactions as $rmt): ?>
                                     <tr>
-                                        <td>
+                                        <td class="text-left" style="text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="<?= stf_h($rmt['ref_no']) ?>">
                                             <a href="staff_transactions_hub.php?section=merchandise&active_tab=merchandise&mh_open=1" style="text-decoration:none;">
-                                                <code style="font-weight:700; color:var(--petron-blue);"><?= stf_h($rmt['ref_no']) ?></code>
+                                                <code style="font-weight:700; color:var(--petron-blue); font-size:11.5px;"><?= stf_h($rmt['ref_no']) ?></code>
                                             </a>
                                         </td>
-                                        <td><strong><?= stf_h($rmt['customer_name']) ?></strong></td>
-                                        <td style="text-align:right; font-weight:700; color:#15803D;"><?= stf_money((float)$rmt['total_amount']) ?></td>
-                                        <td><span class="stf-badge stf-badge-neutral"><?= stf_h($rmt['payment_method']) ?></span></td>
+                                        <td class="text-left" style="text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="<?= stf_h($rmt['customer_name']) ?>"><strong><?= stf_h($rmt['customer_name']) ?></strong></td>
+                                        <td class="text-right" style="text-align:right; font-weight:700; color:#15803D;"><?= stf_money((float)$rmt['total_amount']) ?></td>
+                                        <td class="text-center" style="text-align:center;"><span class="stf-badge stf-badge-neutral"><?= stf_h($rmt['payment_method']) ?></span></td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -1560,7 +1618,7 @@ require_once __DIR__ . '/../partials/header.php';
                             <i class="fas fa-gas-pump"></i> Fuel Tanks (<?= count($fuel_tanks) ?>)
                         </button>
                     </div>
-                    <a id="inv_direct_link" href="staff_inventory_merchandise.php" style="font-size:11px; font-weight:700; color:var(--petron-blue); text-decoration:none;" title="Open in Module">
+                    <a id="inv_direct_link" href="staff_inventory_merchandise.php" style="font-size:12.5px; font-weight:800; color:var(--petron-blue); text-decoration:none;" title="Open in Module">
                         <i class="fas fa-arrow-up-right-from-square"></i> Open Module
                     </a>
                 </div>
@@ -1570,49 +1628,54 @@ require_once __DIR__ . '/../partials/header.php';
                 <div id="inv_view_merchandise">
                     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:14px;">
                         <div onclick="openMerchInvModal('available')" style="background:#F0FDF4; border:1px solid #BBF7D0; padding:8px 10px; border-radius:8px; text-align:center; cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'" title="Click to view available/healthy stock merchandise items">
-                            <span style="font-size:10.5px; color:#15803D; font-weight:700; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-circle-check"></i> Available</span>
+                            <span style="font-size:12px; color:#15803D; font-weight:800; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-circle-check"></i> Available</span>
                             <div style="font-size:17px; font-weight:800; color:#15803D;" id="inv_avail_cnt"><?= number_format($available_merch_count) ?></div>
                         </div>
                         <div onclick="openMerchInvModal('low')" style="background:#FFFBEB; border:1px solid #FDE68A; padding:8px 10px; border-radius:8px; text-align:center; cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'" title="Click to view low stock merchandise items">
-                            <span style="font-size:10.5px; color:#B45309; font-weight:700; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-triangle-exclamation"></i> Low Stock</span>
+                            <span style="font-size:12px; color:#B45309; font-weight:800; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-triangle-exclamation"></i> Low Stock</span>
                             <div style="font-size:17px; font-weight:800; color:#B45309;" id="inv_low_cnt"><?= number_format($low_stock_items) ?></div>
                         </div>
                         <div onclick="openMerchInvModal('critical')" style="background:#FEF2F2; border:1px solid #FECACA; padding:8px 10px; border-radius:8px; text-align:center; cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'" title="Click to view critical stock merchandise items">
-                            <span style="font-size:10.5px; color:#DC2626; font-weight:700; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-circle-exclamation"></i> Critical</span>
+                            <span style="font-size:12px; color:#DC2626; font-weight:800; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-circle-exclamation"></i> Critical</span>
                             <div style="font-size:17px; font-weight:800; color:#DC2626;" id="inv_crit_cnt"><?= number_format($crit_stock_items) ?></div>
                         </div>
                         <div onclick="openMerchInvModal('out')" style="background:#FEF2F2; border:1px solid #FECACA; padding:8px 10px; border-radius:8px; text-align:center; cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'" title="Click to view out-of-stock merchandise items">
-                            <span style="font-size:10.5px; color:#991B1B; font-weight:700; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-circle-xmark"></i> Out of Stock</span>
+                            <span style="font-size:12px; color:#991B1B; font-weight:800; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-circle-xmark"></i> Out of Stock</span>
                             <div style="font-size:17px; font-weight:800; color:#991B1B;" id="inv_out_cnt"><?= number_format($out_stock_items) ?></div>
                         </div>
                         <div onclick="openMerchInvModal('variance')" style="background:#F5F3FF; border:1px solid #DDD6FE; padding:8px 10px; border-radius:8px; text-align:center; cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'" title="Click to view physical count variances detected">
-                            <span style="font-size:10.5px; color:#7C3AED; font-weight:700; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-clipboard-check"></i> Variance (P-Count)</span>
+                            <span style="font-size:12px; color:#7C3AED; font-weight:800; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-clipboard-check"></i> Variance (P-Count)</span>
                             <div style="font-size:17px; font-weight:800; color:#7C3AED;" id="inv_var_cnt"><?= number_format($variance_merch_count) ?></div>
                         </div>
                     </div>
 
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                         <span style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Recent Stock-Ins Received</span>
-                        <a href="staff_inventory_merchandise.php" style="font-size:10.5px; font-weight:700; color:var(--petron-blue); text-decoration:none;">View Merchandise Module &rarr;</a>
+                        <a href="staff_inventory_merchandise.php" style="font-size:12px; font-weight:800; color:var(--petron-blue); text-decoration:none;">View Merchandise Module &rarr;</a>
                     </div>
                     <div class="stf-table-responsive">
-                        <table class="stf-table">
+                        <table class="stf-table report-table no-min-width print-table">
+                            <colgroup>
+                                <col style="width: 32%;">
+                                <col style="width: 44%;">
+                                <col style="width: 24%;">
+                            </colgroup>
                             <thead>
                                 <tr>
-                                    <th>Batch No.</th>
-                                    <th>Product</th>
-                                    <th style="text-align:right;">Qty Received</th>
+                                    <th class="text-left" style="text-align:left;">Batch No.</th>
+                                    <th class="text-left" style="text-align:left;">Product</th>
+                                    <th class="text-right" style="text-align:right;">Qty Received</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($recent_stockins)): ?>
-                                    <tr><td colspan="3" style="text-align:center; color:var(--text-muted); padding:12px;">No stock-in records found.</td></tr>
+                                    <tr><td colspan="3" class="text-center" style="text-align:center; color:var(--text-muted); padding:12px;">No stock-in records found.</td></tr>
                                 <?php else: ?>
                                     <?php foreach ($recent_stockins as $si): ?>
                                         <tr>
-                                            <td><code><?= stf_h($si['batch_no'] ?: 'BATCH-'.$si['id']) ?></code></td>
-                                            <td><strong><?= stf_h($si['product_name']) ?></strong></td>
-                                            <td style="text-align:right; font-weight:700; color:#15803D;">+<?= number_format((float)$si['qty_received']) ?> <?= stf_h($si['unit']) ?></td>
+                                            <td class="text-left" style="text-align:left;"><code><?= stf_h($si['batch_no'] ?: 'BATCH-'.$si['id']) ?></code></td>
+                                            <td class="text-left" style="text-align:left;"><strong><?= stf_h($si['product_name']) ?></strong></td>
+                                            <td class="text-right" style="text-align:right; font-weight:700; color:#15803D;">+<?= number_format((float)$si['qty_received']) ?> <?= stf_h($si['unit']) ?></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
@@ -1625,40 +1688,46 @@ require_once __DIR__ . '/../partials/header.php';
                 <div id="inv_view_fuel" style="display:none;">
                     <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-bottom:14px;">
                         <div onclick="openFuelInvModal('normal')" style="background:#F0FDF4; border:1px solid #BBF7D0; padding:8px 12px; border-radius:8px; text-align:center; cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'" title="Click to view normal fuel tanks">
-                            <span style="font-size:11px; color:#15803D; font-weight:700; text-transform:uppercase;"><i class="fas fa-circle-check"></i> Normal</span>
+                            <span style="font-size:12px; color:#15803D; font-weight:800; text-transform:uppercase;"><i class="fas fa-circle-check"></i> Normal</span>
                             <div style="font-size:18px; font-weight:800; color:#15803D;" id="fuel_normal_cnt"><?= number_format($normal_fuel_count) ?></div>
                         </div>
                         <div onclick="openFuelInvModal('low')" style="background:#FFFBEB; border:1px solid #FDE68A; padding:8px 12px; border-radius:8px; text-align:center; cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'" title="Click to view low stock fuel tanks">
-                            <span style="font-size:11px; color:#B45309; font-weight:700; text-transform:uppercase;"><i class="fas fa-triangle-exclamation"></i> Low</span>
+                            <span style="font-size:12px; color:#B45309; font-weight:800; text-transform:uppercase;"><i class="fas fa-triangle-exclamation"></i> Low</span>
                             <div style="font-size:18px; font-weight:800; color:#B45309;" id="fuel_low_cnt"><?= number_format($low_fuel_count) ?></div>
                         </div>
                         <div onclick="openFuelInvModal('critical')" style="background:#FEF2F2; border:1px solid #FECACA; padding:8px 12px; border-radius:8px; text-align:center; cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'" title="Click to view critical fuel tanks">
-                            <span style="font-size:11px; color:#DC2626; font-weight:700; text-transform:uppercase;"><i class="fas fa-circle-exclamation"></i> Critical</span>
+                            <span style="font-size:12px; color:#DC2626; font-weight:800; text-transform:uppercase;"><i class="fas fa-circle-exclamation"></i> Critical</span>
                             <div style="font-size:18px; font-weight:800; color:#DC2626;" id="fuel_crit_cnt"><?= number_format($crit_fuel_count) ?></div>
                         </div>
                         <div onclick="openFuelInvModal('out')" style="background:#FEF2F2; border:1px solid #FECACA; padding:8px 12px; border-radius:8px; text-align:center; cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'" title="Click to view empty/out-of-stock fuel tanks">
-                            <span style="font-size:11px; color:#991B1B; font-weight:700; text-transform:uppercase;"><i class="fas fa-circle-xmark"></i> Out of Stock</span>
+                            <span style="font-size:12px; color:#991B1B; font-weight:800; text-transform:uppercase;"><i class="fas fa-circle-xmark"></i> Out of Stock</span>
                             <div style="font-size:18px; font-weight:800; color:#991B1B;" id="fuel_out_cnt"><?= number_format($out_fuel_count) ?></div>
                         </div>
                     </div>
 
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                         <span style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Fuel Tank Levels Snapshot</span>
-                        <a href="staff_inventory_fuel.php" style="font-size:10.5px; font-weight:700; color:var(--petron-blue); text-decoration:none;">View Fuel Module &rarr;</a>
+                        <a href="staff_inventory_fuel.php" style="font-size:12px; font-weight:800; color:var(--petron-blue); text-decoration:none;">View Fuel Module &rarr;</a>
                     </div>
                     <div class="stf-table-responsive">
-                        <table class="stf-table">
+                        <table class="stf-table report-table no-min-width print-table">
+                            <colgroup>
+                                <col style="width: 28%;">
+                                <col style="width: 30%;">
+                                <col style="width: 24%;">
+                                <col style="width: 18%;">
+                            </colgroup>
                             <thead>
                                 <tr>
-                                    <th>Fuel Tank / UGT</th>
-                                    <th style="text-align:right;">Current Level</th>
-                                    <th style="text-align:center; width:28%;">Level Gauge</th>
-                                    <th style="text-align:center;">Status</th>
+                                    <th class="text-left" style="text-align:left;">Fuel Tank / UGT</th>
+                                    <th class="text-right" style="text-align:right;">Current Level</th>
+                                    <th class="text-center" style="text-align:center;">Level Gauge</th>
+                                    <th class="text-center" style="text-align:center;">Status</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($fuel_tanks)): ?>
-                                    <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:12px;">No active fuel tanks found.</td></tr>
+                                    <tr><td colspan="4" class="text-center" style="text-align:center; color:var(--text-muted); padding:12px;">No active fuel tanks found.</td></tr>
                                 <?php else: ?>
                                     <?php foreach ($fuel_tanks as $ft): 
                                         $lvl_num = (float)$ft['current_level'];
@@ -1666,18 +1735,18 @@ require_once __DIR__ . '/../partials/header.php';
                                         $pct_num = $cap_num > 0 ? min(100, round(($lvl_num / $cap_num) * 100, 1)) : 0;
                                     ?>
                                         <tr>
-                                            <td><strong><?= stf_h($ft['fuel_type']) ?></strong></td>
-                                            <td style="text-align:right; font-weight:700; color:var(--petron-blue);"><?= number_format($lvl_num, 2) ?> L <small style="color:var(--text-muted);">/ <?= number_format($cap_num) ?> L</small></td>
-                                            <td style="text-align:center; vertical-align:middle;">
+                                            <td class="text-left" style="text-align:left;"><strong><?= stf_h($ft['fuel_type']) ?></strong></td>
+                                            <td class="text-right" style="text-align:right; font-weight:700; color:var(--petron-blue);"><?= number_format($lvl_num, 2) ?> L <small style="color:var(--text-muted);">/ <?= number_format($cap_num) ?> L</small></td>
+                                            <td class="text-center" style="text-align:center; vertical-align:middle;">
                                                 <div style="display:flex; align-items:center; gap:6px;">
                                                     <div style="flex:1; height:8px; background:#E2E8F0; border-radius:999px; overflow:hidden;">
                                                         <div style="height:100%; width:<?= $pct_num ?>%; background:<?= $ft['bar_color'] ?? '#002F6C' ?>; border-radius:999px;"></div>
                                                     </div>
-                                                    <span style="font-size:10px; font-weight:700; min-width:32px;"><?= $pct_num ?>%</span>
+                                                    <span style="font-size:11.5px; font-weight:800; min-width:36px;"><?= $pct_num ?>%</span>
                                                 </div>
                                             </td>
-                                            <td style="text-align:center;">
-                                                <span style="display:inline-block; padding:3px 10px; font-size:10px; font-weight:800; border-radius:999px; background:<?= $ft['badge_bg'] ?? '#F1F5F9' ?>; color:<?= $ft['badge_color'] ?? '#475569' ?>; border:1.5px solid <?= $ft['badge_border'] ?? '#CBD5E1' ?>; letter-spacing:0.5px; text-transform:uppercase;"><?= stf_h($ft['alert_status'] ?? 'NORMAL') ?></span>
+                                            <td class="text-center" style="text-align:center;">
+                                                <span style="display:inline-block; padding:4px 10px; font-size:11.5px; font-weight:800; border-radius:999px; background:<?= $ft['badge_bg'] ?? '#F1F5F9' ?>; color:<?= $ft['badge_color'] ?? '#475569' ?>; border:1.5px solid <?= $ft['badge_border'] ?? '#CBD5E1' ?>; letter-spacing:0.5px; text-transform:uppercase;"><?= stf_h($ft['alert_status'] ?? 'NORMAL') ?></span>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -1693,59 +1762,65 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="stf-card">
             <div class="stf-card-header">
                 <h2><i class="fas fa-screwdriver-wrench" style="color:#D97706;"></i> Job Order Monitoring</h2>
-                <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="font-size:11px; font-weight:700; color:var(--petron-blue); text-decoration:none;"><i class="fas fa-list-check"></i> View All JOs</a>
+                <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="font-size:12.5px; font-weight:800; color:var(--petron-blue); text-decoration:none;"><i class="fas fa-list-check"></i> View All JOs</a>
             </div>
             <div class="stf-card-body" style="padding-bottom:10px;">
                 <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-bottom:14px;">
                     <div style="background:#FFFBEB; border:1px solid #FDE68A; padding:8px 8px; border-radius:8px; text-align:center;">
-                        <span style="font-size:10px; color:#B45309; font-weight:700; text-transform:uppercase;">Pending</span>
+                        <span style="font-size:11.5px; color:#B45309; font-weight:800; text-transform:uppercase;">Pending</span>
                         <div style="font-size:16px; font-weight:800; color:#B45309;" id="jo_cnt_pending"><?= number_format($jo_pending_count) ?></div>
                     </div>
                     <div style="background:#EFF6FF; border:1px solid #BFDBFE; padding:8px 8px; border-radius:8px; text-align:center;">
-                        <span style="font-size:10px; color:#1E40AF; font-weight:700; text-transform:uppercase;">In Progress</span>
+                        <span style="font-size:11.5px; color:#1E40AF; font-weight:800; text-transform:uppercase;">In Progress</span>
                         <div style="font-size:16px; font-weight:800; color:#1E40AF;" id="jo_cnt_inprogress"><?= number_format($jo_inprogress_count) ?></div>
                     </div>
                     <div style="background:#ECFDF5; border:1px solid #A7F3D0; padding:8px 8px; border-radius:8px; text-align:center;">
-                        <span style="font-size:10px; color:#15803D; font-weight:700; text-transform:uppercase;">Completed</span>
+                        <span style="font-size:11.5px; color:#15803D; font-weight:800; text-transform:uppercase;">Completed</span>
                         <div style="font-size:16px; font-weight:800; color:#15803D;" id="jo_cnt_completed"><?= number_format($jo_completed_count) ?></div>
                     </div>
                     <div style="background:#F5F3FF; border:1px solid #DDD6FE; padding:8px 8px; border-radius:8px; text-align:center;">
-                        <span style="font-size:10px; color:#7C3AED; font-weight:700; text-transform:uppercase;">Released</span>
+                        <span style="font-size:11.5px; color:#7C3AED; font-weight:800; text-transform:uppercase;">Released</span>
                         <div style="font-size:16px; font-weight:800; color:#7C3AED;" id="jo_cnt_released"><?= number_format($jo_released_count) ?></div>
                     </div>
                 </div>
 
                 <div class="stf-table-responsive">
-                    <table class="stf-table">
+                    <table class="stf-table report-table no-min-width print-table">
+                        <colgroup>
+                            <col style="width: 28%;">
+                            <col style="width: 34%;">
+                            <col style="width: 18%;">
+                            <col style="width: 20%;">
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th>JO Number</th>
-                                <th>Customer / Plate</th>
-                                <th>Status</th>
-                                <th style="text-align:right;">Amount</th>
+                                <th class="text-left" style="text-align:left;">JO Number</th>
+                                <th class="text-left" style="text-align:left;">Customer / Plate</th>
+                                <th class="text-center" style="text-align:center;">Status</th>
+                                <th class="text-right" style="text-align:right;">Amount</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($latest_job_orders)): ?>
-                                <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:16px;">No recent job orders recorded.</td></tr>
+                                <tr><td colspan="4" class="text-center" style="text-align:center; color:var(--text-muted); padding:16px;">No recent job orders recorded.</td></tr>
                             <?php else: ?>
                                 <?php foreach ($latest_job_orders as $jo): ?>
                                     <tr>
-                                        <td>
+                                        <td class="text-left" style="text-align:left;">
                                             <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker" style="text-decoration:none;">
                                                 <code style="font-weight:700; color:var(--petron-blue);"><?= stf_h($jo['job_order_number']) ?></code>
                                             </a>
                                         </td>
-                                        <td>
+                                        <td class="text-left" style="text-align:left;">
                                             <strong><?= stf_h($jo['customer_name']) ?></strong>
                                             <br><small style="color:var(--text-muted);"><?= stf_h($jo['vehicle_plate']) ?></small>
                                         </td>
-                                        <td>
+                                        <td class="text-center" style="text-align:center;">
                                             <span class="stf-badge stf-badge-<?= in_array(strtolower($jo['status']), ['completed','released','done']) ? 'success' : (strtolower($jo['status']) === 'pending' ? 'warning' : 'info') ?>">
                                                 <?= stf_h($jo['status']) ?>
                                             </span>
                                         </td>
-                                        <td style="text-align:right; font-weight:700;"><?= stf_money((float)$jo['total_cost']) ?></td>
+                                        <td class="text-right" style="text-align:right; font-weight:700;"><?= stf_money((float)$jo['total_cost']) ?></td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -1764,7 +1839,7 @@ require_once __DIR__ . '/../partials/header.php';
                 <h2><i class="fas fa-chart-pie" style="color:#10B981;"></i> Payment Type Distribution</h2>
             </div>
             <div class="stf-card-body">
-                <p style="font-size:11px; color:var(--text-muted); margin:0 0 10px 0;">Breakdown of payments encoded (Cash, Card, E-Fuel, E-Wallet, Credit, Fleet).</p>
+                <p style="font-size:12px; color:#475569; font-weight:600; margin:0 0 8px 0;">Breakdown of payments encoded (Cash, Card, E-Fuel, E-Wallet, Credit, Fleet).</p>
                 <div class="stf-chart-wrap">
                     <canvas id="paymentTypeChart"></canvas>
                 </div>
@@ -1777,7 +1852,7 @@ require_once __DIR__ . '/../partials/header.php';
                 <h2><i class="fas fa-chart-bar" style="color:#F59E0B;"></i> Job Order Status Chart</h2>
             </div>
             <div class="stf-card-body">
-                <p style="font-size:11px; color:var(--text-muted); margin:0 0 10px 0;">Operational proportion of Pending, In Progress, and Completed Job Orders.</p>
+                <p style="font-size:12px; color:#475569; font-weight:600; margin:0 0 8px 0;">Operational proportion of Pending, In Progress, and Completed Job Orders.</p>
                 <div class="stf-chart-wrap">
                     <canvas id="joStatusChart"></canvas>
                 </div>
@@ -1794,7 +1869,7 @@ require_once __DIR__ . '/../partials/header.php';
                 <span class="stf-badge stf-badge-info"><?= $active_shift_name ?></span>
             </div>
             <div class="stf-card-body">
-                <p style="font-size:11px; color:var(--text-muted); margin:0 0 10px 0;">Finalized sales progression throughout active shift hours.</p>
+                <p style="font-size:12px; color:#475569; font-weight:600; margin:0 0 8px 0;">Finalized sales progression throughout active shift hours.</p>
                 <div class="stf-chart-wrap">
                     <canvas id="dailySalesChart"></canvas>
                 </div>
@@ -1805,34 +1880,41 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="stf-card">
             <div class="stf-card-header">
                 <h2><i class="fas fa-history" style="color:#002F6C;"></i> Recent Staff Transactions (Consolidated)</h2>
-                <a href="staff_transactions_hub.php?section=history" style="font-size:11px; font-weight:700; color:var(--petron-blue); text-decoration:none;">View All History</a>
+                <a href="staff_transactions_hub.php?section=history" style="font-size:12.5px; font-weight:800; color:var(--petron-blue); text-decoration:none;">View All History</a>
             </div>
             <div class="stf-card-body" style="padding:0;">
                 <div class="stf-table-responsive">
-                    <table class="stf-table">
+                    <table class="stf-table report-table no-min-width print-table">
+                        <colgroup>
+                            <col style="width: 26%;">
+                            <col style="width: 16%;">
+                            <col style="width: 28%;">
+                            <col style="width: 18%;">
+                            <col style="width: 12%;">
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th>Reference No.</th>
-                                <th>Type</th>
-                                <th>Customer / Details</th>
-                                <th style="text-align:right;">Amount</th>
-                                <th>Payment</th>
+                                <th class="text-left" style="text-align:left;">Reference No.</th>
+                                <th class="text-center" style="text-align:center;">Type</th>
+                                <th class="text-left" style="text-align:left;">Customer / Details</th>
+                                <th class="text-right" style="text-align:right;">Amount</th>
+                                <th class="text-center" style="text-align:center;">Payment</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($recent_consolidated_txns)): ?>
-                                <tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:20px;">No finalized transactions yet today.</td></tr>
+                                <tr><td colspan="5" class="text-center" style="text-align:center; color:var(--text-muted); padding:20px;">No finalized transactions yet today.</td></tr>
                             <?php else: ?>
                                 <?php foreach ($recent_consolidated_txns as $rt): ?>
                                     <tr>
-                                        <td>
+                                        <td class="text-left" style="text-align:left;">
                                             <code style="font-weight:700; color:var(--petron-blue);"><?= stf_h($rt['ref_no']) ?></code>
                                             <br><small style="color:var(--text-muted);"><?= date('M d, g:i A', strtotime($rt['created_at'])) ?></small>
                                         </td>
-                                        <td><span class="stf-badge stf-badge-<?= $rt['txn_type'] === 'Fuel' ? 'danger' : ($rt['txn_type'] === 'Job Order' ? 'warning' : 'info') ?>"><?= stf_h($rt['txn_type']) ?></span></td>
-                                        <td><strong><?= stf_h($rt['customer_name']) ?></strong></td>
-                                        <td style="text-align:right; font-weight:700; color:#15803D;"><?= stf_money((float)$rt['total_amount']) ?></td>
-                                        <td><span class="stf-badge stf-badge-neutral"><?= stf_h($rt['payment_method']) ?></span></td>
+                                        <td class="text-center" style="text-align:center;"><span class="stf-badge stf-badge-<?= $rt['txn_type'] === 'Fuel' ? 'danger' : ($rt['txn_type'] === 'Job Order' ? 'warning' : 'info') ?>"><?= stf_h($rt['txn_type']) ?></span></td>
+                                        <td class="text-left" style="text-align:left;"><strong><?= stf_h($rt['customer_name']) ?></strong></td>
+                                        <td class="text-right" style="text-align:right; font-weight:700; color:#15803D;"><?= stf_money((float)$rt['total_amount']) ?></td>
+                                        <td class="text-center" style="text-align:center;"><span class="stf-badge stf-badge-neutral"><?= stf_h($rt['payment_method']) ?></span></td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -1853,27 +1935,34 @@ require_once __DIR__ . '/../partials/header.php';
             </div>
             <div class="stf-card-body">
                 <div class="stf-table-responsive">
-                    <table class="stf-table">
+                    <table class="stf-table report-table no-min-width print-table">
+                        <colgroup>
+                            <col style="width: 24%;">
+                            <col style="width: 34%;">
+                            <col style="width: 14%;">
+                            <col style="width: 14%;">
+                            <col style="width: 14%;">
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th>Request Ref</th>
-                                <th>Item / Details</th>
-                                <th>Qty</th>
-                                <th>Category</th>
-                                <th>Status</th>
+                                <th class="text-left" style="text-align:left;">Request Ref</th>
+                                <th class="text-left" style="text-align:left;">Item / Details</th>
+                                <th class="text-right" style="text-align:right;">Qty</th>
+                                <th class="text-center" style="text-align:center;">Category</th>
+                                <th class="text-center" style="text-align:center;">Status</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($staff_stock_requests)): ?>
-                                <tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:20px;">No stock requests recorded.</td></tr>
+                                <tr><td colspan="5" class="text-center" style="text-align:center; color:var(--text-muted); padding:20px;">No stock requests recorded.</td></tr>
                             <?php else: ?>
                                 <?php foreach ($staff_stock_requests as $sr): ?>
                                     <tr>
-                                        <td><code style="font-weight:700; color:var(--petron-blue);"><?= stf_h($sr['request_no']) ?></code></td>
-                                        <td><strong><?= stf_h($sr['item_name']) ?></strong></td>
-                                        <td><?= number_format((float)$sr['quantity']) ?></td>
-                                        <td><span class="stf-badge stf-badge-neutral"><?= stf_h($sr['category']) ?></span></td>
-                                        <td>
+                                        <td class="text-left" style="text-align:left;"><code style="font-weight:700; color:var(--petron-blue);"><?= stf_h($sr['request_no']) ?></code></td>
+                                        <td class="text-left" style="text-align:left;"><strong><?= stf_h($sr['item_name']) ?></strong></td>
+                                        <td class="text-right" style="text-align:right; font-weight:700;"><?= number_format((float)$sr['quantity']) ?></td>
+                                        <td class="text-center" style="text-align:center;"><span class="stf-badge stf-badge-neutral"><?= stf_h($sr['category']) ?></span></td>
+                                        <td class="text-center" style="text-align:center;">
                                             <span class="stf-badge stf-badge-<?= in_array(strtolower($sr['status']), ['approved','completed']) ? 'success' : (strtolower($sr['status']) === 'for revision' ? 'danger' : 'warning') ?>">
                                                 <?= stf_h($sr['status']) ?>
                                             </span>
@@ -1895,29 +1984,35 @@ require_once __DIR__ . '/../partials/header.php';
             </div>
             <div class="stf-card-body">
                 <div class="stf-table-responsive">
-                    <table class="stf-table">
+                    <table class="stf-table report-table no-min-width print-table">
+                        <colgroup>
+                            <col style="width: 28%;">
+                            <col style="width: 32%;">
+                            <col style="width: 20%;">
+                            <col style="width: 20%;">
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th>Request Ref</th>
-                                <th>Request Category</th>
-                                <th>Status</th>
-                                <th>Submitted Date</th>
+                                <th class="text-left" style="text-align:left;">Request Ref</th>
+                                <th class="text-left" style="text-align:left;">Request Category</th>
+                                <th class="text-center" style="text-align:center;">Status</th>
+                                <th class="text-center" style="text-align:center;">Submitted Date</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($staff_master_data_requests)): ?>
-                                <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:20px;">No master data requests submitted.</td></tr>
+                                <tr><td colspan="4" class="text-center" style="text-align:center; color:var(--text-muted); padding:20px;">No master data requests submitted.</td></tr>
                             <?php else: ?>
                                 <?php foreach ($staff_master_data_requests as $mdr): ?>
                                     <tr>
-                                        <td><code style="font-weight:700; color:var(--petron-blue);"><?= stf_h($mdr['request_no']) ?></code></td>
-                                        <td><strong><?= stf_h($mdr['category']) ?> Request</strong></td>
-                                        <td>
+                                        <td class="text-left" style="text-align:left;"><code style="font-weight:700; color:var(--petron-blue);"><?= stf_h($mdr['request_no']) ?></code></td>
+                                        <td class="text-left" style="text-align:left;"><strong><?= stf_h($mdr['category']) ?> Request</strong></td>
+                                        <td class="text-center" style="text-align:center;">
                                             <span class="stf-badge stf-badge-<?= in_array(strtolower($mdr['status']), ['approved','verified']) ? 'success' : (strtolower($mdr['status']) === 'for revision' ? 'danger' : 'warning') ?>">
                                                 <?= stf_h($mdr['status']) ?>
                                             </span>
                                         </td>
-                                        <td style="color:var(--text-muted); font-size:11px;"><?= date('M d, Y', strtotime($mdr['created_at'])) ?></td>
+                                        <td class="text-center" style="text-align:center; color:#64748B; font-size:12px; font-weight:600;"><?= date('M d, Y', strtotime($mdr['created_at'])) ?></td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -1949,7 +2044,7 @@ require_once __DIR__ . '/../partials/header.php';
                             <div style="flex:1;">
                                 <div style="font-size:12px; font-weight:<?= $is_unread ? '800' : '600' ?>; color:var(--text-dark); margin-bottom:2px;"><?= stf_h($notif['title']) ?></div>
                                 <div style="font-size:11px; color:var(--text-muted); line-height:1.4;"><?= stf_h($notif['message']) ?></div>
-                                <small style="font-size:10px; color:#94A3B8;"><?= date('M d, g:i A', strtotime($notif['created_at'])) ?></small>
+                                <small style="font-size:11.5px; color:#64748B; font-weight:600;"><?= date('M d, g:i A', strtotime($notif['created_at'])) ?></small>
                             </div>
                         </a>
                     <?php endforeach; ?>
@@ -1965,27 +2060,33 @@ require_once __DIR__ . '/../partials/header.php';
             </div>
             <div class="stf-card-body" style="padding:0;">
                 <div class="stf-table-responsive">
-                    <table class="stf-table">
+                    <table class="stf-table report-table no-min-width print-table">
+                        <colgroup>
+                            <col style="width: 34%;">
+                            <col style="width: 18%;">
+                            <col style="width: 18%;">
+                            <col style="width: 30%;">
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th>Product Name</th>
-                                <th>Movement</th>
-                                <th style="text-align:right;">Quantity</th>
-                                <th>Reason / Reference</th>
+                                <th class="text-left" style="text-align:left;">Product Name</th>
+                                <th class="text-center" style="text-align:center;">Movement</th>
+                                <th class="text-right" style="text-align:right;">Quantity</th>
+                                <th class="text-left" style="text-align:left;">Reason / Reference</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($recent_inventory_movements)): ?>
-                                <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:20px;">No recent inventory movements recorded.</td></tr>
+                                <tr><td colspan="4" class="text-center" style="text-align:center; color:var(--text-muted); padding:20px;">No recent inventory movements recorded.</td></tr>
                             <?php else: ?>
                                 <?php foreach ($recent_inventory_movements as $im): 
                                     $is_in = strtoupper($im['movement_type'] ?? '') === 'IN' || (float)$im['quantity_change'] > 0;
                                 ?>
                                     <tr>
-                                        <td><strong><?= stf_h($im['product_name']) ?></strong></td>
-                                        <td><span class="stf-badge stf-badge-<?= $is_in ? 'success' : 'danger' ?>"><?= $is_in ? 'IN' : 'OUT' ?></span></td>
-                                        <td style="text-align:right; font-weight:700; color:<?= $is_in ? '#15803D' : '#DC2626' ?>;"><?= $is_in ? '+' : '-' ?><?= number_format((float)$im['quantity_change']) ?></td>
-                                        <td><small style="color:var(--text-muted);"><?= stf_h($im['reason'] ?: $im['action']) ?></small></td>
+                                        <td class="text-left" style="text-align:left;"><strong><?= stf_h($im['product_name']) ?></strong></td>
+                                        <td class="text-center" style="text-align:center;"><span class="stf-badge stf-badge-<?= $is_in ? 'success' : 'danger' ?>"><?= $is_in ? 'IN' : 'OUT' ?></span></td>
+                                        <td class="text-right" style="text-align:right; font-weight:700; color:<?= $is_in ? '#15803D' : '#DC2626' ?>;"><?= $is_in ? '+' : '-' ?><?= number_format((float)$im['quantity_change']) ?></td>
+                                        <td class="text-left" style="text-align:left;"><small style="color:var(--text-muted);"><?= stf_h($im['reason'] ?: $im['action']) ?></small></td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -2004,25 +2105,31 @@ require_once __DIR__ . '/../partials/header.php';
         </div>
         <div class="stf-card-body" style="padding:0;">
             <div class="stf-table-responsive">
-                <table class="stf-table">
+                <table class="stf-table report-table no-min-width print-table">
+                    <colgroup>
+                        <col style="width: 22%;">
+                        <col style="width: 40%;">
+                        <col style="width: 18%;">
+                        <col style="width: 20%;">
+                    </colgroup>
                     <thead>
                         <tr>
-                            <th>Action</th>
-                            <th>Details</th>
-                            <th>Reference</th>
-                            <th>Timestamp</th>
+                            <th class="text-left" style="text-align:left;">Action</th>
+                            <th class="text-left" style="text-align:left;">Details</th>
+                            <th class="text-left" style="text-align:left;">Reference</th>
+                            <th class="text-center" style="text-align:center;">Timestamp</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($recent_staff_audit)): ?>
-                            <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:20px;">No recent staff activity logged.</td></tr>
+                            <tr><td colspan="4" class="text-center" style="text-align:center; color:var(--text-muted); padding:20px;">No recent staff activity logged.</td></tr>
                         <?php else: ?>
                             <?php foreach ($recent_staff_audit as $sa): ?>
                                 <tr>
-                                    <td><strong><?= stf_h($sa['action']) ?></strong></td>
-                                    <td><span style="color:var(--text-dark);"><?= stf_h($sa['details']) ?></span></td>
-                                    <td><code style="color:var(--petron-blue);"><?= stf_h($sa['reference'] ?: '—') ?></code></td>
-                                    <td style="color:#94A3B8; font-size:11px; white-space:nowrap;"><?= date('M d, Y g:i A', strtotime($sa['created_at'])) ?></td>
+                                    <td class="text-left" style="text-align:left;"><strong><?= stf_h($sa['action']) ?></strong></td>
+                                    <td class="text-left" style="text-align:left;"><span style="color:var(--text-dark);"><?= stf_h($sa['details']) ?></span></td>
+                                    <td class="text-left" style="text-align:left;"><code style="color:var(--petron-blue);"><?= stf_h($sa['reference'] ?: '—') ?></code></td>
+                                    <td class="text-center" style="text-align:center; color:#64748B; font-size:12px; font-weight:600; white-space:nowrap;"><?= date('M d, Y g:i A', strtotime($sa['created_at'])) ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>
@@ -2117,37 +2224,45 @@ require_once __DIR__ . '/../partials/header.php';
 
         <!-- Table Body -->
         <div style="padding:0; overflow-y:auto; flex:1;">
-            <table class="stf-table" style="margin:0; width:100%;">
+            <table class="stf-table report-table no-min-width print-table" style="margin:0; width:100%;">
+                <colgroup>
+                    <col style="width: 28%;">
+                    <col style="width: 18%;">
+                    <col style="width: 16%;">
+                    <col style="width: 13%;">
+                    <col style="width: 12%;">
+                    <col style="width: 13%;">
+                </colgroup>
                 <thead>
                     <tr>
-                        <th>Product Name</th>
-                        <th>Category</th>
-                        <th style="text-align:right;">Current Stock</th>
-                        <th style="text-align:right;">Reorder Level</th>
-                        <th style="text-align:right;">Critical Level</th>
-                        <th style="text-align:center;">Status</th>
+                        <th class="text-left" style="text-align:left;">Product Name</th>
+                        <th class="text-left" style="text-align:left;">Category</th>
+                        <th class="text-right" style="text-align:right;">Current Stock</th>
+                        <th class="text-right" style="text-align:right;">Reorder Level</th>
+                        <th class="text-right" style="text-align:right;">Critical Level</th>
+                        <th class="text-center" style="text-align:center;">Status</th>
                     </tr>
                 </thead>
                 <tbody id="merchModalTableBody">
                     <?php if (empty($all_merch_items_raw)): ?>
-                        <tr><td colspan="6" style="text-align:center; color:#64748B; padding:24px;">No merchandise products found.</td></tr>
+                        <tr><td colspan="6" class="text-center" style="text-align:center; color:#64748B; padding:24px;">No merchandise products found.</td></tr>
                     <?php else: ?>
                         <?php foreach ($all_merch_items_raw as $item): ?>
                             <tr class="merch-modal-row" data-type="<?= $item['alert_type'] ?>" data-has-variance="<?= $item['has_variance'] ? 'true' : 'false' ?>" data-name="<?= strtolower(htmlspecialchars($item['product_name'] . ' ' . $item['category'])) ?>">
-                                <td>
+                                <td class="text-left" style="text-align:left;">
                                     <strong><?= stf_h($item['product_name']) ?></strong>
                                     <?php if ($item['has_variance']): ?>
                                         <span style="display:inline-block; margin-left:6px; padding:1px 6px; font-size:9px; font-weight:800; border-radius:4px; background:#F5F3FF; color:#7C3AED; border:1px solid #DDD6FE;">Variance <?= ($item['variance'] > 0 ? '+' : '') . (float)$item['variance'] ?></span>
                                     <?php endif; ?>
                                 </td>
-                                <td><span style="color:#64748B; font-size:11px;"><?= stf_h($item['category']) ?></span></td>
-                                <td style="text-align:right; font-weight:800; color:<?= $item['alert_type'] === 'out' ? '#991B1B' : ($item['alert_type'] === 'critical' ? '#DC2626' : ($item['alert_type'] === 'low' ? '#B45309' : '#15803D')) ?>;">
+                                <td class="text-left" style="text-align:left;"><span style="color:#64748B; font-size:11.5px;"><?= stf_h($item['category']) ?></span></td>
+                                <td class="text-right" style="text-align:right; font-weight:800; color:<?= $item['alert_type'] === 'out' ? '#991B1B' : ($item['alert_type'] === 'critical' ? '#DC2626' : ($item['alert_type'] === 'low' ? '#B45309' : '#15803D')) ?>;">
                                     <?= number_format((float)$item['stock_level']) ?> <?= stf_h($item['unit']) ?>
                                 </td>
-                                <td style="text-align:right; color:#64748B;"><?= number_format((float)$item['reorder_level']) ?></td>
-                                <td style="text-align:right; color:#64748B;"><?= number_format((float)$item['critical_level']) ?></td>
-                                <td style="text-align:center;">
-                                    <span style="display:inline-block; padding:3px 10px; font-size:10px; font-weight:800; border-radius:999px; background:<?= $item['badge_bg'] ?? '#F1F5F9' ?>; color:<?= $item['badge_color'] ?? '#475569' ?>; border:1.5px solid <?= $item['badge_border'] ?? '#CBD5E1' ?>; letter-spacing:0.5px; text-transform:uppercase;"><?= stf_h($item['alert_status']) ?></span>
+                                <td class="text-right" style="text-align:right; color:#64748B;"><?= number_format((float)$item['reorder_level']) ?></td>
+                                <td class="text-right" style="text-align:right; color:#64748B;"><?= number_format((float)$item['critical_level']) ?></td>
+                                <td class="text-center" style="text-align:center;">
+                                    <span style="display:inline-block; padding:4px 10px; font-size:11.5px; font-weight:800; border-radius:999px; background:<?= $item['badge_bg'] ?? '#F1F5F9' ?>; color:<?= $item['badge_color'] ?? '#475569' ?>; border:1.5px solid <?= $item['badge_border'] ?? '#CBD5E1' ?>; letter-spacing:0.5px; text-transform:uppercase;"><?= stf_h($item['alert_status']) ?></span>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -2210,19 +2325,26 @@ require_once __DIR__ . '/../partials/header.php';
 
         <!-- Table Body -->
         <div style="padding:0; overflow-y:auto; flex:1;">
-            <table class="stf-table" style="margin:0; width:100%;">
+            <table class="stf-table report-table no-min-width print-table" style="margin:0; width:100%;">
+                <colgroup>
+                    <col style="width: 26%;">
+                    <col style="width: 20%;">
+                    <col style="width: 18%;">
+                    <col style="width: 22%;">
+                    <col style="width: 14%;">
+                </colgroup>
                 <thead>
                     <tr>
-                        <th>Fuel Tank / UGT</th>
-                        <th style="text-align:right;">Current Volume</th>
-                        <th style="text-align:right;">Capacity</th>
-                        <th style="text-align:center; width:28%;">Level Gauge</th>
-                        <th style="text-align:center;">Status</th>
+                        <th class="text-left" style="text-align:left;">Fuel Tank / UGT</th>
+                        <th class="text-right" style="text-align:right;">Current Volume</th>
+                        <th class="text-right" style="text-align:right;">Capacity</th>
+                        <th class="text-center" style="text-align:center;">Level Gauge</th>
+                        <th class="text-center" style="text-align:center;">Status</th>
                     </tr>
                 </thead>
                 <tbody id="fuelModalTableBody">
                     <?php if (empty($fuel_tanks)): ?>
-                        <tr><td colspan="5" style="text-align:center; color:#64748B; padding:24px;">No active fuel tanks found for this station.</td></tr>
+                        <tr><td colspan="5" class="text-center" style="text-align:center; color:#64748B; padding:24px;">No active fuel tanks found for this station.</td></tr>
                     <?php else: ?>
                         <?php foreach ($fuel_tanks as $ft): 
                             $lvl_num = (float)$ft['current_level'];
@@ -2230,19 +2352,19 @@ require_once __DIR__ . '/../partials/header.php';
                             $pct_num = $cap_num > 0 ? min(100, round(($lvl_num / $cap_num) * 100, 1)) : 0;
                         ?>
                             <tr class="fuel-modal-row" data-type="<?= $ft['alert_type'] ?>" data-name="<?= strtolower(htmlspecialchars($ft['fuel_type'])) ?>">
-                                <td><strong><?= stf_h($ft['fuel_type']) ?></strong></td>
-                                <td style="text-align:right; font-weight:800; color:var(--petron-blue);"><?= number_format($lvl_num, 2) ?> L</td>
-                                <td style="text-align:right; color:#64748B;"><?= number_format($cap_num) ?> L</td>
-                                <td style="text-align:center; vertical-align:middle;">
+                                <td class="text-left" style="text-align:left;"><strong><?= stf_h($ft['fuel_type']) ?></strong></td>
+                                <td class="text-right" style="text-align:right; font-weight:800; color:var(--petron-blue);"><?= number_format($lvl_num, 2) ?> L</td>
+                                <td class="text-right" style="text-align:right; color:#64748B;"><?= number_format($cap_num) ?> L</td>
+                                <td class="text-center" style="text-align:center; vertical-align:middle;">
                                     <div style="display:flex; align-items:center; gap:6px;">
                                         <div style="flex:1; height:8px; background:#E2E8F0; border-radius:999px; overflow:hidden;">
                                             <div style="height:100%; width:<?= $pct_num ?>%; background:<?= $ft['bar_color'] ?? '#002F6C' ?>; border-radius:999px;"></div>
                                         </div>
-                                        <span style="font-size:11px; font-weight:700; min-width:34px;"><?= $pct_num ?>%</span>
+                                        <span style="font-size:12px; font-weight:800; min-width:36px;"><?= $pct_num ?>%</span>
                                     </div>
                                 </td>
-                                <td style="text-align:center;">
-                                    <span style="display:inline-block; padding:3px 10px; font-size:10px; font-weight:800; border-radius:999px; background:<?= $ft['badge_bg'] ?? '#64748B' ?>; color:<?= $ft['badge_color'] ?? '#FFF' ?>; letter-spacing:0.5px; text-transform:uppercase;"><?= stf_h($ft['alert_status'] ?? 'NORMAL') ?></span>
+                                <td class="text-center" style="text-align:center;">
+                                    <span style="display:inline-block; padding:4px 10px; font-size:11.5px; font-weight:800; border-radius:999px; background:<?= $ft['badge_bg'] ?? '#64748B' ?>; color:<?= $ft['badge_color'] ?? '#FFF' ?>; letter-spacing:0.5px; text-transform:uppercase;"><?= stf_h($ft['alert_status'] ?? 'NORMAL') ?></span>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

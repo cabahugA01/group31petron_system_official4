@@ -1073,9 +1073,18 @@ include __DIR__ . '/../partials/header.php';
     .adm-dashboard {
         width: 100%;
         max-width: 100%;
+        overflow-x: hidden;
         margin: 0 auto;
         color: var(--text-dark);
         font-family: inherit;
+        box-sizing: border-box;
+    }
+
+    .adm-dashboard *,
+    .adm-dashboard *::before,
+    .adm-dashboard *::after {
+        box-sizing: border-box;
+        max-width: 100%;
     }
 
     .adm-header {
@@ -1106,7 +1115,7 @@ include __DIR__ . '/../partials/header.php';
         align-items: center;
         gap: 10px;
         background: #FFFFFF;
-        padding: 6px 12px;
+        padding: 8px 14px;
         border-radius: 8px;
         border: 1px solid var(--border-color);
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
@@ -1117,7 +1126,7 @@ include __DIR__ . '/../partials/header.php';
         gap: 6px;
     }
     .adm-filter-group label {
-        font-size: 11px;
+        font-size: 13px;
         font-weight: 700;
         color: var(--text-muted);
         text-transform: uppercase;
@@ -1125,8 +1134,8 @@ include __DIR__ . '/../partials/header.php';
     .adm-filter-group input[type="date"] {
         border: 1px solid #CBD5E1;
         border-radius: 6px;
-        padding: 6px 10px;
-        font-size: 12px;
+        padding: 7px 10px;
+        font-size: 14px;
         color: var(--text-dark);
         font-weight: 600;
         outline: none;
@@ -1136,8 +1145,8 @@ include __DIR__ . '/../partials/header.php';
         color: #FFFFFF;
         border: none;
         border-radius: 6px;
-        padding: 7px 16px;
-        font-size: 12px;
+        padding: 9px 18px;
+        font-size: 14px;
         font-weight: 700;
         cursor: pointer;
         display: flex;
@@ -1149,10 +1158,10 @@ include __DIR__ . '/../partials/header.php';
         background: var(--petron-navy);
     }
 
-    /* 12 KPI Cards Grid */
+    /* 12 KPI Cards Grid — 3-col to avoid overflow on 1024px screens */
     .adm-kpi-grid-12 {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(3, 1fr);
         gap: 14px;
         margin-bottom: 24px;
     }
@@ -1160,12 +1169,12 @@ include __DIR__ . '/../partials/header.php';
         background: var(--card-bg);
         border: 1px solid var(--border-color);
         border-radius: 10px;
-        padding: 16px 18px;
+        padding: 18px 20px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.03);
         display: flex;
         flex-direction: column;
         justify-content: center;
-        min-height: 94px;
+        min-height: 110px;
         transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
     .adm-kpi-card:hover {
@@ -1179,25 +1188,29 @@ include __DIR__ . '/../partials/header.php';
         margin-bottom: 8px;
     }
     .adm-kpi-title {
-        font-size: 11px;
+        font-size: 13px;
         font-weight: 700;
         color: var(--text-muted);
         text-transform: uppercase;
-        letter-spacing: 0.4px;
+        letter-spacing: 0.3px;
+        line-height: 1.3;
+        white-space: normal;
+        word-break: normal;
     }
     .adm-kpi-icon {
-        width: 32px;
-        height: 32px;
+        width: 36px;
+        height: 36px;
         border-radius: 7px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 14px;
+        font-size: 16px;
+        flex-shrink: 0;
         background: var(--icon-bg, #EFF6FF);
         color: var(--icon-color, var(--petron-blue));
     }
     .adm-kpi-value {
-        font-size: 21px;
+        font-size: 24px;
         font-weight: 800;
         color: var(--text-dark);
         line-height: 1.1;
@@ -1211,10 +1224,13 @@ include __DIR__ . '/../partials/header.php';
         border-radius: 10px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.03);
         margin-bottom: 24px;
-        overflow: hidden;
+        overflow: hidden !important;
+        overflow-x: hidden !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
     .adm-card-header {
-        padding: 13px 18px;
+        padding: 14px 18px;
         border-bottom: 1px solid var(--border-color);
         display: flex;
         justify-content: space-between;
@@ -1222,7 +1238,7 @@ include __DIR__ . '/../partials/header.php';
         background: #FAFCFE;
     }
     .adm-card-header h2 {
-        font-size: 13.5px;
+        font-size: 15px;
         font-weight: 800;
         color: var(--petron-blue);
         margin: 0;
@@ -1234,6 +1250,9 @@ include __DIR__ . '/../partials/header.php';
     }
     .adm-card-body {
         padding: 16px 18px;
+        overflow-x: hidden !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
 
     .adm-grid-2col {
@@ -1253,57 +1272,91 @@ include __DIR__ . '/../partials/header.php';
     .adm-metric-list {
         display: flex;
         flex-direction: column;
-        gap: 7px;
+        gap: 8px;
     }
     .adm-metric-item {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 7px 11px;
+        padding: 10px 14px;
         background: #F8FAFC;
         border-radius: 6px;
         border: 1px solid #F1F5F9;
     }
     .adm-metric-label {
-        font-size: 11.5px;
+        font-size: 14px;
         font-weight: 600;
         color: var(--text-muted);
     }
     .adm-metric-value {
-        font-size: 12.5px;
+        font-size: 15px;
         font-weight: 800;
         color: var(--text-dark);
     }
 
-    /* Tables */
+    /* Tables — Strict Zero Horizontal Scrolling, Senior-Friendly Legibility */
     .adm-table-responsive {
-        width: 100%;
-        overflow-x: auto;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+        overflow-y: visible !important;
+        display: block !important;
     }
-    .adm-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 11.5px;
+    .adm-table,
+    table.adm-table {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        border-collapse: collapse !important;
+        font-size: 13.5px !important;
+        table-layout: fixed !important;
     }
     .adm-table th {
-        background: #F8FAFC;
-        color: #475569;
-        font-weight: 700;
-        text-transform: uppercase;
-        font-size: 10.5px;
-        letter-spacing: 0.3px;
-        padding: 9px 12px;
-        border-bottom: 1px solid var(--border-color);
+        background: #F8FAFC !important;
+        color: #475569 !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+        font-size: 12.5px !important;
+        letter-spacing: 0.3px !important;
+        padding: 9px 8px !important;
+        border-bottom: 2px solid var(--border-color) !important;
         text-align: left;
+        white-space: normal !important;
+        word-break: normal !important;
+        overflow-wrap: normal !important;
     }
     .adm-table td {
-        padding: 10px 12px;
-        border-bottom: 1px solid #F1F5F9;
-        color: var(--text-dark);
-        vertical-align: middle;
+        padding: 9px 8px !important;
+        border-bottom: 1px solid #F1F5F9 !important;
+        color: var(--text-dark) !important;
+        vertical-align: middle !important;
+        font-size: 13px !important;
+        text-align: left;
+        white-space: normal !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
     }
     .adm-table tr:hover td {
-        background: #F8FAFC;
+        background: #F8FAFC !important;
+    }
+
+    /* ── Strict Column Alignment Engine for Dashboard Tables ── */
+    .adm-table th.text-end,   .adm-table td.text-end,
+    .adm-table th.text-right, .adm-table td.text-right,
+    .adm-table th[style*="text-align:right"],  .adm-table td[style*="text-align:right"],
+    .adm-table th[style*="text-align: right"], .adm-table td[style*="text-align: right"] {
+        text-align: right !important;
+    }
+    .adm-table th.text-center, .adm-table td.text-center,
+    .adm-table th[style*="text-align:center"],  .adm-table td[style*="text-align:center"],
+    .adm-table th[style*="text-align: center"], .adm-table td[style*="text-align: center"] {
+        text-align: center !important;
+    }
+    .adm-table th.text-start, .adm-table td.text-start,
+    .adm-table th.text-left,  .adm-table td.text-left,
+    .adm-table th[style*="text-align:left"],  .adm-table td[style*="text-align:left"],
+    .adm-table th[style*="text-align: left"], .adm-table td[style*="text-align: left"] {
+        text-align: left !important;
     }
 
     /* Badges */
@@ -1311,12 +1364,12 @@ include __DIR__ . '/../partials/header.php';
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        padding: 2.5px 8px;
+        padding: 4px 10px;
         border-radius: 12px;
-        font-size: 10px;
+        font-size: 12px;
         font-weight: 800;
         line-height: 1;
-        letter-spacing: 0.4px;
+        letter-spacing: 0.3px;
         text-transform: uppercase;
     }
     .adm-badge-success { background: #DCFCE7; color: #15803D; border: 1px solid #BBF7D0; }
@@ -1337,7 +1390,7 @@ include __DIR__ . '/../partials/header.php';
         display: flex;
         align-items: flex-start;
         gap: 12px;
-        padding: 11px 14px;
+        padding: 12px 14px;
         border-bottom: 1px solid #F1F5F9;
         text-decoration: none;
         color: inherit;
@@ -1345,28 +1398,28 @@ include __DIR__ . '/../partials/header.php';
     }
     .adm-notif-item:hover { background: #F8FAFC; }
     .adm-notif-icon {
-        width: 30px;
-        height: 30px;
+        width: 34px;
+        height: 34px;
         border-radius: 50%;
         background: #EFF6FF;
         color: var(--petron-blue);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 12px;
+        font-size: 14px;
         flex-shrink: 0;
     }
     .adm-notif-content { flex: 1; min-width: 0; }
-    .adm-notif-title { font-size: 12px; font-weight: 700; color: var(--text-dark); margin: 0 0 2px 0; }
-    .adm-notif-msg { font-size: 11px; color: var(--text-muted); margin: 0 0 3px 0; line-height: 1.3; }
-    .adm-notif-time { font-size: 10px; color: #94A3B8; font-weight: 600; }
+    .adm-notif-title { font-size: 14px; font-weight: 700; color: var(--text-dark); margin: 0 0 3px 0; }
+    .adm-notif-msg { font-size: 13px; color: var(--text-muted); margin: 0 0 4px 0; line-height: 1.4; }
+    .adm-notif-time { font-size: 12px; color: #94A3B8; font-weight: 600; }
 
-    @media (max-width: 1200px) {
+    @media (max-width: 1300px) {
         .adm-kpi-grid-12 { grid-template-columns: repeat(3, 1fr); }
-        .adm-grid-2col, .adm-grid-3col { grid-template-columns: 1fr; }
     }
-    @media (max-width: 768px) {
+    @media (max-width: 1000px) {
         .adm-kpi-grid-12 { grid-template-columns: repeat(2, 1fr); }
+        .adm-grid-2col, .adm-grid-3col { grid-template-columns: 1fr; }
     }
     @media (max-width: 480px) {
         .adm-kpi-grid-12 { grid-template-columns: 1fr; }
@@ -1538,16 +1591,16 @@ include __DIR__ . '/../partials/header.php';
                 </div>
 
                 <!-- Exact 7 System Payment Breakdown -->
-                <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px 12px;">
-                    <span style="font-size:10.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Payment Breakdown (7 Methods)</span>
-                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:6px; margin-top:8px;">
-                        <div style="font-size:11px; padding:4px 6px; background:#FFF; border:1px solid #E2E8F0; border-radius:4px;">Cash: <strong id="pm_cash"><?= adm_money($payment_map['Cash'] ?? 0) ?></strong></div>
-                        <div style="font-size:11px; padding:4px 6px; background:#FFF; border:1px solid #E2E8F0; border-radius:4px;">Credit Card: <strong id="pm_credit_card"><?= adm_money($payment_map['Credit Card'] ?? 0) ?></strong></div>
-                        <div style="font-size:11px; padding:4px 6px; background:#FFF; border:1px solid #E2E8F0; border-radius:4px;">Debit Card: <strong id="pm_debit_card"><?= adm_money($payment_map['Debit Card'] ?? 0) ?></strong></div>
-                        <div style="font-size:11px; padding:4px 6px; background:#FFF; border:1px solid #E2E8F0; border-radius:4px;">GCash: <strong id="pm_gcash"><?= adm_money($payment_map['GCash'] ?? 0) ?></strong></div>
-                        <div style="font-size:11px; padding:4px 6px; background:#FFF; border:1px solid #E2E8F0; border-radius:4px;">Maya: <strong id="pm_maya"><?= adm_money($payment_map['Maya'] ?? 0) ?></strong></div>
-                        <div style="font-size:11px; padding:4px 6px; background:#FFF; border:1px solid #E2E8F0; border-radius:4px;">Petron Fleet: <strong id="pm_fleet"><?= adm_money($payment_map['Petron Fleet Card'] ?? 0) ?></strong></div>
-                        <div style="font-size:11px; padding:4px 6px; background:#FFF; border:1px solid #E2E8F0; border-radius:4px;">Credit Acct: <strong id="pm_credit_acct"><?= adm_money($payment_map['Credit Account'] ?? 0) ?></strong></div>
+                <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:12px 14px;">
+                    <span style="font-size:13px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Payment Breakdown (7 Methods)</span>
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:8px; margin-top:10px;">
+                        <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">Cash: <strong id="pm_cash"><?= adm_money($payment_map['Cash'] ?? 0) ?></strong></div>
+                        <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">Credit Card: <strong id="pm_credit_card"><?= adm_money($payment_map['Credit Card'] ?? 0) ?></strong></div>
+                        <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">Debit Card: <strong id="pm_debit_card"><?= adm_money($payment_map['Debit Card'] ?? 0) ?></strong></div>
+                        <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">GCash: <strong id="pm_gcash"><?= adm_money($payment_map['GCash'] ?? 0) ?></strong></div>
+                        <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">Maya: <strong id="pm_maya"><?= adm_money($payment_map['Maya'] ?? 0) ?></strong></div>
+                        <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">Petron Fleet: <strong id="pm_fleet"><?= adm_money($payment_map['Petron Fleet Card'] ?? 0) ?></strong></div>
+                        <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">Credit Acct: <strong id="pm_credit_acct"><?= adm_money($payment_map['Credit Account'] ?? 0) ?></strong></div>
                     </div>
                 </div>
             </div>
@@ -1590,23 +1643,23 @@ include __DIR__ . '/../partials/header.php';
 
                 <!-- 7 Fuel Tanks Level Overview -->
                 <div style="border:1px solid #E2E8F0; border-radius:8px; overflow:hidden;">
-                    <div style="padding:6px 10px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-size:10.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Active Fuel Tanks (<?= count($fuel_tanks) ?>)</span>
-                        <span style="font-size:10px; color:#15803D; font-weight:700;"><?= $normal_fuel_count ?> Normal &bull; <?= $low_fuel_count ?> Low &bull; <?= $crit_fuel_count ?> Crit</span>
+                    <div style="padding:8px 12px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:12.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Active Fuel Tanks (<?= count($fuel_tanks) ?>)</span>
+                        <span style="font-size:12px; color:#15803D; font-weight:700;"><?= $normal_fuel_count ?> Normal &bull; <?= $low_fuel_count ?> Low &bull; <?= $crit_fuel_count ?> Crit</span>
                     </div>
-                    <div style="max-height:140px; overflow-y:auto;">
+                    <div style="max-height:160px; overflow-y:auto;">
                         <?php foreach ($fuel_tanks as $ft): ?>
-                            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; border-bottom:1px solid #F1F5F9; gap:8px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid #F1F5F9; gap:8px;">
                                 <div style="flex:1; min-width:0;">
-                                    <div style="font-size:11.5px; font-weight:700; color:#1E293B; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><?= adm_h($ft['fuel_type']) ?> <small style="color:#64748B;">(<?= adm_h($ft['ugt']) ?>)</small></div>
-                                    <div style="display:flex; align-items:center; gap:5px; margin-top:2px;">
-                                        <div style="flex:1; height:5px; background:#E2E8F0; border-radius:999px; overflow:hidden;">
+                                    <div style="font-size:13.5px; font-weight:700; color:#1E293B; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><?= adm_h($ft['fuel_type']) ?> <small style="color:#64748B;">(<?= adm_h($ft['ugt']) ?>)</small></div>
+                                    <div style="display:flex; align-items:center; gap:6px; margin-top:3px;">
+                                        <div style="flex:1; height:6px; background:#E2E8F0; border-radius:999px; overflow:hidden;">
                                             <div style="height:100%; width:<?= $ft['fill_percent'] ?>%; background:<?= $ft['bar_color'] ?>; border-radius:999px;"></div>
                                         </div>
-                                        <span style="font-size:9.5px; color:#64748B; font-weight:600; white-space:nowrap;"><?= number_format($ft['current_level'], 0) ?> L (<?= $ft['fill_percent'] ?>%)</span>
+                                        <span style="font-size:12px; color:#64748B; font-weight:600; white-space:nowrap;"><?= number_format($ft['current_level'], 0) ?> L (<?= $ft['fill_percent'] ?>%)</span>
                                     </div>
                                 </div>
-                                <span style="display:inline-block; padding:2px 8px; font-size:9px; font-weight:800; border-radius:999px; background:<?= $ft['badge_bg'] ?>; color:<?= $ft['badge_color'] ?>; border:1px solid <?= $ft['badge_border'] ?>; letter-spacing:0.4px; text-transform:uppercase; white-space:nowrap;"><?= adm_h($ft['alert_status']) ?></span>
+                                <span style="display:inline-block; padding:3px 8px; font-size:11px; font-weight:800; border-radius:999px; background:<?= $ft['badge_bg'] ?>; color:<?= $ft['badge_color'] ?>; border:1px solid <?= $ft['badge_border'] ?>; letter-spacing:0.4px; text-transform:uppercase; white-space:nowrap;"><?= adm_h($ft['alert_status']) ?></span>
                             </div>
                         <?php endforeach; ?>
                     </div>
@@ -1960,20 +2013,20 @@ include __DIR__ . '/../partials/header.php';
                 <?php if (!empty($ar_customer_list)): ?>
                     <span style="font-size:10.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Top Outstanding Accounts</span>
                     <div class="adm-table-responsive" style="margin-top:6px;">
-                        <table class="adm-table">
+                        <table class="adm-table no-min-width" style="width:100%; table-layout:fixed;">
                             <thead>
                                 <tr>
-                                    <th>Customer</th>
-                                    <th>Due Date</th>
-                                    <th style="text-align:right;">Balance</th>
+                                    <th style="width:48%;">Customer</th>
+                                    <th class="text-center" style="width:24%;">Due Date</th>
+                                    <th class="text-end" style="width:28%;">Balance</th>
                                 </tr>
                             </thead>
                             <tbody id="ar_customer_tbody">
                                 <?php foreach ($ar_customer_list as $arc): ?>
                                     <tr>
-                                        <td><strong><?= adm_h($arc['customer_name']) ?></strong></td>
-                                        <td><?= !empty($arc['due_date']) ? date('M d, Y', strtotime($arc['due_date'])) : '—' ?></td>
-                                        <td style="text-align:right;"><strong style="color:#DC2626;"><?= adm_money($arc['total_balance']) ?></strong></td>
+                                        <td style="overflow:hidden; text-overflow:ellipsis;"><strong style="font-size:13px;"><?= adm_h($arc['customer_name']) ?></strong></td>
+                                        <td class="text-center" style="font-size:12.5px;"><?= !empty($arc['due_date']) ? date('M d, Y', strtotime($arc['due_date'])) : '—' ?></td>
+                                        <td class="text-end" style="font-size:13px; white-space:nowrap;"><strong style="color:#DC2626;"><?= adm_money($arc['total_balance']) ?></strong></td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -1991,32 +2044,32 @@ include __DIR__ . '/../partials/header.php';
             </div>
             <div class="adm-card-body" style="padding:0;">
                 <div class="adm-table-responsive">
-                    <table class="adm-table">
+                    <table class="adm-table no-min-width" style="width:100%; table-layout:fixed;">
                         <thead>
                             <tr>
-                                <th>Reference</th>
-                                <th>Stream / Type</th>
-                                <th>Payment</th>
-                                <th style="text-align:right;">Amount</th>
+                                <th style="width:36%;">Reference</th>
+                                <th class="text-center" style="width:22%;">Stream / Type</th>
+                                <th class="text-center" style="width:18%;">Payment</th>
+                                <th class="text-end" style="width:24%;">Amount</th>
                             </tr>
                         </thead>
                         <tbody id="recent_txn_tbody">
                             <?php if (empty($recent_transactions)): ?>
-                                <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:20px;">No finalized transactions yet.</td></tr>
+                                <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:20px; font-size:13px;">No finalized transactions yet.</td></tr>
                             <?php else: ?>
                                 <?php foreach ($recent_transactions as $rt): ?>
                                     <tr>
-                                        <td>
-                                            <strong><?= adm_h($rt['ref_no']) ?></strong>
-                                            <br><small style="color:var(--text-muted);"><?= adm_h($rt['customer_name']) ?></small>
+                                        <td style="overflow:hidden;">
+                                            <strong style="word-break:break-all; font-size:11.5px; display:block; line-height:1.25;"><?= adm_h($rt['ref_no']) ?></strong>
+                                            <small style="color:var(--text-muted); font-size:11.5px; font-weight:600; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><?= adm_h($rt['customer_name']) ?></small>
                                         </td>
-                                        <td>
-                                            <span class="adm-badge adm-badge-<?= $rt['stream_type'] === 'Fuel' ? 'warning' : ($rt['stream_type'] === 'Job Order' ? 'info' : 'success') ?>">
+                                        <td class="text-center">
+                                            <span class="adm-badge adm-badge-<?= $rt['stream_type'] === 'Fuel' ? 'warning' : ($rt['stream_type'] === 'Job Order' ? 'info' : 'success') ?>" style="white-space:nowrap; font-size:10px; padding:2.5px 6px;">
                                                 <?= adm_h($rt['stream_type']) ?>
                                             </span>
                                         </td>
-                                        <td><span class="adm-badge adm-badge-neutral"><?= adm_h($rt['payment_method']) ?></span></td>
-                                        <td style="text-align:right;"><strong><?= adm_money($rt['amount']) ?></strong></td>
+                                        <td class="text-center"><span class="adm-badge adm-badge-neutral" style="white-space:nowrap; font-size:10px; padding:2.5px 6px;"><?= adm_h($rt['payment_method']) ?></span></td>
+                                        <td class="text-end" style="font-size:13px; font-weight:800; white-space:nowrap;"><strong><?= adm_money($rt['amount']) ?></strong></td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -2039,18 +2092,18 @@ include __DIR__ . '/../partials/header.php';
             </div>
             <div class="adm-card-body" style="padding:0;">
                 <div class="adm-table-responsive">
-                    <table class="adm-table">
+                    <table class="adm-table no-min-width" style="width:100%; table-layout:fixed;">
                         <thead>
                             <tr>
-                                <th>Reference</th>
-                                <th>Product / Item</th>
-                                <th>Action</th>
-                                <th style="text-align:right;">Qty Change</th>
+                                <th style="width:28%;">Reference</th>
+                                <th style="width:34%;">Product / Item</th>
+                                <th class="text-center" style="width:18%;">Action</th>
+                                <th class="text-end" style="width:20%;">Qty Change</th>
                             </tr>
                         </thead>
                         <tbody id="recent_mov_tbody">
                             <?php if (empty($recent_inventory_movements)): ?>
-                                <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:20px;">No inventory movements logged yet.</td></tr>
+                                <tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:20px; font-size:13px;">No inventory movements logged yet.</td></tr>
                             <?php else: ?>
                                 <?php foreach ($recent_inventory_movements as $im): ?>
                                     <?php 
@@ -2060,10 +2113,10 @@ include __DIR__ . '/../partials/header.php';
                                         $color = $qty > 0 ? '#15803D' : ($qty < 0 ? '#DC2626' : '#64748B');
                                     ?>
                                     <tr>
-                                        <td><strong><?= adm_h($im['ref_no']) ?></strong></td>
-                                        <td><?= adm_h($im['product_name']) ?></td>
-                                        <td><span class="adm-badge adm-badge-neutral"><?= adm_h($im['movement_type']) ?></span></td>
-                                        <td style="text-align:right;"><strong style="color:<?= $color ?>;"><?= $qty_str ?></strong></td>
+                                        <td style="overflow:hidden;"><strong style="word-break:break-all; font-size:11.5px; display:block; line-height:1.25;"><?= adm_h($im['ref_no']) ?></strong></td>
+                                        <td style="font-size:12.5px; font-weight:700; word-break:break-word;"><?= adm_h($im['product_name']) ?></td>
+                                        <td class="text-center"><span class="adm-badge adm-badge-neutral" style="white-space:nowrap; font-size:10px; padding:2.5px 6px;"><?= adm_h($im['movement_type']) ?></span></td>
+                                        <td class="text-end" style="white-space:nowrap;"><strong style="color:<?= $color ?>; font-size:13px;"><?= $qty_str ?></strong></td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -2105,10 +2158,10 @@ include __DIR__ . '/../partials/header.php';
                         }
                         // Status badge
                         $statusBadge = $isFailed
-                            ? '<span class="adm-badge adm-badge-danger" style="font-size:8.5px;padding:1px 5px;">'.adm_h($status).'</span>'
-                            : ($isSuccess ? '<span class="adm-badge adm-badge-success" style="font-size:8.5px;padding:1px 5px;">'.adm_h($status).'</span>' : '');
+                            ? '<span class="adm-badge adm-badge-danger" style="font-size:12px;padding:3px 7px;">'.adm_h($status).'</span>'
+                            : ($isSuccess ? '<span class="adm-badge adm-badge-success" style="font-size:12px;padding:3px 7px;">'.adm_h($status).'</span>' : '');
                         // Log type chip
-                        $typeBadge = '<span style="font-size:8.5px;padding:1px 5px;border-radius:4px;background:#E2E8F0;color:#475569;font-weight:700;">'.adm_h($logType).'</span>';
+                        $typeBadge = '<span style="font-size:12px;padding:3px 7px;border-radius:4px;background:#E2E8F0;color:#475569;font-weight:700;">'.adm_h($logType).'</span>';
                     ?>
                     <div class="adm-notif-item">
                         <div class="adm-notif-icon" style="background:<?= $iconBg ?>; color:<?= $iconColor ?>;"><i class="fas <?= $icon ?>"></i></div>
@@ -2285,15 +2338,15 @@ include __DIR__ . '/../partials/header.php';
 
         <!-- Table Body -->
         <div style="padding:0; overflow-y:auto; flex:1;">
-            <table class="adm-table" style="margin:0; width:100%;">
+            <table class="adm-table no-min-width" style="margin:0; width:100%;">
                 <thead>
                     <tr>
                         <th>Product Name</th>
                         <th>Category</th>
-                        <th style="text-align:right;">Current Stock</th>
-                        <th style="text-align:right;">Reorder Level</th>
-                        <th style="text-align:right;">Critical Level</th>
-                        <th style="text-align:center;">Status</th>
+                        <th class="text-end" style="text-align:right;">Current Stock</th>
+                        <th class="text-end" style="text-align:right;">Reorder Level</th>
+                        <th class="text-end" style="text-align:right;">Critical Level</th>
+                        <th class="text-center" style="text-align:center;">Status</th>
                     </tr>
                 </thead>
                 <tbody id="admMerchModalTableBody">

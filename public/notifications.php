@@ -771,7 +771,7 @@ include __DIR__ . '/../partials/header.php';
                                     <?php if ($is_unread): ?>
                                         <span class="unread-dot" title="Unread"></span>
                                     <?php endif; ?>
-                                    <?= htmlspecialchars($n['title']) ?>
+                                    <?= htmlspecialchars(function_exists('clean_mojibake') ? clean_mojibake($n['title']) : $n['title']) ?>
                                 </span>
                                 <span class="notif-item-time">
                                     <i class="far fa-clock"></i> <?= $format_feed_time($n['created_at']) ?>
@@ -779,7 +779,7 @@ include __DIR__ . '/../partials/header.php';
                             </div>
 
                             <p class="notif-item-msg">
-                                <?= htmlspecialchars($n['message']) ?>
+                                <?= htmlspecialchars(function_exists('clean_mojibake') ? clean_mojibake($n['message']) : $n['message']) ?>
                             </p>
 
                             <div class="notif-item-footer">

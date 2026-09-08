@@ -816,7 +816,7 @@ foreach ($all_items as $item) {
     if ($s > $r) $kpi_available_stock++;
 }
 
-// â”€â”€ Fetch Stock Movement History (Unified across logs, deliveries & sales) â”€â”€
+// ── Fetch Stock Movement History (Unified across logs, deliveries & sales) ──
 $movement_history = [];
 try {
     $stmt = $pdo->prepare("
@@ -825,7 +825,11 @@ try {
                il.action AS movement_type,
                il.quantity_change AS quantity,
                COALESCE(NULLIF(il.notes,''), '—') AS notes,
-               COALESCE(NULLIF(CONCAT_WS('-', il.reference_type, il.reference_id),''), CONCAT('LOG-', LPAD(il.id, 5, '0'))) AS reference_no,
+               COALESCE(
+                   NULLIF(NULLIF(il.reference_no, ''), 'merchandise_transaction'),
+                   NULLIF(CONCAT_WS('-', NULLIF(il.reference_type, 'merchandise_transaction'), il.reference_id), ''),
+                   CONCAT('LOG-', LPAD(il.id, 5, '0'))
+               ) AS reference_no,
                COALESCE(ip.product_name, p.name, 'Unknown') AS product_name,
                COALESCE(ip.sku, CONCAT('P', LPAD(p.id,4,'0')), '') AS sku,
                COALESCE(NULLIF(si.unit,''), NULLIF(ip.size,''), 'pcs') AS unit,
@@ -843,7 +847,7 @@ try {
                'Stock In' AS movement_type,
                msi.qty_received AS quantity,
                COALESCE(NULLIF(msi.remarks,''), CONCAT('PO: ', COALESCE(msi.po_number,'—'), ' | Batch: ', COALESCE(msi.batch_ref,'—'))) AS notes,
-               CONCAT('SI-', LPAD(msi.id, 5, '0')) AS reference_no,
+               COALESCE(NULLIF(msi.po_number, ''), NULLIF(msi.batch_ref, ''), CONCAT('SI-', LPAD(msi.id, 5, '0'))) AS reference_no,
                COALESCE(ip.product_name, p.name, msi.product_name, 'Unknown') AS product_name,
                COALESCE(ip.sku, msi.sku, CONCAT('P', LPAD(p.id,4,'0')), '') AS sku,
                COALESCE(NULLIF(si.unit,''), NULLIF(ip.size,''), 'pcs') AS unit,
@@ -862,7 +866,7 @@ try {
                mt.transaction_type AS movement_type,
                -mti.quantity AS quantity,
                COALESCE(NULLIF(mt.manager_notes,''), NULLIF(mt.staff_remarks,''), 'Sale Transaction') AS notes,
-               CONCAT('SO-', LPAD(mt.id, 5, '0')) AS reference_no,
+               COALESCE(NULLIF(mt.transaction_id, ''), CONCAT('SO-', LPAD(mt.id, 5, '0'))) AS reference_no,
                COALESCE(ip.product_name, p.name, 'Unknown') AS product_name,
                COALESCE(ip.sku, CONCAT('P', LPAD(p.id,4,'0')), '') AS sku,
                COALESCE(NULLIF(si.unit,''), NULLIF(ip.size,''), 'pcs') AS unit,
@@ -874,6 +878,7 @@ try {
         LEFT JOIN station_inventory si ON si.product_id = mti.product_id AND si.station_id = mt.station_id
         LEFT JOIN users u ON u.id = mt.staff_id
         WHERE mt.id NOT IN (SELECT COALESCE(reference_id, 0) FROM inventory_logs WHERE reference_type LIKE '%transaction%' OR reference_type LIKE '%sale%')
+          AND mt.transaction_id NOT IN (SELECT COALESCE(reference_no, '') FROM inventory_logs WHERE reference_no IS NOT NULL AND reference_no != '')
 
         ORDER BY created_at DESC
         LIMIT 200
@@ -1007,14 +1012,14 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-/* Absolute Zero Horizontal Scrollbar Layout - 100% Identical Manager & Admin */
+/* Clean Merchandise Inventory Table Layout - Senior / Elderly Friendly Large Fonts & High Legibility */
 html, body, .mim-wrap, .main-content, .card, .tbl-card, .table-wrap, .table-responsive {
     overflow-x: hidden !important;
     max-width: 100% !important;
     width: 100% !important;
 }
 
-.afto-tbl, #mgrMerchTable, #adminMerchTable {
+.afto-tbl, #mgrMerchTable, #adminMerchTable, #adminMovTable, #adminAlertTable {
     table-layout: fixed !important;
     width: 100% !important;
     max-width: 100% !important;
@@ -1022,95 +1027,149 @@ html, body, .mim-wrap, .main-content, .card, .tbl-card, .table-wrap, .table-resp
     border-collapse: collapse !important;
 }
 
-.afto-tbl th, #mgrMerchTable th, #adminMerchTable th {
+.afto-tbl th, #mgrMerchTable th, #adminMerchTable th, #adminMovTable th, #adminAlertTable th {
     background: #002F70 !important;
     color: #ffffff !important;
-    padding: 6px 3px !important;
-    font-size: 10.5px !important;
+    padding: 7px 3px !important;
+    font-size: 11.5px !important;
     font-weight: 800 !important;
     letter-spacing: 0.2px !important;
     text-transform: uppercase !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
     border-bottom: 2px solid #001a3d !important;
+    vertical-align: middle !important;
+    line-height: 1.2 !important;
+    text-align: center !important;
 }
 
 .afto-tbl td, #mgrMerchTable td, #adminMerchTable td {
-    padding: 5px 3px !important;
-    font-size: 11px !important;
-    line-height: 1.2 !important;
+    padding: 7px 4px !important;
+    font-size: 13px !important;
+    line-height: 1.3 !important;
     vertical-align: middle !important;
     border-bottom: 1px solid #f1f5f9 !important;
     color: #334155 !important;
-    overflow: hidden !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
 }
 
-/* SKU & Batch ID */
-.afto-tbl td:nth-child(1) code, .afto-tbl td:nth-child(2) code,
+/* SKU & Batch ID - Large, Bold & Highly Legible */
 #mgrMerchTable td:nth-child(1) code, #mgrMerchTable td:nth-child(2) code,
-.afto-tbl td:nth-child(1), .afto-tbl td:nth-child(2),
-#mgrMerchTable td:nth-child(1), #mgrMerchTable td:nth-child(2) {
-    font-family: monospace !important;
-    font-size: 10.5px !important;
+#adminMerchTable td:nth-child(1) code, #adminMerchTable td:nth-child(2) code,
+#mgrMerchTable td:nth-child(1), #mgrMerchTable td:nth-child(2),
+#adminMerchTable td:nth-child(1), #adminMerchTable td:nth-child(2) {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace !important;
+    font-size: 13px !important;
     font-weight: 700 !important;
     color: #002F70 !important;
     white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
 }
 
-/* Product Description: Wrap text cleanly onto 2 lines, NEVER overlap */
-.afto-tbl td:nth-child(3), #mgrMerchTable td:nth-child(3) {
-    font-size: 11px !important;
+/* Product Description: Wrap text cleanly onto lines, never overlap, never truncate */
+#mgrMerchTable td:nth-child(3), #adminMerchTable td:nth-child(3) {
+    font-size: 13px !important;
     font-weight: 700 !important;
     color: #002F6C !important;
     white-space: normal !important;
     word-break: break-word !important;
     overflow-wrap: break-word !important;
+    line-height: 1.3 !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    text-align: left !important;
 }
 
-/* Category, UOM, Dates */
-.afto-tbl td:nth-child(4), .afto-tbl td:nth-child(5), .afto-tbl td:nth-child(6), .afto-tbl td:nth-child(11),
-#mgrMerchTable td:nth-child(4), #mgrMerchTable td:nth-child(5), #mgrMerchTable td:nth-child(6), #mgrMerchTable td:nth-child(11) {
-    white-space: nowrap !important;
-    font-size: 10.5px !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
+/* Category & UOM: Clean wrap, no ellipsis */
+#mgrMerchTable td:nth-child(4), #adminMerchTable td:nth-child(4),
+#mgrMerchTable td:nth-child(5), #adminMerchTable td:nth-child(5) {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    font-size: 12.5px !important;
+    line-height: 1.25 !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    text-align: center !important;
+}
+
+/* Dates (Expiration & Last Updated): Clean wrap, no ellipsis */
+#mgrMerchTable td:nth-child(6), #adminMerchTable td:nth-child(6),
+#mgrMerchTable td:nth-child(11), #adminMerchTable td:nth-child(11) {
+    white-space: normal !important;
+    word-break: normal !important;
+    font-size: 12.5px !important;
+    line-height: 1.25 !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    text-align: center !important;
+}
+
+/* Stock quantities & Reorder Level */
+#mgrMerchTable td:nth-child(7), #adminMerchTable td:nth-child(7) {
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    text-align: right !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+}
+
+#mgrMerchTable td:nth-child(8), #adminMerchTable td:nth-child(8) {
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+}
+
+#mgrMerchTable td:nth-child(9), #adminMerchTable td:nth-child(9) {
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    text-align: right !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
 }
 
 /* Status Badge: Single Line High Contrast */
 .badge-lbl, .badge, .status-badge, .pstatus-badge {
     white-space: nowrap !important;
     display: inline-block !important;
-    padding: 2px 5px !important;
-    font-size: 10px !important;
+    padding: 3px 6px !important;
+    font-size: 11px !important;
     font-weight: 800 !important;
     border-radius: 4px !important;
     text-transform: uppercase !important;
+    letter-spacing: 0.2px !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
 }
 .bg-amber { background-color: #fef3c7 !important; color: #b45309 !important; }
 .bg-green { background-color: #dcfce7 !important; color: #15803d !important; }
 .bg-red   { background-color: #fee2e2 !important; color: #b91c1c !important; }
 .bg-gray  { background-color: #f1f5f9 !important; color: #475569 !important; }
 
-/* Action Buttons: Vertically Stacked High Visibility Buttons */
+/* Action Buttons: Vertically Stacked Legible Buttons */
 .act-btn-wrap {
     display: flex !important;
     flex-direction: column !important;
-    gap: 2px !important;
+    gap: 3px !important;
     align-items: center !important;
     justify-content: center !important;
     width: 100% !important;
 }
 
 .act-btn, .act-btn-view, .act-btn-edit, a.act-btn, button.act-btn {
-    height: 20px !important;
-    padding: 0 4px !important;
-    font-size: 10.5px !important;
+    height: 25px !important;
+    padding: 0 6px !important;
+    font-size: 11.5px !important;
     font-weight: 800 !important;
-    width: 56px !important;
-    min-width: 56px !important;
+    width: 58px !important;
+    min-width: 58px !important;
     white-space: nowrap !important;
     border-radius: 4px !important;
     display: inline-flex !important;
@@ -1124,6 +1183,7 @@ html, body, .mim-wrap, .main-content, .card, .tbl-card, .table-wrap, .table-resp
     text-decoration: none !important;
     opacity: 1 !important;
     visibility: visible !important;
+    cursor: pointer !important;
 }
 
 .act-btn-view, button.act-btn-view, a.act-btn-view {
@@ -1147,265 +1207,79 @@ html, body, .mim-wrap, .main-content, .card, .tbl-card, .table-wrap, .table-resp
     background: #002F6C !important;
     color: #ffffff !important;
 }
-</style>
 
-
-
-
-
-<style>
-/* Exact Admin & Manager Merchandise Inventory - ZERO HORIZONTAL SCROLLBAR (100% Fit) */
-html, body, .mim-wrap, .main-content, .card, .tbl-card, .table-wrap, .table-responsive {
-    overflow-x: hidden !important;
-    max-width: 100% !important;
-    width: 100% !important;
-}
-
-.afto-tbl, #mgrMerchTable, #adminMerchTable {
-    table-layout: fixed !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    border-collapse: collapse !important;
-}
-
-.afto-tbl th, #mgrMerchTable th, #adminMerchTable th {
+/* Movement Table Specific Styling - Senior Legible, Complete Text, No Truncation */
+#adminMovTable th {
     background: #002F70 !important;
     color: #ffffff !important;
-    padding: 6px 3px !important;
-    font-size: 10.5px !important;
+    padding: 8px 6px !important;
+    font-size: 12.5px !important;
     font-weight: 800 !important;
-    letter-spacing: 0.2px !important;
+    letter-spacing: 0.25px !important;
     text-transform: uppercase !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
     border-bottom: 2px solid #001a3d !important;
+    vertical-align: middle !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
 }
 
-.afto-tbl td, #mgrMerchTable td, #adminMerchTable td {
-    padding: 5px 3px !important;
-    font-size: 11px !important;
-    line-height: 1.2 !important;
+#adminMovTable td {
+    padding: 8px 6px !important;
+    font-size: 13.5px !important;
+    line-height: 1.35 !important;
     vertical-align: middle !important;
     border-bottom: 1px solid #f1f5f9 !important;
     color: #334155 !important;
-    overflow: hidden !important;
-}
-
-/* SKU & Batch ID */
-.afto-tbl td:nth-child(1) code, .afto-tbl td:nth-child(2) code,
-#mgrMerchTable td:nth-child(1) code, #mgrMerchTable td:nth-child(2) code {
-    font-family: monospace !important;
-    font-size: 10.5px !important;
-    font-weight: 700 !important;
-    color: #002F70 !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-}
-
-/* Product Description: Wrap text cleanly onto 2 lines, NEVER overlap */
-.afto-tbl td:nth-child(3), #mgrMerchTable td:nth-child(3) {
-    font-size: 11px !important;
-    font-weight: 700 !important;
-    color: #002F6C !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
     white-space: normal !important;
     word-break: break-word !important;
-    overflow-wrap: break-word !important;
 }
 
-/* Category, UOM, Dates */
-.afto-tbl td:nth-child(4), .afto-tbl td:nth-child(5), .afto-tbl td:nth-child(6), .afto-tbl td:nth-child(11),
-#mgrMerchTable td:nth-child(4), #mgrMerchTable td:nth-child(5), #mgrMerchTable td:nth-child(6), #mgrMerchTable td:nth-child(11) {
-    white-space: nowrap !important;
-    font-size: 10.5px !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-}
-
-/* Status Badge: Single Line */
-.badge-lbl, .badge, .status-badge, .pstatus-badge {
-    white-space: nowrap !important;
-    display: inline-block !important;
-    padding: 2px 5px !important;
-    font-size: 10px !important;
-    font-weight: 800 !important;
-    border-radius: 4px !important;
-    text-transform: uppercase !important;
-}
-.bg-amber { background-color: #fef3c7 !important; color: #b45309 !important; }
-.bg-green { background-color: #dcfce7 !important; color: #15803d !important; }
-.bg-red   { background-color: #fee2e2 !important; color: #b91c1c !important; }
-.bg-gray  { background-color: #f1f5f9 !important; color: #475569 !important; }
-
-/* Action Buttons: Vertically Stacked Compact Buttons */
-.act-btn-wrap {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 2px !important;
-    align-items: center !important;
-    justify-content: center !important;
-    width: 100% !important;
-}
-
-.act-btn {
-    height: 20px !important;
-    padding: 0 4px !important;
-    font-size: 10px !important;
-    font-weight: 700 !important;
-    width: 54px !important;
-    min-width: 54px !important;
-    white-space: nowrap !important;
-    border-radius: 3px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 2px !important;
-    box-sizing: border-box !important;
-    line-height: 1.2 !important;
-    background: #ffffff !important;
-    border: 1.5px solid #cbd5e1 !important;
-    text-decoration: none !important;
-}
-
-.act-btn-view { color: #16a34a !important; border-color: #16a34a !important; }
-.act-btn-view:hover { background: #16a34a !important; color: #ffffff !important; }
-.act-btn-edit { color: #002F6C !important; border-color: #002F6C !important; }
-.act-btn-edit:hover { background: #002F6C !important; color: #ffffff !important; }
-</style>
-
-
-<style>
-/* Clean Merchandise Inventory Table Layout Fix */
-.table-wrap, .table-responsive {
-    overflow-x: auto !important;
-    width: 100% !important;
-}
-
-#mgrMerchTable, table.pricing-table, table.table {
-    table-layout: auto !important;
-    width: 100% !important;
-    min-width: 1050px !important;
-    border-collapse: collapse !important;
-}
-
-#mgrMerchTable th {
-    padding: 10px 10px !important;
+/* Movement Type: No colored backgrounds, clean text */
+.mov-type-txt {
     font-size: 13px !important;
     font-weight: 800 !important;
+    color: #002F70 !important;
+    text-transform: uppercase !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
     letter-spacing: 0.3px !important;
     white-space: nowrap !important;
+    padding: 0 !important;
+}
+
+/* Stock Alerts Table Specific Styling - Large & High Legibility for Senior Users */
+#adminAlertTable th {
     background: #002F70 !important;
     color: #ffffff !important;
-}
-
-#mgrMerchTable td {
-    padding: 9px 10px !important;
-    font-size: 13.5px !important;
+    padding: 10px 8px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.25px !important;
+    text-transform: uppercase !important;
+    border-bottom: 2px solid #001a3d !important;
     vertical-align: middle !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
 }
 
-/* SKU & Batch ID */
-#mgrMerchTable td:nth-child(1), #mgrMerchTable td:nth-child(2) {
-    white-space: nowrap !important;
-    font-weight: 700 !important;
-    font-family: monospace !important;
-    font-size: 12.5px !important;
-}
-
-/* Product Description: Wrap long names cleanly */
-#mgrMerchTable td:nth-child(3) {
-    max-width: 240px !important;
+#adminAlertTable td {
+    padding: 10px 8px !important;
+    font-size: 14px !important;
+    line-height: 1.35 !important;
+    vertical-align: middle !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    color: #334155 !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
     white-space: normal !important;
     word-break: break-word !important;
-    overflow-wrap: break-word !important;
-    line-height: 1.3 !important;
-    font-weight: 700 !important;
-    color: #002F6C !important;
-}
-
-/* Category: Never Overlap */
-#mgrMerchTable td:nth-child(4) {
-    white-space: nowrap !important;
-    padding-left: 12px !important;
-    color: #475569 !important;
-    font-weight: 600 !important;
-}
-
-/* Unit, Expiration Date, Stock Levels */
-#mgrMerchTable td:nth-child(5), #mgrMerchTable td:nth-child(6), #mgrMerchTable td:nth-child(7), #mgrMerchTable td:nth-child(8), #mgrMerchTable td:nth-child(9), #mgrMerchTable td:nth-child(11) {
-    white-space: nowrap !important;
-}
-
-/* Status Badge: Single Line High Contrast */
-#mgrMerchTable td:nth-child(10), .badge, .status-badge, .pstatus-badge {
-    white-space: nowrap !important;
-    display: inline-block !important;
-    padding: 4px 10px !important;
-    font-size: 12px !important;
-    font-weight: 800 !important;
-    border-radius: 5px !important;
-}
-
-/* Actions Column: Clean Row Buttons */
-#mgrMerchTable td:last-child {
-    white-space: nowrap !important;
-}
-
-.act-btn-wrap {
-    display: flex !important;
-    flex-direction: row !important;
-    gap: 4px !important;
-    align-items: center !important;
-    justify-content: center !important;
-    white-space: nowrap !important;
-}
-
-.act-btn {
-    height: 28px !important;
-    padding: 0 8px !important;
-    font-size: 11.5px !important;
-    font-weight: 700 !important;
-    white-space: nowrap !important;
-    border-radius: 5px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 4px !important;
 }
 </style>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 <style>
 /* == GLOBAL OVERFLOW FIX (ELIMINATE DOUBLE VERTICAL SCROLLBAR) == */
@@ -1760,15 +1634,15 @@ html, body {
     padding: 6px 4px;
     color: #334155;
     vertical-align: middle;
-    white-space: nowrap;
-    font-size: 15.5px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    font-size: 13px;
+    overflow: visible;
+    text-overflow: clip;
 }
 .afto-tbl tbody td:last-child, .afto-tbl thead th:last-child {
     white-space: normal !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
     word-wrap: break-word !important;
 }
 
@@ -1809,8 +1683,47 @@ html, body {
     justify-content: center;
     z-index: 9000;
 }
-.modal-overlay.show {
+.modal-overlay.show,
+.modal-overlay.open {
     display: flex;
+}
+
+/* ── FIFO Batch Table & View Product Modal Layout (Zero Horizontal Scroll) ── */
+#adminViewProdModal,
+#adminViewProdModal * {
+    box-sizing: border-box !important;
+}
+#adminViewProdModal > div {
+    max-width: 960px !important;
+    width: 96% !important;
+}
+#adminViewProdModal #vpmBody {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+}
+#adminViewProdModal #vpmPane1,
+#adminViewProdModal #vpmPane2,
+#adminViewProdModal #vpmPane3 {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+}
+#adminViewProdModal #vpmFifoTable {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+}
+#adminViewProdModal #vpmFifoTable table {
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+    min-width: 0 !important;
+    border-collapse: collapse !important;
+}
+#adminViewProdModal #vpmFifoTable th,
+#adminViewProdModal #vpmFifoTable td {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
 }
 .modal-box {
     background: #ffffff;
@@ -2148,22 +2061,35 @@ html, body {
         <div class="tbl-title"><i class="fas fa-clipboard-list"></i> Merchandise Stock Records</div>
     </div>
     <div class="table-wrap" style="width:100%; overflow-x:hidden;">
-        <table class="afto-tbl" id="adminMerchTable" style="width:100%; max-width:100%; table-layout:auto; min-width: 0; border-collapse:collapse;">
-            
+        <table class="afto-tbl" id="adminMerchTable" style="width:100%; max-width:100%; table-layout:fixed; min-width: 0; border-collapse:collapse;">
+            <colgroup>
+                <col style="width:5.5%;"> <!-- Batch ID -->
+                <col style="width:8.5%;"> <!-- SKU -->
+                <col style="width:16.5%;"><!-- Product Name -->
+                <col style="width:10%;">  <!-- Category -->
+                <col style="width:6%;">   <!-- UOM -->
+                <col style="width:8.5%;"> <!-- Expiration Date -->
+                <col style="width:5.5%;"> <!-- Initial Stock -->
+                <col style="width:10.5%;"><!-- Current Stock -->
+                <col style="width:5%;">   <!-- Reorder Level -->
+                <col style="width:8%;">   <!-- Status -->
+                <col style="width:8.5%;"> <!-- Last Updated -->
+                <col style="width:7.5%;"> <!-- Actions -->
+            </colgroup>
             <thead>
                 <tr>
-                    <th>Batch ID</th>
-                    <th>SKU</th>
-                    <th>Product Name</th>
+                    <th style="text-align:center;">Batch<br>ID</th>
+                    <th style="text-align:center;">SKU</th>
+                    <th style="text-align:left;">Product Name</th>
                     <th style="text-align:center;">Category</th>
                     <th style="text-align:center;">UOM</th>
-                    <th style="text-align:center;">Expiration Date</th>
-                    <th style="text-align:right;">Initial Stock</th>
-                    <th>Current Stock</th>
-                    <th style="text-align:right;">Reorder Level</th>
-                    <th class="align-center">Status</th>
-                    <th>Last Updated</th>
-                    <th style="text-align:center; white-space:nowrap;">Actions</th>
+                    <th style="text-align:center;">Expiration<br>Date</th>
+                    <th style="text-align:center;">Initial<br>Stock</th>
+                    <th style="text-align:left;">Current<br>Stock</th>
+                    <th style="text-align:center;">Reorder<br>Level</th>
+                    <th style="text-align:center;">Status</th>
+                    <th style="text-align:center;">Last<br>Updated</th>
+                    <th style="text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -2307,18 +2233,27 @@ html, body {
         </div>
     </div>
     <div class="table-wrap" style="overflow-x:hidden; width:100%;">
-        <table class="afto-tbl" id="adminMovTable" style="width:100%; table-layout:auto; min-width: 0;">
-            
+        <table class="afto-tbl" id="adminMovTable" style="width:100%; max-width:100%; table-layout:fixed; min-width: 0; border-collapse:collapse;">
+            <colgroup>
+                <col style="width:12%;"> <!-- Date -->
+                <col style="width:14%;"> <!-- Reference No. -->
+                <col style="width:8.5%;"><!-- Type -->
+                <col style="width:20%;"> <!-- Product -->
+                <col style="width:8.5%;"><!-- Quantity -->
+                <col style="width:11%;"> <!-- Performed By -->
+                <col style="width:12%;"> <!-- Branch -->
+                <col style="width:14%;"> <!-- Remarks -->
+            </colgroup>
             <thead>
                 <tr>
-                    <th>Date</th>
-                    <th>Reference No.</th>
+                    <th style="text-align:center;">Date</th>
+                    <th style="text-align:center;">Reference No.</th>
                     <th style="text-align:center;">Type</th>
-                    <th>Product</th>
+                    <th style="text-align:left;">Product</th>
                     <th style="text-align:right;">Quantity</th>
-                    <th>Performed By</th>
-                    <th>Branch</th>
-                    <th>Remarks</th>
+                    <th style="text-align:left;">Performed By</th>
+                    <th style="text-align:left;">Branch</th>
+                    <th style="text-align:left;">Remarks</th>
                 </tr>
             </thead>
             <tbody id="adminMovBody">
@@ -2328,7 +2263,18 @@ html, body {
                 <?php foreach ($movement_history as $log):
                     $m_date = !empty($log['created_at']) ? date('M d, Y h:i A', strtotime($log['created_at'])) : '—';
                     $m_raw  = strtolower($log['movement_type'] ?? '');
-                    $ref_no = !empty($log['reference_no']) ? $log['reference_no'] : ('LOG-' . str_pad($log['log_id'] ?? 0, 5, '0', STR_PAD_LEFT));
+                    $ref_no = !empty($log['reference_no']) ? trim($log['reference_no']) : ('LOG-' . str_pad($log['log_id'] ?? 0, 5, '0', STR_PAD_LEFT));
+                    if ($ref_no === 'merchandise_transaction' || strpos($ref_no, 'merchandise_transaction') !== false) {
+                        if (!empty($log['notes']) && preg_match('/(?:Ref:\s*|Reference:\s*)([A-Za-z0-9\-_]+)/i', $log['notes'], $m)) {
+                            $ref_no = $m[1];
+                        } elseif (!empty($log['notes']) && preg_match('/(MERCH[0-9]+)/i', $log['notes'], $m)) {
+                            $ref_no = $m[1];
+                        } elseif (!empty($log['reference_id'])) {
+                            $ref_no = 'MT-' . str_pad($log['reference_id'], 5, '0', STR_PAD_LEFT);
+                        } else {
+                            $ref_no = 'LOG-' . str_pad($log['log_id'] ?? 0, 5, '0', STR_PAD_LEFT);
+                        }
+                    }
                     $qty    = (float)($log['quantity'] ?? 0);
                     $unit   = htmlspecialchars($log['unit'] ?? 'pcs');
                     $user_name = htmlspecialchars($log['user_name'] ?? 'System');
@@ -2336,49 +2282,46 @@ html, body {
 
                     if (strpos($m_raw, 'in') !== false || strpos($m_raw, 'delivery') !== false || strpos($m_raw, 'receive') !== false) {
                         $type_label = 'Stock In';
-                        $badge_style = 'background:#dcfce7;color:#15803d;border:1px solid #a7f3d0;';
                         $qty_text = '+' . number_format(abs($qty), 0);
                         $qty_color = '#15803d';
                     } elseif (strpos($m_raw, 'out') !== false || strpos($m_raw, 'sale') !== false || strpos($m_raw, 'release') !== false) {
                         $type_label = 'Stock Out';
-                        $badge_style = 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;';
                         $qty_text = '-' . number_format(abs($qty), 0);
                         $qty_color = '#dc2626';
                     } elseif (strpos($m_raw, 'transfer') !== false) {
                         $type_label = 'Transfer';
-                        $badge_style = 'background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;';
                         $qty_text = number_format($qty, 0);
                         $qty_color = '#0284c7';
                     } elseif (strpos($m_raw, 'damage') !== false || strpos($m_raw, 'defective') !== false) {
                         $type_label = 'Damaged';
-                        $badge_style = 'background:#fef2f2;color:#991b1b;border:1px solid #fca5a5;';
                         $qty_text = '-' . number_format(abs($qty), 0);
                         $qty_color = '#dc2626';
                     } elseif (strpos($m_raw, 'expire') !== false) {
                         $type_label = 'Expired';
-                        $badge_style = 'background:#fff3cd;color:#856404;border:1px solid #ffeeba;';
                         $qty_text = '-' . number_format(abs($qty), 0);
                         $qty_color = '#d97706';
                     } else {
                         $type_label = 'Adjustment';
-                        $badge_style = 'background:#f3e8ff;color:#5b21b6;border:1px solid #e9d5ff;';
                         $qty_text = ($qty >= 0 ? '+' : '') . number_format($qty, 0);
                         $qty_color = $qty >= 0 ? '#15803d' : '#dc2626';
                     }
                 ?>
                 <tr class="mov-row" data-search="<?= strtolower(htmlspecialchars($log['product_name'] . ' ' . $ref_no . ' ' . ($log['user_name'] ?? '') . ' ' . $type_label)) ?>" data-type="<?= strtolower($type_label) ?>" data-raw-type="<?= strtolower(htmlspecialchars($log['movement_type'] ?? '')) ?>">
-                    <td style="font-size:14px;color:#64748b;white-space:nowrap;"><?= $m_date ?></td>
-                    <td><code style="font-size:14px;font-weight:700;color:#002F70;"><?= htmlspecialchars($ref_no) ?></code></td>
+                    <td style="font-size:13.5px;color:#475569;font-weight:600;text-align:center;white-space:nowrap;"><?= $m_date ?></td>
+                    <td style="text-align:center;"><code style="font-size:13px;font-weight:700;color:#002F70;word-break:break-all;line-height:1.25;display:inline-block;"><?= htmlspecialchars($ref_no) ?></code></td>
                     <td style="text-align:center;">
-                        <span style="<?= $badge_style ?>padding:3px 8px;border-radius:4px;font-size:15.5px;font-weight:700;text-transform:uppercase;white-space:nowrap;">
+                        <span class="mov-type-txt" style="font-size:13px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap;background:transparent;border:none;">
                             <?= $type_label ?>
                         </span>
                     </td>
-                    <td><strong><?= htmlspecialchars($log['product_name']) ?></strong><br><code style="font-size:14.5px;color:#94a3b8;"><?= htmlspecialchars($log['sku']) ?></code></td>
-                    <td style="text-align:right;font-weight:800;font-size:15.5px;color:<?= $qty_color ?>;"><?= $qty_text ?> <?= $unit ?></td>
-                    <td style="font-size:14px;font-weight:600;color:#334155;"><?= htmlspecialchars($log['user_name'] ?? 'System') ?></td>
-                    <td style="font-size:14px;color:#475569;"><?= $branch ?></td>
-                    <td style="font-size:14px;color:#475569;max-width:200px;"><?= htmlspecialchars($log['notes'] ?? '—') ?></td>
+                    <td style="word-break:break-word;overflow-wrap:break-word;line-height:1.35;">
+                        <strong style="font-size:14px;color:#002F6C;display:block;"><?= htmlspecialchars($log['product_name']) ?></strong>
+                        <code style="font-size:12.5px;color:#64748b;font-weight:600;"><?= htmlspecialchars($log['sku']) ?></code>
+                    </td>
+                    <td style="text-align:right;font-weight:800;font-size:14px;color:<?= $qty_color ?>;white-space:nowrap;"><?= $qty_text ?> <?= $unit ?></td>
+                    <td style="font-size:13.5px;font-weight:600;color:#1e293b;word-break:break-word;"><?= htmlspecialchars($log['user_name'] ?? 'System') ?></td>
+                    <td style="font-size:13px;color:#334155;word-break:break-word;line-height:1.35;"><?= $branch ?></td>
+                    <td style="font-size:13px;color:#475569;word-break:break-word;line-height:1.35;"><?= htmlspecialchars($log['notes'] ?? '—') ?></td>
                 </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
@@ -2400,54 +2343,63 @@ $total_alerts_count = count($alert_rows);
 ?>
 
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:20px;">
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #fed7aa;display:flex;align-items:center;justify-content:space-between;">
+    <div style="background:#fff;border-radius:8px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #fed7aa;display:flex;align-items:center;justify-content:space-between;">
         <div>
-            <div style="font-size:14px;font-weight:700;color:#ea580c;text-transform:uppercase;letter-spacing:.3px;">Low Stock Items</div>
-            <div style="font-size:24px;font-weight:800;color:#ea580c;margin-top:4px;"><?= number_format($kpi_low_stock) ?></div>
+            <div style="font-size:15px;font-weight:800;color:#ea580c;text-transform:uppercase;letter-spacing:.3px;">Low Stock Items</div>
+            <div style="font-size:28px;font-weight:800;color:#ea580c;margin-top:4px;"><?= number_format($kpi_low_stock) ?></div>
         </div>
-        <div style="background:#fff7ed;color:#ea580c;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
+        <div style="background:#fff7ed;color:#ea580c;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;"><i class="fas fa-exclamation-triangle"></i></div>
     </div>
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #fecaca;display:flex;align-items:center;justify-content:space-between;">
+    <div style="background:#fff;border-radius:8px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #fecaca;display:flex;align-items:center;justify-content:space-between;">
         <div>
-            <div style="font-size:14px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.3px;">Critical Stock Items</div>
-            <div style="font-size:24px;font-weight:800;color:#dc2626;margin-top:4px;"><?= number_format($kpi_critical_stock) ?></div>
+            <div style="font-size:15px;font-weight:800;color:#dc2626;text-transform:uppercase;letter-spacing:.3px;">Critical Stock Items</div>
+            <div style="font-size:28px;font-weight:800;color:#dc2626;margin-top:4px;"><?= number_format($kpi_critical_stock) ?></div>
         </div>
-        <div style="background:#fef2f2;color:#dc2626;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-fire"></i></div>
+        <div style="background:#fef2f2;color:#dc2626;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;"><i class="fas fa-fire"></i></div>
     </div>
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #fecaca;display:flex;align-items:center;justify-content:space-between;">
+    <div style="background:#fff;border-radius:8px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #fecaca;display:flex;align-items:center;justify-content:space-between;">
         <div>
-            <div style="font-size:14px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock</div>
-            <div style="font-size:24px;font-weight:800;color:#991b1b;margin-top:4px;"><?= number_format($kpi_out_of_stock) ?></div>
+            <div style="font-size:15px;font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock</div>
+            <div style="font-size:28px;font-weight:800;color:#991b1b;margin-top:4px;"><?= number_format($kpi_out_of_stock) ?></div>
         </div>
-        <div style="background:#fef2f2;color:#991b1b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
+        <div style="background:#fef2f2;color:#991b1b;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;"><i class="fas fa-times-circle"></i></div>
     </div>
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
+    <div style="background:#fff;border-radius:8px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
         <div>
-            <div style="font-size:14px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.3px;">Total Active Alerts</div>
-            <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?= number_format($total_alerts_count) ?></div>
+            <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.3px;">Total Active Alerts</div>
+            <div style="font-size:28px;font-weight:800;color:#002F70;margin-top:4px;"><?= number_format($total_alerts_count) ?></div>
         </div>
-        <div style="background:#f0f4f8;color:#002F70;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-bell"></i></div>
+        <div style="background:#f0f4f8;color:#002F70;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;"><i class="fas fa-bell"></i></div>
     </div>
 </div>
 
 <div class="tbl-card">
     <div class="tbl-hd">
-        <div class="tbl-title"><i class="fas fa-exclamation-triangle" style="color:#dc2626;"></i> Active Stock Alerts Catalog</div>
+        <div class="tbl-title" style="font-size:16px;font-weight:800;"><i class="fas fa-exclamation-triangle" style="color:#dc2626;"></i> Active Stock Alerts Catalog</div>
         <div style="display:flex;align-items:center;gap:10px;">
             <input type="text" id="adminAlertSearchInput" placeholder="Search alert products..." oninput="filterAdminAlertTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;width:220px;">
         </div>
     </div>
     <div class="table-wrap" style="overflow-x:hidden; width:100%;">
-        <table class="afto-tbl" id="adminAlertTable" style="width:100%; table-layout:auto; min-width: 0;">
+        <table class="afto-tbl" id="adminAlertTable" style="width:100%; max-width:100%; table-layout:fixed; min-width: 0; border-collapse:collapse;">
+            <colgroup>
+                <col style="width:12%;"> <!-- SKU -->
+                <col style="width:27%;"> <!-- Product Name -->
+                <col style="width:14%;"> <!-- Category -->
+                <col style="width:13%;"> <!-- Current Stock -->
+                <col style="width:12%;"> <!-- Reorder Level -->
+                <col style="width:11%;"> <!-- Status -->
+                <col style="width:11%;"> <!-- Actions -->
+            </colgroup>
             <thead>
                 <tr>
-                    <th style="width:10%;">SKU</th>
-                    <th style="width:25%;">Product Name</th>
-                    <th style="width:15%;">Category</th>
-                    <th style="width:12%;text-align:right;">Current Stock</th>
-                    <th style="width:12%;text-align:right;">Reorder Level</th>
-                    <th style="width:12%;text-align:center;">Status</th>
-                    <th style="width:14%;text-align:center;">Actions</th>
+                    <th style="text-align:center;">SKU</th>
+                    <th style="text-align:left;">Product Name</th>
+                    <th style="text-align:center;">Category</th>
+                    <th style="text-align:right;">Current Stock</th>
+                    <th style="text-align:right;">Reorder Level</th>
+                    <th style="text-align:center;">Status</th>
+                    <th style="text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody id="adminAlertBody">
@@ -2463,14 +2415,14 @@ $total_alerts_count = count($alert_rows);
                     $item_json = htmlspecialchars(json_encode($item), ENT_QUOTES);
                 ?>
                 <tr class="alert-row" data-search="<?= strtolower(htmlspecialchars($item['name'] . ' ' . $item['sku'] . ' ' . ($item['category_name'] ?? ''))) ?>">
-                    <td><code style="font-size:14px;font-weight:700;color:#002F70;"><?= htmlspecialchars($item['sku']) ?></code></td>
-                    <td><strong><?= htmlspecialchars($item['name']) ?></strong></td>
-                    <td style="color:#475569;font-weight:600;"><?= htmlspecialchars($item['category_name'] ?? 'General') ?></td>
-                    <td style="text-align:right;font-weight:800;font-size:15.5px;color:#002F70;"><?= number_format($stock, 0) ?> <?= $unit ?></td>
-                    <td style="text-align:right;font-weight:600;color:#ea580c;"><?= number_format($reorder, 0) ?> <?= $unit ?></td>
-                    <td style="text-align:center;"><span class="badge-lbl <?= $st_cls ?>"><?= htmlspecialchars($st_lbl) ?></span></td>
-                    <td style="text-align:center;">
-                        <button type="button" class="int-btn-outline" onclick='adminViewProduct(<?= $item_json ?>)' style="padding:4px 10px;font-size:14px;"><i class="fas fa-eye"></i> View</button>
+                    <td style="text-align:center;padding:10px 8px;"><code style="font-size:14px;font-weight:700;color:#002F70;"><?= htmlspecialchars($item['sku']) ?></code></td>
+                    <td style="padding:10px 8px;word-break:break-word;line-height:1.35;"><strong style="font-size:15px;color:#002F6C;display:block;"><?= htmlspecialchars($item['name']) ?></strong></td>
+                    <td style="text-align:center;padding:10px 8px;color:#334155;font-weight:600;font-size:14px;word-break:break-word;"><?= htmlspecialchars($item['category_name'] ?? 'General') ?></td>
+                    <td style="text-align:right;padding:10px 8px;font-weight:800;font-size:15.5px;color:<?= $stock <= 0 ? '#dc2626' : '#002F70' ?>;white-space:nowrap;"><?= number_format($stock, 0) ?> <?= $unit ?></td>
+                    <td style="text-align:right;padding:10px 8px;font-weight:700;font-size:14.5px;color:#ea580c;white-space:nowrap;"><?= number_format($reorder, 0) ?> <?= $unit ?></td>
+                    <td style="text-align:center;padding:10px 8px;"><span class="badge-lbl <?= $st_cls ?>" style="font-size:12.5px !important;padding:4px 10px !important;font-weight:800 !important;"><?= htmlspecialchars($st_lbl) ?></span></td>
+                    <td style="text-align:center;padding:10px 8px;">
+                        <button type="button" class="int-btn-outline" onclick='adminViewProduct(<?= $item_json ?>)' style="padding:6px 14px;font-size:13.5px;font-weight:700;border-radius:6px;gap:6px;"><i class="fas fa-eye"></i> View</button>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -2484,7 +2436,7 @@ $total_alerts_count = count($alert_rows);
 
 <!-- ════ VIEW PRODUCT MODAL (WITH SUB-TABS) ════ -->
 <div class="modal-overlay" id="adminViewProdModal" style="z-index:10000;">
-    <div style="background:#fff;border-radius:14px;width:96%;max-width:850px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 40px rgba(0,0,0,.18);overflow:hidden;position:relative;z-index:10001;">
+    <div style="background:#fff;border-radius:14px;width:96%;max-width:980px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 40px rgba(0,0,0,.18);overflow:hidden;position:relative;z-index:10001;box-sizing:border-box;">
         <!-- Header -->
         <div style="padding:16px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;flex-shrink:0;">
             <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:8px;">
@@ -2492,19 +2444,19 @@ $total_alerts_count = count($alert_rows);
             </div>
         </div>
         <!-- Sub-tabs inside modal -->
-        <div style="display:flex;border-bottom:2px solid #e2e8f0;background:#f8fafc;flex-shrink:0;padding:0 16px;overflow-x: hidden;white-space:nowrap;gap:4px;">
+        <div style="display:flex;border-bottom:2px solid #e2e8f0;background:#f8fafc;flex-shrink:0;padding:0 16px;overflow-x:hidden;white-space:nowrap;gap:4px;">
             <button type="button" class="modal-tab-btn active" id="vpmTab1" onclick="vpmSwitchTab(1)"><i class="fas fa-info-circle"></i> Product Information</button>
             <button type="button" class="modal-tab-btn" id="vpmTab2" onclick="vpmSwitchTab(2)"><i class="fas fa-chart-pie"></i> Inventory Summary</button>
             <button type="button" class="modal-tab-btn" id="vpmTab3" onclick="vpmSwitchTab(3)"><i class="fas fa-layer-group"></i> Batch Inventory (FIFO)</button>
         </div>
         <!-- Body -->
-        <div style="overflow-y:auto;flex:1;padding:22px;" id="vpmBody">
+        <div style="overflow-y:auto;overflow-x:hidden !important;flex:1;padding:22px;box-sizing:border-box;" id="vpmBody">
             <!-- SUB-TAB 1: Product Information -->
             <div id="vpmPane1">
                 <div style="font-size:14px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-info-circle"></i> Product Details</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;margin-bottom:20px;">
                     <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">SKU</div><div id="vpmSku" style="font-weight:700;color:#002F70;font-size:14px;"></div></div>
-                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Product Name</div><div id="vpmName" style="font-weight:800;color:#0f172a;font-size:15px;"></div></div>
+                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Product Name</div><div id="vpmName" style="font-weight:800;color:#0f172a;font-size:15px;word-break:break-word;"></div></div>
                     <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Category</div><div id="vpmCategory" style="font-weight:600;color:#334155;"></div></div>
                     <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Brand</div><div id="vpmBrand" style="font-weight:600;color:#334155;"></div></div>
                     <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Supplier</div><div id="vpmSupplier" style="font-weight:600;color:#334155;"></div></div>
@@ -2527,14 +2479,16 @@ $total_alerts_count = count($alert_rows);
                 </div>
             </div>
             <!-- SUB-TAB 3: Batch Inventory (FIFO) -->
-            <div id="vpmPane3" style="display:none;">
+            <div id="vpmPane3" style="display:none;width:100%;box-sizing:border-box;">
                 <div style="font-size:14px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-layer-group"></i> FIFO Batch Inventory Breakdown</div>
-                <div id="vpmFifoTable"><div style="text-align:center;padding:24px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</div></div>
+                <div id="vpmFifoTable" style="width:100%;overflow-x:hidden !important;box-sizing:border-box;"><div style="text-align:center;padding:24px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</div></div>
             </div>
         </div>
         <!-- Footer -->
-        <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:10px;background:#f8fafc;flex-shrink:0;">
-            <button type="button" onclick="closeAdminViewProdModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;">Close</button>
+        <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:10px;background:#ffffff;flex-shrink:0;">
+            <button type="button" onclick="closeAdminViewProdModal()" style="background:transparent !important;background-color:transparent !important;background-image:none !important;color:#475569 !important;-webkit-text-fill-color:#475569 !important;border:1.5px solid #cbd5e1 !important;padding:8px 22px;border-radius:6px;font-size:14.5px;font-weight:700 !important;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:none !important;transition:all 0.15s ease;" onmouseover="this.style.background='#f1f5f9';this.style.color='#0f172a'" onmouseout="this.style.background='transparent';this.style.color='#475569'">
+                <i class="fas fa-times" style="color:inherit !important;-webkit-text-fill-color:inherit !important;"></i> Close
+            </button>
         </div>
     </div>
 </div>
@@ -2760,19 +2714,52 @@ function adminViewProduct(item) {
     .then(function(res) { return res.json(); })
     .then(function(data) {
         if (!data.success || !data.deliveries || data.deliveries.length === 0) {
-            document.getElementById('vpmFifoTable').innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:14.5px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Batch ID</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Received Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Remaining Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Unit Cost</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Selling Price</th></tr></thead><tbody><tr><td colspan="6" style="text-align:center;padding:16px;color:#94a3b8;">No FIFO batch records found. Defaulting to main inventory pool.</td></tr></tbody></table>';
+            document.getElementById('vpmFifoTable').innerHTML = 
+                '<table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:13.5px;box-sizing:border-box;min-width:0;">' +
+                '<colgroup>' +
+                '<col style="width:18%;">' +
+                '<col style="width:17%;">' +
+                '<col style="width:16%;">' +
+                '<col style="width:16%;">' +
+                '<col style="width:16%;">' +
+                '<col style="width:17%;">' +
+                '</colgroup>' +
+                '<thead><tr style="background:#f8fafc;color:#002F70;">' +
+                '<th style="padding:9px 6px;text-align:left;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Batch ID</th>' +
+                '<th style="padding:9px 6px;text-align:left;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Delivery Date</th>' +
+                '<th style="padding:9px 6px;text-align:right;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Received Qty</th>' +
+                '<th style="padding:9px 6px;text-align:right;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Remaining Qty</th>' +
+                '<th style="padding:9px 6px;text-align:right;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Unit Cost</th>' +
+                '<th style="padding:9px 6px;text-align:right;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Selling Price</th>' +
+                '</tr></thead>' +
+                '<tbody><tr><td colspan="6" style="text-align:center;padding:24px 12px;color:#94a3b8;font-size:13.5px;word-break:break-word;">No FIFO batch records found. Defaulting to main inventory pool.</td></tr></tbody></table>';
             return;
         }
-        var fHtml = '<table style="width:100%;border-collapse:collapse;font-size:14.5px;">';
-        fHtml += '<thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Batch ID</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Received Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Remaining Qty</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Unit Cost</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Selling Price</th></tr></thead><tbody>';
+        var fHtml = '<table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:13.5px;box-sizing:border-box;min-width:0;">';
+        fHtml += '<colgroup>' +
+            '<col style="width:18%;">' +
+            '<col style="width:17%;">' +
+            '<col style="width:16%;">' +
+            '<col style="width:16%;">' +
+            '<col style="width:16%;">' +
+            '<col style="width:17%;">' +
+            '</colgroup>';
+        fHtml += '<thead><tr style="background:#f8fafc;color:#002F70;">' +
+            '<th style="padding:9px 6px;text-align:left;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Batch ID</th>' +
+            '<th style="padding:9px 6px;text-align:left;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Delivery Date</th>' +
+            '<th style="padding:9px 6px;text-align:right;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Received Qty</th>' +
+            '<th style="padding:9px 6px;text-align:right;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Remaining Qty</th>' +
+            '<th style="padding:9px 6px;text-align:right;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Unit Cost</th>' +
+            '<th style="padding:9px 6px;text-align:right;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Selling Price</th>' +
+            '</tr></thead><tbody>';
         data.deliveries.forEach(function(d) {
             var dateStr = d.encoded_at ? new Date(d.encoded_at).toLocaleDateString() : '—';
-            fHtml += '<tr><td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;"><code style="color:#002F70;font-weight:700;">' + esc(d.batch_no || 'BATCH-' + d.id) + '</code></td>';
-            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;">' + dateStr + '</td>';
-            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">' + Number(d.qty_received).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
-            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;">' + Number(d.qty_received).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
-            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">₱' + Number(d.unit_cost || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
-            fHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;color:#16a34a;font-weight:700;">₱' + Number(item.price || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td></tr>';
+            fHtml += '<tr><td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><code style="color:#002F70;font-weight:700;">' + esc(d.batch_no || 'BATCH-' + d.id) + '</code></td>';
+            fHtml += '<td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + dateStr + '</td>';
+            fHtml += '<td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + Number(d.qty_received).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
+            fHtml += '<td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + Number(d.qty_received).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
+            fHtml += '<td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">₱' + Number(d.unit_cost || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
+            fHtml += '<td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;text-align:right;color:#16a34a;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">₱' + Number(item.price || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td></tr>';
         });
         fHtml += '</tbody></table>';
         document.getElementById('vpmFifoTable').innerHTML = fHtml;

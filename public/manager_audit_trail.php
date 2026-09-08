@@ -332,34 +332,34 @@ if (isset($_GET['ajax_mat']) && $_GET['ajax_mat'] == '1') {
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-.aat-wrap{max-width:1600px;margin:0 auto;padding:0 16px 80px}
+.aat-wrap{max-width:100%!important;width:100%!important;box-sizing:border-box!important;margin:0 auto;padding:0 16px 80px;overflow-x:hidden!important;}
 .aat-head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px}
-.aat-head h1{margin:0;font-size:20px;font-weight:800;color:#002244;display:flex;align-items:center;gap:8px}
-.aat-head p{margin:4px 0 0;font-size:13px;color:#64748b}
+.aat-head h1{margin:0;font-size:22px;font-weight:800;color:#002244;display:flex;align-items:center;gap:8px}
+.aat-head p{margin:4px 0 0;font-size:14px;color:#475569;font-weight:600}
 .aat-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
-.aat-kpi-c{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.aat-kpi-c{background:#fff;border:1.5px solid #cbd5e1;border-radius:12px;padding:16px 18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.04)}
 .aat-kpi-n{font-size:26px;font-weight:900;line-height:1}
-.aat-kpi-l{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-top:5px;font-weight:700}
-.aat-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:16px;box-shadow:0 1px 6px rgba(0,0,0,.05)}
-.aat-chead{background:#002F6C;color:#fff;padding:13px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
-.aat-chead h3{margin:0;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
+.aat-kpi-l{font-size:12px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-top:5px;font-weight:800}
+.aat-card{background:#fff;border:1.5px solid #cbd5e1;border-radius:12px;overflow:hidden;margin-bottom:16px;box-shadow:0 1px 6px rgba(0,0,0,.05)}
+.aat-chead{background:#002F6C;color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.aat-chead h3{margin:0;font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px}
 .aat-cbody{padding:16px 20px}
-.aat-frow{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
-.aat-fgrp{display:flex;flex-direction:column;gap:4px}
-.aat-flbl{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}
-.aat-inp{height:36px;padding:0 10px;border:1px solid #cbd5e1;border-radius:7px;font-size:13px;color:#1e293b;background:#fff;outline:none}
-.aat-inp:focus{border-color:#002F6C;box-shadow:0 0 0 3px rgba(0,47,108,.1)}
-.aat-btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;text-decoration:none;transition:all .15s;white-space:nowrap}
+.aat-frow{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.aat-fgrp{display:flex;flex-direction:column;gap:5px}
+.aat-flbl{font-size:12px;font-weight:800;color:#002F6C;text-transform:uppercase;letter-spacing:.4px}
+.aat-inp{height:38px;padding:0 10px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:13.5px;font-weight:600;color:#1e293b;background:#fff;outline:none}
+.aat-inp:focus{border-color:#002F6C;box-shadow:0 0 0 3px rgba(0,47,108,.12)}
+.aat-btn{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 16px;border-radius:7px;font-size:13.5px;font-weight:700;cursor:pointer;border:1.5px solid transparent;text-decoration:none;transition:all .15s;white-space:nowrap}
 .aat-btn-blue{color:#002F6C;border-color:#002F6C;background:#fff}.aat-btn-blue:hover{background:#002F6C;color:#fff}
 .aat-btn-gray{color:#4b5563;border-color:#6b7280;background:#fff}.aat-btn-gray:hover{background:#6b7280;color:#fff}
 .aat-btn-grn{color:#16a34a;border-color:#16a34a;background:#fff}.aat-btn-grn:hover{background:#16a34a;color:#fff}
 .aat-btn-xl{color:#15803d;border-color:#15803d;background:#fff}.aat-btn-xl:hover{background:#15803d;color:#fff}
-.aat-tbl{width:100%;border-collapse:collapse;font-size:12px}
-.aat-tbl thead th{background:#002F6C;color:#fff;padding:9px 8px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
-.aat-tbl tbody td{padding:8px 8px;border-bottom:1px solid #f1f5f9;vertical-align:middle;color:#1e293b}
+.aat-tbl{width:100%!important;min-width:0!important;border-collapse:collapse;font-size:13.5px}
+.aat-tbl thead th{background:#002F6C;color:#fff;padding:11px 10px;text-align:left;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
+.aat-tbl tbody td{padding:10px 10px;border-bottom:1px solid #f1f5f9;vertical-align:middle;color:#1e293b;font-size:13.5px}
 .aat-tbl tbody tr:hover td{background:#f0f7ff}
 .aat-tbl tbody tr:last-child td{border-bottom:none}
-.badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap}
+.badge{display:inline-block;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:800;white-space:nowrap}
 .badge-success{background:#dcfce7;color:#166534;border:1px solid #86efac}
 .badge-pending{background:#fef9c3;color:#854d0e;border:1px solid #fde047}
 .badge-cancel{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
@@ -369,7 +369,7 @@ include __DIR__ . '/../partials/header.php';
 .badge-auth{background:#fff7ed;color:#c2410c;border:1px solid #fed7aa}
 .badge-approval{background:#f0fdf4;color:#15803d;border:1px solid #86efac}
 .badge-other{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0}
-.aat-notice{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 16px;font-size:12px;color:#1d4ed8;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.aat-notice{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 18px;font-size:13px;font-weight:600;color:#1d4ed8;margin-bottom:16px;display:flex;align-items:center;gap:8px}
 @media(max-width:768px){.aat-frow{flex-direction:column}.aat-inp{width:100%!important}.aat-kpi{grid-template-columns:repeat(2,1fr)}}
 </style>
 
@@ -474,7 +474,7 @@ include __DIR__ . '/../partials/header.php';
         </span>
     </div>
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-    <table class="aat-tbl">
+    <table class="aat-tbl report-table no-min-width print-table">
         <thead>
             <tr>
                 <th style="width:105px;">Date / Time</th>

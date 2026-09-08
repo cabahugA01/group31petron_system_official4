@@ -66,14 +66,21 @@ try {
         "SELECT DISTINCT shift_period, shift_name
          FROM (
              SELECT shift_period, shift_name FROM fuel_transactions
-             WHERE station_id=:sid AND DATE(transaction_date)=:d
+             WHERE station_id=:sid AND DATE(transaction_date) BETWEEN :dstart AND :dend
              UNION
              SELECT shift_period, shift_name FROM merchandise_transactions
-             WHERE station_id=:sid2 AND DATE(transaction_date)=:d2
+             WHERE station_id=:sid2 AND DATE(transaction_date) BETWEEN :dstart2 AND :dend2
          ) combined
          ORDER BY shift_name"
     );
-    $stmtS->execute(['sid'=>$station_id,'d'=>$biz_date,'sid2'=>$station_id,'d2'=>$biz_date]);
+    $stmtS->execute([
+        'sid'     => $station_id,
+        'dstart'  => $date_start,
+        'dend'    => $date_end,
+        'sid2'    => $station_id,
+        'dstart2' => $date_start,
+        'dend2'   => $date_end,
+    ]);
     $available_shifts = $stmtS->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Exception $e) {}
 
@@ -468,38 +475,263 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <style>
+html, body {
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+}
 .pagination-wrapper, .client-side-pagination, .petron-pagination-bar,
 .petron-rows-select-wrap, .rows-per-page { display: none !important; }
 
+/* Main Container - Zero Horizontal Scrolling */
+.stock-page {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 16px !important;
+    overflow-x: hidden !important;
+}
+
+#strPrintArea {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+}
+
+/* Controls Bar */
+.str-controls-bar {
+    background: #ffffff !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 12px !important;
+    padding: 14px 18px !important;
+    margin-bottom: 16px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+    flex-wrap: wrap !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.03) !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-width: 100% !important;
+}
+.str-filters-group {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    flex-wrap: wrap !important;
+    flex: 1 1 auto !important;
+}
+.str-filter-item {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+.str-filter-label {
+    font-weight: 800 !important;
+    color: #002F6C !important;
+    font-size: 13px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
+}
+.str-filter-input, .str-filter-select {
+    height: 38px !important;
+    padding: 6px 10px !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 7px !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    color: #1e293b !important;
+    background: #ffffff !important;
+    outline: none !important;
+    box-sizing: border-box !important;
+}
+.str-filter-input:focus, .str-filter-select:focus {
+    border-color: #002F6C !important;
+    box-shadow: 0 0 0 3px rgba(0,47,108,0.12) !important;
+}
+.str-btn-apply {
+    height: 38px !important;
+    padding: 0 18px !important;
+    background: #002F6C !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    border: none !important;
+    border-radius: 7px !important;
+    font-size: 13.5px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    transition: background 0.15s !important;
+}
+.str-btn-apply:hover {
+    background: #001f4d !important;
+}
+
 /* Export Group */
-.rpt-export-group { display: flex !important; align-items: center !important; gap: 6px !important; margin-left: auto !important; white-space: nowrap !important; }
-.rpt-export-btn { padding: 7px 13px !important; font-size: 11px !important; font-weight: 700 !important; border-radius: 4px !important; cursor: pointer !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; background: #ffffff !important; border: 1px solid !important; transition: all 0.18s !important; text-decoration: none !important; }
-.rpt-btn-print  { color: #475569 !important; border-color: transparent !important; background: transparent !important; }
-.rpt-btn-print:hover  { background: #f1f5f9 !important; }
+.rpt-export-group {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin-left: auto !important;
+    flex-wrap: wrap !important;
+}
+.rpt-export-btn {
+    height: 38px !important;
+    padding: 0 14px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    border-radius: 7px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    background: #ffffff !important;
+    border: 1.5px solid !important;
+    transition: all 0.18s !important;
+    text-decoration: none !important;
+    box-sizing: border-box !important;
+}
+.rpt-btn-print  { color: #002F6C !important; border-color: #002F6C !important; background: #ffffff !important; }
+.rpt-btn-print:hover  { background: #002F6C !important; color: #ffffff !important; }
 .rpt-btn-pdf   { color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
-.rpt-btn-pdf:hover   { background: #fef2f2 !important; }
+.rpt-btn-pdf:hover   { background: #dc2626 !important; color: #ffffff !important; }
 .rpt-btn-excel { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
-.rpt-btn-excel:hover { background: #f0fdf4 !important; }
-.rpt-btn-csv   { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
-.rpt-btn-csv:hover   { background: #f0fdf4 !important; }
+.rpt-btn-excel:hover { background: #16a34a !important; color: #ffffff !important; }
+.rpt-btn-csv   { color: #0284c7 !important; border-color: #0284c7 !important; background: #ffffff !important; }
+.rpt-btn-csv:hover   { background: #0284c7 !important; color: #ffffff !important; }
 
 /* Section Cards */
-.str-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
-.str-card h3 { font-size: 12px; font-weight: 800; color: #002F6C; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 12px 0; padding-bottom: 8px; border-bottom: 2px solid #002F6C; }
-.str-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.str-table th { padding: 8px 12px; background: #002F6C; color: #fff; font-size: 11px; font-weight: 700; text-align: left; }
-.str-table th:last-child { text-align: right; }
-.str-table td { padding: 7px 12px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
-.str-table td:last-child { text-align: right; font-weight: 600; color: #002F6C; }
-.str-table tr:last-child td { border-bottom: none; }
-.str-table tr.str-total td { font-weight: 800; background: #e8f0fe; border-top: 2px solid #002F6C; color: #002F6C; }
-.str-table td.str-center { text-align: center; }
-.str-info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-.str-info-item { display: flex; flex-direction: column; gap: 2px; }
-.str-info-label { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.4px; }
-.str-info-value { font-size: 13px; font-weight: 700; color: #1e293b; }
-.str-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-@media (max-width: 768px) { .str-2col { grid-template-columns: 1fr; } }
+.str-card {
+    background: #ffffff !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 12px !important;
+    padding: 18px 20px !important;
+    margin-bottom: 16px !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.03) !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+}
+.str-card h3 {
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    color: #002F6C !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    margin: 0 0 14px 0 !important;
+    padding-bottom: 10px !important;
+    border-bottom: 2.5px solid #002F6C !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+
+/* Tables - Senior Readable & Proportional Layout */
+table.str-table {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    font-size: 14px !important;
+    margin: 0 !important;
+}
+table.str-table th {
+    padding: 10px 12px !important;
+    background: #002F6C !important;
+    color: #ffffff !important;
+    font-size: 13.5px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    text-align: left !important;
+    border-bottom: 2px solid #001f4d !important;
+}
+table.str-table th:last-child {
+    text-align: right !important;
+}
+table.str-table td {
+    padding: 10px 12px !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    color: #1e293b !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    vertical-align: middle !important;
+}
+table.str-table td:last-child {
+    text-align: right !important;
+    font-weight: 800 !important;
+    color: #002F6C !important;
+    font-size: 14.5px !important;
+}
+table.str-table tr:hover td {
+    background: #f8fafc !important;
+}
+table.str-table tr:last-child td {
+    border-bottom: none !important;
+}
+table.str-table tr.str-total td {
+    font-weight: 900 !important;
+    background: #eff6ff !important;
+    border-top: 2px solid #002F6C !important;
+    border-bottom: 2px solid #002F6C !important;
+    color: #002F6C !important;
+    font-size: 15px !important;
+}
+table.str-table td.str-center, table.str-table th.str-center {
+    text-align: center !important;
+}
+
+/* Grid Layout for Two Columns */
+.str-2col {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 16px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+@media (max-width: 900px) {
+    .str-2col {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* Shift Info Grid */
+.str-info-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)) !important;
+    gap: 12px !important;
+    width: 100% !important;
+}
+.str-info-item {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+    background: #f8fafc !important;
+    padding: 10px 14px !important;
+    border-radius: 8px !important;
+    border: 1px solid #e2e8f0 !important;
+}
+.str-info-label {
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    color: #002F6C !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.4px !important;
+}
+.str-info-value {
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    color: #0f172a !important;
+}
 
 /* Print CSS */
 @media print {
@@ -509,42 +741,40 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-shadow: none !important; }
     html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; height: auto !important; font-size: 10px !important; }
     body > *:not(.sfss-print-only) { display: none !important; }
-    .stock-page .controls, nav, header, footer, aside, .sidebar, .main-sidebar, .main-header, .navbar, .topbar,
+    .stock-page .controls, .str-controls-bar, nav, header, footer, aside, .sidebar, .main-sidebar, .main-header, .navbar, .topbar,
     #toggleScrollBtn, .toggle-scroll-btn, .toast, .toast-container { display: none !important; }
     .sfss-print-only { display: block !important; position: static !important; width: 100% !important; margin: 0 !important; padding: 0 !important; background: #fff !important; font-size: 10px !important; color: #333 !important; }
-    .sfss-print-only .str-card { border: 1px solid #ccc !important; page-break-inside: avoid !important; padding: 8px 10px !important; margin-bottom: 8px !important; }
-    .sfss-print-only .str-card h3 { font-size: 10px !important; margin-bottom: 6px !important; }
-    .sfss-print-only .str-table th { font-size: 9px !important; padding: 4px 6px !important; background: #002F6C !important; color: #fff !important; }
-    .sfss-print-only .str-table td { font-size: 9px !important; padding: 3px 6px !important; }
-    .sfss-print-only .str-2col { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
-    .sfss-print-only .str-signature-wrap { display: flex !important; justify-content: flex-end !important; page-break-inside: avoid !important; margin-top: 10px !important; padding: 0 !important; border: none !important; background: transparent !important; box-shadow: none !important; }
-    .sfss-print-only .str-sig-line { border-top: 1.5px solid #002F6C !important; width: 100% !important; margin-bottom: 3px !important; }
+    .sfss-print-only .str-card { border: 1px solid #cbd5e1 !important; page-break-inside: avoid !important; padding: 10px 14px !important; margin-bottom: 10px !important; box-shadow: none !important; }
+    .sfss-print-only .str-card h3 { font-size: 11px !important; margin-bottom: 8px !important; padding-bottom: 6px !important; }
+    .sfss-print-only table.str-table th { font-size: 10px !important; padding: 5px 8px !important; background: #002F6C !important; color: #fff !important; }
+    .sfss-print-only table.str-table td { font-size: 10px !important; padding: 5px 8px !important; }
+    .sfss-print-only .str-2col { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+    .sfss-print-only .str-signature-wrap { display: flex !important; justify-content: flex-end !important; page-break-inside: avoid !important; margin-top: 12px !important; padding: 0 !important; border: none !important; background: transparent !important; box-shadow: none !important; }
+    .sfss-print-only .str-sig-line { border-top: 1.5px solid #002F6C !important; width: 100% !important; margin-bottom: 4px !important; }
     .sfss-print-only, .sfss-print-only * { min-height: 0 !important; height: auto !important; }
     .sfss-print-only i, .sfss-print-only .fas, .sfss-print-only .far, .sfss-print-only [class*="fa-"] { display: none !important; }
 }
 </style>
 
-<div class="stock-page" style="padding:20px;">
+<div class="stock-page">
 
     <!-- CONTROLS BAR -->
-    <div class="controls" style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+    <div class="str-controls-bar">
 
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            <div style="display:flex;align-items:center;gap:6px;">
-                <label style="font-weight:700;color:#002F6C;font-size:12px;text-transform:uppercase;">From</label>
-                <input type="date" id="date_start" value="<?= htmlspecialchars($date_start) ?>" max="<?= $today ?>"
-                       style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;background:#fff;">
+        <div class="str-filters-group">
+            <div class="str-filter-item">
+                <label class="str-filter-label">From</label>
+                <input type="date" id="date_start" value="<?= htmlspecialchars($date_start) ?>" max="<?= $today ?>" class="str-filter-input">
             </div>
 
-            <div style="display:flex;align-items:center;gap:6px;">
-                <label style="font-weight:700;color:#002F6C;font-size:12px;text-transform:uppercase;">To</label>
-                <input type="date" id="date_end" value="<?= htmlspecialchars($date_end) ?>" max="<?= $today ?>"
-                       style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;background:#fff;">
+            <div class="str-filter-item">
+                <label class="str-filter-label">To</label>
+                <input type="date" id="date_end" value="<?= htmlspecialchars($date_end) ?>" max="<?= $today ?>" class="str-filter-input">
             </div>
 
-            <div style="display:flex;align-items:center;gap:6px;">
-                <label style="font-weight:700;color:#002F6C;font-size:12px;text-transform:uppercase;">Shift</label>
-                <select id="filter_shift" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;background:#fff;">
+            <div class="str-filter-item">
+                <label class="str-filter-label">Shift</label>
+                <select id="filter_shift" class="str-filter-select">
                     <option value="">All Shifts</option>
                     <option value="first"  <?= strtolower($filter_shift)==='first'  ? 'selected':'' ?>>Shift 1 (6AM–2PM)</option>
                     <option value="second" <?= strtolower($filter_shift)==='second' ? 'selected':'' ?>>Shift 2 (2PM–10PM)</option>
@@ -552,7 +782,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 </select>
             </div>
 
-            <button type="button" onclick="applyFilters()" style="padding:6px 16px;background:#002F6C;color:#fff;font-weight:700;border:none;border-radius:6px;font-size:13px;cursor:pointer;">
+            <button type="button" onclick="applyFilters()" class="str-btn-apply">
                 <i class="fas fa-filter"></i> Apply
             </button>
         </div>
@@ -579,17 +809,17 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     <div class="print-area" id="strPrintArea">
 
         <!-- REPORT HEADER -->
-        <div class="str-card" style="text-align:center;padding:18px 24px;">
-            <h1 style="font-size:22px;font-weight:900;color:#002F6C;margin:0 0 4px 0;letter-spacing:0.5px;">SHIFT TURNOVER REPORT</h1>
-            <div style="font-size:13px;font-weight:700;color:#1e293b;"><?= htmlspecialchars($station_name) ?><?= $station_location ? ' — ' . htmlspecialchars($station_location) : '' ?></div>
-            <div style="font-size:12px;color:#475569;margin-top:4px;">
+        <div class="str-card" style="text-align:center; padding:20px 24px;">
+            <h1 style="font-size:24px; font-weight:900; color:#002F6C; margin:0 0 6px 0; letter-spacing:0.5px; font-family:'Segoe UI', sans-serif;">SHIFT TURNOVER REPORT</h1>
+            <div style="font-size:15px; font-weight:800; color:#1e293b;"><?= htmlspecialchars($station_name) ?><?= $station_location ? ' — ' . htmlspecialchars($station_location) : '' ?></div>
+            <div style="font-size:14px; color:#475569; font-weight:700; margin-top:5px;">
                 <strong>Date Period:</strong> <?= date('F d, Y', strtotime($date_start)) ?><?= $date_start !== $date_end ? ' – ' . date('F d, Y', strtotime($date_end)) : '' ?>
             </div>
         </div>
 
         <!-- SHIFT INFORMATION -->
         <div class="str-card">
-            <h3><i class="fas fa-id-card-alt" style="margin-right:6px;"></i>Shift Information</h3>
+            <h3><i class="fas fa-id-card-alt"></i>Shift Information</h3>
             <div class="str-info-grid">
                 <div class="str-info-item">
                     <span class="str-info-label">Date Period</span>
@@ -614,7 +844,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 <?php if (count($shift_sessions) > 1): ?>
                 <div class="str-info-item" style="grid-column:1/-1;">
                     <span class="str-info-label">All Staff on Shift</span>
-                    <span class="str-info-value" style="font-size:12px;">
+                    <span class="str-info-value" style="font-size:13px;">
                         <?= htmlspecialchars(implode(', ', array_filter(array_map(fn($s) => trim($s['staff_name']), $shift_sessions)))) ?>
                     </span>
                 </div>
@@ -627,8 +857,12 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
             <!-- SALES SUMMARY -->
             <div class="str-card">
-                <h3><i class="fas fa-chart-bar" style="margin-right:6px;"></i>Sales Summary</h3>
-                <table class="str-table">
+                <h3><i class="fas fa-chart-bar"></i>Sales Summary</h3>
+                <table class="str-table report-table no-min-width print-table">
+                    <colgroup>
+                        <col style="width: 55%;">
+                        <col style="width: 45%;">
+                    </colgroup>
                     <thead>
                         <tr><th>Category</th><th>Amount</th></tr>
                     </thead>
@@ -645,8 +879,12 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
             <!-- PAYMENT COLLECTION SUMMARY -->
             <div class="str-card">
-                <h3><i class="fas fa-money-bill-wave" style="margin-right:6px;"></i>Payment Collection Summary</h3>
-                <table class="str-table">
+                <h3><i class="fas fa-money-bill-wave"></i>Payment Collection Summary</h3>
+                <table class="str-table report-table no-min-width print-table">
+                    <colgroup>
+                        <col style="width: 55%;">
+                        <col style="width: 45%;">
+                    </colgroup>
                     <thead>
                         <tr><th>Payment Method</th><th>Amount</th></tr>
                     </thead>
@@ -665,8 +903,12 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
             <!-- ACCOUNTS RECEIVABLE TURNOVER -->
             <div class="str-card">
-                <h3><i class="fas fa-file-invoice-dollar" style="margin-right:6px;"></i>Accounts Receivable Turnover</h3>
-                <table class="str-table">
+                <h3><i class="fas fa-file-invoice-dollar"></i>Accounts Receivable Turnover</h3>
+                <table class="str-table report-table no-min-width print-table">
+                    <colgroup>
+                        <col style="width: 55%;">
+                        <col style="width: 45%;">
+                    </colgroup>
                     <thead>
                         <tr><th>Description</th><th>Amount</th></tr>
                     </thead>
@@ -680,8 +922,12 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
             <!-- CASH TURNOVER -->
             <div class="str-card">
-                <h3><i class="fas fa-cash-register" style="margin-right:6px;"></i>Cash Turnover</h3>
-                <table class="str-table">
+                <h3><i class="fas fa-cash-register"></i>Cash Turnover</h3>
+                <table class="str-table report-table no-min-width print-table">
+                    <colgroup>
+                        <col style="width: 55%;">
+                        <col style="width: 45%;">
+                    </colgroup>
                     <thead>
                         <tr><th>Description</th><th>Amount</th></tr>
                     </thead>
@@ -698,8 +944,13 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
         <!-- FUEL SUMMARY -->
         <div class="str-card">
-            <h3><i class="fas fa-gas-pump" style="margin-right:6px;"></i>Fuel Summary</h3>
-            <table class="str-table">
+            <h3><i class="fas fa-gas-pump"></i>Fuel Summary</h3>
+            <table class="str-table report-table no-min-width print-table">
+                <colgroup>
+                    <col style="width: 40%;">
+                    <col style="width: 30%;">
+                    <col style="width: 30%;">
+                </colgroup>
                 <thead>
                     <tr>
                         <th>Fuel Type</th>
@@ -712,7 +963,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                         <?php $total_liters = 0; foreach ($fuel_summary as $f): $total_liters += $f['liters']; ?>
                         <tr>
                             <td><?= htmlspecialchars($f['fuel_type']) ?></td>
-                            <td style="text-align:right;font-weight:600;color:#15803d;"><?= number_format($f['liters'], 2) ?> L</td>
+                            <td style="text-align:right;font-weight:700;color:#15803d;"><?= number_format($f['liters'], 2) ?> L</td>
                             <td>₱<?= number_format($f['amount'], 2) ?></td>
                         </tr>
                         <?php endforeach; ?>
@@ -722,7 +973,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                             <td>₱<?= number_format($fuel_sales_total, 2) ?></td>
                         </tr>
                     <?php else: ?>
-                        <tr><td colspan="3" style="text-align:center;color:#6b7280;font-style:italic;padding:20px;">No fuel transactions for this period.</td></tr>
+                        <tr><td colspan="3" style="text-align:center;color:#6b7280;font-style:italic;padding:24px;font-size:14px;">No fuel transactions for this period.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>
@@ -733,21 +984,25 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
             <!-- JOB ORDER SUMMARY -->
             <div class="str-card">
-                <h3><i class="fas fa-tools" style="margin-right:6px;"></i>Job Order Summary</h3>
-                <table class="str-table">
+                <h3><i class="fas fa-tools"></i>Job Order Summary</h3>
+                <table class="str-table report-table no-min-width print-table">
+                    <colgroup>
+                        <col style="width: 65%;">
+                        <col style="width: 35%;">
+                    </colgroup>
                     <thead>
-                        <tr><th>Status</th><th style="text-align:center;">Count</th></tr>
+                        <tr><th>Status</th><th style="text-align:center;" class="str-center">Count</th></tr>
                     </thead>
                     <tbody>
                         <?php foreach ($jo_status_counts as $st => $cnt): ?>
                         <tr>
                             <td><?= htmlspecialchars($st) ?></td>
-                            <td class="str-center"><?= $cnt ?></td>
+                            <td class="str-center" style="font-weight:700;"><?= $cnt ?></td>
                         </tr>
                         <?php endforeach; ?>
                         <tr class="str-total">
                             <td>Total</td>
-                            <td class="str-center"><?= array_sum($jo_status_counts) ?></td>
+                            <td class="str-center" style="font-weight:800;"><?= array_sum($jo_status_counts) ?></td>
                         </tr>
                     </tbody>
                 </table>
@@ -755,8 +1010,12 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
             <!-- MERCHANDISE SUMMARY -->
             <div class="str-card">
-                <h3><i class="fas fa-shopping-cart" style="margin-right:6px;"></i>Merchandise Summary</h3>
-                <table class="str-table">
+                <h3><i class="fas fa-shopping-cart"></i>Merchandise Summary</h3>
+                <table class="str-table report-table no-min-width print-table">
+                    <colgroup>
+                        <col style="width: 55%;">
+                        <col style="width: 45%;">
+                    </colgroup>
                     <thead>
                         <tr><th>Description</th><th>Value</th></tr>
                     </thead>
@@ -780,16 +1039,16 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                 }
             }
         ?>
-        <div class="str-signature-wrap" style="display:none; justify-content:flex-end; margin-top:20px; padding:0 4px;">
+        <div class="str-signature-wrap" style="display:none; justify-content:flex-end; margin-top:24px; padding:0 4px;">
             <div style="display:inline-flex; flex-direction:column; align-items:center; text-align:center; width:fit-content; max-width:100%;">
-                <div style="font-size:11px; font-weight:800; color:#002F6C; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:28px; align-self:flex-start;">
+                <div style="font-size:12px; font-weight:800; color:#002F6C; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:28px; align-self:flex-start;">
                     Prepared By:
                 </div>
-                <div class="str-sig-line" style="border-top:1.5px solid #002F6C; width:100%; margin-bottom:4px;"></div>
-                <div style="font-size:12px; font-weight:800; color:#1e293b; text-transform:uppercase; white-space:nowrap;">
+                <div class="str-sig-line" style="border-top:2px solid #002F6C; width:100%; margin-bottom:5px;"></div>
+                <div style="font-size:14px; font-weight:800; color:#1e293b; text-transform:uppercase; white-space:nowrap;">
                     <?= htmlspecialchars($clean_staff_display) ?>
                 </div>
-                <div style="font-size:10px; color:#64748b; font-weight:600; margin-top:2px; white-space:nowrap;">
+                <div style="font-size:12px; color:#475569; font-weight:700; margin-top:2px; white-space:nowrap;">
                     Signature over Printed Name
                 </div>
             </div>

@@ -722,7 +722,7 @@ function handle_approve($pdo, $me, $role, $station_id) {
             'Stock Request Approved',
             "Your stock request {$pr_id} for {$req['item_name']} (Qty: {$approved_quantity}) has been approved." . ($manager_notes ? " Notes: {$manager_notes}" : ''),
             "stock_req_approved_{$request_id}",
-            'staff_stock_requests.php?id=' . $request_id,
+            'staff_inventory_merchandise.php?id=' . $request_id,
             'stock_request', $request_id
         );
         // ── Notify admin: PO needs action ────────────────────────────
@@ -814,7 +814,7 @@ function handle_reject($pdo, $me, $role, $station_id) {
             'Stock Request Rejected',
             "Your stock request #{$request_id} for {$req['item_name']} was rejected." . ($manager_notes ? " Reason: {$manager_notes}" : ''),
             "stock_req_rejected_{$request_id}",
-            'staff_stock_requests.php?id=' . $request_id,
+            'staff_inventory_merchandise.php?id=' . $request_id,
             'stock_request', $request_id
         );
     } catch (Exception $e) {

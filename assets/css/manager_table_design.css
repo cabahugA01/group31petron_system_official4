@@ -66,10 +66,10 @@
 .mfm-table,
 .transactions-table {
     width: 100% !important;
-    min-width: 0 !important;    /* no forced minimum width */
-    table-layout: auto;         /* columns size to content */
+    min-width: 0 !important;
+    table-layout: auto;
     border-collapse: collapse;
-    font-size: 0.875rem;
+    font-size: 0.95rem;
     background: #fff;
 }
 
@@ -84,14 +84,14 @@
 .data-table th {
     background: #002F6C !important;
     color: #fff !important;
-    font-weight: 600;
-    padding: 12px 10px !important;
-    text-align: left !important;
+    font-weight: 700 !important;
+    padding: 13px 12px !important;
+    text-align: left;
     text-transform: uppercase;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.4px;
     border: none !important;
-    font-size: 11px;
-    white-space: normal !important;     /* wrap header text */
+    font-size: 14px !important;
+    white-space: normal !important;
     word-wrap: break-word;
     vertical-align: middle;
 }
@@ -101,6 +101,12 @@
 .data-table thead th:last-child,
 .pm-table thead th:last-child,
 .mgrc-table thead th:last-child { text-align: center !important; }
+
+/* Alignment utility support */
+.table th.text-center, .table td.text-center,
+.data-table th.text-center, .data-table td.text-center { text-align: center !important; }
+.table th.text-end, .table td.text-end,
+.data-table th.text-end, .data-table td.text-end { text-align: right !important; }
 
 /* ══ Table Body ══ */
 .table tbody td,
@@ -112,11 +118,11 @@
 .table td,
 .data-table td {
     vertical-align: middle;
-    padding: 11px 10px !important;
+    padding: 12px 12px !important;
     border-bottom: 1px solid #e9ecef !important;
-    font-size: 13px;
+    font-size: 14px !important;
     color: #212529;
-    white-space: normal;            /* wrap cell content */
+    white-space: normal;
     word-wrap: break-word;
     overflow-wrap: break-word;
 }

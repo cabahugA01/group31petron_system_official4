@@ -353,12 +353,12 @@ if (isset($_GET['export'])) {
         echo "\xEF\xBB\xBF";
         echo '<html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #222;padding:7px;}th{background:#e8eef8;font-weight:bold;}h1{font-size:18px;}</style></head><body>';
         echo '<h1>' . htmlspecialchars($export_title) . '</h1>';
-        echo '<table>';
+        echo '<table class="no-min-width print-table">';
         foreach ($meta_rows as $row) {
             echo '<tr><th style="width:180px;text-align:left;">' . htmlspecialchars($row[0]) . '</th><td>' . htmlspecialchars($row[1]) . '</td></tr>';
         }
         echo '</table><br>';
-        echo '<table><thead><tr>';
+        echo '<table class="no-min-width print-table"><thead><tr>';
         foreach ($export_headers as $head) echo '<th>' . htmlspecialchars($head) . '</th>';
         echo '</tr></thead><tbody>';
         if (empty($export_rows)) {
@@ -387,7 +387,17 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 /* ═══════════════════════════════════════════════════════════════
    STAFF FUEL REPORTS — Page Styles
 ═══════════════════════════════════════════════════════════════ */
-.sfr-page { padding: 0; min-width: 0; }
+html, body {
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+}
+.sfr-page {
+    padding: 14px 16px 75px 16px !important;
+    min-width: 0;
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+}
 
 .sfr-header {
     display: flex;
@@ -418,15 +428,16 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 }
 
 .sfr-title h1 {
-    font-size: 20px !important;
-    font-weight: 800 !important;
+    font-size: 22px !important;
+    font-weight: 900 !important;
     color: var(--petron-blue) !important;
     margin: 0 !important;
 }
 
 .sfr-title p {
-    font-size: 12px;
-    color: #64748b;
+    font-size: 13.5px;
+    color: #475569;
+    font-weight: 600;
     margin: 3px 0 0;
 }
 
@@ -444,15 +455,15 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 7px 14px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 600;
+    padding: 9px 16px;
+    border-radius: 6px;
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
     cursor: pointer;
     transition: all 0.15s ease-in-out;
     text-decoration: none;
     background: #ffffff !important;
-    border: 1px solid #002F6C !important;
+    border: 1.5px solid #002F6C !important;
     color: #002F6C !important;
     white-space: nowrap;
 }
@@ -464,15 +475,15 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
 .sfr-tab.active {
     background: #002F6C !important;
-    border: 1px solid #002F6C !important;
+    border: 1.5px solid #002F6C !important;
     color: #ffffff !important;
-    font-weight: 700;
+    font-weight: 900 !important;
 }
 
 /* Filter bar */
 .sfr-filter-bar {
     background: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1.5px solid #cbd5e1;
     border-radius: 10px;
     padding: 14px 18px;
     margin-bottom: 18px;
@@ -486,21 +497,22 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     display: flex;
     flex-direction: column;
     gap: 5px;
-    }
+}
 
 .sfr-field label {
-    font-size: 11px;
-    font-weight: 700;
-    color: #475569;
+    font-size: 12.5px;
+    font-weight: 800;
+    color: #002F6C;
     text-transform: uppercase;
     letter-spacing: .4px;
 }
 
 .sfr-input, .sfr-select {
     padding: 9px 12px;
-    border: 1.5px solid #e2e8f0;
+    border: 1.5px solid #cbd5e1;
     border-radius: 8px;
-    font-size: 13px;
+    font-size: 13.5px;
+    font-weight: 600;
     color: #1e293b;
     background: #fff;
     transition: border-color .15s;
@@ -517,12 +529,12 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 7px 14px;
-    border-radius: 4px !important;
-    font-size: 11px !important;
-    font-weight: 600 !important;
+    padding: 9px 16px;
+    border-radius: 6px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
     cursor: pointer;
-    border: 1px solid transparent;
+    border: 1.5px solid transparent;
     transition: all .2s ease-in-out;
     text-decoration: none;
     white-space: nowrap;
@@ -531,20 +543,21 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 }
 
 .sfr-btn.primary {
-    color: #002F6C !important;
-    border: 1px solid #002F6C !important;
+    color: #ffffff !important;
+    background: #002F6C !important;
+    border: 1.5px solid #002F6C !important;
 }
 .sfr-btn.primary:hover {
-    background: #002F6C !important;
+    background: #001f4d !important;
     color: #ffffff !important;
 }
 .sfr-btn.secondary {
     color: #475569 !important;
-    border: 1px solid #475569 !important;
+    border: 1.5px solid #cbd5e1 !important;
 }
 .sfr-btn.secondary:hover {
-    background: #475569 !important;
-    color: #ffffff !important;
+    background: #f1f5f9 !important;
+    color: #1e293b !important;
 }
 
 .sfr-export-actions {
@@ -559,11 +572,11 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 7px 13px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 700;
-    border: 1px solid #cbd5e1;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    border: 1.5px solid #cbd5e1;
     background: #ffffff;
     color: #00264D;
     text-decoration: none;
@@ -593,65 +606,76 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
 .sfr-print-heading {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
+    border: 1.5px solid #cbd5e1;
     border-left: 4px solid #002F6C;
     border-radius: 8px;
     padding: 12px 16px;
     margin-bottom: 14px;
     color: #475569;
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1.5;
 }
 
 .sfr-print-heading strong {
     display: block;
     color: #002F6C;
-    font-size: 15px;
+    font-size: 16px;
+    font-weight: 800;
     margin-bottom: 4px;
 }
 
 .sfr-card {
     background: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1.5px solid #cbd5e1;
     border-radius: 12px;
-    box-shadow: 0 1px 6px rgba(0,0,0,.05);
+    box-shadow: 0 2px 6px rgba(0,0,0,.04);
     overflow: visible !important;
     margin-bottom: 15px !important;
 }
 
 .sfr-card-header {
     padding: 14px 20px;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
     display: flex;
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
 }
 
-.sfr-table-wrap { overflow-x:auto;-webkit-overflow-scrolling:touch; }
+.sfr-table-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
 .sfr-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse !important;
+    font-size: 14px !important;
 }
 
 .sfr-table th {
-    background: #f8fafc;
-    padding: 10px 13px;
+    background: #002F6C !important;
+    color: #ffffff !important;
+    padding: 10px 12px !important;
     text-align: left;
-    font-size: 11px;
-    font-weight: 700;
-    color: #64748b;
+    font-size: 13.5px !important;
+    font-weight: 800 !important;
     text-transform: uppercase;
     letter-spacing: .4px;
-    border-bottom: 2px solid #e2e8f0;
+    border: 1px solid #001f4d !important;
     white-space: nowrap;
 }
 
 .sfr-table td {
-    padding: 10px 13px;
-    border-bottom: 1px solid #f1f5f9;
-    color: #1e293b;
+    padding: 9px 12px !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #0f172a !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
     vertical-align: middle;
 }
 
@@ -662,8 +686,9 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 .sfr-empty {
     text-align: center;
     padding: 40px 20px;
-    color: #94a3b8;
-    font-size: 13px;
+    color: #64748b;
+    font-size: 14px;
+    font-weight: 600;
 }
 
 .sfr-empty i { font-size: 28px; display: block; margin-bottom: 10px; }
@@ -675,14 +700,21 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     gap: 10px;
     padding: 12px 16px;
     background: #eff6ff;
-    border: 1px solid #bfdbfe;
+    border: 1.5px solid #93c5fd;
     border-radius: 9px;
     margin-bottom: 18px;
-    font-size: 13px;
+    font-size: 13.5px;
+    font-weight: 600;
     color: #1d4ed8;
 }
 
 .sfr-notice i { flex-shrink: 0; margin-top: 1px; }
+
+#toggleScrollBtn {
+    bottom: 24px !important;
+    right: 24px !important;
+    z-index: 9999 !important;
+}
 
 @media (max-width: 768px) {
     .sfr-filter-bar { flex-direction: column; }
@@ -910,7 +942,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         </div>
         <?php else: ?>
         <div class="sfr-table-wrap">
-            <table class="sfr-table">
+            <table class="sfr-table report-table no-min-width print-table">
                 <thead>
                     <tr>
                         <th>Fuel Type</th>
@@ -1053,7 +1085,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         </div>
         <?php else: ?>
         <div class="sfr-table-wrap">
-            <table class="sfr-table">
+            <table class="sfr-table report-table no-min-width print-table">
                 <thead>
                     <tr>
                         <th>#</th>

@@ -52,6 +52,12 @@ if ($user_filter) {
     $params[] = $user_filter;
 }
 
+$user_role = role_key($me['role'] ?? 'staff');
+if (!in_array($user_role, ['manager', 'admin', 'superadmin', 'developer'])) {
+    $sql .= " AND al.user_id = ?";
+    $params[] = (int)($me['id'] ?? 0);
+}
+
 if ($station_id && !$isSuper) {
     $sql .= " AND al.station_id = ?";
     $params[] = $station_id;
@@ -73,10 +79,15 @@ try {
 // Fetch users for filter dropdown
 $users = [];
 try {
-    $q = $isSuper ? "SELECT id, name FROM users ORDER BY name" : "SELECT `user_id`, name FROM users WHERE station_id = ? ORDER BY name";
-    $st = $pdo->prepare($q);
-    $st->execute($isSuper ? [] : [user_station_id()]);
-    $users = $st->fetchAll(PDO::FETCH_KEY_PAIR);
+    if (!in_array($user_role, ['manager', 'admin', 'superadmin', 'developer'])) {
+        $my_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')) ?: ($me['username'] ?? 'Staff');
+        $users = [(int)($me['id'] ?? 0) => $my_name];
+    } else {
+        $q = $isSuper ? "SELECT id, name FROM users ORDER BY name" : "SELECT `user_id`, name FROM users WHERE station_id = ? ORDER BY name";
+        $st = $pdo->prepare($q);
+        $st->execute($isSuper ? [] : [user_station_id()]);
+        $users = $st->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
 } catch(Exception $e){}
 
 // Export CSV

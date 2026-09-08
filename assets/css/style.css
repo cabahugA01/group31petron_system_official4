@@ -151,10 +151,10 @@ table {
 
 .nav, .sidebar-menu{display:flex;flex-direction:column;gap:6px;flex:1;overflow-y:auto;padding:10px 14px;pointer-events:auto !important;position:relative;z-index:10}
 .sidebar-menu ul{list-style:none;padding:0;margin:0}
-.nav-item{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:12px;color:#344054;font-size:13px;font-weight:500;transition:all 0.2s ease;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:10}
-.nav-item .ico{width:24px;display:inline-flex;justify-content:center;font-size:16px}
-.nav-item.active{background:var(--petron-blue);color:#fff;font-size:13px;font-weight:500}
-.nav-item:hover{background:#f8fafc;color:var(--petron-blue);font-size:13px;font-weight:500}
+.nav-item{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:12px;color:#344054;font-size:15px;font-weight:500;transition:all 0.2s ease;cursor:pointer !important;pointer-events:auto !important;position:relative;z-index:10}
+.nav-item .ico{width:24px;display:inline-flex;justify-content:center;font-size:17px}
+.nav-item.active{background:var(--petron-blue);color:#fff;font-size:15px;font-weight:500}
+.nav-item:hover{background:#f8fafc;color:var(--petron-blue);font-size:15px;font-weight:500}
 
 /* Enhanced Admin Navigation */
 .nav-item-wrapper{margin-bottom:2px}
@@ -165,7 +165,7 @@ table {
 .sub-menu{list-style:none;padding:0;margin:0;background:rgba(0,0,0,0.03);border-radius:8px;margin:4px 0 8px 0;overflow:hidden}
 .sub-menu li{border-left:3px solid transparent}
 .sub-menu li.active{border-left-color:var(--petron-blue);background:rgba(0, 47, 108, 0.05)}
-.sub-menu a{display:block;padding:10px 16px 10px 48px;color:#667085;text-decoration:none;font-size:14px;transition:all 0.2s ease;border-radius:0 8px 8px 0}
+.sub-menu a{display:block;padding:10px 16px 10px 48px;color:#667085;text-decoration:none;font-size:15px;transition:all 0.2s ease;border-radius:0 8px 8px 0}
 .sub-menu a:hover{background:rgba(0, 47, 108, 0.08);color:var(--petron-blue);padding-left:52px}
 .sub-menu a.active{color:var(--petron-blue);font-weight:600;background:rgba(0, 47, 108, 0.1)}
 
@@ -176,7 +176,8 @@ table {
 .user-role{color:var(--muted);font-size:12px}
 .logout{display:flex;justify-content:center;padding:10px;border-radius:12px;border:1px solid var(--line);color:#344054;background:#fff}
 
-.main, .main-content{flex:1;min-width:0;width:auto;height:100%;overflow-y:auto;overflow-x:hidden;padding:12px 24px 60px 24px;position:relative}
+.main{flex:1;min-width:0;width:auto;height:100%;overflow-y:auto;overflow-x:hidden;padding:12px 24px 60px 24px;position:relative}
+.main-content{flex:1;min-width:0;width:100%;height:auto;overflow:visible;position:relative}
 
 .notif-btn {
   position: absolute;
@@ -213,9 +214,9 @@ table {
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 
 .metric{padding:16px;position:relative;min-height:98px}
-.metric-label{color:var(--muted);font-size:12px}
-.metric-value{font-size:24px;font-weight:900;margin-top:6px}
-.metric-sub{font-size:12px;color:var(--muted);margin-top:6px}
+.metric-label{color:var(--muted);font-size:14px}
+.metric-value{font-size:26px;font-weight:900;margin-top:6px}
+.metric-sub{font-size:13px;color:var(--muted);margin-top:6px}
 .metric-sub.green{color:var(--green)}
 .metric-ico{position:absolute;right:14px;top:14px;width:42px;height:42px;border-radius:14px;display:grid;place-items:center}
 .metric-ico.green, .metric-ico.blue, .metric-ico.purple{background:rgba(0, 51, 102, .12);color:var(--blue)}
@@ -225,9 +226,9 @@ table {
 .mini{border-radius:14px;padding:12px;border:1px solid var(--line);background:#fff}
 .mini.green, .mini.purple { background:rgba(0, 51, 102, .08); border-color:rgba(0, 51, 102, .18); }
 .mini.amber{background:rgba(227, 0, 31, .08);border-color:rgba(227, 0, 31, .18)}
-.mini-label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:700}
-.mini-value{font-weight:900;margin-top:4px;font-size:22px;letter-spacing:.02em}
-.mini-date{color:var(--muted);font-size:11px;margin-top:6px}
+.mini-label{color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+.mini-value{font-weight:900;margin-top:4px;font-size:24px;letter-spacing:.02em}
+.mini-date{color:var(--muted);font-size:13px;margin-top:6px}
 
 .empty{padding:26px;display:grid;place-items:center;color:var(--muted);min-height:220px}
 .empty.small{min-height:160px}
@@ -277,8 +278,8 @@ canvas{width:100%;padding:0 16px 16px 16px}
 
 .table-wrap{padding:12px 16px 16px 16px;overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;width:100%}
 .table{width:100%;border-collapse:separate;border-spacing:0 15px;table-layout:auto}
-.table thead th{color:var(--muted);font-size:14px;text-align:left;padding:0 12px;white-space:normal;word-wrap:break-word;max-width:200px;font-weight:700;letter-spacing:0.3px}
-.table tbody td{background:#fff;border:1px solid var(--line);padding:14px 12px;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;max-width:250px;font-size:14px}
+.table thead th{color:var(--muted);font-size:15px;text-align:left;padding:0 12px;white-space:normal;word-wrap:break-word;max-width:200px;font-weight:700;letter-spacing:0.3px}
+.table tbody td{background:#fff;border:1px solid var(--line);padding:14px 12px;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;max-width:250px;font-size:15px}
 .table tbody tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px}
 .table tbody tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px}
 .badge{display:inline-flex;align-items:center;padding:5px 12px;border-radius:999px;font-size:13px;border:1px solid var(--line);background:#f8fafc;color:#344054;font-weight:600}
@@ -517,7 +518,7 @@ canvas{width:100%;padding:0 16px 16px 16px}
 }
 
 .kpi-value {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--text);
   line-height: 1.1;
@@ -525,7 +526,7 @@ canvas{width:100%;padding:0 16px 16px 16px}
 }
 
 .kpi-label {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--muted);
   line-height: 1;
   font-weight: 500;
@@ -563,7 +564,7 @@ canvas{width:100%;padding:0 16px 16px 16px}
 
 /* KPI Subtext */
 .kpi-subtext {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--muted);
   margin-top: 2px;
   font-weight: 500;
@@ -655,13 +656,13 @@ canvas{width:100%;padding:0 16px 16px 16px}
 }
 
 .gauge-label span:first-child {
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text);
 }
 
 .gauge-percent {
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text);
 }
@@ -767,15 +768,15 @@ canvas{width:100%;padding:0 16px 16px 16px}
 }
 
 .alert-name {
-  font-size: 9px;
+  font-size: 13px;
   color: var(--text);
   font-weight: 500;
 }
 
 .alert-status {
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 1px 4px;
+  padding: 2px 6px;
   border-radius: 2px;
 }
 
@@ -819,7 +820,7 @@ canvas{width:100%;padding:0 16px 16px 16px}
 }
 
 .stat-value {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--text);
   line-height: 1;
@@ -827,7 +828,7 @@ canvas{width:100%;padding:0 16px 16px 16px}
 }
 
 .stat-label {
-  font-size: 9px;
+  font-size: 13px;
   color: var(--muted);
   font-weight: 500;
   line-height: 1;
@@ -927,10 +928,10 @@ canvas{width:100%;padding:0 16px 16px 16px}
 
 /* Small Size Buttons */
 .btn {
-  height: 28px;
-  padding: 0 12px;
+  height: 32px;
+  padding: 0 14px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   border: none;
   cursor: pointer;
@@ -1753,15 +1754,23 @@ table thead th {
     gap: 6px;
     padding: 7px 14px;
     border-radius: 4px !important;
-    font-size: 11px !important;
-    font-weight: 600 !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
     cursor: pointer;
     border: 1px solid transparent;
     transition: all .2s ease-in-out;
     text-decoration: none;
-    white-space: nowrap;
+    white-space: nowrap !important;
     box-sizing: border-box;
     background: #ffffff !important;
+}
+/* Ensure text inside action buttons is ALWAYS visible — never hidden or cut off */
+.txn-btn i,
+.txn-btn span {
+    display: inline !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    white-space: nowrap !important;
 }
 
 .txn-btn.primary {
@@ -1772,14 +1781,28 @@ table thead th {
     background: #00264D !important;
     color: #ffffff !important;
 }
+.txn-btn.primary:active,
+.txn-btn.primary:focus {
+    background: #001f3d !important;
+    color: #ffffff !important;
+    outline: none !important;
+}
 
 .txn-btn.success {
-    color: #16a34a !important;
-    border: 1px solid #16a34a !important;
-}
-.txn-btn.success:hover {
     background: #16a34a !important;
     color: #ffffff !important;
+    border: 1.5px solid #15803d !important;
+}
+.txn-btn.success:hover {
+    background: #15803d !important;
+    color: #ffffff !important;
+    border-color: #166534 !important;
+}
+.txn-btn.success:active,
+.txn-btn.success:focus {
+    background: #166534 !important;
+    color: #ffffff !important;
+    outline: none !important;
 }
 
 .txn-btn.secondary {
@@ -1790,14 +1813,29 @@ table thead th {
     background: #475569 !important;
     color: #ffffff !important;
 }
+.txn-btn.secondary:active,
+.txn-btn.secondary:focus {
+    background: #334155 !important;
+    color: #ffffff !important;
+    outline: none !important;
+}
 
 .txn-btn.danger {
-    color: #dc2626 !important;
-    border: 1px solid #dc2626 !important;
-}
-.txn-btn.danger:hover {
     background: #dc2626 !important;
     color: #ffffff !important;
+    border: 1.5px solid #b91c1c !important;
+}
+.txn-btn.danger:hover {
+    background: #b91c1c !important;
+    color: #ffffff !important;
+    border-color: #991b1b !important;
+}
+.txn-btn.danger:active,
+.txn-btn.danger:focus {
+    background: #991b1b !important;
+    color: #ffffff !important;
+    border-color: #7f1d1d !important;
+    outline: none !important;
 }
 
 .txn-btn.warning {
@@ -1848,10 +1886,10 @@ table thead th {
     color: #002F6C !important;
 }
 
-/* Green sub-tabs (Merchandise) */
+/* Green sub-tabs (Merchandise) - unified dark blue */
 .txn-subtab-btn.green.active {
-    background: #28a745 !important;
-    border: 1px solid #28a745 !important;
+    background: #002F70 !important;
+    border: 1px solid #002F70 !important;
     color: #ffffff !important;
 }
 .txn-subtab-btn.green.active i {
@@ -1859,11 +1897,11 @@ table thead th {
 }
 .txn-subtab-btn.green.inactive {
     background: #ffffff !important;
-    border: 1px solid #28a745 !important;
-    color: #28a745 !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #475569 !important;
 }
 .txn-subtab-btn.green.inactive i {
-    color: #28a745 !important;
+    color: inherit !important;
 }
 
 /* Dark blue sub-tabs (Job Orders) */
@@ -1977,3 +2015,77 @@ h1.stock-title,
 }
 
 
+
+/* ── Void button — standalone class, ALWAYS red fill + white text ── */
+.void-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    width: 100% !important;
+    padding: 6px 8px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    background-color: #dc2626 !important;
+    color: #ffffff !important;
+    border: 1.5px solid #b91c1c !important;
+    border-radius: 5px !important;
+    white-space: nowrap !important;
+    cursor: pointer !important;
+    box-sizing: border-box !important;
+    text-decoration: none !important;
+    line-height: 1.2 !important;
+}
+.void-btn:hover {
+    background-color: #b91c1c !important;
+    color: #ffffff !important;
+    border-color: #991b1b !important;
+}
+.void-btn:active,
+.void-btn:focus {
+    background-color: #991b1b !important;
+    color: #ffffff !important;
+    outline: none !important;
+}
+.void-btn i,
+.void-btn span {
+    color: #ffffff !important;
+    display: inline !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* ── Remove left-side (sidebar) and redundant inner vertical scrollbars — keep only 1 vertical scroll on page ── */
+.sidebar,
+.sidebar-menu,
+.sidebar-menu * {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+}
+.sidebar::-webkit-scrollbar,
+.sidebar-menu::-webkit-scrollbar,
+.sidebar-menu *::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+}
+@media (min-width: 992px) and (min-height: 650px) {
+    .sidebar {
+        overflow: hidden !important;
+    }
+    .sidebar-menu {
+        overflow-y: hidden !important;
+        overflow-x: hidden !important;
+    }
+}
+
+/* Eliminate redundant inner vertical scrollbars inside .main workspace */
+.main > .main-content,
+.main-content,
+.main .card:not(.card-scrollable),
+.main .table-wrap,
+.main .table-responsive {
+    overflow-y: visible !important;
+    height: auto !important;
+    max-height: none !important;
+}

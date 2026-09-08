@@ -19,15 +19,15 @@ require_login();
   box-shadow: 0 1px 6px rgba(0,0,0,.06);
 }
 .th-kpi-val {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 800;
   line-height: 1.2;
   margin-top: 4px;
 }
 .th-kpi-lbl {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
-  color: #64748b;
+  color: #475569;
   text-transform: uppercase;
   letter-spacing: .4px;
   display: flex;
@@ -35,35 +35,35 @@ require_login();
   gap: 6px;
 }
 .th-kpi-sub {
-  font-size: 11px;
-  color: #94a3b8;
+  font-size: 12px;
+  color: #64748b;
   margin-top: 3px;
 }
 .th-filter-bar {
   background: #fff;
   border-radius: 10px;
-  padding: 14px 16px;
+  padding: 16px 18px;
   margin: 14px 0;
   box-shadow: 0 1px 6px rgba(0,0,0,.06);
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
   align-items: flex-end;
 }
 .th-filter-bar label {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
-  color: #475569;
+  color: #334155;
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
 }
 .th-filter-bar input, .th-filter-bar select {
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  font-size: 12px;
-  color: #1e293b;
+  height: 38px;
+  padding: 0 12px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 7px;
+  font-size: 13.5px;
+  color: #0f172a;
   background: #fff;
 }
 .th-filter-grp {
@@ -72,111 +72,38 @@ require_login();
 }
 .th-badge {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 5px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
-.hist-modal-bg {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.5);
-  z-index: 9000;
-  align-items: center;
-  justify-content: center;
-}
-.hist-modal-bg.open {
-  display: flex;
-}
-.hist-modal {
-  background: #fff;
-  border-radius: 14px;
-  max-width: 720px;
-  width: 96%;
-  max-height: 90vh;
-  overflow: hidden;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-}
-.hist-modal-header {
-  padding: 20px 28px 16px;
-  border-bottom: 2px solid #e2e8f0;
-  flex-shrink: 0;
-}
-.hist-modal-header h2 {
-  font-size: 16px;
-  font-weight: 800;
-  color: #002F70;
-  margin: 0;
-}
-.hist-modal-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px 28px;
-}
-.hist-modal-foot {
-  padding: 14px 28px 20px;
-  border-top: 1px solid #e2e8f0;
-  background: #f8fafc;
-  flex-shrink: 0;
-}
-.hist-sec-title {
-  font-size: 12px;
-  font-weight: 800;
-  color: #002F70;
-  text-transform: uppercase;
-  letter-spacing: .5px;
-  border-bottom: 2px solid #e2e8f0;
-  padding-bottom: 6px;
-  margin: 14px 0 8px;
-}
-.hist-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 5px 0;
-  border-bottom: 1px solid #f1f5f9;
-  font-size: 13px;
-}
-.hist-row .k { color: #64748b; font-weight: 500; }
-.hist-row .v { font-weight: 600; text-align: right; }
-.hist-items-tbl {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-  margin-top: 6px;
-}
 #histTbl {
-  font-size: 11.5px;
+  font-size: 13.5px;
   width: 100% !important;
-  min-width: 100% !important;
-  max-width: 100% !important;
+  min-width: 1120px !important;
   table-layout: fixed !important;
   border-collapse: collapse !important;
 }
 #histTbl th {
-  padding: 10px 8px !important;
-  font-size: 11px !important;
+  padding: 12px 10px !important;
+  font-size: 12.5px !important;
   white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
+  overflow: visible !important;
   background: #002F70 !important;
   border-bottom: 2px solid #001f4d !important;
   color: #ffffff !important;
-  font-weight: 700 !important;
+  font-weight: 800 !important;
   text-transform: uppercase !important;
   letter-spacing: 0.3px !important;
   box-sizing: border-box !important;
 }
 #histTbl td {
-  padding: 8px 8px !important;
+  padding: 10px 8px !important;
   word-break: break-word !important;
   overflow-wrap: break-word !important;
-  font-size: 11.5px !important;
+  font-size: 13.5px !important;
   vertical-align: middle !important;
   border-bottom: 1px solid #f1f5f9 !important;
-  overflow: hidden !important;
   box-sizing: border-box !important;
 }
 .hist-item-chip {
@@ -349,19 +276,19 @@ require_login();
     <label>Search</label>
     <input type="text" name="hsearch" placeholder="Search Transaction ID, Customer, OR No., Plate No." value="<?= htmlspecialchars($hist_search) ?>" style="width:100%;">
   </div>
-  <button type="submit" class="txn-btn primary" style="min-width:0; height:34px; padding:0 16px; font-size:12px; border-radius:6px"><i class="fas fa-search"></i> Filter</button>
-  <a href="?section=history" class="txn-btn secondary" style="min-width:0; height:34px; padding:0 14px; font-size:12px; border-radius:6px; display:inline-flex; align-items:center; gap:6px"><i class="fas fa-times"></i> Reset</a>
+  <button type="submit" class="txn-btn primary" style="min-width:0; height:38px; padding:0 20px; font-size:13.5px; font-weight:700; border-radius:7px;"><i class="fas fa-search"></i> Filter</button>
+  <a href="?section=history" class="txn-btn secondary" style="min-width:0; height:38px; padding:0 18px; font-size:13.5px; font-weight:700; border-radius:7px; display:inline-flex; align-items:center; gap:6px;"><i class="fas fa-times"></i> Reset</a>
 </form>
 
 <!-- Table -->
 <div class="txn-card" style="margin-top:6px">
-  <div class="txn-card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-    <div style="display:flex;align-items:center;gap:8px;">
-      <i class="fas fa-list-alt" style="color:#002F70"></i>
-      <h3 style="margin:0;">All Transactions</h3>
+  <div class="txn-card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:16px 20px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <i class="fas fa-list-alt" style="color:#002F70;font-size:18px;"></i>
+      <h3 style="margin:0;font-size:16.5px;font-weight:800;color:#002F70;">All Transactions</h3>
     </div>
-    <span style="background:#f1f5f9;color:#475569;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid #cbd5e1;display:inline-flex;align-items:center;gap:5px;">
-      <i class="fas fa-eye" style="color:#002F70;"></i> Read-only • Click any row to view details
+    <span style="background:#f1f5f9;color:#334155;font-size:12.5px;font-weight:700;padding:4px 12px;border-radius:20px;border:1px solid #cbd5e1;display:inline-flex;align-items:center;gap:6px;">
+      <i class="fas fa-eye" style="color:#002F70;"></i> Read-only
     </span>
   </div>
   <div class="txn-card-body" style="padding:0">
@@ -372,27 +299,27 @@ require_login();
       <div style="font-size:13px;color:#64748b;">Try changing the date range or filter settings.</div>
     </div>
 <?php else: ?>
-    <div class="vt-table-wrapper" style="width:100% !important;max-width:100% !important;overflow-x:hidden !important;box-sizing:border-box !important;border-radius:10px 10px 0 0;background:#fff;">
-    <table class="txn-table" id="histTbl" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
+    <div class="vt-table-wrapper" style="width:100% !important;max-width:100% !important;overflow-x:auto !important;box-sizing:border-box !important;border-radius:10px 10px 0 0;background:#fff;">
+    <table class="txn-table" id="histTbl" style="width:100% !important;min-width:1120px;table-layout:fixed !important;border-collapse:collapse !important;">
       <colgroup>
-        <col style="width:12%;"><!-- TXN ID -->
-        <col style="width:15%;"><!-- CUSTOMER & VEHICLE -->
-        <col style="width:11%;"><!-- TYPE -->
-        <col style="width:19%;"><!-- PRODUCTS & SERVICES -->
-        <col style="width:10%;"><!-- FEES -->
-        <col style="width:14%;"><!-- TOTAL & PAYMENT -->
-        <col style="width:9%;"><!-- STATUS -->
-        <col style="width:10%;"><!-- DATE & TIME -->
+        <col style="width:11%; min-width:115px;"><!-- TXN ID -->
+        <col style="width:16%; min-width:170px;"><!-- CUSTOMER & VEHICLE -->
+        <col style="width:11%; min-width:125px;"><!-- TYPE -->
+        <col style="width:21%; min-width:230px;"><!-- PRODUCTS & SERVICES -->
+        <col style="width:10%; min-width:120px;"><!-- FEES -->
+        <col style="width:12%; min-width:135px;"><!-- TOTAL & PAYMENT -->
+        <col style="width:9%;  min-width:105px;"><!-- STATUS -->
+        <col style="width:10%; min-width:120px;"><!-- DATE & TIME -->
       </colgroup>
       <thead><tr>
-        <th style="white-space:nowrap;">TXN ID</th>
-        <th style="white-space:nowrap;">CUSTOMER & VEHICLE</th>
-        <th style="white-space:nowrap;">TYPE</th>
-        <th style="white-space:nowrap;">PRODUCTS & SERVICES</th>
-        <th style="white-space:nowrap;">FEES</th>
-        <th style="white-space:nowrap;">TOTAL & PAYMENT</th>
-        <th style="white-space:nowrap;text-align:center;">STATUS</th>
-        <th style="white-space:nowrap;">DATE & TIME</th>
+        <th style="white-space:nowrap;padding:12px 10px;">TXN ID</th>
+        <th style="white-space:nowrap;padding:12px 10px;">CUSTOMER & VEHICLE</th>
+        <th style="white-space:nowrap;padding:12px 8px;text-align:center;">TYPE</th>
+        <th style="white-space:nowrap;padding:12px 10px;">PRODUCTS & SERVICES</th>
+        <th style="white-space:nowrap;padding:12px 10px;">FEES</th>
+        <th style="white-space:nowrap;padding:12px 10px;">TOTAL & PAYMENT</th>
+        <th style="white-space:nowrap;padding:12px 8px;text-align:center;">STATUS</th>
+        <th style="white-space:nowrap;padding:12px 10px;">DATE & TIME</th>
       </tr></thead>
       <tbody id="histTbody">
       <?php
@@ -452,9 +379,14 @@ require_login();
             $tc='#166534'; $tb='#dcfce7'; $tborder='#86efac'; $tl='Merchandise'; 
           }
 
-          $ht_date = '';
+          $ht_date_only = '';
+          $ht_time_only = '';
           if (!empty($ht['transaction_date'])) {
-              try { $ht_date = (new DateTime($ht['transaction_date']))->format('M d, Y • h:i A'); } catch(Exception $e){}
+              try {
+                  $dt_obj = new DateTime($ht['transaction_date']);
+                  $ht_date_only = $dt_obj->format('M d, Y');
+                  $ht_time_only = $dt_obj->format('h:i A');
+              } catch(Exception $e){}
           }
           $ht_tid   = htmlspecialchars($ht['transaction_id'] ?? ('#'.$ht_id));
           $ht_cname = htmlspecialchars($ht['customer_name'] ?? 'Walk-in Customer');
@@ -477,15 +409,15 @@ require_login();
           $val_status = strtolower(trim($ht['validation_status'] ?? 'official'));
           $wf_status  = strtolower(trim($ht['workflow_status'] ?? ''));
           if (in_array($val_status, ['released']) || in_array($wf_status, ['released'])) {
-              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10.5px;font-weight:700;color:#166534;background:#dcfce7;border:1px solid #86efac;white-space:nowrap;"><i class="fas fa-check" style="font-size:8px;"></i> Released</span>';
+              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:700;color:#166534;background:#dcfce7;border:1px solid #86efac;white-space:nowrap;"><i class="fas fa-check" style="font-size:10px;"></i> Released</span>';
           } elseif (in_array($val_status, ['completed', 'approved', 'official', 'verified']) || in_array($wf_status, ['completed'])) {
-              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10.5px;font-weight:700;color:#166534;background:#dcfce7;border:1px solid #86efac;white-space:nowrap;"><i class="fas fa-check-circle" style="font-size:8px;"></i> Completed</span>';
+              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:700;color:#166534;background:#dcfce7;border:1px solid #86efac;white-space:nowrap;"><i class="fas fa-check-circle" style="font-size:10px;"></i> Completed</span>';
           } elseif ($val_status === 'adjusted') {
-              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10.5px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;white-space:nowrap;"><i class="fas fa-sliders-h" style="font-size:8px;"></i> Adjusted</span>';
+              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;white-space:nowrap;"><i class="fas fa-sliders-h" style="font-size:10px;"></i> Adjusted</span>';
           } elseif (in_array($val_status, ['voided', 'cancelled', 'canceled', 'void'])) {
-              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10.5px;font-weight:700;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;white-space:nowrap;"><i class="fas fa-ban" style="font-size:8px;"></i> Voided</span>';
+              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:700;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;white-space:nowrap;"><i class="fas fa-ban" style="font-size:10px;"></i> Voided</span>';
           } else {
-              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10.5px;font-weight:700;color:#166534;background:#dcfce7;border:1px solid #86efac;white-space:nowrap;"><i class="fas fa-check-circle" style="font-size:8px;"></i> Completed</span>';
+              $v_badge_html = '<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:700;color:#166534;background:#dcfce7;border:1px solid #86efac;white-space:nowrap;"><i class="fas fa-check-circle" style="font-size:10px;"></i> Completed</span>';
           }
 
           // Service Fee & Labor Fee resolution
@@ -514,29 +446,29 @@ require_login();
               }
           }
       ?>
-      <tr class="hist-row-main" onclick="openHistModal(<?= $ht_id ?>)" style="cursor:pointer;" title="Click to view transaction details">
+      <tr class="hist-row-main">
         <!-- 1. Txn ID -->
-        <td style="padding:8px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
-          <div style="font-weight:700;font-size:11px;color:#002F70;font-family:monospace;word-break:break-all;overflow-wrap:anywhere;line-height:1.2;" title="<?= $ht_tid ?>"><?= $ht_tid ?></div>
+        <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
+          <div style="font-weight:800;font-size:12px;color:#002F70;font-family:monospace;word-break:break-all !important;overflow-wrap:anywhere !important;line-height:1.25;white-space:normal !important;" title="<?= $ht_tid ?>"><?= $ht_tid ?></div>
         </td>
 
         <!-- 2. Customer & Vehicle -->
-        <td style="padding:8px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
-          <div style="font-weight:700;font-size:12px;color:#0f172a;line-height:1.25;word-break:break-word;overflow-wrap:break-word;white-space:normal;"><?= $ht_cname ?></div>
+        <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
+          <div style="font-weight:800;font-size:13.5px;color:#0f172a;line-height:1.25;word-break:break-word;overflow-wrap:break-word;white-space:normal;"><?= $ht_cname ?></div>
           <?php if (!empty($ht['vehicle_plate']) && $ht['vehicle_plate'] !== '—' && $ht['vehicle_plate'] !== 'N/A'): ?>
-            <div style="display:inline-flex;align-items:center;gap:3px;background:#f1f5f9;border:1px solid #cbd5e1;color:#1e293b;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:700;margin-top:2px;">
-              <i class="fas fa-car" style="color:#2563eb;font-size:9.5px;"></i> <?= htmlspecialchars($ht['vehicle_plate']) ?>
+            <div style="display:inline-flex;align-items:center;gap:4px;background:#f1f5f9;border:1.5px solid #cbd5e1;color:#0f172a;padding:2px 7px;border-radius:5px;font-size:11.5px;font-weight:700;margin-top:3px;">
+              <i class="fas fa-car" style="color:#2563eb;font-size:10.5px;"></i> <?= htmlspecialchars($ht['vehicle_plate']) ?>
             </div>
           <?php endif; ?>
         </td>
 
         <!-- 3. Type -->
-        <td style="padding:8px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
-          <span style="background:<?= $tb ?>;color:<?= $tc ?>;border:1px solid <?= $tborder ?>;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;display:inline-block;"><?= $tl ?></span>
+        <td style="padding:10px 4px;vertical-align:middle;box-sizing:border-box;text-align:center;overflow:hidden;">
+          <span style="background:<?= $tb ?>;color:<?= $tc ?>;border:1.5px solid <?= $tborder ?>;padding:3px 8px;border-radius:6px;font-size:11.5px;font-weight:700;display:inline-block;line-height:1.2;text-align:center;white-space:nowrap;max-width:100%;box-sizing:border-box;"><?= $tl ?></span>
         </td>
 
         <!-- 4. Products & Services (with Qty & Unit) -->
-        <td style="padding:8px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
+        <td style="padding:10px 10px;vertical-align:middle;box-sizing:border-box;white-space:normal !important;overflow:visible !important;">
           <?php
           $merch_items = array_filter($row_items, fn($ri) => ($ri['item_type'] ?? 'merchandise') !== 'service');
           $svc_items   = array_filter($row_items, fn($ri) => ($ri['item_type'] ?? '') === 'service');
@@ -549,13 +481,13 @@ require_login();
                   $q_num = ($qv == (int)$qv) ? (int)$qv : number_format($qv, 2);
                   $u_lbl = $resolveUnitLabel($ri['product_name'] ?? '', $ri['size_variant'] ?? '', $qv, $ri['item_type'] ?? 'merchandise');
                   ?>
-                  <div style="font-weight:700;font-size:11.5px;color:#1e293b;word-break:break-word;overflow-wrap:break-word;line-height:1.25;">
+                  <div style="font-weight:700;font-size:13px;color:#0f172a;line-height:1.35;white-space:normal !important;word-break:normal !important;overflow-wrap:break-word !important;word-wrap:break-word !important;">
                     <?= htmlspecialchars($ri['product_name']) ?>
                     <?php if (!empty($ri['size_variant'])): ?>
-                    <small style="color:#64748b;">[<?= htmlspecialchars($ri['size_variant']) ?>]</small>
+                    <span style="color:#64748b;font-size:11.5px;font-weight:600;">[<?= htmlspecialchars($ri['size_variant']) ?>]</span>
                     <?php endif; ?>
                   </div>
-                  <div style="font-size:10px;color:#64748b;margin-bottom:3px;">Qty: <?= $q_num ?> <?= $u_lbl ?></div>
+                  <div style="font-size:11.5px;color:#475569;font-weight:600;margin-top:2px;margin-bottom:4px;white-space:normal !important;">Qty: <?= $q_num ?> <?= $u_lbl ?></div>
                   <?php
               }
           }
@@ -569,50 +501,57 @@ require_login();
           
           if ($svc_name) {
               $has_any = true;
-              if (!empty($merch_items)) echo '<div style="border-top:1px dashed #e2e8f0;margin:3px 0;"></div>';
-              echo '<div style="font-weight:700;color:#1e40af;font-size:11.5px;word-break:break-word;overflow-wrap:break-word;"><i class="fas fa-wrench" style="color:#2563eb;font-size:10px;margin-right:3px;"></i>' . htmlspecialchars($svc_name) . '</div>';
+              if (!empty($merch_items)) echo '<div style="border-top:1px dashed #cbd5e1;margin:4px 0;"></div>';
+              echo '<div style="font-weight:700;color:#1e40af;font-size:13px;line-height:1.35;white-space:normal !important;word-break:normal !important;overflow-wrap:break-word !important;word-wrap:break-word !important;"><i class="fas fa-wrench" style="color:#2563eb;font-size:11px;margin-right:4px;"></i>' . htmlspecialchars($svc_name) . '</div>';
           }
           
           if (!$has_any) {
-              echo '<span style="color:#94a3b8;">—</span>';
+              echo '<span style="color:#94a3b8;font-size:13px;">—</span>';
           }
           ?>
         </td>
 
         <!-- 5. Fees -->
-        <td style="padding:8px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;font-size:11px;">
+        <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;overflow:hidden;">
           <?php
           if ($sf_val > 0) {
-              echo '<div style="color:#334155;white-space:nowrap;">Svc: <strong style="color:#2563eb;font-weight:700;">₱' . number_format($sf_val, 2) . '</strong></div>';
+              echo '<div style="color:#334155;white-space:nowrap;font-size:12px;line-height:1.3;">Svc: <strong style="color:#2563eb;font-weight:800;font-size:12.5px;">₱' . number_format($sf_val, 2) . '</strong></div>';
           }
           if ($lf_val > 0) {
-              echo '<div style="color:#334155;margin-top:2px;white-space:nowrap;">Labor: <strong style="color:#16a34a;font-weight:700;">₱' . number_format($lf_val, 2) . '</strong></div>';
+              echo '<div style="color:#334155;margin-top:2px;white-space:nowrap;font-size:12px;line-height:1.3;">Labor: <strong style="color:#16a34a;font-weight:800;font-size:12.5px;">₱' . number_format($lf_val, 2) . '</strong></div>';
           }
           if ($sf_val <= 0 && $lf_val <= 0) {
-              echo '<span style="color:#94a3b8;">—</span>';
+              echo '<span style="color:#94a3b8;font-size:13px;">—</span>';
           }
           ?>
         </td>
 
         <!-- 6. Total & Payment -->
-        <td style="padding:8px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
-          <div style="font-weight:800;font-size:13px;color:#002F70;white-space:nowrap;line-height:1.2;">₱<?= number_format((float)$ht['total_amount'], 2) ?></div>
-          <div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap;">
-            <span style="color:#1e293b;font-weight:700;font-size:10.5px;"><?= htmlspecialchars($ht['payment_method'] ?? 'Cash') ?></span>
-            <span style="background:<?= $ht_ps==='paid'?'#dcfce7':'#fee2e2' ?>;color:<?= $ht_ps==='paid'?'#15803d':'#b91c1c' ?>;font-weight:800;font-size:9.5px;padding:1px 4px;border-radius:3px;border:1px solid <?= $ht_ps==='paid'?'#bbf7d0':'#fecaca' ?>;">
+        <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
+          <div style="font-weight:900;font-size:15px;color:#002F70;white-space:nowrap;line-height:1.2;">₱<?= number_format((float)$ht['total_amount'], 2) ?></div>
+          <div style="display:flex;align-items:center;gap:5px;margin-top:4px;flex-wrap:wrap;">
+            <span style="color:#0f172a;font-weight:700;font-size:12px;"><?= htmlspecialchars($ht['payment_method'] ?? 'Cash') ?></span>
+            <span style="background:<?= $ht_ps==='paid'?'#dcfce7':'#fee2e2' ?>;color:<?= $ht_ps==='paid'?'#15803d':'#b91c1c' ?>;font-weight:800;font-size:11px;padding:2px 6px;border-radius:4px;border:1px solid <?= $ht_ps==='paid'?'#bbf7d0':'#fecaca' ?>;">
               <?= strtoupper(htmlspecialchars($ht['payment_status'] ?? 'PAID')) ?>
             </span>
           </div>
         </td>
 
         <!-- 7. Status -->
-        <td style="padding:8px 4px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;">
+        <td style="padding:10px 4px;vertical-align:middle;text-align:center;box-sizing:border-box;">
           <?= $v_badge_html ?>
         </td>
 
         <!-- 8. Date & Time -->
-        <td style="padding:8px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
-          <div style="font-size:11px;color:#334155;font-weight:600;white-space:nowrap;"><?= $ht_date ?: '—' ?></div>
+        <td style="padding:10px 10px;vertical-align:middle;box-sizing:border-box;">
+          <?php if (!empty($ht_date_only)): ?>
+            <div style="font-size:13px;color:#0f172a;font-weight:800;line-height:1.25;white-space:nowrap;"><?= htmlspecialchars($ht_date_only) ?></div>
+            <div style="font-size:12px;color:#475569;font-weight:700;margin-top:3px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;">
+              <i class="far fa-clock" style="font-size:11px;color:#64748b;"></i> <?= htmlspecialchars($ht_time_only) ?>
+            </div>
+          <?php else: ?>
+            <span style="color:#94a3b8;font-size:13px;">—</span>
+          <?php endif; ?>
         </td>
       </tr>
       <?php endforeach; ?>
@@ -621,29 +560,29 @@ require_login();
     </div>
 
     <!-- Pagination Footer -->
-    <div id="histPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+    <div id="histPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:16px 22px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13.5px; color:#334155; flex-wrap:wrap; gap:12px;">
       <div style="display:flex; align-items:center;">
-        <span id="histShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing <?= empty($recent_merch) ? '0' : '1–'.min(10, count($recent_merch)) ?> of <?= count($recent_merch) ?> entries</span>
+        <span id="histShowingEntriesText" style="font-size:13.5px; color:#475569; font-weight:700;">Showing <?= empty($recent_merch) ? '0' : '1–'.min(10, count($recent_merch)) ?> of <?= count($recent_merch) ?> entries</span>
       </div>
       <div style="display:flex; align-items:center; gap:16px;">
         <div style="display:flex; align-items:center; gap:8px;">
-          <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
-          <select id="histPerPage" onchange="histChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+          <label style="margin:0; font-weight:700; color:#475569; font-size:13.5px;">Rows per page:</label>
+          <select id="histPerPage" onchange="histChangePerPage()" style="padding:5px 10px; border:1.5px solid #cbd5e1; border-radius:6px; font-size:13.5px; font-weight:700; background:transparent !important; color:#0f172a; outline:none; cursor:pointer;">
             <option value="10" selected>10</option>
             <option value="20">20</option>
             <option value="50">50</option>
             <option value="100">100</option>
           </select>
         </div>
-        <div style="display:flex; align-items:center; gap:6px;">
+        <div style="display:flex; align-items:center; gap:8px;">
           <button id="histPrevBtn" onclick="histGoPage(histState.page - 1)" 
-                  style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                  style="width:36px; height:36px; background:#fff; border:1.5px solid #cbd5e1; border-radius:7px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; font-size:13px; transition: all 0.2s;"
                   onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
             <i class="fas fa-chevron-left"></i>
           </button>
-          <span id="histPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of <?= max(1, ceil(count($recent_merch) / 10)) ?></span>
+          <span id="histPageLabel" style="color:#0f172a; font-size:13.5px; font-weight:700; padding:0 6px;">Page 1 of <?= max(1, ceil(count($recent_merch) / 10)) ?></span>
           <button id="histNextBtn" onclick="histGoPage(histState.page + 1)" 
-                  style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:<?= count($recent_merch) > 10 ? 'pointer' : 'not-allowed' ?>; color:<?= count($recent_merch) > 10 ? '#475569' : '#cbd5e1' ?>; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                  style="width:36px; height:36px; background:#fff; border:1.5px solid #cbd5e1; border-radius:7px; cursor:<?= count($recent_merch) > 10 ? 'pointer' : 'not-allowed' ?>; color:<?= count($recent_merch) > 10 ? '#0f172a' : '#cbd5e1' ?>; display:flex; align-items:center; justify-content:center; font-size:13px; transition: all 0.2s;"
                   onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
             <i class="fas fa-chevron-right"></i>
           </button>
@@ -653,28 +592,6 @@ require_login();
 <?php endif; ?>
   </div>
 </div>
-
-<!-- View Details Modal -->
-<div class="hist-modal-bg" id="histModalBg" onclick="if(event.target===this)closeHistModal()">
-  <div class="hist-modal" id="histModal">
-    <!-- Header -->
-    <div class="hist-modal-header">
-      <button onclick="closeHistModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">&times;</button>
-      <h2><i class="fas fa-receipt" style="color:#002F70;margin-right:8px"></i>Transaction Details</h2>
-    </div>
-    <!-- Body -->
-    <div class="hist-modal-body">
-      <div id="histModalContent" style="color:#475569;font-size:13px">Loading...</div>
-    </div>
-    <!-- Footer -->
-    <div class="hist-modal-foot" id="histModalFooter" style="display:flex;justify-content:flex-end;gap:10px;">
-      <button id="modalPrintBtn" class="txn-btn primary" style="min-width:0;height:32px;padding:0 14px;font-size:12px;border-radius:6px;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-print"></i> Print Receipt</button>
-      <button onclick="closeHistModal()" class="txn-btn secondary" style="min-width:0;height:32px;padding:0 14px;font-size:12px;border-radius:6px;">Close</button>
-    </div>
-  </div>
-</div>
-
-
 <script>
 (function(){
 var histState = { page: 1, per_page: 10 };
@@ -737,86 +654,4 @@ window.histChangePerPage = function() {
 
 histRender();
 })();
-
-function openHistModal(mtId){
-  document.getElementById('histModalBg').classList.add('open');
-  document.getElementById('histModalContent').innerHTML='<div style="text-align:center;padding:32px"><i class="fas fa-spinner fa-spin" style="font-size:24px;color:#002F70"></i></div>';
-  fetch('../backend/api/merchandise_transactions.php?action=get_transaction_details&mt_id='+mtId)
-    .then(function(r){return r.json();})
-    .then(function(d){
-      if(!d.success){document.getElementById('histModalContent').innerHTML='<p style="color:#dc2626">'+d.error+'</p>';return;}
-      var t=d.transaction,items=d.items||[];
-      var ps=t.payment_status||'—',pm=t.payment_method||'—';
-      var txnType=t.transaction_type||'merchandise';
-      var isJO=(txnType==='job_order'||txnType==='combined');
-      var isMerch=(txnType==='merchandise'||txnType==='combined');
-      var svcItems=items.filter(function(i){return i.item_type==='service';});
-      var merItems=items.filter(function(i){return i.item_type!=='service';});
-      
-      // Update print button link
-      var printBtn = document.getElementById('modalPrintBtn');
-      if(printBtn) {
-        printBtn.onclick = function() {
-          window.open('receipt.php?id=' + encodeURIComponent(t.transaction_id || t.id) + '&type=' + encodeURIComponent(txnType), '_blank');
-        };
-      }
-
-      var html='';
-      // Transaction Info
-      html+='<div class="hist-sec-title"><i class="fas fa-info-circle"></i> Transaction Information</div>';
-      html+=row('Transaction ID','<strong style="color:#002F70;font-family:monospace">'+(t.transaction_id||'—')+'</strong>');
-      var typeLabel = (txnType==='combined')?'Job Order + Merchandise':((txnType==='job_order')?'Job Order Only':'Merchandise Only');
-      html+=row('Type','<span style="font-weight:700">'+typeLabel+'</span>');
-      html+=row('Customer Name',t.customer_name||'Walk-in Customer');
-      if(t.contact_number)html+=row('Contact',t.contact_number);
-      // Vehicle
-      if(isJO){
-        html+='<div class="hist-sec-title"><i class="fas fa-car"></i> Vehicle Information</div>';
-        if(t.vehicle_type)html+=row('Vehicle Type',t.vehicle_type);
-        if(t.vehicle_plate)html+=row('Plate Number','<strong>'+t.vehicle_plate+'</strong>');
-        if(t.mechanic_name)html+=row('Assigned Mechanic',t.mechanic_name);
-      }
-      // Services
-      if(isJO&&svcItems.length){
-        html+='<div class="hist-sec-title"><i class="fas fa-tools"></i> Services</div>';
-        html+='<table class="hist-items-tbl"><thead><tr><th>Service</th><th>Category</th><th style="text-align:right">Fee</th></tr></thead><tbody>';
-        svcItems.forEach(function(s){
-          html+='<tr><td>'+esc(s.product_name)+'</td><td>'+esc(s.category||'—')+'</td><td style="text-align:right;font-weight:700">&#8369;'+fmt(s.subtotal)+'</td></tr>';
-        });
-        html+='</tbody></table>';
-      }
-      // Merchandise
-      if(isMerch&&merItems.length){
-        html+='<div class="hist-sec-title"><i class="fas fa-box"></i> Merchandise Items</div>';
-        html+='<table class="hist-items-tbl"><thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit Price</th><th style="text-align:right">Subtotal</th></tr></thead><tbody>';
-        merItems.forEach(function(m){
-          html+='<tr><td>'+esc(m.product_name)+(m.size_variant?'<br><small style="color:#94a3b8">'+esc(m.size_variant)+'</small>':'')+'</td><td style="text-align:right">'+m.quantity+'</td><td style="text-align:right">&#8369;'+fmt(m.unit_price)+'</td><td style="text-align:right;font-weight:700">&#8369;'+fmt(m.subtotal)+'</td></tr>';
-        });
-        html+='</tbody></table>';
-      }
-      // Payment
-      html+='<div class="hist-sec-title"><i class="fas fa-credit-card"></i> Payment Information</div>';
-      html+=row('Payment Method',pm);
-      html+=row('Payment Status','<strong>'+ps+'</strong>');
-      if(t.amount_paid>0)html+=row('Amount Paid','&#8369;'+fmt(t.amount_paid));
-      if(pm==='Cash'&&t.change_amount>0)html+=row('Change','&#8369;'+fmt(t.change_amount));
-      if(t.balance_due>0)html+=row('Balance Due','<span style="color:#dc2626;font-weight:700">&#8369;'+fmt(t.balance_due)+'</span>');
-      if(t.subtotal_amount)html+=row('Subtotal','&#8369;'+fmt(t.subtotal_amount));
-      if(t.vat_amount>0)html+=row('VAT (12%)','&#8369;'+fmt(t.vat_amount));
-      html+=row('Total Amount','<strong style="font-size:15px;color:#002F70">&#8369;'+fmt(t.total_amount)+'</strong>');
-      // System Info
-      html+='<div class="hist-sec-title"><i class="fas fa-user-clock"></i> System Information</div>';
-      var dt=t.transaction_date||t.created_at||'—';
-      try{if(dt&&dt!=='—')dt=new Date(dt).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'});}catch(e){}
-      html+=row('Date & Time',dt);
-      html+=row('Staff Encoder',t.encoder_name||'—');
-      document.getElementById('histModalContent').innerHTML=html;
-    })
-    .catch(function(){document.getElementById('histModalContent').innerHTML='<p style="color:#dc2626">Failed to load transaction details.</p>';});
-}
-function closeHistModal(){document.getElementById('histModalBg').classList.remove('open');}
-function row(k,v){return '<div class="hist-row"><span class="k">'+k+'</span><span class="v">'+v+'</span></div>';}
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');}
-function fmt(n){return parseFloat(n||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}
-document.addEventListener('keydown',function(e){if(e.key==='Escape')closeHistModal();});
 </script>

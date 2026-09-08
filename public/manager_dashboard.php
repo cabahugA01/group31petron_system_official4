@@ -916,16 +916,36 @@ if (typeof Chart === 'undefined') {
 </script>
 
 <style>
-    /* Spacing Parity with Staff/System Design Rules */
-    .main {
-        padding: 20px 24px 60px 24px !important;
+    /* Prevent any horizontal page scrolling system-wide */
+    html, body {
+        overflow-x: hidden !important;
+        max-width: 100vw !important;
+        box-sizing: border-box !important;
+    }
+    *, *::before, *::after {
         box-sizing: border-box;
+    }
+
+    /* Spacing Parity with Staff/System Design Rules */
+    body[data-page="manager_dashboard"] .main,
+    body[data-page="dashboard"] .main,
+    .main {
+        padding: 14px 20px 90px 20px !important;
+        background: #F8FAFC !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+        width: auto !important;
+        max-width: 100% !important;
     }
     .mgr-dash-wrapper {
         padding: 0 !important;
         margin: 0 !important;
-        width: 100%;
-        max-width: 100%;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+        box-sizing: border-box !important;
+        font-family: inherit !important;
+        color: var(--text-dark);
     }
     :root {
         --petron-blue: #002F6C;
@@ -938,32 +958,40 @@ if (typeof Chart === 'undefined') {
         --bg-light: #F8FAFC;
     }
 
-    /* Header & Filter Bar */
+    /* Header & Filter Bar (Parity with Staff Dashboard) */
     .mgr-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 20px;
+        margin-bottom: 12px;
         flex-wrap: wrap;
         gap: 12px;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
     }
     .mgr-header-left h1 {
-        font-size: 22px;
-        font-weight: 800;
-        color: var(--text-dark);
-        margin: 0;
-        text-transform: uppercase;
-        letter-spacing: -0.5px;
+        font-family: inherit !important;
+        font-size: 24px !important;
+        font-weight: normal !important;
+        color: var(--petron-blue) !important;
+        margin: 0 !important;
+        text-transform: uppercase !important;
+        letter-spacing: -0.5px !important;
+        line-height: 1.2 !important;
     }
     .mgr-filter-bar {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 10px !important;
         background: #FFFFFF;
-        padding: 6px 12px;
+        padding: 6px 14px !important;
         border-radius: 8px;
         border: 1px solid var(--border-color);
         box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        flex-wrap: wrap;
+        max-width: 100%;
+        box-sizing: border-box;
     }
     .mgr-filter-group {
         display: flex;
@@ -971,54 +999,65 @@ if (typeof Chart === 'undefined') {
         gap: 6px;
     }
     .mgr-filter-group label {
-        font-size: 11px;
-        font-weight: 700;
-        color: var(--text-muted);
+        font-size: 13px !important;
+        font-weight: 800 !important;
+        color: var(--petron-blue) !important;
         text-transform: uppercase;
+        letter-spacing: 0.3px !important;
     }
     .mgr-filter-group input[type="date"] {
         border: 1px solid #CBD5E1;
         border-radius: 6px;
-        padding: 5px 8px;
-        font-size: 11px;
+        padding: 6px 10px !important;
+        font-size: 13.5px !important;
         color: var(--text-dark);
-        font-weight: 600;
+        font-weight: 600 !important;
         outline: none;
+        height: 36px !important;
+        box-sizing: border-box !important;
     }
     .mgr-filter-btn {
         background: var(--petron-blue);
         color: #FFFFFF;
         border: none;
         border-radius: 6px;
-        padding: 6px 14px;
-        font-size: 11px;
-        font-weight: 700;
+        padding: 0 16px !important;
+        height: 36px !important;
+        font-size: 13px !important;
+        font-weight: 800 !important;
         cursor: pointer;
-        display: flex;
+        display: inline-flex !important;
         align-items: center;
+        justify-content: center;
         gap: 6px;
+        box-sizing: border-box !important;
         transition: background 0.2s ease;
     }
     .mgr-filter-btn:hover {
         background: var(--petron-navy);
     }
 
-    /* 11 KPI Cards Grid */
+    /* 12 KPI Cards Grid */
     .mgr-kpi-grid {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 14px;
-        margin-bottom: 22px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+        width: 100%;
+        box-sizing: border-box;
     }
     .mgr-kpi-card {
         background: var(--card-bg);
         border: 1px solid var(--border-color);
         border-radius: 10px;
-        padding: 14px 16px;
+        padding: 13px 15px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         display: flex;
         flex-direction: column;
         justify-content: space-between;
+        min-width: 0 !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
         transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
     .mgr-kpi-card:hover {
@@ -1029,37 +1068,46 @@ if (typeof Chart === 'undefined') {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 8px;
+        margin-bottom: 6px;
+        min-width: 0;
     }
     .mgr-kpi-title {
-        font-size: 11px;
-        font-weight: 700;
-        color: var(--text-muted);
+        font-size: 12.5px !important;
+        font-weight: 800 !important;
+        color: #475569 !important;
         text-transform: uppercase;
-        letter-spacing: 0.3px;
+        letter-spacing: 0.4px !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
     }
     .mgr-kpi-icon {
-        width: 32px;
-        height: 32px;
+        width: 34px !important;
+        height: 34px !important;
         border-radius: 8px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 14px;
+        font-size: 15px !important;
         background: var(--icon-bg, #EFF6FF);
         color: var(--icon-color, var(--petron-blue));
+        flex-shrink: 0;
     }
     .mgr-kpi-value {
-        font-size: 20px;
-        font-weight: 800;
+        font-size: 22px !important;
+        font-weight: 900 !important;
         color: var(--text-dark);
-        line-height: 1.1;
+        line-height: 1.15;
         margin-bottom: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .mgr-kpi-sub {
-        font-size: 11px;
+        font-size: 12px !important;
         color: var(--text-muted);
-        font-weight: 500;
+        font-weight: 600 !important;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -1071,48 +1119,64 @@ if (typeof Chart === 'undefined') {
         border: 1px solid var(--border-color);
         border-radius: 10px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-        overflow: hidden;
-        margin-bottom: 20px;
+        overflow: hidden !important;
+        margin-bottom: 18px;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
     }
     .mgr-card-header {
-        padding: 12px 16px;
+        padding: 12px 16px !important;
         border-bottom: 1px solid var(--border-color);
         display: flex;
         justify-content: space-between;
         align-items: center;
         background: #FFFFFF;
+        flex-wrap: wrap;
+        gap: 8px;
+        box-sizing: border-box;
+        min-width: 0;
     }
     .mgr-card-header h2 {
-        font-size: 13px;
-        font-weight: 800;
+        font-size: 14.5px !important;
+        font-weight: 800 !important;
         color: var(--petron-blue);
         margin: 0;
         text-transform: uppercase;
         display: flex;
         align-items: center;
         gap: 8px;
-        letter-spacing: 0.3px;
+        letter-spacing: 0.4px !important;
+        min-width: 0;
     }
     .mgr-card-body {
-        padding: 14px 16px;
+        padding: 14px 16px !important;
+        box-sizing: border-box;
+        min-width: 0;
+        overflow: hidden;
     }
     .mgr-grid-2col {
         display: grid;
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 16px;
-        margin-bottom: 20px;
+        margin-bottom: 18px;
+        width: 100%;
+        box-sizing: border-box;
     }
     .mgr-grid-3col {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 16px;
-        margin-bottom: 20px;
+        margin-bottom: 18px;
+        width: 100%;
+        box-sizing: border-box;
     }
     .mgr-grid-4col {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 14px;
-        margin-bottom: 20px;
+        margin-bottom: 18px;
+        width: 100%;
+        box-sizing: border-box;
     }
 
     /* Metric Lists & Action Rows */
@@ -1120,25 +1184,32 @@ if (typeof Chart === 'undefined') {
         display: flex;
         flex-direction: column;
         gap: 8px;
+        min-width: 0;
     }
     .mgr-metric-item {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 7px 12px;
+        padding: 9px 13px !important;
         background: #F8FAFC;
-        border-radius: 6px;
+        border-radius: 7px;
         border: 1px solid #F1F5F9;
+        min-width: 0;
+        box-sizing: border-box;
     }
     .mgr-metric-label {
-        font-size: 11px;
-        font-weight: 600;
+        font-size: 13px !important;
+        font-weight: 700 !important;
         color: var(--text-muted);
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .mgr-metric-value {
-        font-size: 12px;
-        font-weight: 800;
+        font-size: 13.5px !important;
+        font-weight: 800 !important;
         color: var(--text-dark);
+        flex-shrink: 0;
     }
 
     /* Action Links within Approval/Verification Centers */
@@ -1146,13 +1217,15 @@ if (typeof Chart === 'undefined') {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 9px 12px;
-        border-radius: 6px;
+        padding: 10px 13px !important;
+        border-radius: 7px;
         background: #F8FAFC;
         border: 1px solid #F1F5F9;
-        margin-bottom: 6px;
+        margin-bottom: 7px;
         text-decoration: none;
         color: var(--text-dark);
+        min-width: 0;
+        box-sizing: border-box;
         transition: background 0.15s ease, border-color 0.15s ease;
     }
     .mgr-action-row:hover {
@@ -1160,19 +1233,23 @@ if (typeof Chart === 'undefined') {
         border-color: #BFDBFE;
     }
     .mgr-action-title {
-        font-size: 11px;
-        font-weight: 700;
+        font-size: 13px !important;
+        font-weight: 700 !important;
         display: flex;
         align-items: center;
         gap: 8px;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .mgr-action-count {
-        font-size: 11px;
-        font-weight: 800;
-        padding: 2px 8px;
-        border-radius: 10px;
+        font-size: 12px !important;
+        font-weight: 800 !important;
+        padding: 3px 9px !important;
+        border-radius: 12px;
         background: #E2E8F0;
         color: #334155;
+        flex-shrink: 0;
     }
     .mgr-action-count.has-pending {
         background: #FEF3C7;
@@ -1183,47 +1260,87 @@ if (typeof Chart === 'undefined') {
         color: #B91C1C;
     }
 
-    /* Tables */
+    /* Tables: Strict 100% width, fixed layout, no horizontal scroll, compressed columns */
     .mgr-table-responsive {
-        width: 100%;
-        overflow-x: auto;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+        box-sizing: border-box !important;
     }
-    .mgr-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 12px;
+    table.mgr-table,
+    .mgr-table,
+    .mgr-table-responsive table,
+    table.mgr-table.report-table.no-min-width.print-table {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        border-collapse: collapse !important;
+        table-layout: fixed !important;
+        font-size: 12.5px !important;
+        box-sizing: border-box !important;
     }
+    table.mgr-table th,
     .mgr-table th {
-        background: #F8FAFC;
-        color: #475569;
-        font-weight: 700;
-        text-transform: uppercase;
-        font-size: 11px;
-        letter-spacing: 0.3px;
-        padding: 9px 12px;
-        border-bottom: 1px solid var(--border-color);
-        text-align: left;
+        background: #002F70 !important;
+        color: #ffffff !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+        font-size: 11.5px !important;
+        letter-spacing: 0.3px !important;
+        padding: 8px 6px !important;
+        border-bottom: 2px solid #001f4d !important;
+        box-sizing: border-box !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+        white-space: normal !important;
+        line-height: 1.25 !important;
+        vertical-align: middle !important;
     }
+    table.mgr-table td,
     .mgr-table td {
-        padding: 9px 12px;
-        border-bottom: 1px solid #F1F5F9;
+        padding: 8px 6px !important;
+        border-bottom: 1px solid #F1F5F9 !important;
         color: var(--text-dark);
-        vertical-align: middle;
+        font-size: 12.5px !important;
+        font-weight: 600 !important;
+        vertical-align: middle !important;
+        box-sizing: border-box !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+        line-height: 1.25 !important;
     }
+    table.mgr-table td code,
+    .mgr-table td code {
+        word-break: break-all !important;
+        white-space: normal !important;
+        font-size: 11.5px !important;
+        line-height: 1.2 !important;
+        display: inline-block !important;
+        max-width: 100% !important;
+    }
+    table.mgr-table tr:hover td,
     .mgr-table tr:hover td {
         background: #F8FAFC;
     }
 
+    /* Column alignment helpers */
+    .mgr-table th.text-left, .mgr-table td.text-left { text-align: left !important; }
+    .mgr-table th.text-center, .mgr-table td.text-center { text-align: center !important; }
+    .mgr-table th.text-right, .mgr-table td.text-right { text-align: right !important; }
+
     /* Badges */
     .mgr-badge {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 3px 8px;
-        border-radius: 12px;
-        font-size: 10px;
-        font-weight: 700;
-        line-height: 1;
+        display: inline-block !important;
+        padding: 2.5px 6px !important;
+        border-radius: 8px;
+        font-size: 11px !important;
+        font-weight: 800 !important;
+        line-height: 1.2;
+        white-space: normal !important;
+        text-align: center !important;
+        max-width: 100% !important;
+        word-break: break-word !important;
+        box-sizing: border-box;
     }
     .mgr-badge-success { background: #DCFCE7; color: #15803D; }
     .mgr-badge-warning { background: #FEF3C7; color: #B45309; }
@@ -1236,17 +1353,24 @@ if (typeof Chart === 'undefined') {
         position: relative;
         height: 220px;
         width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+    }
+    .mgr-chart-wrap canvas {
+        max-width: 100% !important;
     }
 
     /* Notifications List */
     .mgr-notif-item {
         display: flex;
         align-items: flex-start;
-        gap: 10px;
-        padding: 10px 14px;
+        gap: 12px !important;
+        padding: 12px 14px !important;
         border-bottom: 1px solid #F1F5F9;
         text-decoration: none;
         color: inherit;
+        min-width: 0;
+        box-sizing: border-box;
         transition: background 0.15s ease;
     }
     .mgr-notif-item:last-child {
@@ -1256,34 +1380,38 @@ if (typeof Chart === 'undefined') {
         background: #F8FAFC;
     }
     .mgr-notif-icon {
-        width: 28px;
-        height: 28px;
+        width: 32px !important;
+        height: 32px !important;
         border-radius: 50%;
         background: #EFF6FF;
         color: var(--petron-blue);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 12px;
+        font-size: 13px !important;
         flex-shrink: 0;
     }
     .mgr-notif-content {
         flex: 1;
+        min-width: 0;
+        overflow: hidden;
     }
     .mgr-notif-title {
-        font-size: 11px;
+        font-size: 13px !important;
         font-weight: 700;
         color: var(--text-dark);
-        margin: 0 0 2px 0;
+        margin: 0 0 3px 0;
+        word-break: break-word;
     }
     .mgr-notif-msg {
-        font-size: 11px;
+        font-size: 12px !important;
         color: var(--text-muted);
-        margin: 0 0 2px 0;
-        line-height: 1.3;
+        margin: 0 0 3px 0;
+        line-height: 1.35;
+        word-break: break-word;
     }
     .mgr-notif-time {
-        font-size: 10px;
+        font-size: 11.5px !important;
         color: #94A3B8;
         font-weight: 600;
     }
@@ -1291,21 +1419,25 @@ if (typeof Chart === 'undefined') {
     /* Shortcuts & Quick Actions Grid */
     .mgr-quick-grid {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 10px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px !important;
+        width: 100%;
+        box-sizing: border-box;
     }
     .mgr-quick-btn {
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 10px 14px;
+        gap: 10px !important;
+        padding: 11px 13px !important;
         background: #F8FAFC;
         border: 1px solid var(--border-color);
         border-radius: 8px;
         text-decoration: none;
         color: var(--text-dark);
-        font-size: 11px;
+        font-size: 13px !important;
         font-weight: 700;
+        min-width: 0 !important;
+        box-sizing: border-box;
         transition: all 0.15s ease;
     }
     .mgr-quick-btn:hover {
@@ -1314,27 +1446,43 @@ if (typeof Chart === 'undefined') {
         color: var(--petron-blue);
         transform: translateY(-1px);
     }
+    .mgr-quick-btn span {
+        min-width: 0;
+        word-break: break-word;
+        line-height: 1.25;
+    }
     .mgr-quick-icon {
-        width: 28px;
-        height: 28px;
-        border-radius: 6px;
+        width: 32px !important;
+        height: 32px !important;
+        border-radius: 7px;
         background: #FFFFFF;
         border: 1px solid #E2E8F0;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 12px;
+        font-size: 13px !important;
         color: var(--petron-blue);
         flex-shrink: 0;
     }
 
-    @media (max-width: 1200px) {
-        .mgr-kpi-grid, .mgr-grid-4col, .mgr-quick-grid { grid-template-columns: repeat(2, 1fr); }
-        .mgr-grid-3col { grid-template-columns: 1fr; }
-        .mgr-grid-2col { grid-template-columns: 1fr; }
+    /* Responsive Adaptation: Zero Horizontal Scroll, 100% Visibility */
+    @media (max-width: 1400px) {
+        .mgr-grid-4col { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        .mgr-grid-3col { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        .mgr-grid-3col > .mgr-card:last-child:nth-child(odd) { grid-column: span 2; }
+        .mgr-quick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        .mgr-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    }
+    @media (max-width: 991px) {
+        .mgr-grid-2col, .mgr-grid-3col { grid-template-columns: 1fr !important; }
+        .mgr-grid-3col > .mgr-card:last-child:nth-child(odd) { grid-column: span 1; }
     }
     @media (max-width: 640px) {
-        .mgr-kpi-grid, .mgr-grid-4col, .mgr-quick-grid { grid-template-columns: 1fr; }
+        .mgr-kpi-grid, .mgr-grid-4col, .mgr-quick-grid { grid-template-columns: 1fr !important; }
+        .mgr-filter-bar { width: 100% !important; flex-direction: column !important; align-items: stretch !important; }
+        .mgr-filter-group { width: 100% !important; }
+        .mgr-filter-group input[type="date"] { flex: 1 !important; width: 100% !important; }
+        .mgr-filter-btn { width: 100% !important; }
     }
 </style>
 
@@ -1514,7 +1662,7 @@ if (typeof Chart === 'undefined') {
         <div class="mgr-card" style="margin-bottom: 0;">
             <div class="mgr-card-header">
                 <h2><i class="fas fa-gas-pump"></i> Fuel Management Summary</h2>
-                <a href="manager_fuel_transaction_validation.php" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;">Validate</a>
+                <a href="manager_fuel_transaction_validation.php" style="font-size: 13px; font-weight: 700; color: var(--petron-blue); text-decoration: none;">Validate</a>
             </div>
             <div class="mgr-card-body">
                 <div class="mgr-metric-list">
@@ -1548,14 +1696,14 @@ if (typeof Chart === 'undefined') {
                 <h2 id="mgr_inv_widget_heading"><i class="fas fa-warehouse"></i> Merchandise Inventory (<?= number_format($total_products_count) ?> Products)</h2>
                 <div style="display:flex; align-items:center; gap:8px;">
                     <div style="display:inline-flex; background:#F1F5F9; padding:2px; border-radius:6px; border:1px solid #CBD5E1;">
-                        <button type="button" id="mgr_btn_tab_merch" onclick="switchMgrInvWidgetTab('merch')" style="padding:3px 9px; font-size:11px; font-weight:700; border-radius:4px; border:none; background:#002F6C; color:#FFFFFF; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.15s ease;">
+                        <button type="button" id="mgr_btn_tab_merch" onclick="switchMgrInvWidgetTab('merch')" style="padding:4px 11px; font-size:12px; font-weight:700; border-radius:4px; border:none; background:#002F6C; color:#FFFFFF; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.15s ease;">
                             <i class="fas fa-boxes"></i> Merchandise
                         </button>
-                        <button type="button" id="mgr_btn_tab_fuel" onclick="switchMgrInvWidgetTab('fuel')" style="padding:3px 9px; font-size:11px; font-weight:700; border-radius:4px; border:none; background:transparent; color:#64748B; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.15s ease;">
+                        <button type="button" id="mgr_btn_tab_fuel" onclick="switchMgrInvWidgetTab('fuel')" style="padding:4px 11px; font-size:12px; font-weight:700; border-radius:4px; border:none; background:transparent; color:#64748B; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.15s ease;">
                             <i class="fas fa-gas-pump"></i> Fuel Tanks (<?= count($fuel_tanks) ?>)
                         </button>
                     </div>
-                    <a id="mgr_inv_direct_link" href="manager_inventory_merchandise.php" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;" title="Open in Module">
+                    <a id="mgr_inv_direct_link" href="manager_inventory_merchandise.php" style="font-size: 13px; font-weight: 700; color: var(--petron-blue); text-decoration: none;" title="Open in Module">
                         <i class="fas fa-arrow-up-right-from-square"></i> Open Module
                     </a>
                 </div>
@@ -1590,45 +1738,45 @@ if (typeof Chart === 'undefined') {
                 <!-- FUEL VIEW -->
                 <div id="mgr_inv_view_fuel" style="display:none;">
                     <!-- Summary badges row -->
-                    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-bottom:10px;">
-                        <div onclick="openMgrFuelInvModal('normal')" style="background:#F0FDF4; border:1px solid #BBF7D0; padding:6px 8px; border-radius:8px; text-align:center; cursor:pointer;" title="Normal tanks">
-                            <div style="font-size:10px; font-weight:700; color:#15803D; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-circle-check"></i> Normal</div>
-                            <div style="font-size:16px; font-weight:800; color:#15803D;"><?= $normal_fuel_count ?></div>
+                    <div style="display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:6px; margin-bottom:10px;">
+                        <div onclick="openMgrFuelInvModal('normal')" style="background:#F0FDF4; border:1px solid #BBF7D0; padding:6px 4px; border-radius:8px; text-align:center; cursor:pointer; min-width:0; overflow:hidden;" title="Normal tanks">
+                            <div style="font-size:11.5px; font-weight:700; color:#15803D; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><i class="fas fa-circle-check"></i> Normal</div>
+                            <div style="font-size:18px; font-weight:800; color:#15803D;"><?= $normal_fuel_count ?></div>
                         </div>
-                        <div onclick="openMgrFuelInvModal('low')" style="background:#FFFBEB; border:1px solid #FDE68A; padding:6px 8px; border-radius:8px; text-align:center; cursor:pointer;" title="Low tanks">
-                            <div style="font-size:10px; font-weight:700; color:#B45309; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-triangle-exclamation"></i> Low</div>
-                            <div style="font-size:16px; font-weight:800; color:#B45309;"><?= $low_fuel_count ?></div>
+                        <div onclick="openMgrFuelInvModal('low')" style="background:#FFFBEB; border:1px solid #FDE68A; padding:6px 4px; border-radius:8px; text-align:center; cursor:pointer; min-width:0; overflow:hidden;" title="Low tanks">
+                            <div style="font-size:11.5px; font-weight:700; color:#B45309; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><i class="fas fa-triangle-exclamation"></i> Low</div>
+                            <div style="font-size:18px; font-weight:800; color:#B45309;"><?= $low_fuel_count ?></div>
                         </div>
-                        <div onclick="openMgrFuelInvModal('critical')" style="background:#FEF2F2; border:1px solid #FECACA; padding:6px 8px; border-radius:8px; text-align:center; cursor:pointer;" title="Critical tanks">
-                            <div style="font-size:10px; font-weight:700; color:#DC2626; text-transform:uppercase; white-space:nowrap;"><i class="fas fa-circle-exclamation"></i> Critical</div>
-                            <div style="font-size:16px; font-weight:800; color:#DC2626;"><?= $crit_fuel_count ?></div>
+                        <div onclick="openMgrFuelInvModal('critical')" style="background:#FEF2F2; border:1px solid #FECACA; padding:6px 4px; border-radius:8px; text-align:center; cursor:pointer; min-width:0; overflow:hidden;" title="Critical tanks">
+                            <div style="font-size:11.5px; font-weight:700; color:#DC2626; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><i class="fas fa-circle-exclamation"></i> Critical</div>
+                            <div style="font-size:18px; font-weight:800; color:#DC2626;"><?= $crit_fuel_count ?></div>
                         </div>
-                        <div onclick="openMgrFuelInvModal('out')" style="background:#FEF2F2; border:1px solid #FECACA; padding:6px 8px; border-radius:8px; text-align:center; cursor:pointer;" title="Out of stock tanks">
-                            <div style="font-size:10px; font-weight:700; color:#991B1B; text-transform:uppercase; white-space:nowrap; overflow:hidden;"><i class="fas fa-circle-xmark"></i> Out</div>
-                            <div style="font-size:16px; font-weight:800; color:#991B1B;"><?= $out_fuel_count ?></div>
+                        <div onclick="openMgrFuelInvModal('out')" style="background:#FEF2F2; border:1px solid #FECACA; padding:6px 4px; border-radius:8px; text-align:center; cursor:pointer; min-width:0; overflow:hidden;" title="Out of stock tanks">
+                            <div style="font-size:11.5px; font-weight:700; color:#991B1B; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><i class="fas fa-circle-xmark"></i> Out</div>
+                            <div style="font-size:18px; font-weight:800; color:#991B1B;"><?= $out_fuel_count ?></div>
                         </div>
                     </div>
                     <!-- Per-tank status list -->
                     <div style="border:1px solid #E2E8F0; border-radius:8px; overflow:hidden;">
                         <?php if (empty($fuel_tanks)): ?>
-                            <div style="padding:14px; text-align:center; color:#64748B; font-size:12px;">No active fuel tanks found.</div>
+                            <div style="padding:14px; text-align:center; color:#64748B; font-size:12.5px;">No active fuel tanks found.</div>
                         <?php else: ?>
                             <?php foreach ($fuel_tanks as $ft_row): 
                                 $ft_lvl = (float)($ft_row['current_level'] ?? 0);
                                 $ft_cap = (float)($ft_row['capacity'] ?? 14000);
                                 $ft_pct = $ft_cap > 0 ? min(100, round(($ft_lvl / $ft_cap) * 100, 1)) : 0;
                             ?>
-                                <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 12px; border-bottom:1px solid #F1F5F9; gap:8px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid #F1F5F9; gap:8px;">
                                     <div style="flex:1; min-width:0;">
-                                        <div style="font-size:12px; font-weight:700; color:#1E293B; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><?= mgr_h($ft_row['fuel_type']) ?></div>
-                                        <div style="display:flex; align-items:center; gap:5px; margin-top:3px;">
-                                            <div style="flex:1; height:5px; background:#E2E8F0; border-radius:999px; overflow:hidden;">
+                                        <div style="font-size:13px; font-weight:700; color:#1E293B; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><?= mgr_h($ft_row['fuel_type']) ?></div>
+                                        <div style="display:flex; align-items:center; gap:6px; margin-top:3px;">
+                                            <div style="flex:1; height:6px; background:#E2E8F0; border-radius:999px; overflow:hidden;">
                                                 <div style="height:100%; width:<?= $ft_pct ?>%; background:<?= $ft_row['bar_color'] ?? '#002F6C' ?>; border-radius:999px;"></div>
                                             </div>
-                                            <span style="font-size:10px; color:#64748B; font-weight:600; white-space:nowrap;"><?= number_format($ft_lvl, 0) ?> L</span>
+                                            <span style="font-size:11.5px; color:#64748B; font-weight:700; white-space:nowrap;"><?= number_format($ft_lvl, 0) ?> L</span>
                                         </div>
                                     </div>
-                                    <span style="display:inline-block; padding:2px 8px; font-size:9.5px; font-weight:800; border-radius:999px; background:<?= $ft_row['badge_bg'] ?? '#64748B' ?>; color:#FFF; letter-spacing:0.4px; text-transform:uppercase; white-space:nowrap; flex-shrink:0;"><?= mgr_h($ft_row['alert_status'] ?? 'NORMAL') ?></span>
+                                    <span style="display:inline-block; padding:3px 9px; font-size:11px; font-weight:800; border-radius:999px; background:<?= $ft_row['badge_bg'] ?? '#64748B' ?>; color:#FFF; letter-spacing:0.4px; text-transform:uppercase; white-space:nowrap; flex-shrink:0;"><?= mgr_h($ft_row['alert_status'] ?? 'NORMAL') ?></span>
                                 </div>
                             <?php endforeach; ?>
                         <?php endif; ?>
@@ -1641,7 +1789,7 @@ if (typeof Chart === 'undefined') {
         <div class="mgr-card" style="margin-bottom: 0;">
             <div class="mgr-card-header">
                 <h2><i class="fas fa-list-check"></i> Job Order Monitoring</h2>
-                <a href="manager_validated_transactions.php?type=job_order" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;"><i class="fas fa-arrow-up-right-from-square" style="font-size: 10px; margin-right: 3px;"></i> Track All</a>
+                <a href="manager_validated_transactions.php?type=job_order" style="font-size: 13px; font-weight: 700; color: var(--petron-blue); text-decoration: none;"><i class="fas fa-arrow-up-right-from-square" style="font-size: 11px; margin-right: 3px;"></i> Track All</a>
             </div>
             <div class="mgr-card-body">
                 <div class="mgr-metric-list">
@@ -1729,7 +1877,7 @@ if (typeof Chart === 'undefined') {
                 <h2><i class="fas fa-trophy" style="color: #F59E0B;"></i> Top Selling Products</h2>
             </div>
             <div class="mgr-card-body">
-                <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 10px 0;">Top merchandise products based on finalized sales.</p>
+                <p style="font-size: 12.5px; color: var(--text-muted); margin: 0 0 10px 0;">Top merchandise products based on finalized sales.</p>
                 <div class="mgr-chart-wrap">
                     <canvas id="topProductsChart"></canvas>
                 </div>
@@ -1742,7 +1890,7 @@ if (typeof Chart === 'undefined') {
                 <h2><i class="fas fa-wrench" style="color: #0284C7;"></i> Most Requested Services</h2>
             </div>
             <div class="mgr-card-body">
-                <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 10px 0;">Top services based on completed job orders.</p>
+                <p style="font-size: 12.5px; color: var(--text-muted); margin: 0 0 10px 0;">Top services based on completed job orders.</p>
                 <div class="mgr-chart-wrap">
                     <canvas id="topServicesChart"></canvas>
                 </div>
@@ -1755,7 +1903,7 @@ if (typeof Chart === 'undefined') {
                 <h2><i class="fas fa-credit-card" style="color: #10B981;"></i> Payment Type Distribution</h2>
             </div>
             <div class="mgr-card-body">
-                <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 10px 0;">Real-time breakdown of all 7 payment methods.</p>
+                <p style="font-size: 12.5px; color: var(--text-muted); margin: 0 0 10px 0;">Real-time breakdown of all 7 payment methods.</p>
                 <div class="mgr-chart-wrap">
                     <canvas id="paymentTypeChart"></canvas>
                 </div>
@@ -1772,7 +1920,7 @@ if (typeof Chart === 'undefined') {
                 <span class="mgr-badge mgr-badge-info"><?= mgr_h($active_shift_name) ?></span>
             </div>
             <div class="mgr-card-body">
-                <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 10px 0;">Finalized sales progression throughout active shift hours.</p>
+                <p style="font-size: 12.5px; color: var(--text-muted); margin: 0 0 10px 0;">Finalized sales progression throughout active shift hours.</p>
                 <div class="mgr-chart-wrap">
                     <canvas id="dailySalesTrendChart"></canvas>
                 </div>
@@ -1785,7 +1933,7 @@ if (typeof Chart === 'undefined') {
                 <h2><i class="fas fa-circle-notch" style="color: #D97706;"></i> Job Order Status Distribution</h2>
             </div>
             <div class="mgr-card-body">
-                <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 10px 0;">Pending, In Progress, Completed, Released.</p>
+                <p style="font-size: 12.5px; color: var(--text-muted); margin: 0 0 10px 0;">Pending, In Progress, Completed, Released.</p>
                 <div class="mgr-chart-wrap">
                     <canvas id="joStatusChart"></canvas>
                 </div>
@@ -1798,7 +1946,7 @@ if (typeof Chart === 'undefined') {
                 <h2><i class="fas fa-arrow-trend-up" style="color: var(--petron-red);"></i> Monthly Revenue Trend</h2>
             </div>
             <div class="mgr-card-body">
-                <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 10px 0;">Monthly finalized revenue performance (Fuel + Merch + Jobs).</p>
+                <p style="font-size: 12.5px; color: var(--text-muted); margin: 0 0 10px 0;">Monthly finalized revenue performance (Fuel + Merch + Jobs).</p>
                 <div class="mgr-chart-wrap">
                     <canvas id="monthlyRevenueChart"></canvas>
                 </div>
@@ -1812,27 +1960,32 @@ if (typeof Chart === 'undefined') {
         <div class="mgr-card" style="margin-bottom: 0;">
             <div class="mgr-card-header">
                 <h2><i class="fas fa-database" style="color: #0284C7;"></i> Master Data Requests</h2>
-                <a href="manager_request_data_management.php" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;">Manage</a>
+                <a href="manager_request_data_management.php" style="font-size: 13px; font-weight: 700; color: var(--petron-blue); text-decoration: none;">Manage</a>
             </div>
             <div class="mgr-card-body" style="padding: 0;">
                 <div class="mgr-table-responsive">
-                    <table class="mgr-table">
+                    <table class="mgr-table report-table no-min-width print-table">
+                        <colgroup>
+                            <col style="width: 32%;">
+                            <col style="width: 40%;">
+                            <col style="width: 28%;">
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th>Ref</th>
-                                <th>Category</th>
-                                <th>Status</th>
+                                <th class="text-left">Ref</th>
+                                <th class="text-left">Category</th>
+                                <th class="text-center">Status</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($master_data_list)): ?>
-                                <tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 14px;">No master data requests submitted.</td></tr>
+                                <tr><td colspan="3" class="text-center" style="color: var(--text-muted); padding: 14px;">No master data requests submitted.</td></tr>
                             <?php else: ?>
                                 <?php foreach ($master_data_list as $md): ?>
                                     <tr>
-                                        <td><code><?= mgr_h($md['request_no']) ?></code></td>
-                                        <td><strong><?= mgr_h($md['category']) ?></strong></td>
-                                        <td>
+                                        <td class="text-left"><code><?= mgr_h($md['request_no']) ?></code></td>
+                                        <td class="text-left"><strong><?= mgr_h($md['category']) ?></strong></td>
+                                        <td class="text-center">
                                             <span class="mgr-badge mgr-badge-<?= in_array(strtolower($md['status']), ['approved','verified']) ? 'success' : (strtolower($md['status']) === 'for revision' ? 'danger' : 'warning') ?>">
                                                 <?= mgr_h($md['status']) ?>
                                             </span>
@@ -1850,29 +2003,34 @@ if (typeof Chart === 'undefined') {
         <div class="mgr-card" style="margin-bottom: 0;">
             <div class="mgr-card-header">
                 <h2><i class="fas fa-sliders" style="color: #D97706;"></i> Void &amp; Adjustment Monitoring</h2>
-                <a href="manager_validated_transactions.php?status=Void+Requested" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;"><i class="fas fa-arrow-up-right-from-square" style="font-size: 10px; margin-right: 3px;"></i> All Transactions</a>
+                <a href="manager_validated_transactions.php?status=Void+Requested" style="font-size: 13px; font-weight: 700; color: var(--petron-blue); text-decoration: none;"><i class="fas fa-arrow-up-right-from-square" style="font-size: 11px; margin-right: 3px;"></i> All Transactions</a>
             </div>
             <div class="mgr-card-body" style="padding: 0;">
                 <div class="mgr-table-responsive">
-                    <table class="mgr-table">
+                    <table class="mgr-table report-table no-min-width print-table">
+                        <colgroup>
+                            <col style="width: 32%;">
+                            <col style="width: 40%;">
+                            <col style="width: 28%;">
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th>Type</th>
-                                <th>Reason</th>
-                                <th>Status</th>
+                                <th class="text-left">Type</th>
+                                <th class="text-left">Reason</th>
+                                <th class="text-center">Status</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($void_adjust_list)): ?>
-                                <tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 14px;">No void or adjustment requests recorded.</td></tr>
+                                <tr><td colspan="3" class="text-center" style="color: var(--text-muted); padding: 14px;">No void or adjustment requests recorded.</td></tr>
                             <?php else: ?>
                                 <?php foreach ($void_adjust_list as $va): 
                                     $req_stat = (strtolower($va['request_type']) === 'void') ? 'Void+Requested' : 'Adjustment+Requested';
                                 ?>
                                     <tr onclick="location.href='manager_validated_transactions.php?status=<?= $req_stat ?>'" style="cursor: pointer; transition: background 0.15s ease;" title="View in All Transactions">
-                                        <td><strong><?= mgr_h($va['request_type']) ?></strong></td>
-                                        <td><small style="color: var(--text-muted);"><?= mgr_h($va['request_reason'] ?: '—') ?></small></td>
-                                        <td>
+                                        <td class="text-left"><strong><?= mgr_h($va['request_type']) ?></strong></td>
+                                        <td class="text-left"><small style="color: var(--text-muted); font-size: 12px;"><?= mgr_h($va['request_reason'] ?: '—') ?></small></td>
+                                        <td class="text-center">
                                             <span class="mgr-badge mgr-badge-<?= strtolower($va['status']) === 'approved' ? 'success' : (strtolower($va['status']) === 'rejected' ? 'danger' : 'warning') ?>">
                                                 <?= mgr_h($va['status']) ?>
                                             </span>
@@ -1890,7 +2048,7 @@ if (typeof Chart === 'undefined') {
         <div class="mgr-card" style="margin-bottom: 0;">
             <div class="mgr-card-header">
                 <h2><i class="fas fa-file-invoice-dollar" style="color: #10B981;"></i> Accounts Receivable</h2>
-                <a href="manager_customers.php" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;"><i class="fas fa-arrow-up-right-from-square" style="font-size: 10px; margin-right: 3px;"></i> Customer Module</a>
+                <a href="manager_customers.php" style="font-size: 13px; font-weight: 700; color: var(--petron-blue); text-decoration: none;"><i class="fas fa-arrow-up-right-from-square" style="font-size: 11px; margin-right: 3px;"></i> Customer Module</a>
             </div>
             <div class="mgr-card-body">
                 <div class="mgr-metric-list">
@@ -1921,34 +2079,39 @@ if (typeof Chart === 'undefined') {
         <div class="mgr-card" style="margin-bottom: 0;">
             <div class="mgr-card-header">
                 <h2><i class="fas fa-receipt"></i> Recent Transactions</h2>
-                <a href="manager_validated_transactions.php" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;">View All</a>
+                <a href="manager_validated_transactions.php" style="font-size: 13px; font-weight: 700; color: var(--petron-blue); text-decoration: none;">View All</a>
             </div>
             <div class="mgr-card-body" style="padding: 0;">
                 <div class="mgr-table-responsive">
-                    <table class="mgr-table">
+                    <table class="mgr-table report-table no-min-width print-table">
+                        <colgroup>
+                            <col style="width: 44%;">
+                            <col style="width: 26%;">
+                            <col style="width: 30%;">
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th>Reference</th>
-                                <th>Type</th>
-                                <th style="text-align: right;">Amount</th>
+                                <th class="text-left">Reference</th>
+                                <th class="text-center">Type</th>
+                                <th class="text-right">Amount</th>
                             </tr>
                         </thead>
                         <tbody id="recent_txn_tbody">
                             <?php if (empty($recent_transactions)): ?>
-                                <tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 16px;">No finalized transactions yet today.</td></tr>
+                                <tr><td colspan="3" class="text-center" style="color: var(--text-muted); padding: 16px;">No finalized transactions yet today.</td></tr>
                             <?php else: ?>
                                 <?php foreach ($recent_transactions as $rt): ?>
                                     <tr>
-                                        <td>
+                                        <td class="text-left">
                                             <code><?= mgr_h($rt['ref_no']) ?></code>
-                                            <br><small style="color: var(--text-muted);"><?= mgr_h($rt['customer_name']) ?></small>
+                                            <br><small style="color: var(--text-muted); font-size: 12px;"><?= mgr_h($rt['customer_name']) ?></small>
                                         </td>
-                                        <td>
+                                        <td class="text-center">
                                             <span class="mgr-badge mgr-badge-<?= $rt['txn_type'] === 'Job Order' ? 'info' : ($rt['txn_type'] === 'Fuel' ? 'warning' : 'neutral') ?>">
                                                 <?= mgr_h($rt['txn_type']) ?>
                                             </span>
                                         </td>
-                                        <td style="text-align: right;"><strong><?= mgr_money($rt['amount']) ?></strong></td>
+                                        <td class="text-right"><strong><?= mgr_money($rt['amount']) ?></strong></td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -1962,36 +2125,41 @@ if (typeof Chart === 'undefined') {
         <div class="mgr-card" style="margin-bottom: 0;">
             <div class="mgr-card-header" style="flex-wrap: wrap; gap: 8px;">
                 <h2><i class="fas fa-right-left" style="color: #059669;"></i> Inventory Movements</h2>
-                <a href="manager_reports.php?cat=audit&tab=inventory_logs" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;"><i class="fas fa-arrow-up-right-from-square" style="font-size: 10px; margin-right: 3px;"></i> Audit Log</a>
+                <a href="manager_reports.php?cat=audit&tab=inventory_logs" style="font-size: 13px; font-weight: 700; color: var(--petron-blue); text-decoration: none;"><i class="fas fa-arrow-up-right-from-square" style="font-size: 11px; margin-right: 3px;"></i> Audit Log</a>
             </div>
             <div class="mgr-card-body" style="padding: 0;">
                 <div class="mgr-table-responsive">
-                    <table class="mgr-table">
+                    <table class="mgr-table report-table no-min-width print-table">
+                        <colgroup>
+                            <col style="width: 50%;">
+                            <col style="width: 22%;">
+                            <col style="width: 28%;">
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th>Product</th>
-                                <th>Type</th>
-                                <th style="text-align: right;">Qty</th>
+                                <th class="text-left">Product</th>
+                                <th class="text-center">Type</th>
+                                <th class="text-right">Qty</th>
                             </tr>
                         </thead>
                         <tbody id="recent_mov_tbody">
                             <?php if (empty($recent_inventory_movements)): ?>
-                                <tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 16px;">No inventory movements logged yet.</td></tr>
+                                <tr><td colspan="3" class="text-center" style="color: var(--text-muted); padding: 16px;">No inventory movements logged yet.</td></tr>
                             <?php else: ?>
                                 <?php foreach ($recent_inventory_movements as $im): 
                                     $is_in = strtoupper($im['movement_type'] ?? '') === 'IN' || (float)$im['quantity_change'] > 0;
                                 ?>
                                     <tr onclick="location.href='manager_reports.php?cat=audit&tab=inventory_logs'" style="cursor: pointer; transition: background 0.15s ease;" title="View in Audit Log">
-                                        <td>
+                                        <td class="text-left">
                                             <strong><?= mgr_h($im['product_name']) ?></strong>
-                                            <br><small style="color: var(--text-muted);"><?= mgr_h($im['reason'] ?: $im['action']) ?></small>
+                                            <br><small style="color: var(--text-muted); font-size: 12px;"><?= mgr_h($im['reason'] ?: $im['action']) ?></small>
                                         </td>
-                                        <td>
+                                        <td class="text-center">
                                             <span class="mgr-badge mgr-badge-<?= $is_in ? 'success' : 'danger' ?>">
                                                 <?= $is_in ? 'IN' : 'OUT' ?>
                                             </span>
                                         </td>
-                                        <td style="text-align: right; font-weight: 700; color: <?= $is_in ? '#15803D' : '#DC2626' ?>;">
+                                        <td class="text-right" style="font-weight: 700; color: <?= $is_in ? '#15803D' : '#DC2626' ?>;">
                                             <?= $is_in ? '+' : '-' ?><?= number_format((float)$im['quantity_change']) ?>
                                         </td>
                                     </tr>
@@ -2007,11 +2175,11 @@ if (typeof Chart === 'undefined') {
         <div class="mgr-card" style="margin-bottom: 0;">
             <div class="mgr-card-header">
                 <h2><i class="fas fa-bell" style="color: #D97706;"></i> Notification Preview</h2>
-                <a href="notifications.php" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;">Hub</a>
+                <a href="notifications.php" style="font-size: 13px; font-weight: 700; color: var(--petron-blue); text-decoration: none;">Hub</a>
             </div>
             <div class="mgr-card-body" style="padding: 0;" id="mgr_notif_container">
                 <?php if (empty($notifications_list)): ?>
-                    <div style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 11px;">
+                    <div style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 12.5px;">
                         <i class="fas fa-check-circle" style="font-size: 20px; opacity: 0.4; margin-bottom: 6px;"></i>
                         <p style="margin: 0;">No active notifications for manager.</p>
                     </div>
@@ -2064,31 +2232,41 @@ if (typeof Chart === 'undefined') {
     <div class="mgr-card">
         <div class="mgr-card-header">
             <h2><i class="fas fa-user-shield" style="color: #002F6C;"></i> Staff Operational Activity Overview</h2>
-            <a href="manager_reports.php?cat=audit&tab=login_history" style="font-size: 11px; font-weight: 700; color: var(--petron-blue); text-decoration: none;"><i class="fas fa-arrow-up-right-from-square" style="font-size: 10px; margin-right: 3px;"></i> Login History</a>
+            <a href="manager_reports.php?cat=audit&tab=login_history" style="font-size: 13px; font-weight: 700; color: var(--petron-blue); text-decoration: none;"><i class="fas fa-arrow-up-right-from-square" style="font-size: 11px; margin-right: 3px;"></i> Login History</a>
         </div>
         <div class="mgr-card-body" style="padding: 0;">
             <div class="mgr-table-responsive">
-                <table class="mgr-table">
+                <table class="mgr-table report-table no-min-width print-table">
+                    <colgroup>
+                        <col style="width: 18%;">
+                        <col style="width: 14%;">
+                        <col style="width: 38%;">
+                        <col style="width: 15%;">
+                        <col style="width: 15%;">
+                    </colgroup>
                     <thead>
                         <tr>
-                            <th>Staff Member</th>
-                            <th>Action</th>
-                            <th>Details</th>
-                            <th>Reference</th>
-                            <th>Timestamp</th>
+                            <th class="text-left">Staff Member</th>
+                            <th class="text-center">Action</th>
+                            <th class="text-left">Details</th>
+                            <th class="text-left">Reference</th>
+                            <th class="text-center">Timestamp</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($staff_activity_list)): ?>
-                            <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 16px;">No recent staff operational activity logged.</td></tr>
+                            <tr><td colspan="5" class="text-center" style="color: var(--text-muted); padding: 16px;">No recent staff operational activity logged.</td></tr>
                         <?php else: ?>
                             <?php foreach ($staff_activity_list as $sa): ?>
                                 <tr onclick="location.href='manager_reports.php?cat=audit&tab=login_history'" style="cursor: pointer; transition: background 0.15s ease;" title="View in Login History">
-                                    <td><strong><?= mgr_h(trim($sa['first_name'] . ' ' . $sa['last_name']) ?: 'Staff') ?></strong></td>
-                                    <td><span class="mgr-badge mgr-badge-neutral"><?= mgr_h($sa['action']) ?></span></td>
-                                    <td><span style="color: var(--text-dark);"><?= mgr_h($sa['details']) ?></span></td>
-                                    <td><code style="color: var(--petron-blue);"><?= mgr_h($sa['reference']) ?></code></td>
-                                    <td style="color: #94A3B8; font-size: 11px; white-space: nowrap;"><?= date('M d, Y g:i A', strtotime($sa['created_at'])) ?></td>
+                                    <td class="text-left"><strong><?= mgr_h(trim($sa['first_name'] . ' ' . $sa['last_name']) ?: 'Staff') ?></strong></td>
+                                    <td class="text-center"><span class="mgr-badge mgr-badge-neutral"><?= mgr_h($sa['action']) ?></span></td>
+                                    <td class="text-left"><span style="color: var(--text-dark);"><?= mgr_h($sa['details']) ?></span></td>
+                                    <td class="text-left"><code style="color: var(--petron-blue);"><?= mgr_h($sa['reference']) ?></code></td>
+                                    <td class="text-center" style="color: #64748B; font-size: 12px; line-height: 1.3;">
+                                        <?= date('M d, Y', strtotime($sa['created_at'])) ?>
+                                        <br><span style="font-size: 11px; color: #94A3B8;"><?= date('g:i A', strtotime($sa['created_at'])) ?></span>
+                                    </td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>
@@ -2195,7 +2373,7 @@ if (typeof Chart === 'undefined') {
                 <i class="fas fa-boxes" style="font-size:20px; color:#FCD34D;"></i>
                 <div>
                     <h3 style="margin:0; font-size:16px; font-weight:800; color:#FFFFFF;">Merchandise Inventory Catalog &amp; Stock Status</h3>
-                    <p style="margin:0; font-size:11px; color:#93C5FD;">Live overview of all products, stock levels, reorder thresholds &amp; physical counts</p>
+                    <p style="margin:0; font-size:12px; color:#93C5FD;">Live overview of all products, stock levels, reorder thresholds &amp; physical counts</p>
                 </div>
             </div>
             <button type="button" onclick="closeMgrMerchInvModal()" style="background:transparent; border:none; color:#FFFFFF; font-size:20px; cursor:pointer; line-height:1;">&times;</button>
@@ -2204,61 +2382,69 @@ if (typeof Chart === 'undefined') {
         <!-- Controls / Filter Tabs -->
         <div style="padding:12px 20px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
             <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
-                <button type="button" class="mgrmerch-flt-btn active" id="mgrmflt_all" onclick="filterMgrMerchModal('all')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#002F6C; color:#FFF; cursor:pointer;">
+                <button type="button" class="mgrmerch-flt-btn active" id="mgrmflt_all" onclick="filterMgrMerchModal('all')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#002F6C; color:#FFF; cursor:pointer;">
                     All (<?= $total_products_count ?>)
                 </button>
-                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_available" onclick="filterMgrMerchModal('available')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#15803D; cursor:pointer;">
+                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_available" onclick="filterMgrMerchModal('available')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#15803D; cursor:pointer;">
                     <i class="fas fa-circle-check"></i> Available (<?= $available_merch_count ?>)
                 </button>
-                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_low" onclick="filterMgrMerchModal('low')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#B45309; cursor:pointer;">
+                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_low" onclick="filterMgrMerchModal('low')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#B45309; cursor:pointer;">
                     <i class="fas fa-triangle-exclamation"></i> Low Stock (<?= $low_merch_count ?>)
                 </button>
-                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_critical" onclick="filterMgrMerchModal('critical')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#DC2626; cursor:pointer;">
+                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_critical" onclick="filterMgrMerchModal('critical')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#DC2626; cursor:pointer;">
                     <i class="fas fa-circle-exclamation"></i> Critical (<?= $crit_merch_count ?>)
                 </button>
-                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_out" onclick="filterMgrMerchModal('out')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#991B1B; cursor:pointer;">
+                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_out" onclick="filterMgrMerchModal('out')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#991B1B; cursor:pointer;">
                     <i class="fas fa-circle-xmark"></i> Out of Stock (<?= $out_merch_count ?>)
                 </button>
-                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_variance" onclick="filterMgrMerchModal('variance')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#7C3AED; cursor:pointer;">
+                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_variance" onclick="filterMgrMerchModal('variance')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#7C3AED; cursor:pointer;">
                     <i class="fas fa-clipboard-check"></i> Variance (<?= $variance_merch_count ?>)
                 </button>
             </div>
-            <input type="text" id="mgrMerchModalSearch" placeholder="Search product..." onkeyup="searchMgrMerchModal()" style="padding:5px 10px; font-size:12px; border:1px solid #CBD5E1; border-radius:6px; width:180px;">
+            <input type="text" id="mgrMerchModalSearch" placeholder="Search product..." onkeyup="searchMgrMerchModal()" style="padding:6px 12px; font-size:13px; border:1px solid #CBD5E1; border-radius:6px; width:200px;">
         </div>
 
         <!-- Table Body -->
-        <div style="padding:0; overflow-y:auto; flex:1;">
-            <table class="mgr-table" style="margin:0; width:100%;">
+        <div style="padding:0; overflow-y:auto; overflow-x:hidden; flex:1;">
+            <table class="mgr-table report-table no-min-width print-table" style="margin:0; width:100%;">
+                <colgroup>
+                    <col style="width: 32%;">
+                    <col style="width: 18%;">
+                    <col style="width: 14%;">
+                    <col style="width: 12%;">
+                    <col style="width: 12%;">
+                    <col style="width: 12%;">
+                </colgroup>
                 <thead>
                     <tr>
-                        <th>Product Name</th>
-                        <th>Category</th>
-                        <th style="text-align:right;">Current Stock</th>
-                        <th style="text-align:right;">Reorder Level</th>
-                        <th style="text-align:right;">Critical Level</th>
-                        <th style="text-align:center;">Status</th>
+                        <th class="text-left">Product Name</th>
+                        <th class="text-left">Category</th>
+                        <th class="text-right">Current Stock</th>
+                        <th class="text-right">Reorder Level</th>
+                        <th class="text-right">Critical Level</th>
+                        <th class="text-center">Status</th>
                     </tr>
                 </thead>
                 <tbody id="mgrMerchModalTableBody">
                     <?php if (empty($merch_inv_stats)): ?>
-                        <tr><td colspan="6" style="text-align:center; color:#64748B; padding:24px;">No merchandise products found.</td></tr>
+                        <tr><td colspan="6" class="text-center" style="color:#64748B; padding:24px;">No merchandise products found.</td></tr>
                     <?php else: ?>
                         <?php foreach ($merch_inv_stats as $item): ?>
                             <tr class="mgrmerch-modal-row" data-type="<?= $item['alert_type'] ?>" data-has-variance="<?= $item['has_variance'] ? 'true' : 'false' ?>" data-name="<?= strtolower(htmlspecialchars($item['product_name'] . ' ' . $item['category'])) ?>">
-                                <td>
+                                <td class="text-left">
                                     <strong><?= mgr_h($item['product_name']) ?></strong>
                                     <?php if ($item['has_variance']): ?>
-                                        <span style="display:inline-block; margin-left:6px; padding:1px 6px; font-size:9px; font-weight:800; border-radius:4px; background:#F5F3FF; color:#7C3AED; border:1px solid #DDD6FE;">Variance <?= ($item['variance'] > 0 ? '+' : '') . (float)$item['variance'] ?></span>
+                                        <span style="display:inline-block; margin-left:6px; padding:2px 7px; font-size:10px; font-weight:800; border-radius:4px; background:#F5F3FF; color:#7C3AED; border:1px solid #DDD6FE;">Variance <?= ($item['variance'] > 0 ? '+' : '') . (float)$item['variance'] ?></span>
                                     <?php endif; ?>
                                 </td>
-                                <td><span style="color:#64748B; font-size:11px;"><?= mgr_h($item['category']) ?></span></td>
-                                <td style="text-align:right; font-weight:800; color:<?= $item['alert_type'] === 'out' ? '#991B1B' : ($item['alert_type'] === 'critical' ? '#DC2626' : ($item['alert_type'] === 'low' ? '#B45309' : '#15803D')) ?>;">
+                                <td class="text-left"><span style="color:#64748B; font-size:12.5px;"><?= mgr_h($item['category']) ?></span></td>
+                                <td class="text-right" style="font-weight:800; font-size:13px; color:<?= $item['alert_type'] === 'out' ? '#991B1B' : ($item['alert_type'] === 'critical' ? '#DC2626' : ($item['alert_type'] === 'low' ? '#B45309' : '#15803D')) ?>;">
                                     <?= number_format((float)$item['stock_level']) ?> <?= mgr_h($item['unit']) ?>
                                 </td>
-                                <td style="text-align:right; color:#64748B;"><?= number_format((float)$item['reorder_level']) ?></td>
-                                <td style="text-align:right; color:#64748B;"><?= number_format((float)$item['critical_level']) ?></td>
-                                <td style="text-align:center;">
-                                    <span style="display:inline-block; padding:3px 10px; font-size:10px; font-weight:800; border-radius:999px; background:<?= $item['badge_bg'] ?? '#F1F5F9' ?>; color:<?= $item['badge_color'] ?? '#475569' ?>; border:1.5px solid <?= $item['badge_border'] ?? '#CBD5E1' ?>; letter-spacing:0.5px; text-transform:uppercase;"><?= mgr_h($item['alert_status']) ?></span>
+                                <td class="text-right" style="color:#64748B; font-size:13px;"><?= number_format((float)$item['reorder_level']) ?></td>
+                                <td class="text-right" style="color:#64748B; font-size:13px;"><?= number_format((float)$item['critical_level']) ?></td>
+                                <td class="text-center">
+                                    <span style="display:inline-block; padding:4px 10px; font-size:11px; font-weight:800; border-radius:999px; background:<?= $item['badge_bg'] ?? '#F1F5F9' ?>; color:<?= $item['badge_color'] ?? '#475569' ?>; border:1.5px solid <?= $item['badge_border'] ?? '#CBD5E1' ?>; letter-spacing:0.5px; text-transform:uppercase;"><?= mgr_h($item['alert_status']) ?></span>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -2269,10 +2455,10 @@ if (typeof Chart === 'undefined') {
 
         <!-- Footer -->
         <div style="padding:12px 20px; background:#F8FAFC; border-top:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:11px; color:#64748B;">Total Products Catalog: <strong><?= number_format($total_products_count) ?></strong></span>
+            <span style="font-size:12.5px; color:#64748B;">Total Products Catalog: <strong><?= number_format($total_products_count) ?></strong></span>
             <div style="display:flex; gap:8px;">
-                <button type="button" onclick="closeMgrMerchInvModal()" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFFFFF; color:#475569; cursor:pointer;">Close</button>
-                <a href="manager_inventory_merchandise.php" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:none; background:#002F6C; color:#FFFFFF; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+                <button type="button" onclick="closeMgrMerchInvModal()" style="padding:7px 16px; font-size:13px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFFFFF; color:#475569; cursor:pointer;">Close</button>
+                <a href="manager_inventory_merchandise.php" style="padding:7px 16px; font-size:13px; font-weight:700; border-radius:6px; border:none; background:#002F6C; color:#FFFFFF; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
                     <i class="fas fa-boxes"></i> Open Merchandise Module
                 </a>
             </div>
@@ -2291,7 +2477,7 @@ if (typeof Chart === 'undefined') {
                 <i class="fas fa-gas-pump" style="font-size:20px; color:#FCD34D;"></i>
                 <div>
                     <h3 style="margin:0; font-size:16px; font-weight:800; color:#FFFFFF;">Manager Fuel Tanks Inventory &amp; Status</h3>
-                    <p style="margin:0; font-size:11px; color:#93C5FD;">Station Underground Tanks (UGT) capacity, volume, and stock levels</p>
+                    <p style="margin:0; font-size:12px; color:#93C5FD;">Station Underground Tanks (UGT) capacity, volume, and stock levels</p>
                 </div>
             </div>
             <button type="button" onclick="closeMgrFuelInvModal()" style="background:transparent; border:none; color:#FFFFFF; font-size:20px; cursor:pointer; line-height:1;">&times;</button>
@@ -2300,40 +2486,47 @@ if (typeof Chart === 'undefined') {
         <!-- Controls / Filter Tabs -->
         <div style="padding:12px 20px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
             <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
-                <button type="button" class="mgrfuel-flt-btn active" id="mgrfflt_all" onclick="filterMgrFuelModal('all')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#002F6C; color:#FFF; cursor:pointer;">
+                <button type="button" class="mgrfuel-flt-btn active" id="mgrfflt_all" onclick="filterMgrFuelModal('all')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#002F6C; color:#FFF; cursor:pointer;">
                     All Tanks (<?= count($fuel_tanks) ?>)
                 </button>
-                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_normal" onclick="filterMgrFuelModal('normal')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#15803D; cursor:pointer;">
+                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_normal" onclick="filterMgrFuelModal('normal')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#15803D; cursor:pointer;">
                     <i class="fas fa-circle-check"></i> Normal (<?= $normal_fuel_count ?>)
                 </button>
-                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_low" onclick="filterMgrFuelModal('low')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#B45309; cursor:pointer;">
+                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_low" onclick="filterMgrFuelModal('low')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#B45309; cursor:pointer;">
                     <i class="fas fa-triangle-exclamation"></i> Low (<?= $low_fuel_count ?>)
                 </button>
-                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_critical" onclick="filterMgrFuelModal('critical')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#DC2626; cursor:pointer;">
+                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_critical" onclick="filterMgrFuelModal('critical')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#DC2626; cursor:pointer;">
                     <i class="fas fa-circle-exclamation"></i> Critical (<?= $crit_fuel_count ?>)
                 </button>
-                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_out" onclick="filterMgrFuelModal('out')" style="padding:5px 12px; font-size:11px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#991B1B; cursor:pointer;">
+                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_out" onclick="filterMgrFuelModal('out')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#991B1B; cursor:pointer;">
                     <i class="fas fa-circle-xmark"></i> Out of Stock (<?= $out_fuel_count ?>)
                 </button>
             </div>
-            <input type="text" id="mgrFuelModalSearch" placeholder="Search fuel tank..." onkeyup="searchMgrFuelModal()" style="padding:5px 10px; font-size:12px; border:1px solid #CBD5E1; border-radius:6px; width:180px;">
+            <input type="text" id="mgrFuelModalSearch" placeholder="Search fuel tank..." onkeyup="searchMgrFuelModal()" style="padding:6px 12px; font-size:13px; border:1px solid #CBD5E1; border-radius:6px; width:200px;">
         </div>
 
         <!-- Table Body -->
-        <div style="padding:0; overflow-y:auto; flex:1;">
-            <table class="mgr-table" style="margin:0; width:100%;">
+        <div style="padding:0; overflow-y:auto; overflow-x:hidden; flex:1;">
+            <table class="mgr-table report-table no-min-width print-table" style="margin:0; width:100%;">
+                <colgroup>
+                    <col style="width: 26%;">
+                    <col style="width: 20%;">
+                    <col style="width: 18%;">
+                    <col style="width: 22%;">
+                    <col style="width: 14%;">
+                </colgroup>
                 <thead>
                     <tr>
-                        <th>Fuel Tank / UGT</th>
-                        <th style="text-align:right;">Current Volume</th>
-                        <th style="text-align:right;">Capacity</th>
-                        <th style="text-align:center; width:28%;">Level Gauge</th>
-                        <th style="text-align:center;">Status</th>
+                        <th class="text-left">Fuel Tank / UGT</th>
+                        <th class="text-right">Current Volume</th>
+                        <th class="text-right">Capacity</th>
+                        <th class="text-center">Level Gauge</th>
+                        <th class="text-center">Status</th>
                     </tr>
                 </thead>
                 <tbody id="mgrFuelModalTableBody">
                     <?php if (empty($fuel_tanks)): ?>
-                        <tr><td colspan="5" style="text-align:center; color:#64748B; padding:24px;">No active fuel tanks found for this station.</td></tr>
+                        <tr><td colspan="5" class="text-center" style="color:#64748B; padding:24px;">No active fuel tanks found for this station.</td></tr>
                     <?php else: ?>
                         <?php foreach ($fuel_tanks as $ft): 
                             $lvl_num = (float)$ft['current_level'];
@@ -2341,19 +2534,19 @@ if (typeof Chart === 'undefined') {
                             $pct_num = $cap_num > 0 ? min(100, round(($lvl_num / $cap_num) * 100, 1)) : 0;
                         ?>
                             <tr class="mgrfuel-modal-row" data-type="<?= $ft['alert_type'] ?>" data-name="<?= strtolower(htmlspecialchars($ft['fuel_type'])) ?>">
-                                <td><strong><?= mgr_h($ft['fuel_type']) ?></strong></td>
-                                <td style="text-align:right; font-weight:800; color:var(--petron-blue);"><?= number_format($lvl_num, 2) ?> L</td>
-                                <td style="text-align:right; color:#64748B;"><?= number_format($cap_num) ?> L</td>
-                                <td style="text-align:center; vertical-align:middle;">
+                                <td class="text-left"><strong><?= mgr_h($ft['fuel_type']) ?></strong></td>
+                                <td class="text-right" style="font-weight:800; font-size:13px; color:var(--petron-blue);"><?= number_format($lvl_num, 2) ?> L</td>
+                                <td class="text-right" style="color:#64748B; font-size:13px;"><?= number_format($cap_num) ?> L</td>
+                                <td class="text-center" style="vertical-align:middle;">
                                     <div style="display:flex; align-items:center; gap:6px;">
                                         <div style="flex:1; height:8px; background:#E2E8F0; border-radius:999px; overflow:hidden;">
                                             <div style="height:100%; width:<?= $pct_num ?>%; background:<?= $ft['bar_color'] ?? '#002F6C' ?>; border-radius:999px;"></div>
                                         </div>
-                                        <span style="font-size:11px; font-weight:700; min-width:34px;"><?= $pct_num ?>%</span>
+                                        <span style="font-size:12px; font-weight:700; min-width:34px;"><?= $pct_num ?>%</span>
                                     </div>
                                 </td>
-                                <td style="text-align:center;">
-                                    <span style="display:inline-block; padding:3px 10px; font-size:10px; font-weight:800; border-radius:999px; background:<?= $ft['badge_bg'] ?? '#64748B' ?>; color:<?= $ft['badge_color'] ?? '#FFF' ?>; letter-spacing:0.5px; text-transform:uppercase;"><?= mgr_h($ft['alert_status'] ?? 'NORMAL') ?></span>
+                                <td class="text-center">
+                                    <span style="display:inline-block; padding:4px 10px; font-size:11px; font-weight:800; border-radius:999px; background:<?= $ft['badge_bg'] ?? '#64748B' ?>; color:<?= $ft['badge_color'] ?? '#FFF' ?>; letter-spacing:0.5px; text-transform:uppercase;"><?= mgr_h($ft['alert_status'] ?? 'NORMAL') ?></span>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -2364,10 +2557,10 @@ if (typeof Chart === 'undefined') {
 
         <!-- Footer -->
         <div style="padding:12px 20px; background:#F8FAFC; border-top:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:11px; color:#64748B;">Total Fuel Tanks: <strong><?= count($fuel_tanks) ?></strong></span>
+            <span style="font-size:12.5px; color:#64748B;">Total Fuel Tanks: <strong><?= count($fuel_tanks) ?></strong></span>
             <div style="display:flex; gap:8px;">
-                <button type="button" onclick="closeMgrFuelInvModal()" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFFFFF; color:#475569; cursor:pointer;">Close</button>
-                <a href="manager_inventory_fuel.php" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:none; background:#002F6C; color:#FFFFFF; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+                <button type="button" onclick="closeMgrFuelInvModal()" style="padding:7px 16px; font-size:13px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFFFFF; color:#475569; cursor:pointer;">Close</button>
+                <a href="manager_inventory_fuel.php" style="padding:7px 16px; font-size:13px; font-weight:700; border-radius:6px; border:none; background:#002F6C; color:#FFFFFF; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
                     <i class="fas fa-gas-pump"></i> Open Fuel Module
                 </a>
             </div>

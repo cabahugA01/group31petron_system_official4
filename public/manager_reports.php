@@ -245,6 +245,11 @@ if ($active_tab === 'fuel_sales') {
     if (!empty($_GET['filter_search']))   $active_filters['search']   = $_GET['filter_search'];
 }
 
+// Inject viewer context for role-based audit visibility
+$viewer_user_id = (int)($me['id'] ?? ($_SESSION['user_id'] ?? 0));
+$active_filters['viewer_role']    = $role;       // e.g. 'manager','admin'...
+$active_filters['viewer_user_id'] = $viewer_user_id;
+
 // Fetch report data
 $report_data = getAdminReportData($pdo, $station_id, $date_from, $date_to, $active_cat, $active_tab, $active_filters);
 
@@ -281,12 +286,19 @@ require_once __DIR__ . '/../partials/header.php';
     border-radius: 8px !important;
     box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
     margin: 0 0 60px 0 !important;
-    overflow: visible !important;
+    overflow-x: hidden !important;
     border: 1px solid #e2e8f0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
 }
 
 .rpt-content {
-    padding: 22px 28px 60px 28px !important;
+    padding: 20px 16px 50px 16px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
 }
 
 /* Filter & Export Bar */
@@ -310,37 +322,41 @@ require_once __DIR__ . '/../partials/header.php';
     flex-wrap: wrap !important;
 }
 
-.rpt-filter-bar label {
-    font-size: 12px !important;
-    font-weight: 700 !important;
+.rpt-filter-bar label,
+.rpt-filter-inputs label {
+    font-size: 13.5px !important;
+    font-weight: 800 !important;
     color: #00264D !important;
     text-transform: uppercase !important;
     margin: 0 !important;
+    letter-spacing: 0.3px !important;
 }
 
 .rpt-filter-bar input[type="date"],
 .rpt-filter-bar input[type="text"],
 .rpt-filter-bar select {
-    padding: 6px 10px !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 4px !important;
-    font-size: 12px !important;
-    color: #334155 !important;
+    padding: 7px 12px !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 5px !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    color: #0f172a !important;
     background: #ffffff !important;
 }
 
 .rpt-btn-apply {
-    padding: 7px 18px !important;
+    padding: 8px 20px !important;
     background: #00264D !important;
     color: #ffffff !important;
     border: none !important;
-    border-radius: 4px !important;
-    font-size: 12px !important;
-    font-weight: 700 !important;
+    border-radius: 5px !important;
+    font-size: 13.5px !important;
+    font-weight: 800 !important;
     cursor: pointer !important;
     display: inline-flex !important;
     align-items: center !important;
     gap: 6px !important;
+    letter-spacing: 0.3px !important;
 }
 
 .rpt-btn-apply:hover {
@@ -351,26 +367,26 @@ require_once __DIR__ . '/../partials/header.php';
 .rpt-export-group {
     display: flex !important;
     align-items: center !important;
-    gap: 6px !important;
+    gap: 7px !important;
     margin-left: auto !important;
     white-space: nowrap !important;
 }
 
 .rpt-export-btn {
-    padding: 7px 13px !important;
-    font-size: 11px !important;
+    padding: 7px 14px !important;
+    font-size: 13px !important;
     font-weight: 700 !important;
-    border-radius: 4px !important;
+    border-radius: 5px !important;
     cursor: pointer !important;
     display: inline-flex !important;
     align-items: center !important;
-    gap: 5px !important;
+    gap: 6px !important;
     background: #ffffff !important;
-    border: 1px solid !important;
+    border: 1px solid #cbd5e1 !important;
     transition: all 0.18s !important;
 }
 
-.rpt-btn-print  { color: #475569 !important; border-color: transparent !important; background: transparent !important; }
+.rpt-btn-print  { color: #475569 !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
 .rpt-btn-print:hover  { background: #f1f5f9 !important; }
 .rpt-btn-pdf   { color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
 .rpt-btn-pdf:hover   { background: #fef2f2 !important; }
@@ -379,35 +395,36 @@ require_once __DIR__ . '/../partials/header.php';
 .rpt-btn-csv   { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
 .rpt-btn-csv:hover   { background: #f0fdf4 !important; }
 
-/* Sub-Tab Nav - Horizontal strip matching Admin design */
+/* Sub-Tab Nav - Standardized Horizontal Strip */
 .rpt-subtab-nav {
     display: flex !important;
     flex-wrap: wrap !important;
-    margin-bottom: 22px !important;
-    border: 1px solid #d1d9e6 !important;
+    margin-bottom: 24px !important;
+    border: 1px solid #cbd5e1 !important;
     border-radius: 0 !important;
     overflow: hidden !important;
-    border-bottom: 3px solid #00264D !important;
+    border-bottom: 3.5px solid #00264D !important;
+    background: #ffffff !important;
 }
 
 .rpt-subtab-btn {
     flex: 1 !important;
-    min-width: 140px !important;
-    padding: 12px 16px !important;
-    font-size: 11.5px !important;
-    font-weight: 700 !important;
-    color: #334155 !important;
-    background: #ffffff !important;
+    min-width: 150px !important;
+    padding: 13px 20px !important;
+    font-size: 13.5px !important;
+    font-weight: 800 !important;
+    color: #475569 !important;
+    background: #f8fafc !important;
     border: none !important;
-    border-right: 1px solid #d1d9e6 !important;
+    border-right: 1px solid #e2e8f0 !important;
     text-decoration: none !important;
     transition: all 0.15s ease !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 7px !important;
+    gap: 8px !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.3px !important;
+    letter-spacing: 0.4px !important;
     text-align: center !important;
 }
 
@@ -416,7 +433,7 @@ require_once __DIR__ . '/../partials/header.php';
 }
 
 .rpt-subtab-btn:hover {
-    background: #f1f5f9 !important;
+    background: #e2e8f0 !important;
     color: #00264D !important;
     text-decoration: none !important;
 }
@@ -427,110 +444,229 @@ require_once __DIR__ . '/../partials/header.php';
     font-weight: 800 !important;
 }
 
-.rpt-subtab-btn i {
-    font-size: 13px !important;
+.rpt-subtab-btn.active i {
+    color: #ffffff !important;
 }
 
-/* Table Styling - Exact Match with Admin Reports */
-.rpt-table {
-    width: 100% !important;
-    border-collapse: collapse !important;
-    font-size: 12px !important;
-    margin-bottom: 0 !important;
-}
-.rpt-table thead th {
-    background: #f1f5f9 !important;
-    color: #00264D !important;
-    font-weight: 800 !important;
-    text-transform: uppercase !important;
-    padding: 11px 10px !important;
-    border-bottom: 2px solid #00264D !important;
-    font-size: 11px !important;
-    letter-spacing: 0.3px !important;
-}
-.rpt-table tbody td {
-    padding: 10px !important;
-    border-bottom: 1px solid #e2e8f0 !important;
-    color: #334155 !important;
-}
-.rpt-table tbody tr:hover {
-    background: #f8fafc !important;
-}
-.rpt-table tfoot td {
-    padding: 11px 10px !important;
-    background: #f1f5f9 !important;
-    font-weight: 800 !important;
-    border-top: 2px solid #00264D !important;
-    color: #00264D !important;
-}
+/* == SCREEN FONT SIZES - Senior-Friendly (Large, Clear, High-Contrast) == */
 
-/* Summary Cards */
-.rpt-summary-cards {
-    display: grid !important;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)) !important;
-    gap: 16px !important;
-    margin-bottom: 24px !important;
+.rpt-header-title h2,
+.rpt-printable-area h2 {
+    font-size: 25px !important;
+    font-weight: 900 !important;
+    color: #00264D !important;
+    letter-spacing: 0.5px !important;
 }
-.rpt-summary-card {
-    background: #f8fafc !important;
-    border: 1px solid #e2e8f0 !important;
-    border-radius: 8px !important;
-    padding: 16px !important;
-    text-align: center !important;
-}
-.rpt-summary-card .card-label {
-    font-size: 11px !important;
-    text-transform: uppercase !important;
+.rpt-header-title h4,
+.rpt-printable-area h4 {
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    color: #00264D !important;
     letter-spacing: 0.3px !important;
-    color: #64748b !important;
+}
+.rpt-header-title p,
+.rpt-printable-area .rpt-header-title p {
+    font-size: 14px !important;
     font-weight: 600 !important;
-    margin-bottom: 6px !important;
-    display: block !important;
-}
-.rpt-summary-card .card-value {
-    font-size: 22px !important;
-    font-weight: 800 !important;
-    color: #00264D !important;
+    color: #475569 !important;
 }
 
-/* Section heading inside report */
 .rpt-section-heading {
-    font-size: 13px !important;
-    font-weight: 800 !important;
+    font-size: 16px !important;
+    font-weight: 900 !important;
     color: #00264D !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.3px !important;
-    margin: 24px 0 12px !important;
+    letter-spacing: 0.4px !important;
+    margin: 26px 0 12px !important;
     padding-bottom: 8px !important;
-    border-bottom: 2px solid #00264D !important;
+    border-bottom: 2.5px solid #00264D !important;
     display: flex !important;
     align-items: center !important;
-    gap: 8px !important;
+    gap: 9px !important;
+}
+.rpt-section-heading i {
+    font-size: 16px !important;
+    color: #00264D !important;
+}
+
+/* Table Styling - Zero Horizontal Scrolling, Senior-Friendly Readability, 100% Column Visibility */
+.rpt-table,
+.rpt-content table,
+.rpt-printable-area table,
+table.rpt-table {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    table-layout: auto !important;
+    border-collapse: collapse !important;
+    margin-bottom: 0 !important;
+}
+
+.rpt-table thead th,
+.rpt-table th,
+.rpt-content table th,
+.rpt-printable-area table th,
+table.rpt-table th {
+    background: #f1f5f9 !important;
+    color: #00264D !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    padding: 10px 6px !important;
+    border-bottom: 2.5px solid #00264D !important;
+    font-size: 13px !important;
+    letter-spacing: 0.2px !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    vertical-align: middle !important;
+    line-height: 1.25 !important;
+    min-width: 0 !important;
+    text-align: left !important;
+}
+
+.rpt-table tbody td,
+.rpt-table td,
+.rpt-content table td,
+.rpt-printable-area table td,
+table.rpt-table td {
+    padding: 10px 6px !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    color: #0f172a !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    vertical-align: middle !important;
+    line-height: 1.35 !important;
+    white-space: nowrap !important;
+    min-width: 0 !important;
+    text-align: left !important;
+}
+
+/* ── Column Alignment Engine: Bootstrap utility + inline style overrides ── */
+/* RIGHT-ALIGNED: numeric / currency columns */
+.rpt-table th.text-end,   .rpt-table td.text-end,
+.rpt-table th.text-right, .rpt-table td.text-right,
+.rpt-content table th.text-end,   .rpt-content table td.text-end,
+.rpt-content table th.text-right, .rpt-content table td.text-right,
+.rpt-table th[style*="text-align:right"],  .rpt-table td[style*="text-align:right"],
+.rpt-table th[style*="text-align: right"], .rpt-table td[style*="text-align: right"] {
+    text-align: right !important;
+}
+/* CENTER-ALIGNED: badges / status / quantities */
+.rpt-table th.text-center, .rpt-table td.text-center,
+.rpt-content table th.text-center, .rpt-content table td.text-center,
+.rpt-table th[style*="text-align:center"],  .rpt-table td[style*="text-align:center"],
+.rpt-table th[style*="text-align: center"], .rpt-table td[style*="text-align: center"] {
+    text-align: center !important;
+}
+/* LEFT-ALIGNED: explicit left (overrides bootstrap reset) */
+.rpt-table th.text-start, .rpt-table td.text-start,
+.rpt-table th.text-left,  .rpt-table td.text-left,
+.rpt-content table th.text-start, .rpt-content table td.text-start,
+.rpt-table th[style*="text-align:left"],  .rpt-table td[style*="text-align:left"],
+.rpt-table th[style*="text-align: left"], .rpt-table td[style*="text-align: left"] {
+    text-align: left !important;
+}
+
+.rpt-table tbody tr:hover,
+.rpt-content table tbody tr:hover {
+    background: #f8fafc !important;
+}
+
+.rpt-table tbody td strong,
+.rpt-table tbody td b {
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    color: #00264D !important;
+}
+
+.rpt-table tfoot td,
+.rpt-content table tfoot td,
+.rpt-printable-area table tfoot td,
+table.rpt-table tfoot td,
+.total-row td,
+tr.grand-total td {
+    padding: 11px 6px !important;
+    background: #f1f5f9 !important;
+    font-weight: 900 !important;
+    border-top: 2.5px solid #00264D !important;
+    color: #00264D !important;
+    font-size: 14px !important;
+    white-space: nowrap !important;
+    vertical-align: middle !important;
+    min-width: 0 !important;
+}
+
+/* Badges & Pills Inside Table */
+.rpt-table .badge,
+.rpt-table span[style*="border-radius"] {
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    padding: 3px 8px !important;
+    display: inline-block !important;
+    white-space: nowrap !important;
+}
+
+/* Empty State Message */
+.rpt-table tbody tr td.text-center.text-muted,
+.rpt-table tbody tr td.text-muted {
+    font-size: 13.5px !important;
+    padding: 20px 10px !important;
+    color: #64748b !important;
+    white-space: normal !important;
+}
+
+/* High-Contrast Colors */
+.rpt-table .text-success,
+.rpt-content .text-success {
+    color: #15803d !important;
+    font-weight: 700 !important;
+}
+.rpt-table .text-primary,
+.rpt-content .text-primary {
+    color: #00264D !important;
+    font-weight: 700 !important;
+}
+.rpt-table .text-danger,
+.rpt-content .text-danger {
+    color: #b91c1c !important;
+    font-weight: 700 !important;
+}
+.rpt-table .text-warning,
+.rpt-content .text-warning {
+    color: #b45309 !important;
+    font-weight: 700 !important;
 }
 
 .mgr-signature-row, .str-signature-wrap {
     display: none !important;
 }
 
-/* Print Styles — direct native in-page print (matching staff reports flow) */
+/* Responsive Table Wrapper - NO HORIZONTAL SCROLLING, ALL COLUMNS VISIBLE */
+.table-responsive {
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-bottom: 20px !important;
+    box-sizing: border-box !important;
+}
+
+/* Print Styles - direct native in-page print */
 @media print {
     @page { size: A4 landscape; margin: 0.4in 0.5in; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-shadow: none !important; }
 
-    /* Hide all page chrome except sfss-print-only */
     body > *:not(.sfss-print-only) { display: none !important; }
-    
+
     .sfss-print-only { display: block !important; position: static !important; width: 100% !important; margin: 0 !important; padding: 0 !important; background: #fff !important; font-family: Arial, sans-serif !important; font-size: 10px !important; color: #000 !important; }
     .sfss-print-only *, .sfss-print-only *::before, .sfss-print-only *::after { box-shadow: none !important; text-shadow: none !important; }
 
-    /* Report typography & layout */
     .sfss-print-only .rpt-header-title { text-align: center !important; margin-bottom: 16px !important; }
     .sfss-print-only .rpt-header-title h2 { font-size: 16px !important; font-weight: 800 !important; color: #00264D !important; text-transform: uppercase !important; margin: 0 0 2px !important; }
     .sfss-print-only .rpt-header-title h4 { font-size: 11px !important; font-weight: 700 !important; color: #00264D !important; text-transform: uppercase !important; margin: 0 0 4px !important; }
     .sfss-print-only .rpt-header-title p { font-size: 10px !important; color: #555 !important; margin: 1px 0 !important; }
     .sfss-print-only .rpt-section-heading { font-size: 10px !important; font-weight: 800 !important; color: #00264D !important; text-transform: uppercase !important; border-bottom: 2px solid #00264D !important; padding: 6px 0 3px !important; margin: 14px 0 6px !important; }
 
-    /* Table styles */
     .sfss-print-only .rpt-table, .sfss-print-only table { width: 100% !important; border-collapse: collapse !important; margin-bottom: 10px !important; font-size: 8.5px !important; }
     .sfss-print-only .rpt-table th, .sfss-print-only table th { background: #00264D !important; color: #fff !important; font-weight: 700 !important; font-size: 8px !important; text-transform: uppercase !important; padding: 5px 6px !important; border: 1px solid #001a36 !important; }
     .sfss-print-only .rpt-table td, .sfss-print-only table td { padding: 4px 6px !important; border: 1px solid #ccc !important; vertical-align: middle !important; }
@@ -539,7 +675,6 @@ require_once __DIR__ . '/../partials/header.php';
     .sfss-print-only tr { page-break-inside: avoid !important; }
     .sfss-print-only .table-responsive { overflow: visible !important; }
 
-    /* Utility */
     .sfss-print-only .text-end { text-align: right !important; }
     .sfss-print-only .text-center { text-align: center !important; }
     .sfss-print-only .fw-bold { font-weight: 700 !important; }
@@ -555,7 +690,6 @@ require_once __DIR__ . '/../partials/header.php';
     .sfss-print-only .rpt-summary-card .card-label { font-size: 7px !important; font-weight: 700 !important; text-transform: uppercase !important; color: #64748b !important; display: block !important; }
     .sfss-print-only .rpt-summary-card .card-value { font-size: 11px !important; font-weight: 800 !important; display: block !important; }
 
-    /* Signature rows display flex in print */
     .mgr-signature-row, .sfss-print-only .mgr-signature-row { display: flex !important; justify-content: space-between !important; align-items: flex-end !important; page-break-inside: avoid !important; margin-top: 20px !important; padding: 10px 4px !important; width: 100% !important; }
     .str-sig-line, .sfss-print-only .str-sig-line { border-top: 1.5px solid #002F6C !important; width: 100% !important; margin-bottom: 3px !important; }
 }
@@ -1054,6 +1188,7 @@ require_once __DIR__ . '/../partials/header.php';
                         <option value="Pending" <?= $sel_status === 'Pending' ? 'selected' : '' ?>>Pending</option>
                         <option value="Approved" <?= $sel_status === 'Approved' ? 'selected' : '' ?>>Approved</option>
                         <option value="Rejected" <?= $sel_status === 'Rejected' ? 'selected' : '' ?>>Rejected</option>
+                        <option value="For Revision" <?= $sel_status === 'For Revision' ? 'selected' : '' ?>>For Revision</option>
                     </select>
 
                     <label class="ms-1"><i class="fas fa-search me-1"></i> Search</label>

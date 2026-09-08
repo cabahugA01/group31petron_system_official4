@@ -522,17 +522,18 @@ require_once __DIR__ . '/../partials/header.php';
 .ato-btn-filter:hover { background:#002F70 !important; color:#fff !important; }
 
 /* Action row icons */
+/* Action row icons */
 /* Actions Stack */
-.afto-btn-stack { display:flex; flex-direction:column; gap:4px; align-items:stretch; width:100%; }
+.afto-btn-stack { display:flex; flex-direction:column; gap:3px; align-items:stretch; width:100%; }
 .afto-row-btn {
-    display:inline-flex; align-items:center; justify-content:center; gap:6px;
-    height:24px; padding:0 10px; border-radius:4px; font-size:11px; font-weight:600;
-    cursor:pointer; border:1px solid transparent; text-decoration:none;
+    display:inline-flex; align-items:center; justify-content:center; gap:4px;
+    height:28px; padding:0 6px; border-radius:4px; font-size:11.5px !important; font-weight:800 !important;
+    cursor:pointer; border:1.5px solid transparent; text-decoration:none;
     transition:all 0.15s ease-in-out; background:#ffffff !important; box-sizing:border-box; width:100%;
 }
-.afto-row-btn i { font-size:11px; }
-.afto-row-btn-details { color:#1e40af !important; border-color:#bfdbfe !important; }
-.afto-row-btn-details:hover { background:#eff6ff !important; border-color:#1e40af !important; }
+.afto-row-btn i { font-size:11px !important; }
+.afto-row-btn-details { color:#002F70 !important; border-color:#002F70 !important; }
+.afto-row-btn-details:hover { background:#002F70 !important; color:#ffffff !important; }
 .afto-row-btn-audit { color:#475569 !important; border-color:#cbd5e1 !important; }
 .afto-row-btn-audit:hover { background:#f8fafc !important; border-color:#475569 !important; }
 .afto-row-btn-print { color:#15803d !important; border-color:#bbf7d0 !important; }
@@ -540,47 +541,73 @@ require_once __DIR__ . '/../partials/header.php';
 .afto-row-btn-reopen { color:#ea580c !important; border-color:#ffedd5 !important; }
 .afto-row-btn-reopen:hover { background:#fff7ed !important; border-color:#ea580c !important; }
 
-/* Summary cards grid (6 columns) */
-.afto-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-bottom:24px; }
-.afto-card { background:#ffffff; border:1px solid #cbd5e1; border-radius:10px; padding:16px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 1px 3px rgba(0,0,0,.05); position:relative; overflow:hidden; }
-.afto-card-info { display:flex; flex-direction:column; }
-.afto-card-lbl { font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px; }
-.afto-card-val { font-size:20px; font-weight:700; color:#1e293b; }
-.afto-card-icon { font-size:24px; opacity:0.8; }
+/* Summary cards grid (6 columns) - responsive, compressed */
+.afto-cards { 
+    display:grid; 
+    grid-template-columns: repeat(6, 1fr); 
+    gap: 10px; 
+    margin-bottom: 16px; 
+    width: 100%;
+    box-sizing: border-box;
+}
+@media (max-width: 1200px) {
+    .afto-cards { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 768px) {
+    .afto-cards { grid-template-columns: repeat(2, 1fr); }
+}
+.afto-card { 
+    background:#ffffff; 
+    border:1px solid #cbd5e1; 
+    border-radius:8px; 
+    padding:10px 12px; 
+    display:flex; 
+    align-items:center; 
+    justify-content:space-between; 
+    box-shadow:0 1px 3px rgba(0,0,0,.04); 
+    position:relative; 
+    overflow:hidden; 
+    min-width: 0;
+    box-sizing: border-box;
+}
+.afto-card-info { display:flex; flex-direction:column; min-width: 0; }
+.afto-card-lbl { font-size:11px !important; font-weight:700 !important; color:#64748b; text-transform:uppercase; letter-spacing:0.3px; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.afto-card-val { font-size:19px !important; font-weight:800 !important; color:#1e293b; white-space:nowrap; }
+.afto-card-icon { font-size:22px !important; opacity:0.8; flex-shrink: 0; }
 .afto-card.blue .afto-card-icon { color:#2563eb; }
 .afto-card.yellow .afto-card-icon { color:#d97706; }
 .afto-card.green .afto-card-icon { color:#16a34a; }
 .afto-card.red .afto-card-icon { color:#dc2626; }
 
-/* Filter bar */
-.afto-filter { display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px; margin-bottom:16px; }
+/* Filter bar - compact */
+.afto-filter { display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap; background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; margin-bottom:14px; width:100%; box-sizing:border-box; }
 .afto-fg { display:flex; flex-direction:column; gap:3px; }
-.afto-fg label { font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.4px; }
-.afto-fg input, .afto-fg select { height:34px; padding:0 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; color:#1e293b; background:#fff; outline:none; box-sizing:border-box; }
+.afto-fg label { font-size:11px !important; font-weight:700 !important; color:#475569; text-transform:uppercase; letter-spacing:.3px; }
+.afto-fg input, .afto-fg select { height:34px !important; padding:0 8px !important; border:1px solid #cbd5e1; border-radius:5px; font-size:12px !important; font-weight:600 !important; color:#1e293b; background:#fff; outline:none; box-sizing:border-box; }
 .afto-fg input:focus, .afto-fg select:focus { border-color:#002F70; }
 
-/* Table — No horizontal scroll, full width fixed layout */
-.afto-table-card { background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.04); width:100%; }
-.afto-table-hd { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap; gap:8px; }
-.afto-table-title { font-size:13px; font-weight:700; color:#00264D; text-transform:uppercase; letter-spacing:.3px; margin:0; }
+/* Table — No horizontal scroll, full width fixed layout, compressed */
+.afto-table-card { background:#fff; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.04); width:100%; box-sizing:border-box; }
+.afto-table-hd { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap; gap:8px; }
+.afto-table-title { font-size:14px !important; font-weight:800 !important; color:#00264D; text-transform:uppercase; letter-spacing:.3px; margin:0; }
 .afto-tbl-wrap { width:100% !important; max-width:100% !important; overflow-x:hidden !important; box-sizing:border-box !important; }
-.afto-tbl { width:100% !important; min-width:100% !important; max-width:100% !important; border-collapse:collapse !important; table-layout:fixed !important; font-size:12px; }
+.afto-tbl { width:100% !important; min-width:100% !important; max-width:100% !important; border-collapse:collapse !important; table-layout:fixed !important; font-size:12px !important; }
 .afto-tbl thead tr { background:#002F70 !important; }
 .afto-tbl thead th { 
-    padding:10px 8px !important; text-align:left; font-size:11px !important; font-weight:700 !important; color:#fff !important; 
-    text-transform:uppercase !important; letter-spacing:.3px !important; border-bottom:2px solid #001a3d !important; 
-    vertical-align:middle !important; overflow:visible !important; text-overflow:clip !important; white-space:normal !important; 
-    word-break:normal !important; line-height:1.25 !important; box-sizing:border-box !important; 
+    padding:8px 4px !important; text-align:left; font-size:11.5px !important; font-weight:800 !important; color:#fff !important; 
+    text-transform:uppercase !important; letter-spacing:.2px !important; border-bottom:2px solid #001a3d !important; 
+    vertical-align:middle !important; overflow:hidden !important; text-overflow:ellipsis !important; white-space:nowrap !important; 
+    line-height:1.2 !important; box-sizing:border-box !important; 
 }
 .afto-tbl tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
 .afto-tbl tbody tr:hover td { background:#eff6ff !important; }
 .afto-tbl tbody td { 
-    padding:10px 8px !important; color:#334155; vertical-align:middle !important; background:#fff; font-size:12px !important; 
-    line-height:1.35 !important; overflow:visible !important; box-sizing:border-box !important; 
+    padding:7px 4px !important; color:#334155; vertical-align:middle !important; background:#fff; font-size:12px !important; 
+    line-height:1.25 !important; overflow:hidden !important; box-sizing:border-box !important; 
 }
 
-/* Status Badges */
-.afto-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700; white-space:nowrap; }
+/* Status Badges - compressed */
+.afto-badge { display:inline-block; padding:3px 6px !important; border-radius:4px !important; font-size:10.5px !important; font-weight:800 !important; white-space:nowrap !important; line-height:1.2 !important; }
 .bg-green  { background:#f0fdf4; color:#166534; }
 .bg-amber  { background:#fef9c3; color:#a16207; }
 .bg-gray   { background:#f1f5f9; color:#475569; }
@@ -628,8 +655,8 @@ require_once __DIR__ . '/../partials/header.php';
 }
 .modal-header h3 {
     margin: 0;
-    font-size: 15px;
-    font-weight: 700;
+    font-size: 17px !important;
+    font-weight: 800 !important;
     color: #00264D;
     text-transform: uppercase;
 }
@@ -665,16 +692,16 @@ require_once __DIR__ . '/../partials/header.php';
     gap: 4px;
 }
 .details-item label {
-    font-size: 9px;
-    font-weight: 700;
+    font-size: 12px !important;
+    font-weight: 700 !important;
     color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 .details-item span {
-    font-size: 13px;
+    font-size: 14.5px !important;
     color: #0f172a;
-    font-weight: 600;
+    font-weight: 700 !important;
 }
 .audit-list {
     display: flex;
@@ -810,20 +837,20 @@ require_once __DIR__ . '/../partials/header.php';
 <div class="afto-table-card">
     <div class="afto-table-hd">
         <h3 class="afto-table-title"><i class="fas fa-table"></i> Fuel Transactions Records</h3>
-        <span style="font-size:11px;color:#64748b;"><?= number_format(count($transactions)) ?> record(s) — <?= htmlspecialchars($date_from) ?> to <?= htmlspecialchars($date_to) ?></span>
+        <span style="font-size:13px;font-weight:600;color:#475569;"><?= number_format(count($transactions)) ?> record(s) — <?= htmlspecialchars($date_from) ?> to <?= htmlspecialchars($date_to) ?></span>
     </div>
     <div class="afto-tbl-wrap">
         <table class="afto-tbl" id="aftoTable">
             <colgroup>
-                <col style="width:11%">  <!-- TXN ID & DATE -->
-                <col style="width:13%">  <!-- FUEL TYPE & SHIFT -->
-                <col style="width:12%">  <!-- METER READINGS -->
-                <col style="width:12%">  <!-- VOLUME & PRICE -->
-                <col style="width:11%">  <!-- TOTAL AMOUNT -->
-                <col style="width:13%">  <!-- ENCODER & VALIDATOR -->
-                <col style="width:11%">  <!-- STATUS -->
-                <col style="width:10%">  <!-- VALIDATED DATE -->
-                <col style="width:7%">   <!-- ACTIONS -->
+                <col style="width:11%">    <!-- 1. TXN ID & DATE -->
+                <col style="width:11.5%">  <!-- 2. FUEL TYPE & SHIFT -->
+                <col style="width:10.5%">  <!-- 3. METER READINGS -->
+                <col style="width:10%">    <!-- 4. VOLUME & PRICE -->
+                <col style="width:10%">    <!-- 5. TOTAL AMOUNT -->
+                <col style="width:14%">    <!-- 6. ENCODER & VALIDATOR -->
+                <col style="width:11%">    <!-- 7. STATUS -->
+                <col style="width:14%">    <!-- 8. VALIDATED DATE -->
+                <col style="width:8%">     <!-- 9. ACTIONS -->
             </colgroup>
             <thead>
                 <tr>
@@ -841,10 +868,10 @@ require_once __DIR__ . '/../partials/header.php';
             <tbody>
                 <?php if (empty($transactions)): ?>
                 <tr>
-                    <td colspan="9" style="text-align:center;padding:60px 20px;">
-                        <i class="fas fa-inbox" style="font-size:48px;color:#cbd5e1;margin-bottom:16px;display:block;"></i>
-                        <div style="font-size:16px;font-weight:700;color:#64748b;margin-bottom:8px;">No transactions found</div>
-                        <div style="font-size:14px;color:#94a3b8;">No fuel transactions for the selected period.</div>
+                    <td colspan="9" style="text-align:center;padding:50px 20px;">
+                        <i class="fas fa-inbox" style="font-size:40px;color:#cbd5e1;margin-bottom:12px;display:block;"></i>
+                        <div style="font-size:15px;font-weight:700;color:#64748b;margin-bottom:6px;">No transactions found</div>
+                        <div style="font-size:13px;color:#94a3b8;">No fuel transactions for the selected period.</div>
                     </td>
                 </tr>
                 <?php else: ?>
@@ -917,84 +944,84 @@ require_once __DIR__ . '/../partials/header.php';
                 ?>
                 <tr>
                     <!-- 1. TXN ID & DATE -->
-                    <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
-                        <div style="font-weight:700;font-size:11.5px;color:#002F70;font-family:monospace;word-break:break-all;overflow-wrap:anywhere;line-height:1.25;" title="<?= htmlspecialchars($tx['transaction_id']) ?>"><?= htmlspecialchars($tx['transaction_id']) ?></div>
-                        <div style="font-size:11px;color:#64748b;margin-top:2px;white-space:nowrap;"><?= date('M d, Y', strtotime($tx['transaction_date'])) ?></div>
+                    <td style="padding:6px 4px;vertical-align:middle;box-sizing:border-box;">
+                        <div style="font-weight:800;font-size:11px;color:#002F70;font-family:monospace;word-break:break-all;line-height:1.2;" title="<?= htmlspecialchars($tx['transaction_id']) ?>"><?= htmlspecialchars($tx['transaction_id']) ?></div>
+                        <div style="font-size:10.5px;color:#64748b;margin-top:2px;font-weight:600;white-space:nowrap;"><?= date('M d, Y', strtotime($tx['transaction_date'])) ?></div>
                     </td>
 
                     <!-- 2. FUEL TYPE & SHIFT -->
-                    <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
-                        <div style="font-weight:700;font-size:12px;color:#0f172a;line-height:1.3;word-break:break-word;" title="<?= htmlspecialchars($tx['_seq_label']) ?>"><?= htmlspecialchars($tx['_seq_label']) ?></div>
-                        <div style="font-size:11px;color:#475569;margin-top:2px;font-weight:600;white-space:nowrap;">
+                    <td style="padding:6px 4px;vertical-align:middle;box-sizing:border-box;">
+                        <div style="font-weight:800;font-size:11.5px;color:#0f172a;line-height:1.2;word-break:break-word;" title="<?= htmlspecialchars($tx['_seq_label']) ?>"><?= htmlspecialchars($tx['_seq_label']) ?></div>
+                        <div style="font-size:10.5px;color:#334155;margin-top:2px;font-weight:700;white-space:nowrap;">
                             <i class="fas fa-clock" style="font-size:9.5px;color:#64748b;margin-right:2px;"></i> <?= htmlspecialchars($shift_label) ?>
                         </div>
                     </td>
 
                     <!-- 3. METER READINGS -->
-                    <td style="padding:10px 8px;vertical-align:middle;font-size:11.5px;box-sizing:border-box;">
-                        <div style="color:#334155;white-space:nowrap;">Beg: <strong><?= number_format($tx['previous_reading'],2) ?></strong></div>
-                        <div style="color:#334155;margin-top:2px;white-space:nowrap;">End: <strong><?= number_format($tx['present_reading'],2) ?></strong></div>
+                    <td style="padding:6px 4px;vertical-align:middle;font-size:11px;line-height:1.25;box-sizing:border-box;">
+                        <div style="color:#334155;white-space:nowrap;font-weight:600;">Beg: <strong style="color:#0f172a;font-weight:800;"><?= number_format($tx['previous_reading'],2) ?></strong></div>
+                        <div style="color:#334155;margin-top:2px;white-space:nowrap;font-weight:600;">End: <strong style="color:#0f172a;font-weight:800;"><?= number_format($tx['present_reading'],2) ?></strong></div>
                         <?php if ((float)($tx['calibration'] ?? 0) > 0): ?>
-                            <div style="color:#d97706;font-size:10px;margin-top:2px;white-space:nowrap;">Cal: <?= number_format($tx['calibration'],2) ?> L</div>
+                            <div style="color:#b45309;font-size:10.5px;font-weight:700;margin-top:1px;white-space:nowrap;">Cal: <?= number_format($tx['calibration'],2) ?> L</div>
                         <?php endif; ?>
                     </td>
 
                     <!-- 4. VOLUME & PRICE -->
-                    <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
-                        <div style="font-weight:700;font-size:12px;color:#0f172a;white-space:nowrap;"><?= number_format($tx['liters_sold'],2) ?> L</div>
-                        <div style="font-size:11px;color:#64748b;margin-top:2px;white-space:nowrap;">@ ₱<?= number_format($tx['price_per_liter'],2) ?>/L</div>
+                    <td style="padding:6px 4px;vertical-align:middle;box-sizing:border-box;">
+                        <div style="font-weight:800;font-size:12px;color:#0f172a;white-space:nowrap;"><?= number_format($tx['liters_sold'],2) ?> L</div>
+                        <div style="font-size:10.5px;color:#64748b;margin-top:2px;font-weight:600;white-space:nowrap;">@ ₱<?= number_format($tx['price_per_liter'],2) ?>/L</div>
                     </td>
 
                     <!-- 5. TOTAL AMOUNT -->
-                    <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
-                        <div style="font-weight:700;font-size:12.5px;color:#002F70;white-space:nowrap;line-height:1.25;">₱<?= number_format($tx['total_amount'],2) ?></div>
+                    <td style="padding:6px 4px;vertical-align:middle;box-sizing:border-box;">
+                        <div style="font-weight:800;font-size:12.5px;color:#002F70;white-space:nowrap;line-height:1.2;">₱<?= number_format($tx['total_amount'],2) ?></div>
                         <div style="font-size:10.5px;color:#16a34a;font-weight:700;margin-top:2px;white-space:nowrap;">
                             <i class="fas fa-check-circle" style="font-size:9.5px;"></i> <?= htmlspecialchars($tx['payment_method'] ?: 'Internal') ?>
                         </div>
                     </td>
 
                     <!-- 6. ENCODER & VALIDATOR -->
-                    <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
-                        <div style="font-weight:700;font-size:11.5px;color:#0f172a;word-break:break-word;line-height:1.3;">
+                    <td style="padding:6px 4px;vertical-align:middle;box-sizing:border-box;">
+                        <div style="font-weight:800;font-size:11.5px;color:#0f172a;word-break:break-word;line-height:1.2;">
                             <i class="fas fa-user-edit" style="color:#2563eb;font-size:10px;margin-right:2px;"></i> <?= htmlspecialchars($tx['staff_name']) ?>
                         </div>
                         <?php if (!empty($tx['manager_name']) && $tx['manager_name'] !== '—'): ?>
-                            <div style="font-size:11px;color:#64748b;margin-top:2px;word-break:break-word;">
+                            <div style="font-size:10.5px;color:#64748b;margin-top:2px;word-break:break-word;font-weight:600;line-height:1.2;">
                                 <i class="fas fa-user-check" style="color:#16a34a;font-size:10px;margin-right:2px;"></i> <?= htmlspecialchars($tx['manager_name']) ?>
                             </div>
                         <?php endif; ?>
                     </td>
 
                     <!-- 7. STATUS -->
-                    <td style="padding:10px 4px;vertical-align:middle;text-align:center;box-sizing:border-box;">
-                        <span class="afto-badge <?= $badge ?>" style="font-size:10px;padding:3px 8px;display:inline-flex;align-items:center;white-space:nowrap;font-weight:700;"><?= $st_label ?></span>
+                    <td style="padding:6px 4px;vertical-align:middle;text-align:center;box-sizing:border-box;">
+                        <span class="afto-badge <?= $badge ?>" style="font-size:10.5px !important;padding:3px 6px !important;display:inline-flex;align-items:center;white-space:nowrap;font-weight:800 !important;"><?= $st_label ?></span>
                     </td>
 
                     <!-- 8. VALIDATED DATE & REMARKS -->
-                    <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
+                    <td style="padding:6px 4px;vertical-align:middle;box-sizing:border-box;">
                         <?php 
                         $val_ts = (!empty($tx['validated_at']) && $tx['validated_at'] !== '0000-00-00 00:00:00') ? strtotime($tx['validated_at']) : 0;
                         if ($val_ts > 0): ?>
-                            <div style="font-size:11.5px;color:#1e293b;font-weight:700;white-space:nowrap;">
-                                <i class="fas fa-calendar-check" style="color:#16a34a;font-size:10px;margin-right:3px;"></i><?= date('M d, Y', $val_ts) ?>
+                            <div style="font-size:11px;color:#1e293b;font-weight:700;white-space:nowrap;">
+                                <i class="fas fa-calendar-check" style="color:#16a34a;font-size:10px;margin-right:2px;"></i><?= date('M d, Y', $val_ts) ?>
                             </div>
-                            <div style="font-size:10.5px;color:#64748b;margin-top:2px;white-space:nowrap;">
-                                <i class="fas fa-clock" style="color:#94a3b8;font-size:9.5px;margin-right:2px;"></i><?= date('h:i A', $val_ts) ?>
+                            <div style="font-size:10px;color:#64748b;margin-top:1px;font-weight:600;white-space:nowrap;">
+                                <i class="fas fa-clock" style="color:#94a3b8;font-size:9px;margin-right:2px;"></i><?= date('h:i A', $val_ts) ?>
                             </div>
                         <?php else: ?>
-                            <span style="color:#64748b;font-size:10.5px;font-weight:600;background:#f8fafc;border:1px solid #e2e8f0;padding:2px 7px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;" title="Waiting for manager validation">
+                            <span style="color:#64748b;font-size:10.5px;font-weight:700;background:#f8fafc;border:1px solid #e2e8f0;padding:2px 5px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;" title="Waiting for manager validation">
                                 <i class="fas fa-clock" style="color:#d97706;font-size:9.5px;"></i> Not Yet Validated
                             </span>
                         <?php endif; ?>
                         <?php if (!empty($remarks) && $remarks !== '—'): ?>
-                            <div style="font-size:10px;color:#64748b;margin-top:2px;word-break:break-word;" title="<?= htmlspecialchars($remarks) ?>"><?= htmlspecialchars(mb_strimwidth($remarks, 0, 20, '...')) ?></div>
+                            <div style="font-size:10px;color:#64748b;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($remarks) ?>"><?= htmlspecialchars(mb_strimwidth($remarks, 0, 20, '...')) ?></div>
                         <?php endif; ?>
                     </td>
 
                     <!-- 9. ACTIONS -->
-                    <td style="padding:10px 6px;vertical-align:middle;text-align:center;box-sizing:border-box;">
-                        <button type="button" onclick="viewTxnDetails(<?= $tx['id'] ?>)" class="afto-row-btn afto-row-btn-details" style="height:26px;padding:0 8px;font-size:11px;display:inline-flex;align-items:center;justify-content:center;gap:4px;width:100%;box-sizing:border-box;">
-                            <i class="fas fa-eye"></i> <span>View</span>
+                    <td style="padding:6px 4px;vertical-align:middle;text-align:center;box-sizing:border-box;">
+                        <button type="button" onclick="viewTxnDetails(<?= $tx['id'] ?>)" class="afto-row-btn afto-row-btn-details" style="height:28px;padding:0 6px;font-size:11.5px !important;font-weight:800 !important;display:inline-flex;align-items:center;justify-content:center;gap:4px;width:100%;box-sizing:border-box;border-radius:4px;">
+                            <i class="fas fa-eye" style="font-size:11px !important;"></i> <span style="font-size:11.5px !important;font-weight:800 !important;display:inline !important;">View</span>
                         </button>
                     </td>
                 </tr>
@@ -1005,14 +1032,14 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
 
     <!-- Meter Readings History Style Standard Pagination Footer -->
-    <div id="aftoPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+    <div id="aftoPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13.5px; color:#475569; flex-wrap:wrap; gap:12px;">
         <div style="display:flex; align-items:center;">
-            <span id="aftoShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing 1–10 of 0 entries</span>
+            <span id="aftoShowingEntriesText" style="font-size:13.5px; color:#475569; font-weight:700;">Showing 1–10 of 0 entries</span>
         </div>
         <div style="display:flex; align-items:center; gap:16px;">
             <div style="display:flex; align-items:center; gap:8px;">
-                <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
-                <select id="aftoPerPage" onchange="aftoChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                <label style="margin:0; font-weight:700; color:#334155; font-size:13.5px;">Rows per page:</label>
+                <select id="aftoPerPage" onchange="aftoChangePerPage()" style="padding:5px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13.5px; font-weight:700; background:transparent !important; color:#1e293b; outline:none; cursor:pointer;">
                     <option value="10" selected>10</option>
                     <option value="20">20</option>
                     <option value="50">50</option>
@@ -1021,13 +1048,13 @@ require_once __DIR__ . '/../partials/header.php';
             </div>
             <div style="display:flex; align-items:center; gap:6px;">
                 <button id="aftoPrevBtn" onclick="aftoGoPage(aftoState.page - 1)" 
-                        style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                        style="width:34px; height:34px; background:#fff; border:1px solid #cbd5e1; border-radius:6px; cursor:not-allowed; color:#94a3b8; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
                         onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
                     <i class="fas fa-chevron-left"></i>
                 </button>
-                <span id="aftoPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+                <span id="aftoPageLabel" style="color:#1e293b; font-size:13.5px; font-weight:700; padding:0 6px;">Page 1 of 1</span>
                 <button id="aftoNextBtn" onclick="aftoGoPage(aftoState.page + 1)" 
-                        style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; color:#475569; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                        style="width:34px; height:34px; background:#fff; border:1px solid #cbd5e1; border-radius:6px; cursor:pointer; color:#002F70; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
                         onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
                     <i class="fas fa-chevron-right"></i>
                 </button>
@@ -1155,9 +1182,9 @@ function viewTxnAudit(id) {
                 } else {
                     const listHtml = logs.map(log => `
                         <div class="audit-card">
-                            <div style="font-weight:700;color:#00264D;font-size:12px;">${log.action_type}</div>
-                            <div style="margin-top:4px;color:#334155;font-size:11px;">${log.action_details}</div>
-                            <div class="audit-meta">
+                            <div style="font-weight:800;color:#00264D;font-size:13.5px;">${log.action_type}</div>
+                            <div style="margin-top:4px;color:#334155;font-size:12.5px;">${log.action_details}</div>
+                            <div class="audit-meta" style="font-size:12px;">
                                 <span><i class="fas fa-user"></i> ${log.username} (${log.ip_address})</span>
                                 <span><i class="fas fa-clock"></i> ${new Date(log.created_at).toLocaleString()}</span>
                             </div>

@@ -1531,17 +1531,78 @@ if (!function_exists('getAdminReportData')) {
         // 7. AUDIT REPORTS (Clean 5-Tab Architecture)
         // =========================================================================
         case 'audit':
-            $filter_srch  = trim($filters['search'] ?? '');
-            $filter_staff = (int)($filters['staff_id'] ?? 0);
-            $filter_mod   = trim($filters['module'] ?? '');
-            $filter_stat  = trim($filters['status'] ?? '');
-            $filter_act   = trim($filters['action'] ?? '');
+            $filter_srch     = trim($filters['search'] ?? '');
+            $filter_staff    = (int)($filters['staff_id'] ?? 0);
+            $filter_mod      = trim($filters['module'] ?? '');
+            $filter_stat     = trim($filters['status'] ?? '');
+            $filter_act      = trim($filters['action'] ?? '');
+            $viewer_role     = strtolower(trim($filters['viewer_role'] ?? ''));     // 'manager', 'admin', 'staff', etc.
+            $viewer_user_id  = (int)($filters['viewer_user_id'] ?? 0);              // ID of the logged-in user
+            $is_manager_view = ($viewer_role === 'manager' && $viewer_user_id > 0);
+            $is_admin_view   = ($viewer_role === 'admin' && $viewer_user_id > 0);
+            $is_staff_view   = ($viewer_role === 'staff' && $viewer_user_id > 0);
+
+            // Allowed roles in SQL for viewer role
+            $role_filter_roles = null;
+            if ($is_manager_view) {
+                // Manager: staff + own actions
+                $role_filter_roles = "('staff')";
+            } elseif ($is_admin_view) {
+                // Admin: staff, manager, + own actions (excludes superadmin & other admins)
+                $role_filter_roles = "('staff','manager')";
+            } elseif ($is_staff_view) {
+                // Staff: own actions ONLY (never manager, admin, superadmin, or other staff)
+                $role_filter_roles = "('__none_self_only__')";
+            }
+            $has_role_filter = ($role_filter_roles !== null);
+
+            // Fetch excluded names for secondary PHP filter
+            $excluded_names = [];
+            if ($is_manager_view) {
+                try {
+                    $st_ex = $pdo->prepare("SELECT TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))) AS name, username FROM users WHERE LOWER(COALESCE(role,'staff')) != 'staff' AND id != ?");
+                    $st_ex->execute([$viewer_user_id]);
+                    foreach ($st_ex->fetchAll(PDO::FETCH_ASSOC) ?: [] as $eu) {
+                        if (!empty($eu['name']))     $excluded_names[] = strtolower(trim($eu['name']));
+                        if (!empty($eu['username'])) $excluded_names[] = strtolower(trim($eu['username']));
+                    }
+                } catch (Exception $e) {}
+            } elseif ($is_admin_view) {
+                try {
+                    $st_ex = $pdo->prepare("SELECT TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))) AS name, username FROM users WHERE LOWER(COALESCE(role,'staff')) NOT IN ('staff', 'manager') AND id != ?");
+                    $st_ex->execute([$viewer_user_id]);
+                    foreach ($st_ex->fetchAll(PDO::FETCH_ASSOC) ?: [] as $eu) {
+                        if (!empty($eu['name']))     $excluded_names[] = strtolower(trim($eu['name']));
+                        if (!empty($eu['username'])) $excluded_names[] = strtolower(trim($eu['username']));
+                    }
+                } catch (Exception $e) {}
+            } elseif ($is_staff_view) {
+                try {
+                    $st_ex = $pdo->prepare("SELECT TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))) AS name, username FROM users WHERE id != ?");
+                    $st_ex->execute([$viewer_user_id]);
+                    foreach ($st_ex->fetchAll(PDO::FETCH_ASSOC) ?: [] as $eu) {
+                        if (!empty($eu['name']))     $excluded_names[] = strtolower(trim($eu['name']));
+                        if (!empty($eu['username'])) $excluded_names[] = strtolower(trim($eu['username']));
+                    }
+                } catch (Exception $e) {}
+            }
+            $excluded_names = array_values(array_filter(array_unique($excluded_names)));
 
             // Fetch staff list for dropdown filter
             $staff_list = [];
             try {
                 $st_q = ($station_id > 0) ? "WHERE station_id = ? AND status = 'Active'" : "WHERE status = 'Active'";
                 $st_p = ($station_id > 0) ? [$station_id] : [];
+                if ($is_manager_view) {
+                    $st_q .= " AND (LOWER(COALESCE(role,'staff')) = 'staff' OR id = ?)";
+                    $st_p[] = $viewer_user_id;
+                } elseif ($is_admin_view) {
+                    $st_q .= " AND (LOWER(COALESCE(role,'staff')) IN ('staff', 'manager') OR id = ?)";
+                    $st_p[] = $viewer_user_id;
+                } elseif ($is_staff_view) {
+                    $st_q .= " AND id = ?";
+                    $st_p[] = $viewer_user_id;
+                }
                 $sl = $pdo->prepare("SELECT id, TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))) AS full_name, role FROM users $st_q ORDER BY full_name");
                 $sl->execute($st_p);
                 $staff_list = $sl->fetchAll(PDO::FETCH_ASSOC);
@@ -1560,6 +1621,7 @@ if (!function_exists('getAdminReportData')) {
                         $w = "WHERE DATE(mt.created_at) BETWEEN ? AND ?";
                         if ($station_id > 0) { $w .= " AND mt.station_id = ?"; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND mt.staff_id = ?"; $p[] = $filter_staff; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR mt.staff_id = ?)"; $p[] = $viewer_user_id; }
                         $sql = "SELECT mt.created_at AS datetime,
                             COALESCE(NULLIF(mt.transaction_id,''), CONCAT('TRX-',mt.id)) AS ref_no,
                             'Merchandise' AS module,
@@ -1599,6 +1661,7 @@ if (!function_exists('getAdminReportData')) {
                         $w = "WHERE DATE(COALESCE(ft.transaction_date,ft.created_at)) BETWEEN ? AND ?";
                         if ($station_id > 0) { $w .= " AND ft.station_id = ?"; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND ft.staff_id = ?"; $p[] = $filter_staff; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR ft.staff_id = ?)"; $p[] = $viewer_user_id; }
                         $sql = "SELECT COALESCE(ft.transaction_date, ft.created_at) AS datetime,
                             COALESCE(NULLIF(ft.transaction_id,''), CONCAT('FTX-',ft.id)) AS ref_no,
                             'Fuel Management' AS module,
@@ -1631,6 +1694,7 @@ if (!function_exists('getAdminReportData')) {
                         $w = "WHERE DATE(jo.created_at) BETWEEN ? AND ?";
                         if ($station_id > 0) { $w .= " AND jo.station_id = ?"; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND (jo.user_id = ? OR jo.created_by = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR u.id = ?)"; $p[] = $viewer_user_id; }
                         $sql = "SELECT jo.created_at AS datetime,
                             COALESCE(NULLIF(jo.job_order_id,''), COALESCE(NULLIF(jo.job_order_number,''), CONCAT('JO-',jo.id))) AS ref_no,
                             'Job Orders' AS module,
@@ -1663,6 +1727,7 @@ if (!function_exists('getAdminReportData')) {
                         $w = "WHERE DATE(sr.created_at) BETWEEN ? AND ?";
                         if ($station_id > 0) { $w .= " AND sr.station_id = ?"; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND (sr.user_id = ? OR sr.created_by = ? OR sr.staff_id = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR u.id = ?)"; $p[] = $viewer_user_id; }
                         $sql = "SELECT sr.created_at AS datetime,
                             CONCAT('FSC-',sr.id) AS ref_no,
                             'Fuel Sales Closing' AS module,
@@ -1695,6 +1760,7 @@ if (!function_exists('getAdminReportData')) {
                         $w = "WHERE DATE(COALESCE(ta.adjustment_date, ta.created_at, NOW())) BETWEEN ? AND ?";
                         if ($station_id > 0) { $w .= " AND ta.station_id = ?"; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND ta.adjusted_by = ?"; $p[] = $filter_staff; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR ta.adjusted_by = ?)"; $p[] = $viewer_user_id; }
                         $sql = "SELECT COALESCE(ta.adjustment_date, ta.created_at, NOW()) AS datetime,
                             CONCAT('ADJ-',ta.id) AS ref_no,
                             'Sales Adjustments' AS module,
@@ -1731,6 +1797,7 @@ if (!function_exists('getAdminReportData')) {
                               )";
                         if ($station_id > 0) { $w .= " AND u.station_id = ?"; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND al.user_id = ?"; $p[] = $filter_staff; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR al.user_id = ?)"; $p[] = $viewer_user_id; }
                         $sql = "SELECT al.created_at AS datetime,
                             CONCAT('ACT-',al.id) AS ref_no,
                             CASE
@@ -1767,6 +1834,14 @@ if (!function_exists('getAdminReportData')) {
                 // PHP-side filter & sort
                 $filtered = [];
                 foreach ($raw as $r) {
+                    if (!empty($excluded_names)) {
+                        $perf = strtolower(trim($r['performed_by'] ?? ''));
+                        $skip_actor = false;
+                        foreach ($excluded_names as $ex) {
+                            if ($ex !== '' && ($perf === $ex || str_contains($perf, $ex))) { $skip_actor = true; break; }
+                        }
+                        if ($skip_actor) continue;
+                    }
                     if ($filter_mod  !== '' && strtolower($r['module']) !== strtolower($filter_mod)) continue;
                     if ($filter_stat !== '' && strtolower($r['status']) !== strtolower($filter_stat)) continue;
                     if ($filter_srch !== '') {
@@ -1796,6 +1871,7 @@ if (!function_exists('getAdminReportData')) {
                         $w = "WHERE DATE(il.created_at) BETWEEN ? AND ?";
                         if ($station_id > 0) { $w .= " AND (p.station_id = ? OR u.station_id = ?)"; $p[] = $station_id; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND il.user_id = ?"; $p[] = $filter_staff; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR il.user_id = ?)"; $p[] = $viewer_user_id; }
                         $sql = "SELECT il.created_at AS datetime,
                             CONCAT('INV-',il.id) AS ref_no,
                             COALESCE(NULLIF(p.name,''), CONCAT('Product #', il.product_id), 'N/A') AS product,
@@ -1836,6 +1912,7 @@ if (!function_exists('getAdminReportData')) {
                         $w = "WHERE DATE(sr.created_at) BETWEEN ? AND ?";
                         if ($station_id > 0) { $w .= " AND sr.station_id = ?"; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND sr.staff_id = ?"; $p[] = $filter_staff; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR sr.staff_id = ?)"; $p[] = $viewer_user_id; }
                         $sql = "SELECT sr.created_at AS datetime,
                             COALESCE(NULLIF(sr.request_no,''), CONCAT('STK-',sr.id)) AS ref_no,
                             COALESCE(sr.item_name, 'Stock Item') AS product,
@@ -1864,6 +1941,7 @@ if (!function_exists('getAdminReportData')) {
                         $w = "WHERE DATE(si.received_at) BETWEEN ? AND ?";
                         if ($station_id > 0) { $w .= " AND si.station_id = ?"; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND si.received_by = ?"; $p[] = $filter_staff; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR si.received_by = ?)"; $p[] = $viewer_user_id; }
                         $sql = "SELECT si.received_at AS datetime,
                             CONCAT('SIN-',si.id) AS ref_no,
                             COALESCE(si.product_name, 'Merchandise') AS product,
@@ -1892,6 +1970,7 @@ if (!function_exists('getAdminReportData')) {
                         $w = "WHERE DATE(COALESCE(fd.delivery_date, fd.created_at)) BETWEEN ? AND ?";
                         if ($station_id > 0) { $w .= " AND fd.station_id = ?"; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND (fd.received_by = ? OR fd.verified_by = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR fd.received_by = ? OR fd.verified_by = ?)"; $p[] = $viewer_user_id; $p[] = $viewer_user_id; }
                         $sql = "SELECT COALESCE(fd.delivery_date, fd.created_at) AS datetime,
                             COALESCE(NULLIF(fd.invoice_no,''), CONCAT('FD-',fd.id)) AS ref_no,
                             COALESCE(fd.fuel_type, 'Fuel') AS product,
@@ -1916,6 +1995,14 @@ if (!function_exists('getAdminReportData')) {
                 // PHP-side filter & sort
                 $filtered = [];
                 foreach ($raw as $r) {
+                    if (!empty($excluded_names)) {
+                        $perf = strtolower(trim($r['performed_by'] ?? ''));
+                        $skip_actor = false;
+                        foreach ($excluded_names as $ex) {
+                            if ($ex !== '' && ($perf === $ex || str_contains($perf, $ex))) { $skip_actor = true; break; }
+                        }
+                        if ($skip_actor) continue;
+                    }
                     if ($filter_act  !== '' && strtolower($r['movement_type']) !== strtolower($filter_act)) continue;
                     if ($filter_srch !== '') {
                         $hay = strtolower($r['ref_no'].' '.$r['product'].' '.$r['movement_type'].' '.$r['performed_by'].' '.$r['details']);
@@ -1936,14 +2023,375 @@ if (!function_exists('getAdminReportData')) {
             } elseif ($tab === 'approval_logs') {
                 $raw = [];
 
-                // 1. Master Data Requests
+                // 1. Customer Registration & Loyalty Requests
+                if (ard_table_exists($pdo, 'customer_requests')) {
+                    try {
+                        $p = [$date_from, $date_to];
+                        $w = "WHERE DATE(COALESCE(cr.reviewed_at, cr.created_at)) BETWEEN ? AND ?";
+                        if ($station_id > 0) { $w .= " AND cr.station_id = ?"; $p[] = $station_id; }
+                        if ($filter_staff > 0) { $w .= " AND (cr.requested_by = ? OR cr.reviewed_by = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($is_staff_view) { $w .= " AND cr.requested_by = ?"; $p[] = $viewer_user_id; }
+                        $sql = "SELECT COALESCE(cr.reviewed_at, cr.created_at) AS datetime,
+                            CONCAT('CR-', cr.id) AS request_no,
+                            'Customer Registration' AS request_type,
+                            CASE
+                                WHEN LOWER(COALESCE(cr.status,'')) IN ('rejected','cancelled') THEN 'Rejected'
+                                WHEN LOWER(COALESCE(cr.status,'')) IN ('approved','completed','verified') THEN 'Approved'
+                                ELSE 'Pending Review'
+                            END AS action,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,''))),''), u1.username, 'Staff') AS requested_by,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,''))),''), u2.username, 'Manager') AS reviewed_by,
+                            CONCAT('Customer: ', cr.first_name, ' ', COALESCE(cr.last_name,''), ' | Plate: ', COALESCE(cr.vehicle_plate,'N/A'), ' | Reason: ', COALESCE(cr.request_reason,'N/A'), CASE WHEN cr.manager_remarks IS NOT NULL AND TRIM(cr.manager_remarks)!='' THEN CONCAT(' | Remarks: ', cr.manager_remarks) ELSE '' END) AS details,
+                            COALESCE(cr.status, 'Pending') AS status
+                        FROM customer_requests cr
+                        LEFT JOIN users u1 ON u1.id = cr.requested_by
+                        LEFT JOIN users u2 ON u2.id = cr.reviewed_by
+                        $w";
+                        $st = $pdo->prepare($sql); $st->execute($p);
+                        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) { $raw[] = $r; }
+                    } catch(Exception $e) {}
+                }
+
+                // 2. Job Orders Approvals & Reviews
+                if (ard_table_exists($pdo, 'job_orders')) {
+                    try {
+                        $p = [$date_from, $date_to];
+                        $w = "WHERE DATE(COALESCE(jo.reviewed_at, jo.approved_at, jo.updated_at, jo.created_at)) BETWEEN ? AND ?";
+                        if ($station_id > 0) { $w .= " AND jo.station_id = ?"; $p[] = $station_id; }
+                        if ($filter_staff > 0) { $w .= " AND (jo.user_id = ? OR jo.created_by = ? OR jo.approved_by = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($is_staff_view) { $w .= " AND (jo.user_id = ? OR jo.created_by = ?)"; $p[] = $viewer_user_id; $p[] = $viewer_user_id; }
+                        $sql = "SELECT COALESCE(jo.reviewed_at, jo.approved_at, jo.updated_at, jo.created_at) AS datetime,
+                            COALESCE(NULLIF(jo.job_order_number,''), NULLIF(jo.job_order_id,''), CONCAT('JO-',jo.id)) AS request_no,
+                            'Job Order Approval' AS request_type,
+                            CASE
+                                WHEN LOWER(COALESCE(jo.status,'')) IN ('rejected','cancelled') OR (jo.rejection_reason IS NOT NULL AND TRIM(jo.rejection_reason)!='') THEN 'Rejected'
+                                WHEN LOWER(COALESCE(jo.status,'')) IN ('approved','verified','completed','reviewed','finalized') OR jo.approved_by IS NOT NULL THEN 'Approved'
+                                ELSE 'Pending Review'
+                            END AS action,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,''))),''), u1.username, 'Staff') AS requested_by,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,''))),''), u2.username, 'Manager') AS reviewed_by,
+                            CONCAT('Service: ', COALESCE(jo.service_type, jo.service_description, 'Job Order'), ' | Vehicle: ', COALESCE(jo.vehicle_plate, 'N/A'), ' | Customer: ', COALESCE(jo.customer_name, 'Walk-in'), CASE WHEN jo.rejection_reason IS NOT NULL AND TRIM(jo.rejection_reason)!='' THEN CONCAT(' | Reason: ', jo.rejection_reason) WHEN jo.manager_remarks IS NOT NULL AND TRIM(jo.manager_remarks)!='' THEN CONCAT(' | Remarks: ', jo.manager_remarks) ELSE '' END) AS details,
+                            COALESCE(jo.status, 'Pending') AS status
+                        FROM job_orders jo
+                        LEFT JOIN users u1 ON u1.id = COALESCE(jo.user_id, jo.created_by)
+                        LEFT JOIN users u2 ON u2.id = COALESCE(jo.approved_by, jo.reviewed_by, jo.validated_by)
+                        $w";
+                        $st = $pdo->prepare($sql); $st->execute($p);
+                        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) { $raw[] = $r; }
+                    } catch(Exception $e) {}
+                }
+
+                // 3. Merchandise Transactions (Validations, Void & Adjustment Requests)
+                if (ard_table_exists($pdo, 'merchandise_transactions')) {
+                    try {
+                        $p = [$date_from, $date_to];
+                        $w = "WHERE DATE(COALESCE(mt.validated_at, mt.updated_at, mt.created_at)) BETWEEN ? AND ? AND (mt.void_reason IS NOT NULL AND TRIM(mt.void_reason)!='' OR mt.adjustment_reason IS NOT NULL AND TRIM(mt.adjustment_reason)!='' OR LOWER(COALESCE(mt.validation_status,'')) IN ('rejected','cancelled','pending'))";
+                        if ($station_id > 0) { $w .= " AND mt.station_id = ?"; $p[] = $station_id; }
+                        if ($filter_staff > 0) { $w .= " AND (mt.staff_id = ? OR mt.validated_by = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($is_staff_view) { $w .= " AND mt.staff_id = ?"; $p[] = $viewer_user_id; }
+                        $sql = "SELECT COALESCE(mt.validated_at, mt.updated_at, mt.created_at) AS datetime,
+                            COALESCE(NULLIF(mt.transaction_id,''), CONCAT('TXN-',mt.id)) AS request_no,
+                            CASE
+                                WHEN (mt.void_reason IS NOT NULL AND TRIM(mt.void_reason)!='') THEN 'Void Request'
+                                WHEN (mt.adjustment_reason IS NOT NULL AND TRIM(mt.adjustment_reason)!='') THEN 'Adjustment Request'
+                                ELSE 'Transaction Validation'
+                            END AS request_type,
+                            CASE
+                                WHEN LOWER(COALESCE(mt.validation_status,'')) IN ('rejected','cancelled') OR (mt.rejection_reason IS NOT NULL AND TRIM(mt.rejection_reason)!='') THEN 'Rejected'
+                                WHEN LOWER(COALESCE(mt.validation_status,'')) IN ('official','completed','approved','verified','voided') THEN 'Approved'
+                                ELSE 'Pending Review'
+                            END AS action,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,''))),''), u1.username, 'Staff') AS requested_by,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,''))),''), u2.username, CASE WHEN LOWER(COALESCE(mt.validation_status,'')) IN ('official','completed','approved') THEN 'Manager / Admin' ELSE '—' END) AS reviewed_by,
+                            CONCAT(
+                                CASE WHEN mt.void_reason IS NOT NULL AND TRIM(mt.void_reason)!='' THEN CONCAT('Void Reason: ', mt.void_reason, ' | ')
+                                     WHEN mt.rejection_reason IS NOT NULL AND TRIM(mt.rejection_reason)!='' THEN CONCAT('Reject Reason: ', mt.rejection_reason, ' | ')
+                                     WHEN mt.adjustment_reason IS NOT NULL AND TRIM(mt.adjustment_reason)!='' THEN CONCAT('Adj Reason: ', mt.adjustment_reason, ' | ')
+                                     ELSE '' END,
+                                'Customer: ', COALESCE(mt.customer_name, 'Walk-in'),
+                                ' | Amount: ₱', FORMAT(COALESCE(mt.total_amount,0),2)
+                            ) AS details,
+                            COALESCE(mt.validation_status, mt.workflow_status, 'Pending') AS status
+                        FROM merchandise_transactions mt
+                        LEFT JOIN users u1 ON u1.id = mt.staff_id
+                        LEFT JOIN users u2 ON u2.id = mt.validated_by
+                        $w";
+                        $st = $pdo->prepare($sql); $st->execute($p);
+                        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) { $raw[] = $r; }
+                    } catch(Exception $e) {}
+                }
+
+                // 4. Fuel Transactions Validations
+                if (ard_table_exists($pdo, 'fuel_transactions')) {
+                    try {
+                        $p = [$date_from, $date_to];
+                        $w = "WHERE DATE(COALESCE(ft.validated_at, ft.transaction_date, ft.created_at)) BETWEEN ? AND ? AND (ft.reject_reason IS NOT NULL AND TRIM(ft.reject_reason)!='' OR LOWER(COALESCE(ft.status,'')) IN ('rejected','cancelled','pending'))";
+                        if ($station_id > 0) { $w .= " AND ft.station_id = ?"; $p[] = $station_id; }
+                        if ($filter_staff > 0) { $w .= " AND (ft.staff_id = ? OR ft.validated_by = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($is_staff_view) { $w .= " AND ft.staff_id = ?"; $p[] = $viewer_user_id; }
+                        $sql = "SELECT COALESCE(ft.validated_at, ft.transaction_date, ft.created_at) AS datetime,
+                            COALESCE(NULLIF(ft.transaction_id,''), CONCAT('FUEL-',ft.id)) AS request_no,
+                            'Fuel Validation' AS request_type,
+                            CASE
+                                WHEN LOWER(COALESCE(ft.status,'')) IN ('rejected','cancelled') OR (ft.reject_reason IS NOT NULL AND TRIM(ft.reject_reason)!='') THEN 'Rejected'
+                                WHEN LOWER(COALESCE(ft.status,'')) IN ('validated','approved','completed','official') THEN 'Approved'
+                                ELSE 'Pending Review'
+                            END AS action,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,''))),''), u1.username, 'Staff') AS requested_by,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,''))),''), u2.username, CASE WHEN LOWER(COALESCE(ft.status,'')) IN ('validated','approved','completed','official') THEN 'Manager' ELSE '—' END) AS reviewed_by,
+                            CONCAT('Fuel: ', COALESCE(ft.fuel_type,'N/A'), ' | Liters: ', FORMAT(COALESCE(ft.liters_sold,0),2), ' L | Amount: ₱', FORMAT(COALESCE(ft.total_amount,0),2), CASE WHEN ft.reject_reason IS NOT NULL AND TRIM(ft.reject_reason)!='' THEN CONCAT(' | Reject Reason: ', ft.reject_reason) ELSE '' END) AS details,
+                            COALESCE(ft.status, 'Pending') AS status
+                        FROM fuel_transactions ft
+                        LEFT JOIN users u1 ON u1.id = ft.staff_id
+                        LEFT JOIN users u2 ON u2.id = COALESCE(ft.validated_by, ft.manager_id)
+                        $w";
+                        $st = $pdo->prepare($sql); $st->execute($p);
+                        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) { $raw[] = $r; }
+                    } catch(Exception $e) {}
+                }
+
+                // 5. Daily Fuel Sales Closing (Shift Readings Submission)
+                if (ard_table_exists($pdo, 'fuel_sales_closing')) {
+                    try {
+                        $p = [$date_from, $date_to];
+                        $w = "WHERE DATE(COALESCE(fsc.encoded_at, fsc.report_date)) BETWEEN ? AND ?";
+                        if ($station_id > 0) { $w .= " AND fsc.station_id = ?"; $p[] = $station_id; }
+                        if ($filter_staff > 0) { $w .= " AND (fsc.encoded_by = ? OR fsc.verified_by = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($is_staff_view) { $w .= " AND fsc.encoded_by = ?"; $p[] = $viewer_user_id; }
+                        $sql = "SELECT COALESCE(fsc.encoded_at, fsc.report_date) AS datetime,
+                            CONCAT('FSC-', fsc.id) AS request_no,
+                            'Daily Shift Closing Validation' AS request_type,
+                            CASE
+                                WHEN LOWER(COALESCE(fsc.status,'')) IN ('rejected','cancelled') THEN 'Rejected'
+                                WHEN LOWER(COALESCE(fsc.status,'')) IN ('verified','official','approved','completed') THEN 'Approved'
+                                ELSE 'Pending Review'
+                            END AS action,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,''))),''), u1.username, 'Staff') AS requested_by,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,''))),''), u2.username, CASE WHEN LOWER(COALESCE(fsc.status,'')) IN ('verified','official','approved','completed') THEN 'Manager' ELSE '—' END) AS reviewed_by,
+                            CONCAT('Date: ', fsc.report_date, ' | Shift: ', COALESCE(fsc.shift,'N/A'), ' | Fuel: ₱', FORMAT(COALESCE(fsc.total_fuel_sales,0),2), ' | Store: ₱', FORMAT(COALESCE(fsc.total_store_sales,0),2)) AS details,
+                            COALESCE(fsc.status, 'Pending') AS status
+                        FROM fuel_sales_closing fsc
+                        LEFT JOIN users u1 ON u1.id = fsc.encoded_by
+                        LEFT JOIN users u2 ON u2.id = COALESCE(fsc.verified_by, fsc.checked_by)
+                        $w";
+                        $st = $pdo->prepare($sql); $st->execute($p);
+                        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) { $raw[] = $r; }
+                    } catch(Exception $e) {}
+                }
+
+                // 6. Purchase Orders (Merchandise)
+                if (ard_table_exists($pdo, 'purchase_orders')) {
+                    try {
+                        $p = [$date_from, $date_to];
+                        $w = "WHERE DATE(COALESCE(po.approved_at, po.admin_finalized_at, po.updated_at, po.created_at)) BETWEEN ? AND ?";
+                        if ($station_id > 0) { $w .= " AND po.station_id = ?"; $p[] = $station_id; }
+                        if ($filter_staff > 0) { $w .= " AND (po.created_by = ? OR po.approved_by = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($is_staff_view) { $w .= " AND po.created_by = ?"; $p[] = $viewer_user_id; }
+                        $sql = "SELECT COALESCE(po.approved_at, po.admin_finalized_at, po.updated_at, po.created_at) AS datetime,
+                            COALESCE(NULLIF(po.po_number,''), CONCAT('PO-',po.id)) AS request_no,
+                            'Purchase Order' AS request_type,
+                            CASE
+                                WHEN LOWER(COALESCE(po.status,'')) LIKE '%reject%' OR (po.rejection_reason IS NOT NULL AND TRIM(po.rejection_reason)!='') THEN 'Rejected'
+                                WHEN LOWER(COALESCE(po.status,'')) LIKE '%approv%' OR LOWER(COALESCE(po.status,'')) IN ('confirmed','received','completed','official') THEN 'Approved'
+                                ELSE 'Pending Review'
+                            END AS action,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,''))),''), u1.username, 'Staff') AS requested_by,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,''))),''), u2.username, 'Manager / Admin') AS reviewed_by,
+                            CONCAT('PO: ', COALESCE(po.product_name, po.type, 'Merchandise PO'), ' | Qty: ', COALESCE(po.quantity,0), ' | Total: ₱', FORMAT(COALESCE(po.total_amount,0),2), CASE WHEN po.rejection_reason IS NOT NULL AND TRIM(po.rejection_reason)!='' THEN CONCAT(' | Reason: ', po.rejection_reason) ELSE '' END) AS details,
+                            COALESCE(po.status, 'Pending') AS status
+                        FROM purchase_orders po
+                        LEFT JOIN users u1 ON u1.id = po.created_by
+                        LEFT JOIN users u2 ON u2.id = COALESCE(po.approved_by, po.admin_id)
+                        $w";
+                        $st = $pdo->prepare($sql); $st->execute($p);
+                        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) { $raw[] = $r; }
+                    } catch(Exception $e) {}
+                }
+
+                // 7. Fuel Purchase Orders
+                if (ard_table_exists($pdo, 'fuel_purchase_orders')) {
+                    try {
+                        $p = [$date_from, $date_to];
+                        $w = "WHERE DATE(COALESCE(fpo.approved_at, fpo.updated_at, fpo.created_at)) BETWEEN ? AND ?";
+                        if ($station_id > 0) { $w .= " AND fpo.station_id = ?"; $p[] = $station_id; }
+                        if ($filter_staff > 0) { $w .= " AND (fpo.created_by = ? OR fpo.approved_by = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($is_staff_view) { $w .= " AND fpo.created_by = ?"; $p[] = $viewer_user_id; }
+                        $sql = "SELECT COALESCE(fpo.approved_at, fpo.updated_at, fpo.created_at) AS datetime,
+                            COALESCE(NULLIF(fpo.po_number,''), CONCAT('FPO-',fpo.id)) AS request_no,
+                            'Fuel Purchase Order' AS request_type,
+                            CASE
+                                WHEN LOWER(COALESCE(fpo.status,'')) LIKE '%reject%' THEN 'Rejected'
+                                WHEN LOWER(COALESCE(fpo.status,'')) LIKE '%approv%' OR fpo.approved_by IS NOT NULL THEN 'Approved'
+                                ELSE 'Pending Review'
+                            END AS action,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,''))),''), u1.username, 'Staff') AS requested_by,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,''))),''), u2.username, 'Manager / Admin') AS reviewed_by,
+                            CONCAT('Volume: ', FORMAT(COALESCE(fpo.volume,0),2), ' L | Total: ₱', FORMAT(COALESCE(fpo.total_amount,0),2)) AS details,
+                            COALESCE(fpo.status, 'Pending') AS status
+                        FROM fuel_purchase_orders fpo
+                        LEFT JOIN users u1 ON u1.id = fpo.created_by
+                        LEFT JOIN users u2 ON u2.id = fpo.approved_by
+                        $w";
+                        $st = $pdo->prepare($sql); $st->execute($p);
+                        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) { $raw[] = $r; }
+                    } catch(Exception $e) {}
+                }
+
+                // 8. Merchandise Stock Requests
+                if (ard_table_exists($pdo, 'stock_requests')) {
+                    try {
+                        $p = [$date_from, $date_to];
+                        $w = "WHERE DATE(COALESCE(sr.processed_at, sr.updated_at, sr.created_at)) BETWEEN ? AND ?";
+                        if ($station_id > 0) { $w .= " AND sr.station_id = ?"; $p[] = $station_id; }
+                        if ($filter_staff > 0) { $w .= " AND (sr.staff_id = ? OR sr.manager_id = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($is_staff_view) { $w .= " AND sr.staff_id = ?"; $p[] = $viewer_user_id; }
+                        $sql = "SELECT COALESCE(sr.processed_at, sr.updated_at, sr.created_at) AS datetime,
+                            COALESCE(NULLIF(sr.request_no,''), CONCAT('SR-',sr.id)) AS request_no,
+                            'Stock Request Approval' AS request_type,
+                            CASE
+                                WHEN LOWER(COALESCE(sr.status,'')) IN ('rejected','cancelled') THEN 'Rejected'
+                                WHEN LOWER(COALESCE(sr.status,'')) IN ('approved','fulfilled') THEN 'Approved'
+                                WHEN LOWER(COALESCE(sr.status,'')) LIKE '%revis%' OR LOWER(COALESCE(sr.status,'')) = 'returned' THEN 'Request Revision'
+                                ELSE 'Pending Review'
+                            END AS action,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,''))),''), u1.username, CONCAT('Staff #',sr.staff_id)) AS requested_by,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,''))),''), u2.username, 'Manager') AS reviewed_by,
+                            CONCAT('Item: ', COALESCE(sr.item_name,'N/A'), ' | Qty: ', COALESCE(sr.requested_quantity,0), ' | Reason: ', COALESCE(sr.remarks, sr.manager_notes, 'N/A')) AS details,
+                            COALESCE(sr.status, 'Pending') AS status
+                        FROM stock_requests sr
+                        LEFT JOIN users u1 ON u1.id = sr.staff_id
+                        LEFT JOIN users u2 ON u2.id = sr.manager_id
+                        $w";
+                        $st = $pdo->prepare($sql); $st->execute($p);
+                        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) { $raw[] = $r; }
+                    } catch(Exception $e) {}
+                }
+
+                // 9. Fuel Stock Requests
+                if (ard_table_exists($pdo, 'fuel_stock_requests')) {
+                    try {
+                        $p = [$date_from, $date_to];
+                        $w = "WHERE DATE(COALESCE(fsr.processed_at, fsr.updated_at, fsr.created_at)) BETWEEN ? AND ?";
+                        if ($station_id > 0) { $w .= " AND fsr.station_id = ?"; $p[] = $station_id; }
+                        if ($filter_staff > 0) { $w .= " AND (fsr.staff_id = ? OR fsr.manager_id = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($is_staff_view) { $w .= " AND fsr.staff_id = ?"; $p[] = $viewer_user_id; }
+                        $sql = "SELECT COALESCE(fsr.processed_at, fsr.updated_at, fsr.created_at) AS datetime,
+                            COALESCE(NULLIF(fsr.request_no,''), CONCAT('FSR-',fsr.id)) AS request_no,
+                            'Fuel Stock Request' AS request_type,
+                            CASE
+                                WHEN LOWER(COALESCE(fsr.status,'')) IN ('rejected','cancelled') THEN 'Rejected'
+                                WHEN LOWER(COALESCE(fsr.status,'')) IN ('approved','fulfilled') THEN 'Approved'
+                                ELSE 'Pending Review'
+                            END AS action,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,''))),''), u1.username, 'Staff') AS requested_by,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,''))),''), u2.username, 'Manager') AS reviewed_by,
+                            CONCAT('Fuel: ', COALESCE(fsr.fuel_type,'N/A'), ' | Requested: ', FORMAT(COALESCE(fsr.requested_liters,0),2), ' L | Approved: ', FORMAT(COALESCE(fsr.approved_liters,0),2), ' L') AS details,
+                            COALESCE(fsr.status, 'Pending') AS status
+                        FROM fuel_stock_requests fsr
+                        LEFT JOIN users u1 ON u1.id = fsr.staff_id
+                        LEFT JOIN users u2 ON u2.id = fsr.manager_id
+                        $w";
+                        $st = $pdo->prepare($sql); $st->execute($p);
+                        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) { $raw[] = $r; }
+                    } catch(Exception $e) {}
+                }
+
+                // 10. Merchandise Adjustments (Inventory Reconciliation)
+                if (ard_table_exists($pdo, 'merchandise_adjustments')) {
+                    try {
+                        $p = [$date_from, $date_to];
+                        $w = "WHERE DATE(COALESCE(ma.approved_at, ma.updated_at, ma.created_at)) BETWEEN ? AND ?";
+                        if ($station_id > 0) { $w .= " AND ma.station_id = ?"; $p[] = $station_id; }
+                        if ($filter_staff > 0) { $w .= " AND (ma.requested_by = ? OR ma.approved_by = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($is_staff_view) { $w .= " AND ma.requested_by = ?"; $p[] = $viewer_user_id; }
+                        $sql = "SELECT COALESCE(ma.approved_at, ma.updated_at, ma.created_at) AS datetime,
+                            CONCAT('MADJ-', ma.id) AS request_no,
+                            'Stock Adjustment Approval' AS request_type,
+                            CASE
+                                WHEN LOWER(COALESCE(ma.status,'')) = 'rejected' THEN 'Rejected'
+                                WHEN LOWER(COALESCE(ma.status,'')) = 'approved' THEN 'Approved'
+                                ELSE 'Pending Review'
+                            END AS action,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,''))),''), u1.username, 'Staff') AS requested_by,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,''))),''), u2.username, 'Manager') AS reviewed_by,
+                            CONCAT('Product: ', COALESCE(ma.product_name, ma.sku, 'Item'), ' | Change: ', COALESCE(ma.quantity_change,0), ' | Reason: ', COALESCE(ma.reason, ma.rejection_reason, 'N/A')) AS details,
+                            COALESCE(ma.status, 'Pending') AS status
+                        FROM merchandise_adjustments ma
+                        LEFT JOIN users u1 ON u1.id = ma.requested_by
+                        LEFT JOIN users u2 ON u2.id = ma.approved_by
+                        $w";
+                        $st = $pdo->prepare($sql); $st->execute($p);
+                        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) { $raw[] = $r; }
+                    } catch(Exception $e) {}
+                }
+
+                // 11. Fuel Adjustments (Variance / Calibration)
+                if (ard_table_exists($pdo, 'fuel_adjustments')) {
+                    try {
+                        $p = [$date_from, $date_to];
+                        $w = "WHERE DATE(COALESCE(fa.approved_at, fa.updated_at, fa.created_at)) BETWEEN ? AND ?";
+                        if ($station_id > 0) { $w .= " AND fa.station_id = ?"; $p[] = $station_id; }
+                        if ($filter_staff > 0) { $w .= " AND (fa.user_id = ? OR fa.approved_by = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($is_staff_view) { $w .= " AND fa.user_id = ?"; $p[] = $viewer_user_id; }
+                        $sql = "SELECT COALESCE(fa.approved_at, fa.updated_at, fa.created_at) AS datetime,
+                            CONCAT('FADJ-', fa.id) AS request_no,
+                            'Fuel Adjustment Approval' AS request_type,
+                            CASE
+                                WHEN LOWER(COALESCE(fa.status,'')) = 'rejected' THEN 'Rejected'
+                                WHEN LOWER(COALESCE(fa.status,'')) = 'approved' THEN 'Approved'
+                                ELSE 'Pending Review'
+                            END AS action,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,''))),''), u1.username, 'Staff') AS requested_by,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,''))),''), u2.username, 'Manager') AS reviewed_by,
+                            CONCAT('Fuel: ', COALESCE(fa.fuel_type,'N/A'), ' | Liters: ', FORMAT(COALESCE(fa.liters,0),2), ' | Reason: ', COALESCE(fa.reason,'N/A')) AS details,
+                            COALESCE(fa.status, 'Pending') AS status
+                        FROM fuel_adjustments fa
+                        LEFT JOIN users u1 ON u1.id = fa.user_id
+                        LEFT JOIN users u2 ON u2.id = fa.approved_by
+                        $w";
+                        $st = $pdo->prepare($sql); $st->execute($p);
+                        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) { $raw[] = $r; }
+                    } catch(Exception $e) {}
+                }
+
+                // 12. Deliveries Oversight (Discrepancy Resolution / Returns)
+                if (ard_table_exists($pdo, 'deliveries_oversight')) {
+                    try {
+                        $p = [$date_from, $date_to];
+                        $w = "WHERE DATE(COALESCE(do.resolved_at, do.finalized_at, do.manager_action_at, do.admin_action_at, do.created_at)) BETWEEN ? AND ?";
+                        if ($station_id > 0) { $w .= " AND do.station_id = ?"; $p[] = $station_id; }
+                        if ($filter_staff > 0) { $w .= " AND (do.encoded_by = ? OR do.resolved_by = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($is_staff_view) { $w .= " AND do.encoded_by = ?"; $p[] = $viewer_user_id; }
+                        $sql = "SELECT COALESCE(do.resolved_at, do.finalized_at, do.manager_action_at, do.admin_action_at, do.created_at) AS datetime,
+                            COALESCE(NULLIF(do.dr_number,''), NULLIF(do.delivery_ref,''), CONCAT('DEL-',do.id)) AS request_no,
+                            CONCAT(UCASE(SUBSTRING(do.delivery_type,1,1)),LOWER(SUBSTRING(do.delivery_type,2)), ' Delivery Resolution') AS request_type,
+                            CASE
+                                WHEN LOWER(COALESCE(do.status,'')) IN ('approved','resolved','finalized','accepted') OR do.resolution_action = 'Accept' THEN 'Approved'
+                                WHEN LOWER(COALESCE(do.status,'')) IN ('rejected','returned') OR do.resolution_action = 'Reject' THEN 'Rejected'
+                                ELSE 'Pending Review'
+                            END AS action,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,''))),''), u1.username, 'Staff') AS requested_by,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,''))),''), u2.username, 'Manager / Admin') AS reviewed_by,
+                            CONCAT('Supplier: ', COALESCE(do.supplier,'N/A'), ' | Product: ', COALESCE(do.product,'N/A'), ' | Qty: ', FORMAT(COALESCE(do.quantity,0),2), CASE WHEN do.return_reason IS NOT NULL AND TRIM(do.return_reason)!='' THEN CONCAT(' | Return Reason: ', do.return_reason) WHEN do.remarks IS NOT NULL AND TRIM(do.remarks)!='' THEN CONCAT(' | Remarks: ', do.remarks) ELSE '' END) AS details,
+                            COALESCE(do.status, 'Pending') AS status
+                        FROM deliveries_oversight do
+                        LEFT JOIN users u1 ON u1.id = do.encoded_by
+                        LEFT JOIN users u2 ON u2.id = COALESCE(do.resolved_by, do.finalized_by, do.manager_id, do.admin_id)
+                        $w";
+                        $st = $pdo->prepare($sql); $st->execute($p);
+                        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) { $raw[] = $r; }
+                    } catch(Exception $e) {}
+                }
+
+                // 13. Master Data Requests
                 if (ard_table_exists($pdo, 'master_data_requests')) {
                     try {
                         $p = [$date_from, $date_to];
-                        $w = "WHERE DATE(mdr.created_at) BETWEEN ? AND ?";
+                        $w = "WHERE DATE(COALESCE(mdr.updated_at, mdr.created_at)) BETWEEN ? AND ?";
                         if ($station_id > 0) { $w .= " AND mdr.station_id = ?"; $p[] = $station_id; }
-                        if ($filter_staff > 0) { $w .= " AND mdr.requested_by = ?"; $p[] = $filter_staff; }
-                        $sql = "SELECT mdr.created_at AS datetime,
+                        if ($filter_staff > 0) { $w .= " AND (mdr.requested_by = ? OR mdr.reviewed_by = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; }
+                        if ($is_staff_view) { $w .= " AND mdr.requested_by = ?"; $p[] = $viewer_user_id; }
+                        $sql = "SELECT COALESCE(mdr.updated_at, mdr.created_at) AS datetime,
                             COALESCE(NULLIF(mdr.request_no,''), CONCAT('MR-',mdr.id)) AS request_no,
                             'Master Data Request' AS request_type,
                             CASE
@@ -1954,26 +2402,26 @@ if (!function_exists('getAdminReportData')) {
                             END AS action,
                             COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,''))),''), u1.username, CONCAT('User #',mdr.requested_by)) AS requested_by,
                             COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,''))),''), u2.username, 'Manager / Admin') AS reviewed_by,
-                            CONCAT('Category: ', COALESCE(mdr.category,'N/A'), ' | Reason: ', COALESCE(mdr.reason, mdr.reviewer_notes, 'N/A')) AS details,
+                            CONCAT('Category: ', COALESCE(mdr.category,'N/A'), ' | Reason: ', COALESCE(mdr.rejection_reason, 'N/A')) AS details,
                             COALESCE(mdr.status, 'Pending') AS status
                         FROM master_data_requests mdr
                         LEFT JOIN users u1 ON u1.id = mdr.requested_by
                         LEFT JOIN users u2 ON u2.id = mdr.reviewed_by
                         $w";
                         $st = $pdo->prepare($sql); $st->execute($p);
-                        $rows_mdr = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                        foreach ($rows_mdr as $r) { $raw[] = $r; }
+                        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) { $raw[] = $r; }
                     } catch (Exception $e) {}
                 }
 
-                // 2. Price Change Approvals
+                // 14. Pending Price Change Approvals
                 if (ard_table_exists($pdo, 'pending_price_approvals')) {
                     try {
                         $p = [$date_from, $date_to];
-                        $w = "WHERE DATE(ppa.created_at) BETWEEN ? AND ?";
+                        $w = "WHERE DATE(COALESCE(ppa.reviewed_at, ppa.updated_at, ppa.created_at)) BETWEEN ? AND ?";
                         if ($station_id > 0) { $w .= " AND ppa.station_id = ?"; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND (ppa.requested_by = ? OR ppa.reviewed_by = ?)"; $p[] = $filter_staff; $p[] = $filter_staff; }
-                        $sql = "SELECT ppa.created_at AS datetime,
+                        if ($is_staff_view) { $w .= " AND ppa.requested_by = ?"; $p[] = $viewer_user_id; }
+                        $sql = "SELECT COALESCE(ppa.reviewed_at, ppa.updated_at, ppa.created_at) AS datetime,
                             CONCAT('PPA-',ppa.id) AS request_no,
                             'Price Change Approval' AS request_type,
                             CASE
@@ -1983,106 +2431,92 @@ if (!function_exists('getAdminReportData')) {
                             END AS action,
                             COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,''))),''), u1.username, 'Staff') AS requested_by,
                             COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,''))),''), u2.username, 'Manager / Admin') AS reviewed_by,
-                            CONCAT('Product: ', COALESCE(ppa.product_name,ppa.product_type,'N/A'), ' | Old: ₱', FORMAT(COALESCE(ppa.old_price,ppa.old_value,0),2), ' -> New: ₱', FORMAT(COALESCE(ppa.new_price,ppa.new_value,0),2), ' | Notes: ', COALESCE(ppa.reviewer_notes, ppa.reason, 'N/A')) AS details,
+                            CONCAT('Product: ', COALESCE(ppa.product_name,ppa.product_type,'N/A'), ' | Old: ₱', FORMAT(COALESCE(ppa.old_price,ppa.old_value,0),2), ' -> New: ₱', FORMAT(COALESCE(ppa.new_price,ppa.new_value,0),2), ' | Notes: ', COALESCE(ppa.reviewer_notes, ppa.rejection_reason, ppa.reason, 'N/A')) AS details,
                             COALESCE(ppa.status, 'Pending') AS status
                         FROM pending_price_approvals ppa
                         LEFT JOIN users u1 ON u1.id = ppa.requested_by
                         LEFT JOIN users u2 ON u2.id = COALESCE(ppa.reviewed_by, ppa.manager_id, ppa.admin_id)
                         $w";
                         $st = $pdo->prepare($sql); $st->execute($p);
-                        $rows_ppa = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                        foreach ($rows_ppa as $r) { $raw[] = $r; }
+                        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) { $raw[] = $r; }
                     } catch (Exception $e) {}
                 }
 
-                // 3. Stock Request Approvals
-                if (ard_table_exists($pdo, 'stock_requests')) {
-                    try {
-                        $p = [$date_from, $date_to];
-                        $w = "WHERE DATE(sr.created_at) BETWEEN ? AND ?";
-                        if ($station_id > 0) { $w .= " AND sr.station_id = ?"; $p[] = $station_id; }
-                        if ($filter_staff > 0) { $w .= " AND sr.staff_id = ?"; $p[] = $filter_staff; }
-                        $sql = "SELECT sr.created_at AS datetime,
-                            COALESCE(NULLIF(sr.request_no,''), CONCAT('SR-',sr.id)) AS request_no,
-                            'Stock Request Approval' AS request_type,
-                            CASE
-                                WHEN LOWER(COALESCE(sr.status,'')) IN ('rejected','cancelled') THEN 'Rejected'
-                                WHEN LOWER(COALESCE(sr.status,'')) IN ('approved','fulfilled') THEN 'Approved'
-                                WHEN LOWER(COALESCE(sr.status,'')) LIKE '%revis%' THEN 'Request Revision'
-                                ELSE 'Pending Review'
-                            END AS action,
-                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,''))),''), u1.username, CONCAT('Staff #',sr.staff_id)) AS requested_by,
-                            'Manager' AS reviewed_by,
-                            CONCAT('Item: ', COALESCE(sr.item_name,'N/A'), ' | Qty: ', COALESCE(sr.requested_quantity,0), ' | Reason: ', COALESCE(sr.reason,'N/A')) AS details,
-                            COALESCE(sr.status, 'Pending') AS status
-                        FROM stock_requests sr
-                        LEFT JOIN users u1 ON u1.id = sr.staff_id
-                        $w";
-                        $st = $pdo->prepare($sql); $st->execute($p);
-                        $rows_sr = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                        foreach ($rows_sr as $r) { $raw[] = $r; }
-                    } catch (Exception $e) {}
-                }
-
-                // 4. Void Requests & Approvals
-                if (ard_table_exists($pdo, 'merchandise_transactions')) {
-                    try {
-                        $p = [$date_from, $date_to];
-                        $w = "WHERE DATE(mt.created_at) BETWEEN ? AND ? AND (mt.void_reason IS NOT NULL AND TRIM(mt.void_reason)!='')";
-                        if ($station_id > 0) { $w .= " AND mt.station_id = ?"; $p[] = $station_id; }
-                        if ($filter_staff > 0) { $w .= " AND mt.staff_id = ?"; $p[] = $filter_staff; }
-                        $sql = "SELECT mt.created_at AS datetime,
-                            COALESCE(NULLIF(mt.transaction_id,''), CONCAT('VOID-',mt.id)) AS request_no,
-                            'Void Request' AS request_type,
-                            CASE
-                                WHEN LOWER(COALESCE(mt.validation_status,'')) IN ('voided','approved') THEN 'Approved'
-                                WHEN LOWER(COALESCE(mt.validation_status,'')) IN ('rejected','cancelled') THEN 'Rejected'
-                                ELSE 'Pending Review'
-                            END AS action,
-                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''), u.username, CONCAT('Staff #',mt.staff_id)) AS requested_by,
-                            'Manager / Admin' AS reviewed_by,
-                            CONCAT('Void Reason: ', COALESCE(mt.void_reason,'N/A'), ' | Amount: ₱', FORMAT(COALESCE(mt.total_amount,0),2)) AS details,
-                            COALESCE(mt.validation_status, 'Pending') AS status
-                        FROM merchandise_transactions mt
-                        LEFT JOIN users u ON u.id = mt.staff_id
-                        $w";
-                        $st = $pdo->prepare($sql); $st->execute($p);
-                        $rows_vd = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                        foreach ($rows_vd as $r) { $raw[] = $r; }
-                    } catch (Exception $e) {}
-                }
-
-                // 5. Adjustment Requests
+                // 15. Transaction Adjustments
                 if (ard_table_exists($pdo, 'transaction_adjustments')) {
                     try {
                         $p = [$date_from, $date_to];
                         $w = "WHERE DATE(COALESCE(ta.adjustment_date, ta.created_at, NOW())) BETWEEN ? AND ?";
                         if ($station_id > 0) { $w .= " AND ta.station_id = ?"; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND ta.adjusted_by = ?"; $p[] = $filter_staff; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR ta.adjusted_by = ?)"; $p[] = $viewer_user_id; }
                         $sql = "SELECT COALESCE(ta.adjustment_date, ta.created_at, NOW()) AS datetime,
                             CONCAT('ADJ-',ta.id) AS request_no,
                             'Adjustment Request' AS request_type,
                             'Pending Review' AS action,
                             COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''), u.username, CONCAT('User #',ta.adjusted_by)) AS requested_by,
                             'Manager' AS reviewed_by,
-                            CONCAT('Txn: ', COALESCE(ta.transaction_id,'N/A'), ' | Diff: ₱', FORMAT(COALESCE(ta.amount_difference,0),2), ' | Reason: ', COALESCE(ta.adjustment_reason,'N/A')) AS details,
+                            CONCAT('Txn: ', COALESCE(ta.transaction_id,'N/A'), ' | Diff: ₱', FORMAT(COALESCE(ta.amount_difference,0),2), ' | Reason: ', COALESCE(ta.adjustment_reason, ta.manager_remarks, 'N/A')) AS details,
                             'Pending' AS status
                         FROM transaction_adjustments ta
                         LEFT JOIN users u ON u.id = ta.adjusted_by
                         $w";
                         $st = $pdo->prepare($sql); $st->execute($p);
-                        $rows_ta = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                        foreach ($rows_ta as $r) { $raw[] = $r; }
+                        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) { $raw[] = $r; }
                     } catch (Exception $e) {}
                 }
 
                 // PHP-side filter & sort
                 $filtered = [];
                 foreach ($raw as $r) {
-                    if ($filter_stat !== '' && strtolower($r['action']) !== strtolower($filter_stat)) continue;
+                    if (!empty($excluded_names)) {
+                        $req_by = strtolower(trim($r['requested_by'] ?? ''));
+                        $rev_by = strtolower(trim($r['reviewed_by'] ?? ''));
+                        $skip_actor = false;
+                        if ($is_staff_view) {
+                            foreach ($excluded_names as $ex) {
+                                if ($ex !== '' && ($req_by === $ex || str_contains($req_by, $ex))) { $skip_actor = true; break; }
+                            }
+                        } else {
+                            foreach ($excluded_names as $ex) {
+                                if ($ex !== '' && ($req_by === $ex || str_contains($req_by, $ex))) { $skip_actor = true; break; }
+                                if ($ex !== '' && ($rev_by === $ex || str_contains($rev_by, $ex))) { $skip_actor = true; break; }
+                            }
+                        }
+                        if ($skip_actor) continue;
+                    }
+                    if ($filter_stat !== '') {
+                        $fs = strtolower($filter_stat);
+                        $act_low = strtolower($r['action'] ?? '');
+                        $stat_low = strtolower($r['status'] ?? '');
+                        $matches = false;
+                        if ($fs === 'pending') {
+                            if (str_contains($act_low, 'pending') || str_contains($stat_low, 'pending') || str_contains($stat_low, 'submitted') || str_contains($stat_low, 'draft')) {
+                                $matches = true;
+                            }
+                        } elseif ($fs === 'approved') {
+                            if (str_contains($act_low, 'approv') || str_contains($stat_low, 'approv') || in_array($stat_low, ['completed','official','fulfilled','validated','verified','resolved','accepted'])) {
+                                $matches = true;
+                            }
+                        } elseif ($fs === 'rejected') {
+                            if (str_contains($act_low, 'reject') || str_contains($stat_low, 'reject') || str_contains($stat_low, 'cancel') || str_contains($stat_low, 'return')) {
+                                $matches = true;
+                            }
+                        } elseif ($fs === 'for revision') {
+                            if (str_contains($act_low, 'revis') || str_contains($stat_low, 'revis') || str_contains($stat_low, 'return') || str_contains($act_low, 'return')) {
+                                $matches = true;
+                            }
+                        } else {
+                            if (str_contains($act_low, $fs) || str_contains($stat_low, $fs)) {
+                                $matches = true;
+                            }
+                        }
+                        if (!$matches) continue;
+                    }
                     if ($filter_srch !== '') {
-                        $hay = strtolower($r['request_no'].' '.$r['request_type'].' '.$r['action'].' '.$r['requested_by'].' '.$r['details']);
-                        if (strpos($hay, strtolower($filter_srch)) === false) continue;
+                        $fsrch = strtolower($filter_srch);
+                        $hay = strtolower(($r['request_no'] ?? '').' '.($r['request_type'] ?? '').' '.($r['action'] ?? '').' '.($r['status'] ?? '').' '.($r['requested_by'] ?? '').' '.($r['reviewed_by'] ?? '').' '.($r['details'] ?? ''));
+                        if (strpos($hay, $fsrch) === false) continue;
                     }
                     $filtered[] = $r;
                 }
@@ -2106,6 +2540,7 @@ if (!function_exists('getAdminReportData')) {
                         $w = "WHERE DATE(la.attempt_time) BETWEEN ? AND ?";
                         if ($station_id > 0) { $w .= " AND u.station_id = ?"; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND la.user_id = ?"; $p[] = $filter_staff; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR la.user_id = ?)"; $p[] = $viewer_user_id; }
                         $sql = "SELECT la.attempt_time AS datetime,
                             COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''), u.username, la.username, 'Unknown') AS user,
                             COALESCE(NULLIF(u.role,''), 'Staff') AS role,
@@ -2136,6 +2571,7 @@ if (!function_exists('getAdminReportData')) {
                               )";
                         if ($station_id > 0) { $w .= " AND u.station_id = ?"; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND al.user_id = ?"; $p[] = $filter_staff; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR al.user_id = ?)"; $p[] = $viewer_user_id; }
                         $sql = "SELECT al.created_at AS datetime,
                             COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''), u.username, CONCAT('User #',al.user_id)) AS user,
                             COALESCE(NULLIF(u.role,''), 'Staff') AS role,
@@ -2155,6 +2591,14 @@ if (!function_exists('getAdminReportData')) {
                 // PHP-side filter & sort
                 $filtered = [];
                 foreach ($raw as $r) {
+                    if (!empty($excluded_names)) {
+                        $usr = strtolower(trim($r['user'] ?? ''));
+                        $skip_actor = false;
+                        foreach ($excluded_names as $ex) {
+                            if ($ex !== '' && ($usr === $ex || str_contains($usr, $ex))) { $skip_actor = true; break; }
+                        }
+                        if ($skip_actor) continue;
+                    }
                     if ($filter_stat !== '' && strtolower($r['status']) !== strtolower($filter_stat)) continue;
                     if ($filter_srch !== '') {
                         $hay = strtolower($r['user'].' '.$r['role'].' '.$r['action'].' '.$r['reason'].' '.$r['ip_address']);
@@ -2190,6 +2634,7 @@ if (!function_exists('getAdminReportData')) {
                               )";
                         if ($station_id > 0) { $w .= " AND u.station_id = ?"; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND al.user_id = ?"; $p[] = $filter_staff; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR al.user_id = ?)"; $p[] = $viewer_user_id; }
                         $sql = "SELECT al.created_at AS datetime,
                             COALESCE(al.entity_type, al.log_type, 'Record') AS entity_type,
                             COALESCE(NULLIF(al.record_id,''), CONCAT('REC-',al.id)) AS ref_no,
@@ -2217,6 +2662,7 @@ if (!function_exists('getAdminReportData')) {
                         $p = [$date_from, $date_to];
                         $w = "WHERE (LOWER(u.status) IN ('inactive','deactivated','archived')) AND DATE(COALESCE(u.updated_at, u.created_at)) BETWEEN ? AND ?";
                         if ($station_id > 0) { $w .= " AND u.station_id = ?"; $p[] = $station_id; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR u.id = ?)"; $p[] = $viewer_user_id; }
                         $sql = "SELECT COALESCE(u.updated_at, u.created_at) AS datetime,
                             'User Account' AS entity_type,
                             CONCAT('USER-',u.id) AS ref_no,
@@ -2256,6 +2702,14 @@ if (!function_exists('getAdminReportData')) {
                 // PHP-side filter & sort
                 $filtered = [];
                 foreach ($raw as $r) {
+                    if (!empty($excluded_names)) {
+                        $perf = strtolower(trim($r['performed_by'] ?? ''));
+                        $skip_actor = false;
+                        foreach ($excluded_names as $ex) {
+                            if ($ex !== '' && ($perf === $ex || str_contains($perf, $ex))) { $skip_actor = true; break; }
+                        }
+                        if ($skip_actor) continue;
+                    }
                     if ($filter_srch !== '') {
                         $hay = strtolower($r['ref_no'].' '.$r['entity_type'].' '.$r['action'].' '.$r['performed_by'].' '.$r['details']);
                         if (strpos($hay, strtolower($filter_srch)) === false) continue;

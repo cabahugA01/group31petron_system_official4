@@ -393,34 +393,34 @@ if (isset($_GET['ajax_aat']) && $_GET['ajax_aat'] == '1') {
 include __DIR__ . '/../partials/header.php';
 ?>
 <style>
-.aat-card{background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;margin-bottom:14px;box-shadow:0 1px 6px rgba(0,0,0,.05);}
-.aat-head{background:#002F70;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
-.aat-head h3{color:#fff;font-size:13px;font-weight:700;margin:0;display:flex;align-items:center;gap:7px;}
-.aat-body{padding:14px 18px;}
-.aat-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px;}
-.aat-kpi-card{background:#fff;border-radius:8px;border:1px solid #e2e8f0;padding:12px 14px;text-align:center;}
-.aat-kpi-num{font-size:22px;font-weight:800;color:#002F70;}
-.aat-kpi-lbl{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-top:3px;}
-.aat-filter-row{display:flex;flex-wrap:wrap;gap:9px;align-items:flex-end;}
-.aat-fg{display:flex;flex-direction:column;gap:3px;}
-.aat-fl{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;}
-.aat-inp{height:34px;padding:0 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;color:#1e293b;background:#fff;outline:none;}
-.aat-inp:focus{border-color:#002F70;}
-.aat-btn{display:inline-flex;align-items:center;gap:5px;height:34px;padding:0 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;background:#fff;text-decoration:none;}
+.aat-card{background:#fff;border-radius:12px;border:1.5px solid #cbd5e1;overflow:hidden;margin-bottom:14px;box-shadow:0 1px 6px rgba(0,0,0,.05);}
+.aat-head{background:#002F70;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.aat-head h3{color:#fff;font-size:15px;font-weight:800;margin:0;display:flex;align-items:center;gap:8px;}
+.aat-body{padding:16px 18px;}
+.aat-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:14px;}
+.aat-kpi-card{background:#fff;border-radius:10px;border:1.5px solid #cbd5e1;padding:14px 16px;text-align:center;}
+.aat-kpi-num{font-size:24px;font-weight:900;color:#002F70;}
+.aat-kpi-lbl{font-size:11.5px;color:#475569;text-transform:uppercase;letter-spacing:.4px;margin-top:4px;font-weight:700;}
+.aat-filter-row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;}
+.aat-fg{display:flex;flex-direction:column;gap:4px;}
+.aat-fl{font-size:12px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.4px;}
+.aat-inp{height:38px;padding:0 10px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:13.5px;font-weight:600;color:#1e293b;background:#fff;outline:none;}
+.aat-inp:focus{border-color:#002F70;box-shadow:0 0 0 3px rgba(0,47,112,.12);}
+.aat-btn{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid transparent;background:#fff;text-decoration:none;white-space:nowrap;}
 .aat-btn-blue{color:#002F70;border-color:#002F70;}.aat-btn-blue:hover{background:#002F70;color:#fff;}
 .aat-btn-gray{color:#4b5563;border-color:#6b7280;}.aat-btn-gray:hover{background:#6b7280;color:#fff;}
 .aat-btn-green{color:#16a34a;border-color:#16a34a;}.aat-btn-green:hover{background:#16a34a;color:#fff;}
 .aat-btn-red{color:#dc2626;border-color:#dc2626;}.aat-btn-red:hover{background:#dc2626;color:#fff;}
-.aat-table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;}
-.aat-table thead th{background:#002F70;color:#fff;padding:8px 5px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;border-bottom:2px solid #001a3d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;}
-.aat-table tbody td{padding:7px 5px;border-bottom:1px solid #f1f5f9;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;max-width:0;color:#1e293b;}
+.aat-table{width:100%!important;min-width:0!important;border-collapse:collapse;font-size:13px;table-layout:fixed;}
+.aat-table thead th{background:#002F70;color:#fff;padding:10px 6px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;border-bottom:2px solid #001a3d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;}
+.aat-table tbody td{padding:9px 6px;border-bottom:1px solid #f1f5f9;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;max-width:0;color:#1e293b;font-size:13px;}
 .aat-table tbody tr:hover td{background:#f0f7ff;}
-.aat-badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;}
+.aat-badge{display:inline-block;padding:3px 8px;border-radius:10px;font-size:11.5px;font-weight:800;white-space:nowrap;}
 .aat-role-staff{background:#dcfce7;color:#166534;border:1px solid #86efac;}
 .aat-role-manager{background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd;}
 .aat-role-admin{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;}
 .aat-role-other{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;}
-.aat-anomaly-banner{background:#fff3f3;border:1.5px solid #fca5a5;border-radius:8px;padding:12px 16px;margin-bottom:14px;}
+.aat-anomaly-banner{background:#fff3f3;border:1.5px solid #fca5a5;border-radius:8px;padding:14px 18px;margin-bottom:14px;font-size:13px;}
 </style>
 
 <div class="page-head" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
@@ -537,7 +537,7 @@ include __DIR__ . '/../partials/header.php';
         <h3><i class="fas fa-list-alt"></i> Full Compliance Log (<?= $total ?> record<?= $total!==1?'s':'' ?>)</h3>
     </div>
     <div style="overflow:hidden;max-height:600px;overflow-y:auto;">
-    <table class="aat-table">
+    <table class="aat-table report-table no-min-width print-table">
         <colgroup>
             <col style="width:4%;">  <!-- ID -->
             <col style="width:9%;">  <!-- Timestamp -->

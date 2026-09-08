@@ -416,7 +416,7 @@ body,html{overflow-x:hidden;max-width:100%;}
 }
 .mi-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:13000;align-items:center;justify-content:center;padding:24px 16px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 .mi-overlay.open{display:flex !important;}
-.mi-box{background:#fff;border-radius:14px;padding:0;width:720px;max-width:calc(100vw - 32px);display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.3);animation:miIn .2s ease;overflow:hidden;position:relative;max-height:85vh;}
+.mi-box{background:#fff;border-radius:14px;padding:0;width:720px;max-width:calc(100vw - 32px);display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.3);animation:miIn .2s ease;overflow:hidden;position:relative;max-height:calc(100vh - 150px) !important;}
 .mi-box.wide{width:880px;max-width:calc(100vw - 32px);}
 @keyframes miIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
 .mi-head{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1.5px solid #e9ecef;flex-shrink:0;background:#fff;position:relative;z-index:1;}
@@ -966,7 +966,6 @@ body.modal-open .main {
     <div class="mi-box">
         <div class="mi-head">
             <div class="mi-title"><i class="fas fa-eye"></i> Product Details</div>
-            <button type="button" class="mi-close" onclick="closeVd()">&times;</button>
         </div>
         <div class="mi-body">
             <div id="vdContent"></div>
@@ -2070,17 +2069,16 @@ function submitAdjustmentForm(e) {
 </script>
 
 <!-- ══ INVENTORY ADJUSTMENT MODAL ══ -->
-<div class="modal-overlay" id="staffAdjustmentModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:15000; align-items:center; justify-content:center; padding:24px 16px; box-sizing:border-box; overflow-y:auto;">
-    <div class="modal-box" style="background:#fff; border-radius:14px; width:100%; max-width:580px; max-height:85vh; margin:auto; box-shadow:0 20px 50px rgba(0,0,0,0.35); overflow:hidden; display:flex; flex-direction:column; position:relative;">
+<div class="modal-overlay" id="staffAdjustmentModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:15000; align-items:center; justify-content:center; box-sizing:border-box; overflow-y:auto;">
+    <div class="modal-box" style="background:#fff; border-radius:14px; width:100%; max-width:580px; max-height:calc(100vh - 150px) !important; margin:auto; box-shadow:0 20px 50px rgba(0,0,0,0.35); overflow:hidden; display:flex; flex-direction:column; position:relative;">
         <div style="background:linear-gradient(135deg,#002F70,#001838); padding:16px 22px; color:#fff; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
             <div style="font-size:16px; font-weight:700; display:flex; align-items:center; gap:10px;"><i class="fas fa-edit" style="color:#fd7e14;"></i> Request Inventory Adjustment</div>
-            <button type="button" onclick="closeAdjustmentModal()" style="background:none; border:none; color:#fff; font-size:24px; cursor:pointer; line-height:1; padding:0 4px;">&times;</button>
         </div>
         
-        <form id="adjustmentForm" onsubmit="submitAdjustmentForm(event)" style="display:flex; flex-direction:column; flex:1; overflow:hidden; margin:0;">
+        <form id="adjustmentForm" onsubmit="submitAdjustmentForm(event)" style="display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; margin:0;">
             <input type="hidden" id="adj_product_id" name="product_id">
             
-            <div style="padding:20px 24px; overflow-y:auto; overflow-x:hidden !important; flex:1; max-height:calc(85vh - 130px); box-sizing:border-box;">
+            <div style="padding:16px 22px; overflow-y:auto; overflow-x:hidden !important; flex:1; min-height:0; box-sizing:border-box;">
                 <!-- Product Information (Auto Fetch / Readonly) -->
                 <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:18px;">
                     <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">

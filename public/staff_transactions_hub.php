@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Staff Transactions Hub
  * Sidebar navigation for Fuel (internal) and Merchandise (customer-facing) transactions.
@@ -690,85 +690,9 @@ if ($section === 'merchandise') {
         $stmt_mh->execute($mh_params);
         $mh_recent = $stmt_mh->fetchAll(PDO::FETCH_ASSOC);
 
-        // Fetch all unpaid transactions for variance checking
+        // Variance alerts disabled in transaction module per business requirements (only Adjust or Void available)
         $mh_variance_alerts = [];
-        try {
-            $stmt_var = $pdo->prepare("
-                SELECT mt.id, $mh_txnid_col AS transaction_id, mt.total_amount, mt.payment_status
-                FROM merchandise_transactions mt
-                WHERE mt.station_id = ?
-                  AND COALESCE(mt.payment_status, 'Pending Payment') != 'Paid'
-            ");
-            $stmt_var->execute([$station_id]);
-            $unpaid_txns = $stmt_var->fetchAll(PDO::FETCH_ASSOC);
-            if (!empty($unpaid_txns)) {
-                $unpaid_ids = array_column($unpaid_txns, 'id');
-                $unpaid_iph = implode(',', array_fill(0, count($unpaid_ids), '?'));
-                
-                // Fetch product stocks for validation
-                $mh_product_stock = [];
-                $mh_ps_stmt = $pdo->prepare("
-                    SELECT ip.id AS product_id, LOWER(TRIM(ip.product_name)) AS pname,
-                           COALESCE(si.stock_level, 0) AS stock_level
-                    FROM inventory_products ip
-                    LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-                    WHERE ip.category != 'Fuel' OR ip.category IS NULL
-                ");
-                $mh_ps_stmt->execute([$station_id]);
-                foreach ($mh_ps_stmt->fetchAll(PDO::FETCH_ASSOC) as $_mhps) {
-                    $mh_product_stock[$_mhps['pname']] = $_mhps;
-                }
-
-                // Fetch items for these unpaid transactions
-                $stmt_var_items = $pdo->prepare("
-                    SELECT transaction_id, product_name, product_id, quantity, unit_price
-                    FROM merchandise_transaction_items
-                    WHERE transaction_id IN ($unpaid_iph)
-                ");
-                $stmt_var_items->execute($unpaid_ids);
-                $var_items_map = [];
-                foreach ($stmt_var_items->fetchAll(PDO::FETCH_ASSOC) as $_mhi) {
-                    $var_items_map[$_mhi['transaction_id']][] = $_mhi;
-                }
-                
-                foreach ($unpaid_txns as $_mvt) {
-                    $mv_ref = $_mvt['transaction_id'] ?: ('#' . $_mvt['id']);
-                    $mh_vitems = $var_items_map[$_mvt['id']] ?? [];
-                    
-                    // Quantity mismatch check
-                    foreach ($mh_vitems as $_mvit) {
-                        $pn = strtolower(trim($_mvit['product_name'] ?? ''));
-                        $st = isset($mh_product_stock[$pn]) ? (float)$mh_product_stock[$pn]['stock_level'] : null;
-                        if ($st !== null && $_mvit['quantity'] > $st) {
-                            $mh_variance_alerts[] = [
-                                'txn_ref' => $mv_ref,
-                                'type'    => 'qty',
-                                'message' => 'Quantity mismatch: ' . htmlspecialchars($_mvit['product_name'])
-                                           . ' — encoded ' . (int)$_mvit['quantity'] . ' pc(s), stock ' . (int)$st,
-                            ];
-                        }
-                    }
-                    
-                    // Amount mismatch check
-                    if (!empty($mh_vitems)) {
-                        $mv_sum   = array_sum(array_map(fn($i) => $i['quantity'] * $i['unit_price'], $mh_vitems));
-                        $mv_total = (float)$_mvt['total_amount'];
-                        if ($mv_total > 0 && abs($mv_sum - $mv_total) > 0.01) {
-                            $mh_variance_alerts[] = [
-                                'txn_ref' => $mv_ref,
-                                'type'    => 'amount',
-                                'message' => 'Amount mismatch: computed ₱' . number_format($mv_sum, 2)
-                                           . ' vs encoded ₱' . number_format($mv_total, 2),
-                            ];
-                        }
-                    }
-                }
-            }
-        } catch (Exception $e) {
-            error_log('Variance checks error: ' . $e->getMessage());
-        }
-
-        $mh_variance_alert_count = count($mh_variance_alerts);
+        $mh_variance_alert_count = 0;
 
         // ── Merchandise KPI (today) ───────────────────────────────────────────
         $mh_kpi_txn_count     = 0;
@@ -921,6 +845,11 @@ if ($section === 'history' || $section === 'fuel_history') {
         $fuel_params = [];
     }
 
+    if ($role === 'staff' || !in_array($role, ['manager', 'admin', 'superadmin', 'developer'])) {
+        $fuel_where  .= " AND ft.staff_id = ?";
+        $fuel_params[] = (int)($me['id'] ?? 0);
+    }
+
     if ($filter_shift !== '') {
         $fuel_where  .= " AND ft.shift_period = ?";
         $fuel_params[] = $filter_shift;
@@ -974,6 +903,11 @@ if ($section === 'history' || $section === 'fuel_history') {
         } else {
             $merch_where2  = "WHERE 1=1";
             $merch_params2 = [];
+        }
+
+        if ($role === 'staff' || !in_array($role, ['manager', 'admin', 'superadmin', 'developer'])) {
+            $merch_where2  .= " AND mt.staff_id = ?";
+            $merch_params2[] = (int)($me['id'] ?? 0);
         }
 
         if ($hist_filter_date_from !== '') {
@@ -1779,9 +1713,15 @@ if ($section === 'merchandise') {
                     )
                 )
                 WHERE jo.station_id = ?
+                " . (($role === 'staff' || !in_array($role, ['manager', 'admin', 'superadmin', 'developer'])) ? " AND (jo.created_by = ? OR jo.user_id = ?)" : "") . "
                 ORDER BY jo.created_at DESC
             ");
-            $stmt->execute([$station_id]);
+            $jo_exec_params = [$station_id];
+            if ($role === 'staff' || !in_array($role, ['manager', 'admin', 'superadmin', 'developer'])) {
+                $jo_exec_params[] = (int)($me['id'] ?? 0);
+                $jo_exec_params[] = (int)($me['id'] ?? 0);
+            }
+            $stmt->execute($jo_exec_params);
             $jo_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             // Normalize: map balance_due_col → balance_due if not already present
             foreach ($jo_rows as &$_jr) {
@@ -1906,10 +1846,15 @@ if ($section === 'merchandise') {
                 LEFT JOIN users u_mech ON u_mech.id = jo_ref.assigned_mechanic_id
                 WHERE mt.station_id = ?
                   AND mt.transaction_type IN ('job_order', 'combined')
+                " . (($role === 'staff' || !in_array($role, ['manager', 'admin', 'superadmin', 'developer'])) ? " AND mt.staff_id = ?" : "") . "
                 GROUP BY mt.id
                 ORDER BY mt.created_at DESC
             ");
-            $stmt2->execute([$station_id]);
+            $mt_exec_params = [$station_id];
+            if ($role === 'staff' || !in_array($role, ['manager', 'admin', 'superadmin', 'developer'])) {
+                $mt_exec_params[] = (int)($me['id'] ?? 0);
+            }
+            $stmt2->execute($mt_exec_params);
             $mt_rows = $stmt2->fetchAll(PDO::FETCH_ASSOC);
         } catch (Exception $e) {
             error_log('staff_transactions_hub MT tracker query error: ' . $e->getMessage());
@@ -2071,51 +2016,9 @@ if ($section === 'merchandise') {
             }
         }
 
-        // ── Variance alerts detection ─────────────────────────────────────────────
-        // Scans active (non-rejected/completed) job orders for qty or amount mismatches.
-
-        $today_str = date('Y-m-d');
-        foreach ($job_orders as $_vjo) {
-            $vst = strtolower($_vjo['status'] ?? '');
-            if (in_array($vst, ['rejected','cancelled','completed'])) continue;
-            $vval = strtolower($_vjo['validation_status'] ?? '');
-            if ($vval === 'rejected') continue;
-
-            $vkey = ($_vjo['_source'] ?? 'job_orders') . ':' . $_vjo['id'];
-            $vitems = $inv_impact[$vkey] ?? [];
-            $jo_ref = $_vjo['job_order_id'] ?? ('#' . $_vjo['id']);
-
-            // A) Quantity variance: encoded qty > current stock level
-            foreach ($vitems as $_vit) {
-                if ($_vit['stock'] !== null && $_vit['qty'] > $_vit['stock']) {
-                    $jo_variance_alerts[] = [
-                        'jo_ref'  => $jo_ref,
-                        'source'  => $_vjo['_source'] ?? 'job_orders',
-                        'id'      => $_vjo['id'],
-                        'type'    => 'qty',
-                        'message' => 'Quantity mismatch: ' . htmlspecialchars($_vit['part'])
-                                   . ' — encoded ' . $_vit['qty'] . ' pc(s), stock ' . (int)$_vit['stock'],
-                    ];
-                }
-            }
-
-            // B) Amount variance: sum(qty × unit_price) vs total_cost
-            if (!empty($vitems)) {
-                $computed_sum = array_sum(array_map(fn($i) => $i['qty'] * $i['unit_price'], $vitems));
-                $total_cost   = (float)($_vjo['total_cost'] ?? $_vjo['estimated_cost'] ?? 0);
-                if ($total_cost > 0 && abs($computed_sum - $total_cost) > 0.01) {
-                    $jo_variance_alerts[] = [
-                        'jo_ref'  => $jo_ref,
-                        'source'  => $_vjo['_source'] ?? 'job_orders',
-                        'id'      => $_vjo['id'],
-                        'type'    => 'amount',
-                        'message' => 'Amount mismatch: computed ₱' . number_format($computed_sum, 2)
-                                   . ' vs encoded ₱' . number_format($total_cost, 2),
-                    ];
-                }
-            }
-        }
-        $jo_variance_alert_count = count($jo_variance_alerts);
+        // Variance alerts disabled in transaction module per business requirements (only Adjust or Void available)
+        $jo_variance_alerts = [];
+        $jo_variance_alert_count = 0;
 
         // ── Staff KPI Snapshot (today, current station, current user) ─────────────
         $kpi_jo_count       = 0;
@@ -2276,6 +2179,42 @@ input[type="checkbox"].jo-svc-checkbox {
 // GLOBAL MODAL HANDLERS (Merchandise & Job Orders)
 // ══════════════════════════════════════════════════════════════
 
+window.isAnyModalOpen = function() {
+    var modalIds = [
+        'viewMerchandiseModal',
+        'viewJobOrderModal',
+        'paymentSettleModal',
+        'updateStatusModal',
+        'adjustJobOrderModal',
+        'requestAdjustModal',
+        'requestVoidModal',
+        'txnRequestModal',
+        'customerRequestModal',
+        'globalRemarksModal',
+        'addServiceModal',
+        'addVehicleModal',
+        'addProductModal',
+        'fuelDetailsModal',
+        'readingEditModal',
+        'readingVoidModal',
+        'readingAdjustModal'
+    ];
+    for (var i = 0; i < modalIds.length; i++) {
+        var el = document.getElementById(modalIds[i]);
+        if (el) {
+            var disp = el.style.display;
+            if (disp && disp !== 'none') return true;
+            try {
+                if (window.getComputedStyle(el).display !== 'none') return true;
+            } catch(e) {}
+        }
+    }
+    if (document.querySelector('.modal[style*="display: block"], .modal[style*="display: flex"], .modal.show, .swal2-shown, .swal2-container')) {
+        return true;
+    }
+    return false;
+};
+
 window.closeViewMerchandiseModal = function() {
     var modal = document.getElementById('viewMerchandiseModal');
     if (modal) modal.style.display = 'none';
@@ -2293,7 +2232,7 @@ window.closeRequestVoidModal = function() {
 
 window.closeViewJobOrderModal = function() {
     var modal = document.getElementById('viewJobOrderModal');
-    if (modal) modal.style.display = 'none';
+    if (modal) { modal.style.display = 'none'; modal.style.setProperty('display','none','important'); }
 };
 
 window.closeTxnRequestModal = function() {
@@ -2324,32 +2263,29 @@ window.openRequestAdjustModal = function(arg1, arg2) {
     }
     var joData = {};
 
+    var extractBtnData = function(btn) {
+        return {
+            id: btn.getAttribute('data-jom-id') || btn.getAttribute('data-jo-id') || '',
+            source: btn.getAttribute('data-jom-id') ? 'merchandise_transactions' : (btn.getAttribute('data-jo-source') || 'job_orders'),
+            jo_ref: btn.getAttribute('data-jom-tid') || btn.getAttribute('data-jo-ref') || '',
+            customer: btn.getAttribute('data-jom-customer') || btn.getAttribute('data-jo-customer') || 'Walk-in Customer',
+            workflow_status: btn.getAttribute('data-jom-status') || btn.getAttribute('data-jo-status') || 'Pending',
+            payment_status: btn.getAttribute('data-jom-paystatus') || btn.getAttribute('data-jo-paystatus') || 'Paid',
+            payment_method: btn.getAttribute('data-jom-paymethod') || btn.getAttribute('data-jo-paymethod') || 'Cash',
+            total: btn.getAttribute('data-jom-total') || btn.getAttribute('data-jo-total') || '0',
+            labor_fee: btn.getAttribute('data-jom-labor') || btn.getAttribute('data-jo-labor') || '0',
+            service: btn.getAttribute('data-jom-service') || btn.getAttribute('data-jo-service') || '',
+            plate: btn.getAttribute('data-jom-plate') || btn.getAttribute('data-jo-plate') || '',
+            mechanic: btn.getAttribute('data-jom-mechanic') || btn.getAttribute('data-jo-mech') || '',
+            merch: btn.getAttribute('data-jom-merch') || '',
+            is_combined: !!(btn.getAttribute('data-jom-id') || btn.getAttribute('data-jo-combined') === '1' || (btn.getAttribute('data-jo-source') === 'merchandise_transactions' && btn.getAttribute('data-jom-merch')))
+        };
+    };
+
     if (arg2 && typeof arg2.getAttribute === 'function') {
-        var btn = arg2;
-        joData = {
-            id: btn.getAttribute('data-jo-id') || '',
-            source: btn.getAttribute('data-jo-source') || 'job_orders',
-            jo_ref: btn.getAttribute('data-jo-ref') || '',
-            customer: btn.getAttribute('data-jo-customer') || 'Walk-in Customer',
-            workflow_status: btn.getAttribute('data-jo-status') || 'Pending',
-            payment_status: btn.getAttribute('data-jo-paystatus') || 'Paid',
-            payment_method: btn.getAttribute('data-jo-paymethod') || 'Cash',
-            total: btn.getAttribute('data-jo-total') || '0',
-            labor_fee: btn.getAttribute('data-jo-labor') || '0'
-        };
+        joData = extractBtnData(arg2);
     } else if (arg1 && typeof arg1.getAttribute === 'function') {
-        var btn = arg1;
-        joData = {
-            id: btn.getAttribute('data-jo-id') || '',
-            source: btn.getAttribute('data-jo-source') || 'job_orders',
-            jo_ref: btn.getAttribute('data-jo-ref') || '',
-            customer: btn.getAttribute('data-jo-customer') || 'Walk-in Customer',
-            workflow_status: btn.getAttribute('data-jo-status') || 'Pending',
-            payment_status: btn.getAttribute('data-jo-paystatus') || 'Paid',
-            payment_method: btn.getAttribute('data-jo-paymethod') || 'Cash',
-            total: btn.getAttribute('data-jo-total') || '0',
-            labor_fee: btn.getAttribute('data-jo-labor') || '0'
-        };
+        joData = extractBtnData(arg1);
     } else if (arg1 && typeof arg1 === 'object' && !arg1.stopPropagation) {
         joData = arg1;
     }
@@ -2379,21 +2315,78 @@ window.openRequestAdjustModal = function(arg1, arg2) {
     setTxt('reqAdjPayMethod', joData.payment_method || 'Cash');
 
     var isMerch = (joData.source === 'merchandise_transactions' || joData.source === 'merchandise');
+    var isCombined = !!joData.is_combined;
     var elRefLbl = document.getElementById('reqAdjRefLabel');
-    if (elRefLbl) elRefLbl.textContent = isMerch ? 'Transaction ID:' : 'JO No.:';
+    var elTitle = document.getElementById('reqAdjTitleText');
+    var elCombinedTree = document.getElementById('reqAdjCombinedTree');
 
-    if (isMerch) {
-        setVal('reqAdjCorrectionField', 'Merchandise / Item');
-        var tot = parseFloat(joData.total || 0);
-        setVal('reqAdjCurrentValue', tot > 0 ? ('₱' + tot.toFixed(2)) : '₱0.00');
-    } else {
-        setVal('reqAdjCorrectionField', 'Labor Fee');
-        if (typeof window.onReqAdjFieldChange === 'function') {
-            window.onReqAdjFieldChange();
+    if (elTitle) {
+        elTitle.textContent = isCombined ? 'COMBINED TRANSACTION ADJUSTMENT' : (isMerch ? 'MERCHANDISE ADJUSTMENT' : 'REQUEST ADJUSTMENT');
+    }
+    if (elRefLbl) {
+        elRefLbl.textContent = isCombined ? 'Combined Ref / TXN ID:' : (isMerch ? 'Transaction ID:' : 'JO No.:');
+    }
+
+    // Configure Combined Tree view
+    if (elCombinedTree) {
+        if (isCombined) {
+            elCombinedTree.style.display = 'block';
+            setTxt('reqAdjJOMService', joData.service || '—');
+            setTxt('reqAdjJOMMechanic', joData.mechanic || 'Unassigned');
+            setTxt('reqAdjJOMPlate', joData.plate || '—');
+            setTxt('reqAdjJOMMerch', joData.merch || '—');
+            var totNum = parseFloat(joData.total || 0);
+            setTxt('reqAdjJOMTotal', '₱' + totNum.toFixed(2));
         } else {
-            setVal('reqAdjCurrentValue', joData.labor_fee ? ('₱' + parseFloat(joData.labor_fee).toFixed(2)) : '₱100.00');
+            elCombinedTree.style.display = 'none';
         }
     }
+
+    // Populate Correction Fields dynamically based on type
+    var selField = document.getElementById('reqAdjCorrectionField');
+    if (selField) {
+        if (isCombined) {
+            selField.innerHTML = `
+                <option value="Job Order: Service Type">Job Order — Service Type</option>
+                <option value="Job Order: Labor Fee">Job Order — Labor Fee</option>
+                <option value="Job Order: Mechanic Assignment">Job Order — Mechanic Assignment</option>
+                <option value="Job Order: Vehicle / Plate">Job Order — Vehicle / Plate</option>
+                <option value="Merchandise: Item Quantity">Merchandise — Item Quantity</option>
+                <option value="Merchandise: Item Change">Merchandise — Item Change</option>
+                <option value="Customer Information">Customer Information</option>
+                <option value="Payment Method / Amount">Payment Method / Amount</option>
+                <option value="Other Encoding Error">Other Encoding Error</option>
+            `;
+            setVal('reqAdjCurrentValue', 'Combined Total: ₱' + parseFloat(joData.total || 0).toFixed(2));
+        } else if (isMerch) {
+            selField.innerHTML = `
+                <option value="Merchandise / Item">Merchandise / Item</option>
+                <option value="Quantity">Quantity</option>
+                <option value="Customer Information">Customer Information</option>
+                <option value="Payment Method">Payment Method</option>
+                <option value="Other Encoding Error">Other Encoding Error</option>
+            `;
+            var tot = parseFloat(joData.total || 0);
+            setVal('reqAdjCurrentValue', tot > 0 ? ('₱' + tot.toFixed(2)) : '₱0.00');
+        } else {
+            selField.innerHTML = `
+                <option value="Labor Fee">Labor Fee</option>
+                <option value="Service Fee">Service Fee</option>
+                <option value="Service Type">Service Type</option>
+                <option value="Customer Information">Customer Information</option>
+                <option value="Plate Number / Vehicle Information">Plate Number / Vehicle Information</option>
+                <option value="Mechanic Assignment">Mechanic Assignment</option>
+                <option value="Payment Method">Payment Method</option>
+                <option value="Other Encoding Error">Other Encoding Error</option>
+            `;
+            if (typeof window.onReqAdjFieldChange === 'function') {
+                window.onReqAdjFieldChange();
+            } else {
+                setVal('reqAdjCurrentValue', joData.labor_fee ? ('₱' + parseFloat(joData.labor_fee).toFixed(2)) : '₱100.00');
+            }
+        }
+    }
+
     setVal('reqAdjRequestedValue', '');
     setVal('reqAdjReason', '');
     setVal('reqAdjRemarks', '');
@@ -2410,26 +2403,27 @@ window.openRequestVoidModal = function(arg1, arg2) {
     }
     var joData = {};
 
+    var extractBtnData = function(btn) {
+        return {
+            id: btn.getAttribute('data-jom-id') || btn.getAttribute('data-jo-id') || '',
+            source: btn.getAttribute('data-jom-id') ? 'merchandise_transactions' : (btn.getAttribute('data-jo-source') || 'job_orders'),
+            jo_ref: btn.getAttribute('data-jom-tid') || btn.getAttribute('data-jo-ref') || '',
+            customer: btn.getAttribute('data-jom-customer') || btn.getAttribute('data-jo-customer') || 'Walk-in Customer',
+            workflow_status: btn.getAttribute('data-jom-status') || btn.getAttribute('data-jo-status') || 'Pending',
+            payment_status: btn.getAttribute('data-jom-paystatus') || btn.getAttribute('data-jo-paystatus') || 'Paid',
+            service: btn.getAttribute('data-jom-service') || btn.getAttribute('data-jo-service') || '',
+            plate: btn.getAttribute('data-jom-plate') || btn.getAttribute('data-jo-plate') || '',
+            mechanic: btn.getAttribute('data-jom-mechanic') || btn.getAttribute('data-jo-mech') || '',
+            merch: btn.getAttribute('data-jom-merch') || '',
+            total: btn.getAttribute('data-jom-total') || btn.getAttribute('data-jo-total') || '0',
+            is_combined: !!(btn.getAttribute('data-jom-id') || btn.getAttribute('data-jo-combined') === '1' || (btn.getAttribute('data-jo-source') === 'merchandise_transactions' && btn.getAttribute('data-jom-merch')))
+        };
+    };
+
     if (arg2 && typeof arg2.getAttribute === 'function') {
-        var btn = arg2;
-        joData = {
-            id: btn.getAttribute('data-jo-id') || '',
-            source: btn.getAttribute('data-jo-source') || 'job_orders',
-            jo_ref: btn.getAttribute('data-jo-ref') || '',
-            customer: btn.getAttribute('data-jo-customer') || 'Walk-in Customer',
-            workflow_status: btn.getAttribute('data-jo-status') || 'Pending',
-            payment_status: btn.getAttribute('data-jo-paystatus') || 'Paid'
-        };
+        joData = extractBtnData(arg2);
     } else if (arg1 && typeof arg1.getAttribute === 'function') {
-        var btn = arg1;
-        joData = {
-            id: btn.getAttribute('data-jo-id') || '',
-            source: btn.getAttribute('data-jo-source') || 'job_orders',
-            jo_ref: btn.getAttribute('data-jo-ref') || '',
-            customer: btn.getAttribute('data-jo-customer') || 'Walk-in Customer',
-            workflow_status: btn.getAttribute('data-jo-status') || 'Pending',
-            payment_status: btn.getAttribute('data-jo-paystatus') || 'Paid'
-        };
+        joData = extractBtnData(arg1);
     } else if (arg1 && typeof arg1 === 'object' && !arg1.stopPropagation) {
         joData = arg1;
     }
@@ -2455,10 +2449,58 @@ window.openRequestVoidModal = function(arg1, arg2) {
     setTxt('reqVoidStatus', joData.workflow_status || 'Official');
     setTxt('reqVoidPayStatus', joData.payment_status || 'Paid');
 
-        var isMerchVoid = (joData.source === 'merchandise_transactions' || joData.source === 'merchandise');
+    var isMerch = (joData.source === 'merchandise_transactions' || joData.source === 'merchandise');
+    var isCombined = !!joData.is_combined;
     var elVoidLbl = document.getElementById('reqVoidRefLabel');
-    if (elVoidLbl) elVoidLbl.textContent = isMerchVoid ? 'Transaction ID:' : 'JO No.:';
-    setVal('reqVoidReasonSelect', 'Duplicate Transaction');
+    var elTitle = document.getElementById('reqVoidTitleText');
+    var elNotice = document.getElementById('reqVoidCombinedNotice');
+    var elTree = document.getElementById('reqVoidCombinedTree');
+
+    if (elTitle) {
+        elTitle.textContent = isCombined ? 'VOID COMBINED TRANSACTION' : (isMerch ? 'VOID MERCHANDISE SALE' : 'REQUEST VOID');
+    }
+    if (elVoidLbl) {
+        elVoidLbl.textContent = isCombined ? 'Combined Ref / TXN ID:' : (isMerch ? 'Transaction ID:' : 'JO No.:');
+    }
+
+    if (elNotice) elNotice.style.display = isCombined ? 'block' : 'none';
+    if (elTree) {
+        if (isCombined) {
+            elTree.style.display = 'block';
+            setTxt('reqVoidJOMService', joData.service || '—');
+            setTxt('reqVoidJOMPlate', joData.plate || '—');
+            setTxt('reqVoidJOMMerch', joData.merch || '—');
+            var totV = parseFloat(joData.total || 0);
+            setTxt('reqVoidJOMTotal', '₱' + totV.toFixed(2));
+        } else {
+            elTree.style.display = 'none';
+        }
+    }
+
+    var selReason = document.getElementById('reqVoidReasonSelect');
+    if (selReason) {
+        if (isCombined) {
+            selReason.innerHTML = `
+                <option value="Customer Cancelled Entire Service & Items">Customer Cancelled Entire Service & Items</option>
+                <option value="Duplicate Combined Transaction">Duplicate Combined Transaction</option>
+                <option value="Wrong Customer Information">Wrong Customer Information</option>
+                <option value="Transaction Created by Mistake">Transaction Created by Mistake</option>
+                <option value="Incorrect Transaction Cannot Be Adjusted">Incorrect Transaction Cannot Be Adjusted</option>
+                <option value="Other">Other</option>
+            `;
+        } else {
+            selReason.innerHTML = `
+                <option value="Duplicate Transaction">Duplicate Transaction</option>
+                <option value="Wrong Customer">Wrong Customer</option>
+                <option value="Wrong Vehicle">Wrong Vehicle</option>
+                <option value="Wrong Transaction Encoded">Wrong Transaction Encoded</option>
+                <option value="Customer Cancelled Entire Service">Customer Cancelled Entire Service</option>
+                <option value="Transaction Created by Mistake">Transaction Created by Mistake</option>
+                <option value="Other">Other</option>
+            `;
+        }
+    }
+
     setVal('reqVoidRemarks', '');
 
     modal.style.display = 'flex';
@@ -2466,7 +2508,9 @@ window.openRequestVoidModal = function(arg1, arg2) {
     return false;
 };
 
-// Aliases and routers
+// Aliases and routers for Combined
+window.openCombinedAdjustModal = function(e, btn) { return window.openRequestAdjustModal(e, btn); };
+window.openCombinedVoidModal = function(e, btn) { return window.openRequestVoidModal(e, btn); };
 window.openMerchView = function(btn) { return window.viewMerchandiseDetails(btn); };
 window.openMerchRequest = function(btn, type) {
     if (type === 'Adjustment') return window.openRequestAdjustModal(btn);
@@ -2492,13 +2536,15 @@ window.openTxnRequestModal = function(e, txnId, recordSource, requestType, custo
 /* ── Cart Wrapper — Flexbox Row Layout ──────────────────────────────── */
 .cart-wrapper {
     display: flex !important;
-    margin-bottom: 24px !important;
-    padding-bottom: 12px !important;
+    margin-bottom: 40px !important;
+    padding-bottom: 20px !important;
     flex-direction: row !important;
-    gap: 16px !important;
+    gap: 14px !important;
     align-items: flex-start !important;
     width: 100% !important;
+    max-width: 100% !important;
     box-sizing: border-box !important;
+    overflow-x: hidden !important;
 }
 
 /* When viewing history, hide cart and expand left column to 100% full width */
@@ -2506,7 +2552,7 @@ window.openTxnRequestModal = function(e, txnId, recordSource, requestType, custo
     display: block !important;
     width: 100% !important;
     max-width: 100% !important;
-    margin-bottom: 24px !important;
+    margin-bottom: 40px !important;
     padding: 0 !important;
 }
 .cart-wrapper.history-view > div {
@@ -2521,19 +2567,25 @@ window.openTxnRequestModal = function(e, txnId, recordSource, requestType, custo
     display: none !important;
 }
 
-/* Collapse to single column on mobile */
-@media (max-width: 768px) {
+/* Collapse to single column on tablet/mobile */
+@media (max-width: 1050px) {
     .cart-wrapper {
         flex-direction: column !important;
     }
+    .cart-panel {
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+        position: static !important;
+    }
 }
 
-/* ── Sub-tab Navigation (Horizontal Strip - Exact Match with Reports Design) ── */
+/* ── Sub-tab Navigation (Horizontal Strip - Large text, compact padding) ── */
 .txn-subtab-nav, .rpt-subtab-nav {
     display: flex !important;
     flex-wrap: wrap !important;
-    margin-bottom: 22px !important;
-    border: 1px solid #cbd5e1 !important;
+    margin-bottom: 12px !important;
+    border: 1.5px solid #cbd5e1 !important;
     border-radius: 8px !important;
     overflow: hidden !important;
     border-bottom: 3px solid #002F70 !important;
@@ -2545,10 +2597,10 @@ window.openTxnRequestModal = function(e, txnId, recordSource, requestType, custo
 .txn-subtab-btn, .rpt-subtab-btn {
     flex: 1 !important;
     min-width: 140px !important;
-    padding: 12px 18px !important;
-    font-size: 11.5px !important;
-    font-weight: 700 !important;
-    color: #475569 !important;
+    padding: 10px 16px !important;
+    font-size: 13.5px !important;
+    font-weight: 800 !important;
+    color: #334155 !important;
     background: #ffffff !important;
     border: none !important;
     border-right: 1px solid #cbd5e1 !important;
@@ -2615,15 +2667,15 @@ window.openTxnRequestModal = function(e, txnId, recordSource, requestType, custo
 }
 
 .txn-icon-btn.green {
-    border: 1px solid #28a745 !important;
+    border: 1px solid #002F70 !important;
     background: #ffffff !important;
-    color: #28a745 !important;
+    color: #002F70 !important;
 }
 .txn-icon-btn.green i {
-    color: #28a745 !important;
+    color: #002F70 !important;
 }
 .txn-icon-btn.green:hover {
-    background: #28a745 !important;
+    background: #002F70 !important;
     color: #ffffff !important;
 }
 .txn-icon-btn.green:hover i {
@@ -2682,8 +2734,8 @@ window.openTxnRequestModal = function(e, txnId, recordSource, requestType, custo
 
 /* Match inventory page — no padding override needed */
 main.main {
-    padding: 8px 20px 70px 20px !important;
-    overflow-x: visible !important;
+    padding: 8px 18px 90px 18px !important;
+    overflow-x: hidden !important;
 }
 
 /* ── Cart wrapper — using grid layout defined above to show cart on right ── */
@@ -2697,28 +2749,29 @@ main.main {
     min-width: 340px !important;
     max-width: 340px !important;
     position: sticky !important;
-    top: 16px !important;
+    top: 12px !important;
     align-self: flex-start !important;
     background: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1.5px solid #cbd5e1;
     border-radius: 12px;
-    box-shadow: 0 2px 10px rgba(0,0,0,.07);
-    max-height: calc(100vh - 110px) !important;
+    box-shadow: 0 3px 12px rgba(0,0,0,.08);
+    max-height: calc(100vh - 80px) !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
+    box-sizing: border-box !important;
 }
 
-/* Customer & Payment — no max-height restriction */
+/* Customer & Payment — compact padding */
 .cart-panel-top {
     flex-shrink: 0;
-    padding: 14px 18px 12px;
+    padding: 10px 14px 8px !important;
     border-bottom: 2px solid #f1f5f9;
 }
 
 /* Cart header row */
 .cart-header {
     flex-shrink: 0;
-    padding: 8px 18px;
+    padding: 6px 14px !important;
     border-bottom: 1px solid #f1f5f9;
     display: flex;
     align-items: center;
@@ -2727,19 +2780,31 @@ main.main {
 
 /* Cart items */
 .cart-body {
-    flex: 1 1 0;
+    flex: 1 1 auto;
     overflow-y: auto;
-    padding: 8px 14px;
-    min-height: 60px;
-    max-height: 320px;
+    padding: 6px 12px !important;
+    min-height: 48px;
+    max-height: 220px;
 }
 
-/* Totals + button */
+/* Totals + button — pinned to bottom of cart-panel */
 .cart-footer {
     flex-shrink: 0;
-    padding: 14px 18px 22px !important;
-    border-top: 2px solid #e2e8f0;
-    background: #fff;
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 20 !important;
+    padding: 8px 14px 12px !important;
+    border-top: 2px solid #cbd5e1 !important;
+    background: #ffffff !important;
+    box-shadow: 0 -4px 10px rgba(0,0,0,0.06) !important;
+}
+
+/* ── Floating scroll button safe placement ── */
+#toggleScrollBtn,
+.toggle-scroll-btn {
+    right: 12px !important;
+    bottom: 48px !important;
+    z-index: 995 !important;
 }
 .txn-section-header {
     display: flex;
@@ -2806,18 +2871,18 @@ main.main {
 /* ── Cards ───────────────────────────────────────────────────── */
 .txn-card {
     background: #fff;
-    border-radius: 12px;
+    border-radius: 10px;
     border: 1px solid #e2e8f0;
-    box-shadow: 0 2px 10px rgba(0,0,0,.06);
+    box-shadow: 0 2px 8px rgba(0,0,0,.05);
     overflow: visible;
-    margin-bottom: 16px !important;
+    margin-bottom: 12px !important;
     width: 100%;
     position: relative;
     z-index: 1;
 }
 
 .txn-card-header {
-    padding: 16px 22px;
+    padding: 10px 16px !important;
     border-bottom: 1px solid #f1f5f9;
     display: flex;
     align-items: center;
@@ -2825,16 +2890,16 @@ main.main {
 }
 
 .txn-card-header h3 {
-    font-size: 14px !important;
-    font-weight: 700 !important;
+    font-size: 15px !important;
+    font-weight: 800 !important;
     color: #1e293b !important;
     margin: 0 !important;
     text-transform: uppercase !important;
-    letter-spacing: .5px !important;
+    letter-spacing: .4px !important;
 }
 
 .txn-card-body { 
-    padding: 22px 24px 20px 24px !important;
+    padding: 12px 18px 14px 18px !important;
     position: relative;
     z-index: auto;
 }
@@ -2843,7 +2908,8 @@ main.main {
 .txn-form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 14px;
+    gap: 8px 12px !important;
+    margin-bottom: 8px !important;
     width: 100%;
     position: relative;
     z-index: auto;
@@ -2855,7 +2921,7 @@ main.main {
 .txn-field { 
     display: flex; 
     flex-direction: column; 
-    gap: 6px;
+    gap: 3px !important;
     position: relative;
     z-index: auto;
 }
@@ -2867,42 +2933,115 @@ input[list] {
 }
 
 .txn-field label {
-    font-size: 12px;
-    font-weight: 600;
-    color: #1e293b !important;
-    text-transform: uppercase;
-    letter-spacing: .4px;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+    text-transform: uppercase !important;
+    letter-spacing: .3px !important;
 }
 
 .txn-field label .field-note {
-    font-weight: 400;
-    color: #94a3b8;
+    font-weight: 500;
+    color: #64748b;
     text-transform: none;
     letter-spacing: 0;
-    font-size: 11px;
+    font-size: 11.5px;
     margin-left: 4px;
 }
 
 .txn-input, .txn-select {
-    padding: 10px 13px;
-    border: 1.5px solid #e2e8f0;
-    border-radius: 8px;
-    font-size: 14px;
-    color: #1e293b !important;
+    padding: 7px 11px !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 7px !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    color: #0f172a !important;
     background: #fff;
     transition: border-color .15s, box-shadow .15s;
     width: 100%;
+    height: 38px !important;
+    box-sizing: border-box !important;
+}
+
+textarea.txn-input {
+    height: auto !important;
+    min-height: 48px !important;
+    font-size: 13.5px !important;
+    font-weight: 500 !important;
+    padding: 6px 10px !important;
+    line-height: 1.35 !important;
 }
 
 .txn-input::placeholder, .txn-select::placeholder {
-    color: #94a3b8 !important;
+    color: #64748b !important;
     opacity: 1;
+    font-size: 13.5px !important;
 }
 
 .txn-input:focus, .txn-select:focus {
     outline: none;
     border-color: var(--petron-blue);
-    box-shadow: 0 0 0 3px rgba(0,47,108,.1);
+    box-shadow: 0 0 0 3px rgba(0,47,108,.12);
+}
+
+/* ── Cart panel labels & inputs: Large & readable for elderly staff ── */
+.cart-panel label,
+.cart-panel .txn-field label {
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    margin-bottom: 3px !important;
+}
+
+.cart-panel .txn-input,
+.cart-panel .txn-select {
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    color: #0f172a !important;
+    height: 36px !important;
+    padding: 6px 10px !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+}
+
+.cart-panel .txn-field {
+    margin-bottom: 6px !important;
+    gap: 2px !important;
+}
+
+/* ── Form Section Headings inside JO and Merchandise ── */
+.jo-sub-header {
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .5px !important;
+    margin-bottom: 6px !important;
+    padding-top: 6px !important;
+}
+
+/* Table containment and text wrapping across all hub tables */
+#mhHistoryTable th, #mhHistoryTable td,
+#jomHistoryTable th, #jomHistoryTable td,
+#joUnifiedTable th, #joUnifiedTable td {
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+}
+
+#mhHistoryTable thead, #mhHistoryTable thead tr, #mhHistoryTable th,
+#jomHistoryTable thead, #jomHistoryTable thead tr, #jomHistoryTable th,
+#joUnifiedTable thead, #joUnifiedTable thead tr, #joUnifiedTable th,
+#fuelHistoryTable thead, #fuelHistoryTable thead tr, #fuelHistoryTable th {
+    background: #002F70 !important;
+    background-color: #002F70 !important;
+    background-image: none !important;
+    color: #ffffff !important;
+}
+
+#mhHistoryTable td, #jomHistoryTable td, #joUnifiedTable td {
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
 }
 
 /* Service Type Dropdown Styles */
@@ -3001,31 +3140,51 @@ input[list] {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 12px;
-    color: #475569;
-    padding: 3px 0;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    color: #334155 !important;
+    padding: 2px 0 !important;
 }
 
-.cart-total-row .calc-val { font-weight: 600; }
+.cart-total-row .calc-val {
+    font-weight: 700 !important;
+    color: #0f172a !important;
+}
 
 .cart-total-row.grand {
-    font-size: 15px;
-    font-weight: 800;
-    color: var(--petron-blue);
-    border-top: 1.5px solid #e2e8f0;
-    padding-top: 8px;
-    margin-top: 4px;
+    font-size: 18px !important;
+    font-weight: 800 !important;
+    color: #002F70 !important;
+    border-top: 2px solid #cbd5e1 !important;
+    padding-top: 6px !important;
+    margin-top: 3px !important;
 }
 
-/* ── Cart item ───────────────────────────────────────────────── */
+.cart-total-row.grand span:last-child {
+    font-size: 20px !important;
+    font-weight: 900 !important;
+    color: #002F70 !important;
+}
+
+#checkoutBtn {
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    padding: 11px 16px !important;
+    border-radius: 8px !important;
+    letter-spacing: 0.3px !important;
+    text-transform: uppercase !important;
+}
+
+/* ── Cart empty ───────────────────────────────────────────────── */
 .cart-empty {
     text-align: center;
-    padding: 30px 20px;
-    color: #94a3b8;
-    font-size: 13px;
+    padding: 16px 12px !important;
+    color: #64748b !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
 }
 
-.cart-empty i { font-size: 28px; display: block; margin-bottom: 8px; }
+.cart-empty i { font-size: 24px !important; display: block; margin-bottom: 6px !important; color: #94a3b8; }
 
 .cart-item {
     display: flex;
@@ -3206,15 +3365,15 @@ input[list] {
 }
 
 .txn-icon-btn.green {
-    color: #1d6f42 !important;
-    border-color: #1d6f42 !important;
+    color: #002F70 !important;
+    border-color: #002F70 !important;
 }
 
 .txn-icon-btn.green:hover {
-    background: #1d6f42 !important;
+    background: #002F70 !important;
     color: white !important;
     transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(29,111,66,0.2);
+    box-shadow: 0 4px 8px rgba(0,47,112,0.2);
 }
 
 .txn-icon-btn:active {
@@ -3329,13 +3488,19 @@ input[list] {
     font-size: 12px;
 }
 
+.txn-table thead, .txn-table thead tr {
+    background: #002F70 !important;
+}
+
 .txn-table th {
-    background: #002F70;  /* Blue headers */
+    background: #002F70 !important;  /* Solid dark blue headers */
+    background-color: #002F70 !important;
+    background-image: none !important;
     padding: 12px 10px;
     text-align: left;
-    font-size: 11px;
-    font-weight: 700;
-    color: #ffffff;  /* White text */
+    font-size: 13px;
+    font-weight: 800;
+    color: #ffffff !important;  /* White text */
     text-transform: uppercase;
     letter-spacing: .4px;
     border-bottom: 2px solid #001f4d;
@@ -3625,11 +3790,149 @@ setTimeout(function() {
         window.updateFuelCalc = window.updateFuelCalc || function(ftId) {};
         </script>
 
+        <style>
+        /* ── METER READINGS STYLES (MATCHES MERCHANDISE INVENTORY) ── */
+        .txn-section-header {
+            margin-bottom: 25px !important;
+        }
+        .txn-section-title h1, .txn-section-header h1 {
+            margin: 0 !important;
+            font-size: 24px !important;
+            font-weight: 700 !important;
+            color: #002F70 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.5px !important;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 10px !important;
+            line-height: 1.2 !important;
+        }
+        .txn-subtab-nav {
+            margin-bottom: 22px !important;
+            border: 1px solid #d1d9e6 !important;
+            border-bottom: 3px solid #00264D !important;
+            border-radius: 0 !important;
+            background: #ffffff !important;
+            display: flex !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+        }
+        .txn-subtab-btn {
+            font-size: 13px !important;
+            font-weight: 800 !important;
+            padding: 13px 18px !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.4px !important;
+            border: none !important;
+            border-right: 1px solid #d1d9e6 !important;
+            border-radius: 0 !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            cursor: pointer !important;
+            transition: all 0.15s ease !important;
+            background: #ffffff !important;
+            color: #334155 !important;
+        }
+        .txn-subtab-btn:last-child {
+            border-right: none !important;
+        }
+        .txn-subtab-btn.active {
+            background: #00264D !important;
+            color: #ffffff !important;
+            font-weight: 800 !important;
+            box-shadow: none !important;
+        }
+        .txn-subtab-btn.inactive {
+            background: #ffffff !important;
+            color: #334155 !important;
+            font-weight: 800 !important;
+        }
+        .txn-subtab-btn:hover {
+            background: #f1f5f9 !important;
+            color: #00264D !important;
+        }
+        .txn-subtab-btn.active:hover {
+            background: #00264D !important;
+            color: #ffffff !important;
+        }
+        #todayEntriesCard {
+            margin-top: 0 !important;
+            margin-bottom: 80px !important;
+            border: 1.5px solid #cbd5e1 !important;
+            border-radius: 10px !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+        }
+        #todayReadingsTable {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            table-layout: fixed !important;
+            border-collapse: collapse !important;
+            box-sizing: border-box !important;
+        }
+        #todayReadingsTable thead tr {
+            background: #002F70 !important;
+        }
+        #todayReadingsTable th {
+            padding: 10px 8px !important;
+            font-size: 11.5px !important;
+            font-weight: 800 !important;
+            color: #ffffff !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.2px !important;
+            border: 1px solid #00264D !important;
+            white-space: nowrap !important;
+            vertical-align: middle !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            box-sizing: border-box !important;
+            line-height: 1.25 !important;
+        }
+        #todayReadingsTable td {
+            padding: 8px 8px !important;
+            font-size: 12.5px !important;
+            font-weight: 600 !important;
+            border: 1px solid #e2e8f0 !important;
+            vertical-align: middle !important;
+            line-height: 1.35 !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
+        }
+        #todayReadingsTable th:last-child,
+        #todayReadingsTable td:last-child {
+            padding-right: 14px !important;
+            text-align: center !important;
+            overflow: visible !important;
+        }
+        /* Strict containment for Encoded By column: never overflow or overlap adjacent columns */
+        #todayReadingsTable td.cell-encoded-by {
+            white-space: normal !important;
+            word-break: normal !important;
+            overflow-wrap: break-word !important;
+            line-height: 1.25 !important;
+            font-size: 12px !important;
+            font-weight: 700 !important;
+            color: #1e293b !important;
+            overflow: hidden !important;
+        }
+        #todayReadingsTable tbody tr:hover {
+            background: #f0f5ff !important;
+        }
+        #toggleScrollBtn, .toggle-scroll-btn {
+            right: 12px !important;
+            bottom: 48px !important;
+            z-index: 999 !important;
+        }
+        </style>
+
         <!-- ── Page Header ───────────────────────────────────────────── -->
         <div class="txn-section-header">
             <div class="txn-section-title">
                 <div>
-                    <h1>Meter Readings</h1>
+                    <h1><i class="fas fa-gas-pump"></i> Meter Readings</h1>
                 </div>
             </div>
         </div>
@@ -3665,24 +3968,28 @@ setTimeout(function() {
         .fet {
             width: 100%;
             border-collapse: collapse;
-            font-size: 13px;
+            font-size: 12.5px;
             table-layout: fixed;
         }
 
         /* Header */
         .fet thead tr {
-            background: #f1f5f9;
+            background: #002F70;
         }
         .fet th {
-            padding: 11px 14px;
+            padding: 10px 8px !important;
             text-align: left;
-            font-size: 14px;
-            font-weight: 700;
-            color: #475569;
-            text-transform: uppercase;
-            letter-spacing: .45px;
-            border-bottom: 2px solid #e2e8f0;
-            white-space: nowrap;
+            font-size: 11.5px !important;
+            font-weight: 800 !important;
+            color: #ffffff !important;
+            text-transform: uppercase !important;
+            letter-spacing: .2px !important;
+            background: #002F70 !important;
+            border: 1px solid #00264D !important;
+            white-space: nowrap !important;
+            vertical-align: middle !important;
+            line-height: 1.25 !important;
+            box-sizing: border-box !important;
         }
         .fet th.num { text-align: right; }
 
@@ -3695,8 +4002,10 @@ setTimeout(function() {
         .fet tbody tr:hover { background: #f8fafc; }
 
         .fet td {
-            padding: 10px 14px;
-            vertical-align: middle;
+            padding: 6px 6px !important;
+            vertical-align: middle !important;
+            font-size: 12.5px !important;
+            box-sizing: border-box !important;
         }
         .fet td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
@@ -3715,7 +4024,8 @@ setTimeout(function() {
         }
         .fet-fuel-name {
             font-weight: 700;
-            font-size: 13px;
+            font-size: 12.5px !important;
+            color: #002F70 !important;
         }
 
         /* Auto-pulled read-only cells */
@@ -3723,22 +4033,24 @@ setTimeout(function() {
             color: #334155;
             font-weight: 600;
             font-variant-numeric: tabular-nums;
+            font-size: 12.5px !important;
         }
         .fet-auto.dim { color: #94a3b8; font-weight: 400; font-style: italic; }
 
         /* Input cells */
         .fet-input {
-            padding: 8px 10px;
+            padding: 7px 8px !important;
+            height: 34px !important;
             border: 1.5px solid #e2e8f0;
-            border-radius: 7px;
-            font-size: 14px;
+            border-radius: 6px;
+            font-size: 12.5px !important;
             font-weight: 700;
             color: #1e293b;
             background: #fff;
             width: 100%;
-            
             transition: border-color .15s, box-shadow .15s;
-            letter-spacing: .3px;
+            letter-spacing: .2px;
+            box-sizing: border-box !important;
         }
         .fet-input:focus {
             outline: none;
@@ -3911,7 +4223,7 @@ setTimeout(function() {
             ?>
 
             <div class="fet-wrap" style="overflow-x:hidden; width:100%;">
-                <table class="fet" style="width:100%; table-layout:fixed; border-collapse:collapse;">
+                <table class="fet report-table no-min-width print-table" style="width:100%; table-layout:fixed; border-collapse:collapse;">
                     <colgroup>
                         <col style="width:17%;"><!-- NAME -->
                         <col style="width:14%;"><!-- BEGINNING -->
@@ -3923,16 +4235,16 @@ setTimeout(function() {
                     </colgroup>
                     <thead>
                         <tr style="background:#002F70;">
-                            <th rowspan="2" style="border:1px solid #001f4d;padding:14px 12px;vertical-align:middle;font-weight:800;font-size:14.5px;color:#fff;">NAME</th>
-                            <th colspan="6" style="border:1px solid #001f4d;padding:10px 12px;text-align:center;font-size:15px;font-weight:800;color:#fff;letter-spacing:0.5px;">METER READING</th>
+                            <th rowspan="2" style="border:1px solid #00264D;padding:10px 8px;vertical-align:middle;font-weight:800;font-size:11.5px;color:#fff;text-transform:uppercase;letter-spacing:.2px;line-height:1.25;">NAME</th>
+                            <th colspan="6" style="border:1px solid #00264D;padding:8px 8px;text-align:center;font-size:11.5px;font-weight:800;color:#fff;letter-spacing:.2px;text-transform:uppercase;line-height:1.25;">METER READING</th>
                         </tr>
                         <tr style="background:#002F70;">
-                            <th style="border:1px solid #001f4d;padding:10px 8px;text-align:center;font-size:13px;font-weight:800;color:#fff;" title="Auto-fetched if previous record exists, or manual input for first shift.">BEGINNING<br><span style="font-size:11px;font-weight:600;color:#86efac;">(Auto / Manual)</span></th>
-                            <th style="border:1px solid #001f4d;padding:10px 8px;text-align:center;font-size:13px;font-weight:800;color:#fff;">ENDING <span style="color:#f87171;">*</span><br><span style="font-size:11px;font-weight:600;color:#93c5fd;">(Required)</span></th>
-                            <th style="border:1px solid #001f4d;padding:10px 8px;text-align:center;font-size:13px;font-weight:800;color:#fff;">CALIBRATION<br><span style="font-size:11px;font-weight:600;color:#93c5fd;">(Default 0.00)</span></th>
-                            <th style="border:1px solid #001f4d;padding:10px 8px;text-align:center;font-size:13px;font-weight:800;color:#fff;">PRICE / LITER<br><span style="font-size:11px;font-weight:600;color:#93c5fd;">(Auto)</span></th>
-                            <th style="border:1px solid #001f4d;padding:10px 8px;text-align:center;font-size:13px;font-weight:800;color:#fff;">NET VOLUME SOLD<br><span style="font-size:11px;font-weight:600;color:#93c5fd;">(Auto)</span></th>
-                            <th style="border:1px solid #001f4d;padding:10px 8px;text-align:center;font-size:13px;font-weight:800;color:#fff;">TOTAL AMOUNT<br><span style="font-size:11px;font-weight:600;color:#93c5fd;">(Auto)</span></th>
+                            <th style="border:1px solid #00264D;padding:8px 8px;text-align:center;font-size:11.5px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:.2px;line-height:1.25;" title="Auto-fetched if previous record exists, or manual input for first shift.">BEGINNING<br><span style="font-size:10px;font-weight:600;color:#86efac;text-transform:none;">(Auto / Manual)</span></th>
+                            <th style="border:1px solid #00264D;padding:8px 8px;text-align:center;font-size:11.5px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:.2px;line-height:1.25;">ENDING <span style="color:#f87171;">*</span><br><span style="font-size:10px;font-weight:600;color:#93c5fd;text-transform:none;">(Required)</span></th>
+                            <th style="border:1px solid #00264D;padding:8px 8px;text-align:center;font-size:11.5px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:.2px;line-height:1.25;">CALIBRATION<br><span style="font-size:10px;font-weight:600;color:#93c5fd;text-transform:none;">(Default 0.00)</span></th>
+                            <th style="border:1px solid #00264D;padding:8px 8px;text-align:center;font-size:11.5px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:.2px;line-height:1.25;">PRICE / LITER<br><span style="font-size:10px;font-weight:600;color:#93c5fd;text-transform:none;">(Auto)</span></th>
+                            <th style="border:1px solid #00264D;padding:8px 8px;text-align:center;font-size:11.5px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:.2px;line-height:1.25;">NET VOLUME SOLD<br><span style="font-size:10px;font-weight:600;color:#93c5fd;text-transform:none;">(Auto)</span></th>
+                            <th style="border:1px solid #00264D;padding:8px 8px;text-align:center;font-size:11.5px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:.2px;line-height:1.25;">TOTAL AMOUNT<br><span style="font-size:10px;font-weight:600;color:#93c5fd;text-transform:none;">(Auto)</span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -4033,18 +4345,18 @@ setTimeout(function() {
                     ?>
                     <tr id="fuelRow_<?= $ft_id ?>" style="border-bottom:1px solid #e2e8f0;">
                         <!-- NAME Column (plain text, no icon) -->
-                        <td style="border:1px solid #e2e8f0;padding:12px 10px;">
-                            <span style="font-weight:800;font-size:14px;color:#002F70;"><?= $display_name ?></span>
+                        <td style="border:1px solid #e2e8f0;padding:6px 8px;">
+                            <span style="font-weight:700;font-size:12.5px;color:#002F70;"><?= $display_name ?></span>
                         </td>
 
                         <!-- BEGINNING Column — Auto-fetched (Read-only) if previous record exists, or Manual Input (Editable) for first shift -->
-                        <td style="border:1px solid #e2e8f0;padding:8px 6px;">
+                        <td style="border:1px solid #e2e8f0;padding:6px 6px;">
                             <?php if ($has_prev_reading): ?>
                                 <input type="text"
                                        form="fuelForm_<?= $ft_id ?>"
                                        name="beginning_reading"
                                        id="beginning_<?= $ft_id ?>"
-                                       style="width:100%;box-sizing:border-box;padding:10px 10px;font-size:14.5px;border:1.5px solid #86efac;border-radius:6px;text-align:right;background:#f0fdf4;font-weight:700;font-family:monospace;color:#15803d;cursor:not-allowed;"
+                                       style="width:100%;box-sizing:border-box;padding:7px 8px;font-size:12.5px;height:34px;border:1.5px solid #86efac;border-radius:6px;text-align:right;background:#f0fdf4;font-weight:700;font-family:monospace;color:#15803d;cursor:not-allowed;"
                                        value="<?= number_format((float)$pump_prev_reading, 2, '.', ',') ?>"
                                        readonly
                                        title="Auto-fetched from previous meter reading (<?= number_format((float)$pump_prev_reading, 2, '.', ',') ?>). Read-only."
@@ -4055,7 +4367,7 @@ setTimeout(function() {
                                        form="fuelForm_<?= $ft_id ?>"
                                        name="beginning_reading"
                                        id="beginning_<?= $ft_id ?>"
-                                       style="width:100%;box-sizing:border-box;padding:10px 10px;font-size:14.5px;border:1.5px solid #3b82f6;border-radius:6px;text-align:right;background:#ffffff;font-weight:700;font-family:monospace;color:#1e293b;"
+                                       style="width:100%;box-sizing:border-box;padding:7px 8px;font-size:12.5px;height:34px;border:1.5px solid #3b82f6;border-radius:6px;text-align:right;background:#ffffff;font-weight:700;font-family:monospace;color:#1e293b;"
                                        value=""
                                        placeholder="0.00"
                                        autocomplete="off"
@@ -4069,12 +4381,12 @@ setTimeout(function() {
                         </td>
 
                         <!-- ENDING Column * -->
-                        <td style="border:1px solid #e2e8f0;padding:8px 6px;">
+                        <td style="border:1px solid #e2e8f0;padding:6px 6px;">
                             <input type="text"
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="ending_reading"
                                    id="ending_<?= $ft_id ?>"
-                                   style="width:100%;box-sizing:border-box;padding:10px 10px;font-size:14.5px;border:2px solid #2563eb;border-radius:6px;text-align:right;font-weight:800;font-family:monospace;color:#0f172a;"
+                                   style="width:100%;box-sizing:border-box;padding:7px 8px;font-size:12.5px;height:34px;border:2px solid #2563eb;border-radius:6px;text-align:right;font-weight:800;font-family:monospace;color:#0f172a;"
                                    value="<?= htmlspecialchars($saved_ending_val) ?>"
                                    placeholder="0.00"
                                    required
@@ -4087,12 +4399,12 @@ setTimeout(function() {
                         </td>
 
                         <!-- CALIBRATION Column (Default = 0.00) -->
-                        <td style="border:1px solid #e2e8f0;padding:8px 6px;">
+                        <td style="border:1px solid #e2e8f0;padding:6px 6px;">
                             <input type="text"
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="calibration"
                                    id="cal_<?= $ft_id ?>"
-                                   style="width:100%;box-sizing:border-box;padding:10px 10px;font-size:14px;border:1.5px solid #cbd5e1;border-radius:6px;text-align:right;font-weight:600;font-family:monospace;color:#334155;"
+                                   style="width:100%;box-sizing:border-box;padding:7px 8px;font-size:12.5px;height:34px;border:1.5px solid #cbd5e1;border-radius:6px;text-align:right;font-weight:600;font-family:monospace;color:#334155;"
                                    value="<?= htmlspecialchars($saved_calib_val) ?>"
                                    placeholder="0.00"
                                    autocomplete="off"
@@ -4105,9 +4417,9 @@ setTimeout(function() {
                         </td>
 
                         <!-- PRICE / LITER Column (Auto — read-only, from fuel_inventory) -->
-                        <td style="border:1px solid #e2e8f0;padding:8px 6px;background:#f8fafc;">
+                        <td style="border:1px solid #e2e8f0;padding:6px 6px;background:#f8fafc;">
                             <span id="price_display_<?= $ft_id ?>"
-                                  style="display:block;width:100%;box-sizing:border-box;padding:10px 10px;font-size:14.5px;font-weight:800;color:#334155;text-align:right;font-family:monospace;">
+                                  style="display:block;width:100%;box-sizing:border-box;padding:7px 8px;font-size:12.5px;font-weight:700;color:#334155;text-align:right;font-family:monospace;">
                                 &#x20B1;<?= number_format($price_per_liter, 2) ?>
                             </span>
                             <input type="hidden"
@@ -4118,10 +4430,10 @@ setTimeout(function() {
                         </td>
 
                         <!-- NET VOLUME SOLD Column (Auto-calculated: (Ending - Beginning) - Calibration) -->
-                        <td style="border:1px solid #e2e8f0;padding:8px 6px;background:#f0fdf4;">
+                        <td style="border:1px solid #e2e8f0;padding:6px 6px;background:#f0fdf4;">
                             <input type="text"
                                    id="volume_<?= $ft_id ?>"
-                                   style="width:100%;box-sizing:border-box;padding:10px 10px;font-size:14.5px;background:transparent;border:1.5px solid #86efac;border-radius:6px;text-align:right;font-weight:800;font-family:monospace;color:#15803d;"
+                                   style="width:100%;box-sizing:border-box;padding:7px 8px;font-size:12.5px;height:34px;background:transparent;border:1.5px solid #86efac;border-radius:6px;text-align:right;font-weight:700;font-family:monospace;color:#15803d;"
                                    value="0.00"
                                    readonly
                                    title="Net Volume Sold = (Ending - Beginning) - Calibration">
@@ -4133,12 +4445,12 @@ setTimeout(function() {
                         </td>
 
                         <!-- TOTAL AMOUNT Column (Auto-calculated: Net Volume × Price/Liter) -->
-                        <td style="border:1px solid #e2e8f0;padding:8px 6px;background:#eff6ff;">
-                            <div style="position:relative;display:flex;align-items:center;background:#ffffff;border:1.5px solid #93c5fd;border-radius:6px;padding:0 8px;box-sizing:border-box;">
-                                <span style="font-size:14px;font-weight:800;color:#1d4ed8;font-family:sans-serif;user-select:none;flex-shrink:0;">&#x20B1;</span>
+                        <td style="border:1px solid #e2e8f0;padding:6px 6px;background:#eff6ff;">
+                            <div style="position:relative;display:flex;align-items:center;background:#ffffff;border:1.5px solid #93c5fd;border-radius:6px;padding:0 8px;box-sizing:border-box;height:34px;">
+                                <span style="font-size:12.5px;font-weight:700;color:#1d4ed8;font-family:sans-serif;user-select:none;flex-shrink:0;">&#x20B1;</span>
                                 <input type="text"
                                        id="amount_<?= $ft_id ?>"
-                                       style="width:100%;box-sizing:border-box;padding:10px 0 10px 4px;font-size:15px;background:transparent;border:none;outline:none;text-align:right;font-weight:900;font-family:monospace;color:#1d4ed8;"
+                                       style="width:100%;box-sizing:border-box;padding:7px 0 7px 4px;font-size:12.5px;background:transparent;border:none;outline:none;text-align:right;font-weight:800;font-family:monospace;color:#1d4ed8;"
                                        value="0.00"
                                        readonly
                                        autocomplete="off"
@@ -4387,65 +4699,65 @@ setTimeout(function() {
             </div>
 
             <!-- Summary Cards Row -->
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px; padding:20px 20px 0 20px; background:#ffffff;">
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:12px; padding:12px 18px 0 18px; background:#ffffff;">
                 <!-- Card 1: Transactions Encoded -->
-                <div style="background:#ffffff; border:1.5px solid #e2e8f0; border-radius:12px; padding:20px; display:flex; align-items:center; gap:18px; transition: transform 0.2s, box-shadow 0.2s; cursor:default;" 
+                <div style="background:#ffffff; border:1.5px solid #e2e8f0; border-radius:10px; padding:12px 16px; display:flex; align-items:center; gap:14px; transition: transform 0.2s, box-shadow 0.2s; cursor:default;" 
                      onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)';" 
                      onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
-                    <div style="background:#eff6ff; color:#2563eb; width:54px; height:54px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;">
+                    <div style="background:#eff6ff; color:#2563eb; width:44px; height:44px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;">
                         <i class="fas fa-file-invoice"></i>
                     </div>
                     <div>
-                        <div id="summary_encoded_count" style="font-size:32px; font-weight:800; color:#0f172a; line-height:1.1; font-family:var(--font-sans, sans-serif);">0</div>
-                        <div style="font-size:13px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.6px; margin-top:4px;">Transactions Encoded</div>
+                        <div id="summary_encoded_count" style="font-size:28px; font-weight:900; color:#0f172a; line-height:1; font-family:var(--font-sans, sans-serif);">0</div>
+                        <div style="font-size:12.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.5px; margin-top:3px;">Transactions Encoded</div>
                     </div>
                 </div>
 
                 <!-- Card 2: Pending Manager Validation -->
-                <div style="background:#ffffff; border:1.5px solid #e2e8f0; border-radius:12px; padding:20px; display:flex; align-items:center; gap:18px; transition: transform 0.2s, box-shadow 0.2s; cursor:default;"
+                <div style="background:#ffffff; border:1.5px solid #e2e8f0; border-radius:10px; padding:12px 16px; display:flex; align-items:center; gap:14px; transition: transform 0.2s, box-shadow 0.2s; cursor:default;"
                      onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)';" 
                      onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
-                    <div style="background:#fffbeb; color:#d97706; width:54px; height:54px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;">
+                    <div style="background:#fffbeb; color:#d97706; width:44px; height:44px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;">
                         <i class="fas fa-clock"></i>
                     </div>
                     <div>
-                        <div id="summary_pending_count" style="font-size:32px; font-weight:800; color:#0f172a; line-height:1.1; font-family:var(--font-sans, sans-serif);">0</div>
-                        <div style="font-size:13px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.6px; margin-top:4px;">Pending Validation</div>
+                        <div id="summary_pending_count" style="font-size:28px; font-weight:900; color:#0f172a; line-height:1; font-family:var(--font-sans, sans-serif);">0</div>
+                        <div style="font-size:12.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.5px; margin-top:3px;">Pending Validation</div>
                     </div>
                 </div>
             </div>
 
             <!-- Filters & Export Control Bar -->
-            <div style="background:#ffffff; padding:18px 20px; display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:18px; border-bottom:1px solid #e2e8f0;">
+            <div style="background:#ffffff; padding:10px 18px; display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:14px; border-bottom:1.5px solid #cbd5e1;">
                 <!-- Local Filter Inputs -->
-                <div style="display:flex; flex-wrap:wrap; gap:20px; align-items:center;">
+                <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:center;">
                     <!-- From Date Filter -->
-                    <div style="display:flex; flex-direction:column; gap:6px;">
-                        <label for="subtab_date_from" style="font-size:13px; font-weight:800; color:#1e293b; text-transform:uppercase; letter-spacing:0.5px;">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label for="subtab_date_from" style="font-size:12.5px; font-weight:800; color:#1e293b; text-transform:uppercase; letter-spacing:0.5px;">
                             <i class="fas fa-calendar-alt" style="color:var(--petron-blue); margin-right:5px;"></i>From Date
                         </label>
                         <input type="date" id="subtab_date_from" value="<?= date('Y-m-01') ?>" onchange="loadTodayEntries();"
-                               style="padding:9px 14px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:14px; font-weight:600; color:#0f172a; outline:none; background:#ffffff; height:42px; box-sizing:border-box; transition:border-color 0.15s ease-in-out;"
+                               style="padding:7px 12px; border:1.5px solid #cbd5e1; border-radius:6px; font-size:14px; font-weight:600; color:#0f172a; outline:none; background:#ffffff; height:38px; box-sizing:border-box; transition:border-color 0.15s ease-in-out;"
                                onfocus="this.style.borderColor='var(--petron-blue)'" onblur="this.style.borderColor='#cbd5e1'">
                     </div>
 
                     <!-- To Date Filter -->
-                    <div style="display:flex; flex-direction:column; gap:6px;">
-                        <label for="subtab_date_to" style="font-size:13px; font-weight:800; color:#1e293b; text-transform:uppercase; letter-spacing:0.5px;">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label for="subtab_date_to" style="font-size:12.5px; font-weight:800; color:#1e293b; text-transform:uppercase; letter-spacing:0.5px;">
                             <i class="fas fa-calendar-alt" style="color:var(--petron-blue); margin-right:5px;"></i>To Date
                         </label>
                         <input type="date" id="subtab_date_to" value="<?= date('Y-m-d') ?>" onchange="loadTodayEntries();"
-                               style="padding:9px 14px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:14px; font-weight:600; color:#0f172a; outline:none; background:#ffffff; height:42px; box-sizing:border-box; transition:border-color 0.15s ease-in-out;"
+                               style="padding:7px 12px; border:1.5px solid #cbd5e1; border-radius:6px; font-size:14px; font-weight:600; color:#0f172a; outline:none; background:#ffffff; height:38px; box-sizing:border-box; transition:border-color 0.15s ease-in-out;"
                                onfocus="this.style.borderColor='var(--petron-blue)'" onblur="this.style.borderColor='#cbd5e1'">
                     </div>
 
                     <!-- Shift Filter -->
-                    <div style="display:flex; flex-direction:column; gap:6px;">
-                        <label for="subtab_shift" style="font-size:13px; font-weight:800; color:#1e293b; text-transform:uppercase; letter-spacing:0.5px;">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label for="subtab_shift" style="font-size:12.5px; font-weight:800; color:#1e293b; text-transform:uppercase; letter-spacing:0.5px;">
                             <i class="fas fa-clock" style="color:var(--petron-blue); margin-right:5px;"></i>Filter by Shift
                         </label>
                         <select id="subtab_shift" onchange="loadTodayEntries();"
-                                style="padding:9px 14px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:14px; font-weight:600; color:#0f172a; outline:none; background:#ffffff; height:42px; box-sizing:border-box; cursor:pointer; transition:border-color 0.15s ease-in-out;"
+                                style="padding:7px 12px; border:1.5px solid #cbd5e1; border-radius:6px; font-size:14px; font-weight:600; color:#0f172a; outline:none; background:#ffffff; height:38px; box-sizing:border-box; cursor:pointer; transition:border-color 0.15s ease-in-out;"
                                 onfocus="this.style.borderColor='var(--petron-blue)'" onblur="this.style.borderColor='#cbd5e1'">
                             <option value="">All Shifts</option>
                             <option value="first">First Shift (6 AM–2 PM)</option>
@@ -5153,7 +5465,8 @@ setTimeout(function() {
             if (!todayCard || todayCard.style.display === 'none') return;
 
             // Do not refresh if user has any modal open
-            const modals = ['fuelDetailsModal', 'readingEditModal', 'readingVoidModal', 'readingAdjustModal', 'requestVoidModal', 'requestAdjustModal'];
+            if (typeof window.isAnyModalOpen === 'function' && window.isAnyModalOpen()) return;
+            const modals = ['fuelDetailsModal', 'readingEditModal', 'readingVoidModal', 'readingAdjustModal', 'requestVoidModal', 'requestAdjustModal', 'viewMerchandiseModal', 'viewJobOrderModal'];
             for (let mId of modals) {
                 const m = document.getElementById(mId);
                 if (m && (m.style.display === 'flex' || m.style.display === 'block')) return;
@@ -5246,7 +5559,7 @@ setTimeout(function() {
             function badge(s) {
                 const k = (s||'').toLowerCase().trim();
                 const c = statusMap[k] || {color:'#64748b',label:(s||'—').replace(/_/g, ' ')};
-                return `<span style="background:${c.color}18; color:${c.color}; border:1px solid ${c.color}40; font-weight:800; font-size:10px; padding:2px 6px; border-radius:4px; text-transform:uppercase; letter-spacing:.2px; white-space:nowrap; display:inline-block; vertical-align:middle;" title="${c.label}">${c.label}</span>`;
+                return `<span style="background:${c.color}18; color:${c.color}; border:1.5px solid ${c.color}50; font-weight:800; font-size:12.5px; padding:4px 10px; border-radius:20px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; display:inline-block; vertical-align:middle;" title="${c.label}">${c.label}</span>`;
             }
             function fmt(n,d=2){ return Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:d,maximumFractionDigits:d}); }
 
@@ -5288,26 +5601,26 @@ setTimeout(function() {
                 return shiftPeriod;
             }
 
-            const TH  = 'padding:10px 5px; font-size:11px; font-weight:800; color:#ffffff; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; vertical-align:middle; box-sizing:border-box;';
+            const TH  = 'padding:10px 8px; font-size:11.5px; font-weight:800; color:#ffffff; text-transform:uppercase; letter-spacing:.2px; line-height:1.25; white-space:nowrap; vertical-align:middle; box-sizing:border-box; border:1px solid #00264D;';
             const THR = TH + ' text-align:right;';
 
-            let html = `<div style="overflow-x:hidden; width:100%; border-bottom:1px solid #e2e8f0; background:#ffffff;">
-                <table id="todayReadingsTable" style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:12px; text-align:left; box-sizing:border-box;">
+            let html = `<div style="overflow-x:hidden; width:100%; border-bottom:1.5px solid #cbd5e1; background:#ffffff;">
+                <table id="todayReadingsTable" class="report-table no-min-width print-table" style="width:100% !important; max-width:100% !important; min-width:0 !important; table-layout:fixed !important; border-collapse:collapse !important; text-align:left; box-sizing:border-box;">
                     <colgroup>
-                        <col style="width: 8%;">   <!-- Date -->
-                        <col style="width: 6.5%;"> <!-- Shift -->
+                        <col style="width: 9%;">   <!-- Date -->
+                        <col style="width: 7%;">   <!-- Shift -->
                         <col style="width: 12%;">  <!-- Name -->
                         <col style="width: 7.5%;"> <!-- Beginning -->
                         <col style="width: 7.5%;"> <!-- Ending -->
                         <col style="width: 7.5%;"> <!-- Calibration -->
-                        <col style="width: 8.5%;"> <!-- Volume (L) -->
-                        <col style="width: 8%;">   <!-- Price/L -->
-                        <col style="width: 9.5%;"> <!-- Amount -->
-                        <col style="width: 12.5%;"><!-- Encoded By -->
-                        <col style="width: 13%;">  <!-- Status -->
+                        <col style="width: 8%;">   <!-- Volume (L) -->
+                        <col style="width: 7.5%;"> <!-- Price/L -->
+                        <col style="width: 9%;">   <!-- Amount -->
+                        <col style="width: 14.5%;"><!-- Encoded By -->
+                        <col style="width: 10.5%;"><!-- Status -->
                     </colgroup>
                     <thead>
-                        <tr style="background:#002F70; border-bottom:2px solid #001f4d;">
+                        <tr style="background:#002F70; border-bottom:2px solid #00264D;">
                             <th style="${TH}" title="Date">Date</th>
                             <th style="${TH}" title="Shift">Shift</th>
                             <th style="${TH}" title="Name">Name</th>
@@ -5318,7 +5631,7 @@ setTimeout(function() {
                             <th style="${THR}" title="Price/L">Price/L</th>
                             <th style="${THR}" title="Amount">Amount</th>
                             <th style="${TH}" title="Encoded By">Encoded By</th>
-                            <th style="${TH} text-align:center;" title="Status">Status</th>
+                            <th style="${TH} text-align:center; padding-right:14px;" title="Status">Status</th>
                         </tr>
                     </thead>
                     <tbody>`;
@@ -5347,17 +5660,17 @@ setTimeout(function() {
                 const staffStr = r.staff_name || '—';
 
                 html += `<tr style="border-bottom:1px solid #e2e8f0; background:#ffffff; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='#f0f5ff';" onmouseout="this.style.backgroundColor='#ffffff';">
-                    <td style="padding:10px 5px; color:#0f172a; font-size:12px; font-weight:700; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="${dateStr}">${dateStr}</td>
-                    <td style="padding:10px 5px; color:#334155; font-size:12px; font-weight:700; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="${shiftStr}">${shiftStr}</td>
-                    <td style="padding:10px 5px; font-weight:800; color:#002F70; font-size:12px; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="${fuelStr}">${fuelStr}</td>
-                    <td style="padding:10px 5px; text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; color:#1e293b; font-size:12px; font-weight:700; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
-                    <td style="padding:10px 5px; text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; color:#1e293b; font-weight:700; font-size:12px; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
-                    <td style="padding:10px 5px; text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; color:#475569; font-size:11.5px; font-weight:600; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
-                    <td style="padding:10px 5px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#0f172a; font-size:12px; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="${fmt(r.volume_liters)} L">${fmt(r.volume_liters)} L</td>
-                    <td style="padding:10px 5px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:12px; font-weight:700; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="₱${fmt(r.price_per_liter)}">₱${fmt(r.price_per_liter)}</td>
-                    <td style="padding:10px 5px; text-align:right; font-weight:900; font-variant-numeric:tabular-nums; color:#002F70; font-size:12.5px; white-space:nowrap; vertical-align:middle; box-sizing:border-box;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
-                    <td style="padding:10px 5px; color:#1e293b; font-weight:700; font-size:11.5px; line-height:1.2; word-break:break-word; overflow-wrap:break-word; vertical-align:middle; box-sizing:border-box;" title="${staffStr}">${staffStr}</td>
-                    <td style="padding:10px 5px; font-size:11px; text-align:center; vertical-align:middle; white-space:nowrap; box-sizing:border-box;">${badge(r.status)}</td>
+                    <td style="padding:8px 8px; color:#0f172a; font-size:12.5px; font-weight:700; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${dateStr}">${dateStr}</td>
+                    <td style="padding:8px 8px; color:#334155; font-size:12.5px; font-weight:700; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${shiftStr}">${shiftStr}</td>
+                    <td style="padding:8px 8px; font-weight:700; color:#002F70; font-size:12.5px; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${fuelStr}">${fuelStr}</td>
+                    <td style="padding:8px 8px; text-align:right; font-variant-numeric:tabular-nums; font-family:system-ui,-apple-system,sans-serif; color:#0f172a; font-size:12.5px; font-weight:700; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
+                    <td style="padding:8px 8px; text-align:right; font-variant-numeric:tabular-nums; font-family:system-ui,-apple-system,sans-serif; color:#0f172a; font-weight:700; font-size:12.5px; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
+                    <td style="padding:8px 8px; text-align:right; font-variant-numeric:tabular-nums; font-family:system-ui,-apple-system,sans-serif; color:#475569; font-size:12.5px; font-weight:700; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
+                    <td style="padding:8px 8px; text-align:right; font-weight:700; font-variant-numeric:tabular-nums; color:#0f172a; font-size:12.5px; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${fmt(r.volume_liters)} L">${fmt(r.volume_liters)} L</td>
+                    <td style="padding:8px 8px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:12.5px; font-weight:700; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="₱${fmt(r.price_per_liter)}">₱${fmt(r.price_per_liter)}</td>
+                    <td style="padding:8px 8px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#002F70; font-size:12.5px; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
+                    <td class="cell-encoded-by" style="padding:8px 8px; color:#1e293b; font-weight:700; font-size:12px; line-height:1.25 !important; white-space:normal !important; word-break:normal !important; overflow-wrap:break-word !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${staffStr}">${staffStr}</td>
+                    <td style="padding:8px 14px 8px 8px; font-size:12px; text-align:center; vertical-align:middle; white-space:nowrap !important; box-sizing:border-box; border:1px solid #e2e8f0;">${badge(r.status)}</td>
                 </tr>`;
             });
 
@@ -5557,7 +5870,7 @@ setTimeout(function() {
                 'merchandise'   => [
                     'label'      => 'Merchandise/Service Transaction',
                     'icon'       => 'fa-shopping-cart',
-                    'color'      => '#28a745'
+                    'color'      => '#002F70'
                 ],
                 'tracker'       => [
                     'label'      => 'Job Order Tracker',
@@ -5570,7 +5883,7 @@ setTimeout(function() {
             ?>
             <button onclick="switchInnerTab('<?= $tk ?>')"
                     id="innerTabBtn_<?= $tk ?>"
-                    class="txn-subtab-btn <?= $tc['color'] === '#28a745' ? 'green' : 'darkblue' ?> <?= $ia ? 'active' : 'inactive' ?>"
+                    class="txn-subtab-btn darkblue <?= $ia ? 'active' : 'inactive' ?>"
                     style="white-space:nowrap;">
                 <i class="fas <?= $tc['icon'] ?>"></i>
                 <?= $tc['label'] ?>
@@ -5593,14 +5906,32 @@ setTimeout(function() {
 
                 <!-- ══ JOB ORDER SECTION (TOP) ══════════════════════════════ -->
                 <div class="txn-card" id="joCard" style="overflow:visible;position:relative;z-index:10;<?= !empty($_GET['mh_open']) ? 'display:none;' : '' ?>">
-                    <div class="txn-card-header" style="background:#fffbeb;">
-                        <i class="fas fa-tools" style="color:#b45309;"></i>
-                        <h3 style="color:#92400e;">Job Order</h3>
+                    <div class="txn-card-header" style="background:#fffbeb;display:flex;align-items:center;justify-content:space-between;padding:10px 16px;">
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <i class="fas fa-tools" style="color:#b45309;font-size:16px;"></i>
+                            <h3 style="color:#92400e;margin:0;font-size:15px;font-weight:800;">Job Order</h3>
+                        </div>
+                        <button type="button" onclick="toggleJoCardCollapse()" id="joCollapseBtn" class="txn-btn secondary" style="font-size:12px;font-weight:700;padding:4px 10px;height:28px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;" title="Collapse/Expand Job Order">
+                            <i class="fas fa-chevron-up" id="joCollapseIcon"></i>
+                            <span id="joCollapseText">Collapse</span>
+                        </button>
                     </div>
-                    <div class="txn-card-body" style="overflow:visible;">
+                    <script>
+                    window.toggleJoCardCollapse = function() {
+                        var b = document.getElementById('joCardBody');
+                        var icon = document.getElementById('joCollapseIcon');
+                        var txt = document.getElementById('joCollapseText');
+                        if (!b) return;
+                        var isCollapsed = (b.style.display === 'none');
+                        b.style.display = isCollapsed ? 'block' : 'none';
+                        if (icon) icon.className = isCollapsed ? 'fas fa-chevron-up' : 'fas fa-chevron-down';
+                        if (txt) txt.textContent = isCollapsed ? 'Collapse' : 'Expand';
+                    };
+                    </script>
+                    <div class="txn-card-body" id="joCardBody" style="overflow:visible;padding:12px 18px 14px 18px;">
 
                         <!-- Customer Details — New Radio Button Selection -->
-                        <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;">
+                        <div class="jo-sub-header" style="color:#b45309;">
                             <i class="fas fa-user" style="margin-right:5px;"></i>Customer Details
                         </div>
                         
@@ -5814,8 +6145,8 @@ setTimeout(function() {
                                 </label>
                             </div>
                         </div>
-                        <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:14px 16px;margin-bottom:14px;">
-                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px 16px;margin-bottom:12px;">
+                        <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:8px;">
+                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px 10px;margin-bottom:8px;">
                                 <?php
                                 try {
                                     $db_insp_stmt = $pdo->query("SELECT item_name FROM vehicle_inspection_items WHERE is_active=1 ORDER BY id ASC");
@@ -5829,21 +6160,21 @@ setTimeout(function() {
                                 foreach ($inspection_items as $insp_item):
                                     $insp_id = 'joInspect_' . str_replace([' ', '&', '/'], '_', $insp_item);
                                 ?>
-                                <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;font-weight:500;color:#334155;padding:6px 8px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;transition:all .15s;"
+                                <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;font-weight:600;color:#1e293b;padding:4px 8px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;transition:all .15s;"
                                        onmouseover="this.style.background='#fef9c3'"
                                        onmouseout="var cb=this.querySelector('input[type=checkbox]'); if(!cb || !cb.checked){ this.style.background='#fff'; }">
                                     <input type="checkbox" id="<?= $insp_id ?>" name="jo_inspection[]" value="<?= htmlspecialchars($insp_item) ?>"
                                            onchange="updateInspectionSelectAllState()"
-                                           style="accent-color:#b45309;width:15px;height:15px;flex-shrink:0;">
+                                           style="accent-color:#b45309;width:16px;height:16px;flex-shrink:0;">
                                     <?= htmlspecialchars($insp_item) ?>
                                 </label>
                                 <?php endforeach; ?>
                             </div>
                             <div>
-                                <label style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:5px;">Remarks</label>
+                                <label style="font-size:12px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:3px;">Remarks</label>
                                 <textarea id="joInspectionRemarks" class="txn-input" rows="2"
                                           placeholder="Inspection remarks or findings..."
-                                          style="resize:vertical;min-height:56px;font-size:13px;"></textarea>
+                                          style="resize:vertical;min-height:48px;font-size:13.5px;padding:6px 10px;"></textarea>
                             </div>
                         </div>
                         <script>
@@ -6100,7 +6431,7 @@ setTimeout(function() {
                 <!-- ══ MERCHANDISE SECTION (BOTTOM) ════════════════════════ -->
                 <div class="txn-card">
                     <div class="txn-card-header">
-                        <i class="fas fa-shopping-cart" style="color:#28a745;"></i>
+                        <i class="fas fa-shopping-cart" style="color:var(--petron-blue);"></i>
                         <h3>Merchandise</h3>
                     </div>
 
@@ -6115,11 +6446,11 @@ setTimeout(function() {
                         ?>
                         <div class="txn-subtab-nav" style="margin-bottom:0 !important; max-width:740px;">
                             <button type="button" onclick="switchMerchTab('form')" id="merchTabBtn_form"
-                                    class="txn-subtab-btn green <?= $merch_active ?>">
+                                    class="txn-subtab-btn darkblue <?= $merch_active ?>">
                                 <i class="fas fa-shopping-cart"></i> Merchandise
                             </button>
                             <button type="button" onclick="switchMerchTab('history')" id="merchTabBtn_history"
-                                    class="txn-subtab-btn green <?= $hist_active ?>">
+                                    class="txn-subtab-btn darkblue <?= $hist_active ?>">
                                 <i class="fas fa-history"></i> Merchandise History
                             </button>
                             <button type="button" onclick="switchMerchTab('combined')" id="merchTabBtn_combined"
@@ -6143,7 +6474,7 @@ setTimeout(function() {
                     <div class="txn-card-body">
 
                         <!-- Customer Details — New Radio Button Selection -->
-                        <div style="font-size:11px;font-weight:700;color:#28a745;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;">
+                        <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;">
                             <i class="fas fa-user" style="margin-right:5px;"></i>Customer Details
                         </div>
                         
@@ -6199,7 +6530,7 @@ setTimeout(function() {
                         </div>
 
                         <!-- Merchandise Section label -->
-                        <div style="font-size:11px;font-weight:700;color:#28a745;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
+                        <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
                             <i class="fas fa-box" style="margin-right:5px;"></i>Merchandise Section
                         </div>
 
@@ -6443,8 +6774,9 @@ setTimeout(function() {
                             <?php else: ?>
                             <div style="width:100%; overflow-x:hidden; border-radius:0 0 8px 8px;">
                             <style>
-                            #mhHistoryTable th { padding: 12px 8px; font-size: 11.5px; font-weight: 700; white-space: nowrap; background: linear-gradient(135deg,#002F70 0%,#003d8f 100%); color: #fff; letter-spacing: .4px; text-transform: uppercase; }
-                            #mhHistoryTable td { padding: 11px 8px; font-size: 12.5px; vertical-align: middle; }
+                            #mhHistoryTable thead, #mhHistoryTable thead tr { background: #002F70 !important; }
+                            #mhHistoryTable th { padding: 12px 10px; font-size: 13px; font-weight: 800; white-space: nowrap; background: #002F70 !important; background-color: #002F70 !important; background-image: none !important; color: #ffffff !important; letter-spacing: .4px; text-transform: uppercase; border-bottom: 2px solid #001f4d; }
+                            #mhHistoryTable td { padding: 11px 10px; font-size: 13px; vertical-align: middle; }
                             #mhHistoryTable { width: 100%; border-collapse: collapse; table-layout: fixed; }
                             </style>
 
@@ -6462,36 +6794,7 @@ setTimeout(function() {
                                                  font-size:10px;font-weight:800;color:#1d6f42;"><?= (int)$mh_kpi_txn_count ?> txn<?= $mh_kpi_txn_count > 1 ? 's' : '' ?></span>
                                     <?php endif; ?>
                                 </button>
-                                <?php if (!empty($mh_variance_alerts)): ?>
-                                <button type="button"
-                                        id="mhVarianceToggleBtn"
-                                        onclick="var vp=document.getElementById('mhVariancePanel');
-                                                 if (vp) { vp.style.display = (vp.style.display === 'none' ? 'block' : 'none'); }"
-                                        class="txn-btn danger"
-                                        style="font-size:11px;padding:5px 10px;display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
-                                    <i class="fas fa-exclamation-triangle"></i>
-                                    <?= count($mh_variance_alerts) ?> Variance Alert<?= count($mh_variance_alerts)>1?'s':'' ?>
-                                </button>
-                                <?php endif; ?>
                             </div>
-
-                            <!-- Merchandise Variance Panel -->
-                            <?php if (!empty($mh_variance_alerts)): ?>
-                            <div id="mhVariancePanel"
-                                 style="display:none;margin:8px 16px 0;background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px 16px;">
-                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                                    <i class="fas fa-exclamation-triangle" style="color:#dc2626;font-size:14px;"></i>
-                                    <span style="font-weight:700;font-size:12px;color:#991b1b;">
-                                        Merchandise Variance Alerts (<?= count($mh_variance_alerts) ?>)
-                                    </span>
-                                </div>
-                                <div style="font-size:11.5px;color:#7f1d1d;line-height:1.6;padding-left:22px;">
-                                    <?php foreach ($mh_variance_alerts as $mva): ?>
-                                        <div>• <strong><?= htmlspecialchars($mva['txn_ref']) ?></strong>: <?= htmlspecialchars($mva['message']) ?></div>
-                                    <?php endforeach; ?>
-                                </div>
-                            </div>
-                            <?php endif; ?>
 
                             <!-- KPI Panel -->
                             <div id="mhKpiPanel"
@@ -6544,25 +6847,25 @@ setTimeout(function() {
                                 </div>
                             </div>
 
-                            <table class="txn-table" id="mhHistoryTable" style="width:100%; border-collapse:collapse; table-layout:fixed;">
+                            <table class="txn-table report-table no-min-width print-table" id="mhHistoryTable" style="width:100% !important; max-width:100% !important; border-collapse:collapse !important; table-layout:fixed !important;">
                                 <colgroup>
-                                    <col style="width:14%;"><!-- OR NO. / TXN ID -->
-                                    <col style="width:17%;"><!-- CUSTOMER -->
-                                    <col style="width:25%;"><!-- PRODUCTS / ITEMS -->
+                                    <col style="width:13%;"><!-- OR NO. / TXN ID -->
+                                    <col style="width:16%;"><!-- CUSTOMER -->
+                                    <col style="width:23%;"><!-- PRODUCTS / ITEMS -->
                                     <col style="width:12%;"><!-- TOTAL AMOUNT -->
-                                    <col style="width:10%;"><!-- PAYMENT -->
-                                    <col style="width:13%;"><!-- DATE ENCODED -->
-                                    <col style="width:9%;"><!-- ACTIONS -->
+                                    <col style="width:11%;"><!-- PAYMENT -->
+                                    <col style="width:12%;"><!-- DATE ENCODED -->
+                                    <col style="width:13%;"><!-- ACTIONS -->
                                 </colgroup>
-                                <thead>
-                                    <tr>
-                                        <th style="text-align:left;padding:12px 8px;white-space:nowrap;">OR NO. / TXN ID</th>
-                                        <th style="text-align:left;padding:12px 8px;white-space:nowrap;">CUSTOMER</th>
-                                        <th style="text-align:left;padding:12px 8px;white-space:nowrap;">PURCHASED PRODUCTS / ITEMS</th>
-                                        <th style="text-align:left;padding:12px 8px;white-space:nowrap;">TOTAL AMOUNT</th>
-                                        <th style="text-align:left;padding:12px 8px;white-space:nowrap;">PAYMENT</th>
-                                        <th style="text-align:left;padding:12px 8px;white-space:nowrap;">DATE ENCODED</th>
-                                        <th style="text-align:center;padding:12px 8px;white-space:nowrap;">ACTIONS</th>
+                                <thead style="background:#002F70;">
+                                    <tr style="background:#002F70;">
+                                        <th style="text-align:left;padding:12px 10px;font-size:13px;font-weight:800;background:#002F70;color:#ffffff;letter-spacing:.4px;text-transform:uppercase;border-bottom:2px solid #001f4d;">OR NO. / TXN ID</th>
+                                        <th style="text-align:left;padding:12px 10px;font-size:13px;font-weight:800;background:#002F70;color:#ffffff;letter-spacing:.4px;text-transform:uppercase;border-bottom:2px solid #001f4d;">CUSTOMER</th>
+                                        <th style="text-align:left;padding:12px 10px;font-size:13px;font-weight:800;background:#002F70;color:#ffffff;letter-spacing:.4px;text-transform:uppercase;border-bottom:2px solid #001f4d;">PURCHASED PRODUCTS / ITEMS</th>
+                                        <th style="text-align:left;padding:12px 10px;font-size:13px;font-weight:800;background:#002F70;color:#ffffff;letter-spacing:.4px;text-transform:uppercase;border-bottom:2px solid #001f4d;">TOTAL AMOUNT</th>
+                                        <th style="text-align:left;padding:12px 10px;font-size:13px;font-weight:800;background:#002F70;color:#ffffff;letter-spacing:.4px;text-transform:uppercase;border-bottom:2px solid #001f4d;">PAYMENT</th>
+                                        <th style="text-align:left;padding:12px 10px;font-size:13px;font-weight:800;background:#002F70;color:#ffffff;letter-spacing:.4px;text-transform:uppercase;border-bottom:2px solid #001f4d;">DATE ENCODED</th>
+                                        <th style="text-align:center;padding:12px 10px;font-size:13px;font-weight:800;background:#002F70;color:#ffffff;letter-spacing:.4px;text-transform:uppercase;border-bottom:2px solid #001f4d;">ACTIONS</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mhTableBody">
@@ -6653,7 +6956,7 @@ setTimeout(function() {
                                                 elseif (in_array($mh_pstat_lc, ['account receivable','credit','ar'])) { $mh_pstat_bg = '#ede9fe'; $mh_pstat_col = '#5b21b6'; }
                                                 elseif (in_array($mh_pstat_lc, ['unpaid','pending','pending payment'])) { $mh_pstat_bg = '#fee2e2'; $mh_pstat_col = '#b91c1c'; }
                                             ?>
-                                            <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:800;background:<?= $mh_pstat_bg ?>;color:<?= $mh_pstat_col ?>;border:1px solid <?= $mh_pstat_col ?>40;letter-spacing:0.3px;white-space:nowrap;">
+                                            <span style="display:inline-flex;align-items:center;justify-content:center;padding:3px 9px;border-radius:4px;font-size:12px;font-weight:800;background:<?= $mh_pstat_bg ?>;color:<?= $mh_pstat_col ?>;border:1px solid <?= $mh_pstat_col ?>40;letter-spacing:0.3px;white-space:nowrap;">
                                                 <?= strtoupper(htmlspecialchars($mh_pstat_raw)) ?>
                                             </span>
                                         </div>
@@ -6678,22 +6981,63 @@ setTimeout(function() {
                                     </td>
 
                                     <!-- 7. ACTIONS -->
-                                    <td style="padding:8px 6px;text-align:center;vertical-align:middle;white-space:nowrap;overflow:visible;box-sizing:border-box;">
-                                        <button type="button"
-                                            onclick="window.viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>', this); return false;"
-                                            class="txn-btn secondary"
-                                            style="width:100%;padding:5px 8px;font-size:11px;font-weight:700;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer !important;pointer-events:auto !important;">
-                                            <i class="fas fa-eye"></i> View
-                                        </button>
-                                        <?php if ($mh_is_voided): ?>
-                                            <div style="margin-top:3px;"><span style="font-size:10px;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;padding:2px 5px;border-radius:4px;font-weight:800;white-space:nowrap;"><i class="fas fa-ban"></i> Voided</span></div>
-                                        <?php elseif ($mh_is_adjusted): ?>
-                                            <div style="margin-top:3px;"><span style="font-size:10px;color:#4338ca;background:#e0e7ff;border:1px solid #c7d2fe;padding:2px 5px;border-radius:4px;font-weight:800;white-space:nowrap;"><i class="fas fa-check-circle"></i> Adjusted</span></div>
-                                        <?php elseif ($mh_adj_req): ?>
-                                            <div style="margin-top:3px;"><span style="font-size:10px;color:#d97706;background:#fef3c7;border:1px solid #fde68a;padding:2px 5px;border-radius:4px;font-weight:800;white-space:nowrap;"><i class="fas fa-clock"></i> Adj. Req.</span></div>
-                                        <?php elseif ($mh_void_req): ?>
-                                            <div style="margin-top:3px;"><span style="font-size:10px;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;padding:2px 5px;border-radius:4px;font-weight:800;white-space:nowrap;"><i class="fas fa-clock"></i> Void Req.</span></div>
-                                        <?php endif; ?>
+                                    <td style="padding:8px 6px;text-align:center;vertical-align:middle;box-sizing:border-box;">
+                                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;max-width:140px;margin:0 auto;">
+                                            <button type="button"
+                                                onclick="window.viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>', this); return false;"
+                                                class="txn-btn secondary"
+                                                style="display:inline-flex;align-items:center;justify-content:center;gap:5px;width:100%;padding:6px 10px;font-size:13px !important;font-weight:800 !important;border:1.5px solid #94a3b8 !important;background:#f1f5f9 !important;color:#002F70 !important;border-radius:5px;box-sizing:border-box;text-decoration:none;white-space:nowrap !important;cursor:pointer !important;"
+                                                onmouseover="this.style.background='#dbeafe';this.style.color='#002F70';this.style.borderColor='#3b82f6';"
+                                                onmouseout="this.style.background='#f1f5f9';this.style.color='#002F70';this.style.borderColor='#94a3b8';"
+                                                title="View Transaction Details">
+                                                <i class="fas fa-eye" style="font-size:12px !important;"></i> <span style="font-size:13px !important;font-weight:800 !important;color:#002F70 !important;white-space:nowrap !important;display:inline !important;">View</span>
+                                            </button>
+                                            <?php if ($mh_is_voided): ?>
+                                                <span style="font-size:10.5px;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;"><i class="fas fa-ban"></i> Voided</span>
+                                            <?php else: ?>
+                                                <div style="display:flex;gap:4px;width:100%;">
+                                                    <?php if ($mh_adj_req): ?>
+                                                        <span style="flex:1;font-size:10.5px;color:#d97706;background:#fef3c7;border:1px solid #fde68a;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Adjustment request pending"><i class="fas fa-clock"></i> Adj. Req</span>
+                                                    <?php else: ?>
+                                                        <button type="button"
+                                                                data-jo-id="<?= (int)$txn['mt_id'] ?>"
+                                                                data-jo-source="merchandise_transactions"
+                                                                data-jo-ref="<?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['mt_id'])) ?>"
+                                                                data-jo-customer="<?= htmlspecialchars($txn['customer_name'] ?? 'Walk-in Customer') ?>"
+                                                                data-jo-status="<?= htmlspecialchars($txn['validation_status'] ?? 'Completed') ?>"
+                                                                data-jo-paystatus="<?= htmlspecialchars($txn['payment_status'] ?? 'Paid') ?>"
+                                                                data-jo-paymethod="<?= htmlspecialchars($txn['payment_method'] ?? 'Cash') ?>"
+                                                                data-jo-total="<?= (float)$total_amount ?>"
+                                                                onclick="return openRequestAdjustModal(event, this);"
+                                                                class="txn-btn secondary"
+                                                                style="flex:1;padding:6px 4px;font-size:13px !important;font-weight:800 !important;border:1.5px solid #94a3b8 !important;background:#f1f5f9 !important;color:#334155 !important;border-radius:5px;cursor:pointer !important;display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap !important;"
+                                                                onmouseover="this.style.background='#dbeafe';this.style.color='#002F70';this.style.borderColor='#3b82f6';"
+                                                                onmouseout="this.style.background='#f1f5f9';this.style.color='#334155';this.style.borderColor='#94a3b8';"
+                                                                title="Request Adjustment">
+                                                            <i class="fas fa-sliders-h" style="font-size:11px !important;"></i> <span style="font-size:13px !important;font-weight:800 !important;white-space:nowrap !important;display:inline !important;">Adjust</span>
+                                                        </button>
+                                                    <?php endif; ?>
+
+                                                    <?php if ($mh_void_req): ?>
+                                                        <span style="flex:1;font-size:10.5px;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Void request pending"><i class="fas fa-clock"></i> Void Req</span>
+                                                    <?php else: ?>
+                                                        <button type="button"
+                                                                data-jo-id="<?= (int)$txn['mt_id'] ?>"
+                                                                data-jo-source="merchandise_transactions"
+                                                                data-jo-ref="<?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['mt_id'])) ?>"
+                                                                data-jo-customer="<?= htmlspecialchars($txn['customer_name'] ?? 'Walk-in Customer') ?>"
+                                                                data-jo-status="<?= htmlspecialchars($txn['validation_status'] ?? 'Completed') ?>"
+                                                                data-jo-paystatus="<?= htmlspecialchars($txn['payment_status'] ?? 'Paid') ?>"
+                                                                data-jo-total="<?= (float)$total_amount ?>"
+                                                                onclick="return openRequestVoidModal(event, this);"
+                                                                class="void-btn"
+                                                                title="Request Void">
+                                                            <i class="fas fa-ban"></i> <span>Void</span>
+                                                        </button>
+                                                    <?php endif; ?>
+                                                </div>
+                                            <?php endif; ?>
+                                        </div>
                                     </td>
                                  </tr>
                                  <?php endforeach; ?>
@@ -6738,23 +7082,23 @@ setTimeout(function() {
                     <div id="merchTab_combined" style="display:<?= $jom_open ? 'block' : 'none' ?>; padding-bottom:80px; min-width:0; overflow:hidden;">
 
                         <!-- Filter Bar -->
-                        <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;">
-                            <form method="GET" action="staff_transactions_hub.php" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+                        <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;background:#f8fafc;">
+                            <form method="GET" action="staff_transactions_hub.php" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
                                 <input type="hidden" name="section" value="merchandise">
                                 <input type="hidden" name="jom_open" value="1">
                                 <div style="display:flex;flex-direction:column;gap:4px;">
-                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Start Date</label>
+                                    <label style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.3px;">Start Date</label>
                                     <input type="date" name="jom_start_date" value="<?= htmlspecialchars($jom_filter_start_date) ?>"
-                                           style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                                           style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:13.5px;font-weight:600;color:#0f172a;background:#fff;outline:none;height:38px;box-sizing:border-box;">
                                 </div>
                                 <div style="display:flex;flex-direction:column;gap:4px;">
-                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">End Date</label>
+                                    <label style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.3px;">End Date</label>
                                     <input type="date" name="jom_end_date" value="<?= htmlspecialchars($jom_filter_end_date) ?>"
-                                           style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                                           style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:13.5px;font-weight:600;color:#0f172a;background:#fff;outline:none;height:38px;box-sizing:border-box;">
                                 </div>
                                 <div style="display:flex;flex-direction:column;gap:4px;">
-                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Status</label>
-                                    <select name="jom_status" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                                    <label style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.3px;">Status</label>
+                                    <select name="jom_status" style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:13.5px;font-weight:600;color:#0f172a;background:#fff;outline:none;height:38px;box-sizing:border-box;cursor:pointer;">
                                         <option value="">All Statuses</option>
                                         <option value="Completed" <?= $jom_filter_status === 'Completed' ? 'selected' : '' ?>>Completed</option>
                                         <option value="Adjusted"  <?= $jom_filter_status === 'Adjusted'  ? 'selected' : '' ?>>Adjusted</option>
@@ -6762,13 +7106,17 @@ setTimeout(function() {
                                     </select>
                                 </div>
                                 <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px;">
-                                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Search</label>
+                                    <label style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.3px;">Search</label>
                                     <input type="text" name="jom_search" value="<?= htmlspecialchars($jom_search) ?>"
                                            placeholder="TXN ID, Customer, Service, Plate…"
-                                           style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;width:100%;">
+                                           style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:13.5px;font-weight:600;color:#0f172a;background:#fff;outline:none;width:100%;height:38px;box-sizing:border-box;">
                                 </div>
-                                <button type="submit" class="txn-btn primary"><i class="fas fa-filter"></i> Filter</button>
-                                <a href="staff_transactions_hub.php?section=merchandise&jom_open=1" class="txn-btn secondary"><i class="fas fa-times"></i> Clear</a>
+                                <button type="submit" style="height:38px;padding:0 18px;font-size:13.5px;font-weight:800;border-radius:7px;border:1.5px solid #002F70;background:#002F70 !important;color:#ffffff !important;display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;box-shadow:0 1px 3px rgba(0,47,112,0.25);">
+                                    <i class="fas fa-filter"></i> Filter
+                                </button>
+                                <a href="staff_transactions_hub.php?section=merchandise&jom_open=1" style="height:38px;padding:0 16px;font-size:13.5px;font-weight:700;border-radius:7px;border:1.5px solid #cbd5e1;background:#ffffff !important;color:#334155 !important;display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;text-decoration:none;">
+                                    <i class="fas fa-times"></i> Clear
+                                </a>
                             </form>
                         </div>
 
@@ -6783,32 +7131,33 @@ setTimeout(function() {
                             <?php else: ?>
                             <div style="width:100%;overflow-x:hidden;border-radius:0 0 8px 8px;">
                             <style>
-                            #jomHistoryTable { width:100%; border-collapse:collapse; table-layout:fixed; }
-                            #jomHistoryTable th { padding:12px 8px; font-size:11px; font-weight:700; white-space:nowrap; background:linear-gradient(135deg,#002F70 0%,#003d8f 100%); color:#fff; letter-spacing:.4px; text-transform:uppercase; }
-                            #jomHistoryTable td { padding:11px 8px; font-size:12px; vertical-align:middle; border-bottom:1px solid #f1f5f9; }
+                            #jomHistoryTable { width:100% !important; max-width:100% !important; border-collapse:collapse !important; table-layout:fixed !important; }
+                            #jomHistoryTable thead, #jomHistoryTable thead tr { background:#002F70 !important; }
+                            #jomHistoryTable th { padding:12px 10px; font-size:13px; font-weight:800; background:#002F70 !important; background-color:#002F70 !important; background-image:none !important; color:#ffffff !important; letter-spacing:.4px; text-transform:uppercase; border-bottom:2px solid #001f4d; box-sizing:border-box; }
+                            #jomHistoryTable td { padding:11px 10px; font-size:13.5px; vertical-align:middle; border-bottom:1px solid #f1f5f9; box-sizing:border-box; word-wrap:break-word; }
                             #jomHistoryTable tr.jom-row:hover td { background:#f8faff; cursor:pointer; }
                             </style>
-                            <table id="jomHistoryTable">
+                            <table id="jomHistoryTable" class="report-table no-min-width print-table" style="width:100% !important; max-width:100% !important; border-collapse:collapse !important; table-layout:fixed !important;">
                                 <colgroup>
-                                    <col style="width:13%;"><!-- TXN ID -->
+                                    <col style="width:11%;"><!-- TXN ID -->
                                     <col style="width:15%;"><!-- CUSTOMER -->
-                                    <col style="width:17%;"><!-- JOB ORDER -->
-                                    <col style="width:22%;"><!-- MERCHANDISE -->
-                                    <col style="width:10%;"><!-- TOTAL -->
-                                    <col style="width:11%;"><!-- PAYMENT STATUS -->
+                                    <col style="width:15%;"><!-- JOB ORDER -->
+                                    <col style="width:18%;"><!-- MERCHANDISE -->
+                                    <col style="width:9%;"><!-- TOTAL -->
+                                    <col style="width:10%;"><!-- PAYMENT STATUS -->
                                     <col style="width:9%;"><!-- STATUS -->
-                                    <col style="width:3%;"><!-- ACTIONS -->
+                                    <col style="width:13%;"><!-- ACTIONS -->
                                 </colgroup>
-                                <thead>
-                                    <tr>
-                                        <th style="text-align:left;">TXN ID</th>
-                                        <th style="text-align:left;">CUSTOMER</th>
-                                        <th style="text-align:left;">JOB ORDER</th>
-                                        <th style="text-align:left;">MERCHANDISE</th>
-                                        <th style="text-align:left;">TOTAL</th>
-                                        <th style="text-align:left;">PAYMENT STATUS</th>
-                                        <th style="text-align:center;">STATUS</th>
-                                        <th style="text-align:center;">ACTIONS</th>
+                                <thead style="background:#002F70;">
+                                    <tr style="background:#002F70;">
+                                        <th style="text-align:left;background:#002F70;color:#ffffff;border-bottom:2px solid #001f4d;">TXN ID</th>
+                                        <th style="text-align:left;background:#002F70;color:#ffffff;border-bottom:2px solid #001f4d;">CUSTOMER</th>
+                                        <th style="text-align:left;background:#002F70;color:#ffffff;border-bottom:2px solid #001f4d;">JOB ORDER</th>
+                                        <th style="text-align:left;background:#002F70;color:#ffffff;border-bottom:2px solid #001f4d;">MERCHANDISE</th>
+                                        <th style="text-align:left;background:#002F70;color:#ffffff;border-bottom:2px solid #001f4d;">TOTAL</th>
+                                        <th style="text-align:left;background:#002F70;color:#ffffff;border-bottom:2px solid #001f4d;">PAYMENT STATUS</th>
+                                        <th style="text-align:center;background:#002F70;color:#ffffff;border-bottom:2px solid #001f4d;">STATUS</th>
+                                        <th style="text-align:center;background:#002F70;color:#ffffff;border-bottom:2px solid #001f4d;">ACTIONS</th>
                                     </tr>
                                 </thead>
                                 <tbody id="jomTableBody">
@@ -6840,11 +7189,11 @@ setTimeout(function() {
 
                                     // Status badge
                                     if (in_array($jom_vstatus,['voided','cancelled','canceled','void'])) {
-                                        $jv_badge = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:700;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;"><i class="fas fa-ban" style="font-size:8px;"></i> Voided</span>';
+                                        $jv_badge = '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:20px;font-size:12px;font-weight:800;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;white-space:nowrap;"><i class="fas fa-ban" style="font-size:9px;"></i> Voided</span>';
                                     } elseif ($jom_vstatus === 'adjusted') {
-                                        $jv_badge = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;"><i class="fas fa-sliders-h" style="font-size:8px;"></i> Adjusted</span>';
+                                        $jv_badge = '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:20px;font-size:12px;font-weight:800;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;white-space:nowrap;"><i class="fas fa-sliders-h" style="font-size:9px;"></i> Adjusted</span>';
                                     } else {
-                                        $jv_badge = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:700;color:#166534;background:#dcfce7;border:1px solid #86efac;"><i class="fas fa-check-circle" style="font-size:8px;"></i> Completed</span>';
+                                        $jv_badge = '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:20px;font-size:12px;font-weight:800;color:#166534;background:#dcfce7;border:1px solid #86efac;white-space:nowrap;"><i class="fas fa-check-circle" style="font-size:9px;"></i> Completed</span>';
                                     }
 
                                     // Action state
@@ -6855,65 +7204,114 @@ setTimeout(function() {
                                 ?>
                                 <tr class="jom-row" onclick="window.viewMerchandiseDetails('<?= addslashes($jom['transaction_id'] ?? $jom_id) ?>')" title="Click to view details">
                                     <!-- 1. TXN ID -->
-                                    <td style="max-width:0;overflow:hidden;">
-                                        <div style="font-weight:700;font-size:11px;color:#002F70;font-family:monospace;word-break:break-all;line-height:1.2;"><?= $jom_tid ?></div>
-                                        <div style="font-size:10px;color:#94a3b8;margin-top:2px;"><?= $jom_date_str ?></div>
+                                    <td style="overflow:hidden;box-sizing:border-box;">
+                                        <div style="font-weight:800;font-size:13.5px;color:#002F70;line-height:1.25;"><?= $jom_tid ?></div>
+                                        <div style="font-size:12px;font-weight:600;color:#475569;margin-top:3px;line-height:1.2;"><?= $jom_date_str ?></div>
                                     </td>
                                     <!-- 2. CUSTOMER -->
-                                    <td style="max-width:0;overflow:hidden;">
-                                        <div style="font-weight:700;font-size:12px;color:#0f172a;line-height:1.25;word-break:break-word;"><?= $jom_cname ?></div>
+                                    <td style="overflow:hidden;box-sizing:border-box;">
+                                        <div style="font-weight:800;font-size:14px;color:#0f172a;line-height:1.25;word-break:break-word;"><?= $jom_cname ?></div>
                                         <?php if ($jom_plate !== ''): ?>
-                                        <div style="display:inline-flex;align-items:center;gap:3px;background:#f1f5f9;border:1px solid #cbd5e1;color:#1e293b;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:700;margin-top:2px;">
-                                            <i class="fas fa-car" style="color:#2563eb;font-size:9px;"></i> <?= $jom_plate ?>
+                                        <div style="display:inline-flex;align-items:center;gap:4px;background:#f1f5f9;border:1px solid #cbd5e1;color:#0f172a;padding:2px 7px;border-radius:5px;font-size:12px;font-weight:700;margin-top:3px;">
+                                            <i class="fas fa-car" style="color:#2563eb;font-size:11px;"></i> <?= $jom_plate ?>
                                         </div>
                                         <?php endif; ?>
                                     </td>
                                     <!-- 3. JOB ORDER -->
-                                    <td style="max-width:0;overflow:hidden;">
-                                        <div style="display:inline-flex;align-items:center;gap:4px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:3px 7px;font-size:11px;font-weight:700;color:#1d4ed8;white-space:nowrap;margin-bottom:3px;">
-                                            <i class="fas fa-wrench" style="font-size:9px;"></i> <?= $jom_svc_sum ?>
+                                    <td style="overflow:hidden;box-sizing:border-box;">
+                                        <div style="display:inline-flex;align-items:center;gap:5px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:3px 8px;font-size:13px;font-weight:800;color:#1d4ed8;margin-bottom:3px;white-space:nowrap;">
+                                            <i class="fas fa-wrench" style="font-size:11px;"></i> <?= $jom_svc_sum ?>
                                         </div>
                                         <?php if ($jom_mechanic !== ''): ?>
-                                        <div style="font-size:10px;color:#64748b;"><i class="fas fa-user-cog" style="font-size:9px;color:#94a3b8;"></i> <?= $jom_mechanic ?></div>
+                                        <div style="font-size:12px;font-weight:600;color:#475569;margin-top:2px;"><i class="fas fa-user-cog" style="font-size:11px;color:#64748b;"></i> <?= $jom_mechanic ?></div>
                                         <?php endif; ?>
                                     </td>
                                     <!-- 4. MERCHANDISE -->
-                                    <td style="max-width:0;overflow:hidden;">
-                                        <div style="font-size:11.5px;color:#334155;line-height:1.5;word-break:break-word;"><?= $jom_merch_sum !== '' ? $jom_merch_sum : '<span style="color:#94a3b8;">—</span>' ?></div>
+                                    <td style="overflow:hidden;box-sizing:border-box;">
+                                        <div style="font-size:13.5px;font-weight:600;color:#1e293b;line-height:1.4;word-break:break-word;"><?= $jom_merch_sum !== '' ? $jom_merch_sum : '<span style="color:#94a3b8;">—</span>' ?></div>
                                     </td>
                                     <!-- 5. TOTAL -->
-                                    <td style="max-width:0;overflow:hidden;">
-                                        <div style="font-weight:800;font-size:13px;color:#002F70;white-space:nowrap;">₱<?= number_format($jom_total_amt,2) ?></div>
+                                    <td style="overflow:hidden;box-sizing:border-box;">
+                                        <div style="font-weight:900;font-size:15px;color:#002F70;white-space:nowrap;">₱<?= number_format($jom_total_amt,2) ?></div>
                                         <?php if ($jom_balance > 0): ?>
-                                        <div style="font-size:10px;font-weight:700;color:#dc2626;white-space:nowrap;">AR: ₱<?= number_format($jom_balance,2) ?></div>
+                                        <div style="font-size:12px;font-weight:800;color:#dc2626;white-space:nowrap;margin-top:2px;">AR: ₱<?= number_format($jom_balance,2) ?></div>
                                         <?php endif; ?>
                                     </td>
                                     <!-- 6. PAYMENT STATUS -->
-                                    <td style="max-width:0;overflow:hidden;">
-                                        <span style="display:inline-flex;align-items:center;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:800;background:<?= $jpb ?>;color:<?= $jpc ?>;border:1px solid <?= $jpc ?>40;white-space:nowrap;">
+                                    <td style="overflow:hidden;box-sizing:border-box;">
+                                        <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:5px;font-size:12.5px;font-weight:800;background:<?= $jpb ?>;color:<?= $jpc ?>;border:1px solid <?= $jpc ?>40;white-space:nowrap;">
                                             <?= strtoupper(htmlspecialchars($jom_pstatus)) ?>
                                         </span>
-                                        <div style="font-size:10px;color:#64748b;margin-top:2px;"><?= htmlspecialchars($jom['payment_method'] ?? '') ?></div>
+                                        <div style="font-size:12px;font-weight:600;color:#475569;margin-top:3px;"><?= htmlspecialchars($jom['payment_method'] ?? '') ?></div>
                                     </td>
                                     <!-- 7. STATUS -->
-                                    <td style="text-align:center;max-width:0;overflow:hidden;">
+                                    <td style="text-align:center;overflow:hidden;box-sizing:border-box;">
                                         <?= $jv_badge ?>
                                     </td>
                                     <!-- 8. ACTIONS -->
-                                    <td style="text-align:center;overflow:visible;" onclick="event.stopPropagation();">
-                                        <button type="button"
-                                                onclick="window.viewMerchandiseDetails('<?= addslashes($jom['transaction_id'] ?? $jom_id) ?>'); return false;"
-                                                class="txn-btn secondary"
-                                                style="width:100%;padding:5px 6px;font-size:11px;font-weight:700;cursor:pointer;">
-                                            <i class="fas fa-eye"></i> View
-                                        </button>
-                                        <?php if ($jom_is_void): ?>
-                                            <div style="margin-top:3px;"><span style="font-size:10px;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;padding:2px 5px;border-radius:4px;font-weight:800;white-space:nowrap;"><i class="fas fa-ban"></i> Voided</span></div>
-                                        <?php elseif ($jom_void_req): ?>
-                                            <div style="margin-top:3px;"><span style="font-size:10px;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;padding:2px 5px;border-radius:4px;font-weight:800;white-space:nowrap;"><i class="fas fa-clock"></i> Void Req.</span></div>
-                                        <?php elseif ($jom_adj_req): ?>
-                                            <div style="margin-top:3px;"><span style="font-size:10px;color:#d97706;background:#fef3c7;border:1px solid #fde68a;padding:2px 5px;border-radius:4px;font-weight:800;white-space:nowrap;"><i class="fas fa-clock"></i> Adj. Req.</span></div>
-                                        <?php endif; ?>
+                                    <td style="text-align:center;box-sizing:border-box;padding:8px 6px;" onclick="event.stopPropagation();">
+                                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;max-width:140px;margin:0 auto;">
+                                            <button type="button"
+                                                    onclick="window.viewMerchandiseDetails('<?= addslashes($jom['transaction_id'] ?? $jom_id) ?>'); return false;"
+                                                    class="txn-btn secondary"
+                                                    style="display:inline-flex;align-items:center;justify-content:center;gap:5px;width:100%;padding:6px 10px;font-size:13px !important;font-weight:800 !important;border:1.5px solid #94a3b8 !important;background:#f1f5f9 !important;color:#002F70 !important;border-radius:5px;box-sizing:border-box;text-decoration:none;white-space:nowrap !important;cursor:pointer !important;"
+                                                    onmouseover="this.style.background='#dbeafe';this.style.color='#002F70';this.style.borderColor='#3b82f6';"
+                                                    onmouseout="this.style.background='#f1f5f9';this.style.color='#002F70';this.style.borderColor='#94a3b8';"
+                                                    title="View Transaction Details">
+                                                <i class="fas fa-eye" style="font-size:12px !important;"></i> <span style="font-size:13px !important;font-weight:800 !important;color:#002F70 !important;white-space:nowrap !important;display:inline !important;">View</span>
+                                            </button>
+                                            <?php if ($jom_is_void): ?>
+                                                <span style="font-size:10.5px;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;"><i class="fas fa-ban"></i> Voided</span>
+                                            <?php else: ?>
+                                                <div style="display:flex;gap:4px;width:100%;">
+                                                    <?php if ($jom_adj_req): ?>
+                                                        <span style="flex:1;font-size:10.5px;color:#d97706;background:#fef3c7;border:1px solid #fde68a;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Adjustment request pending"><i class="fas fa-clock"></i> Adj. Req</span>
+                                                    <?php else: ?>
+                                                        <button type="button"
+                                                                data-jom-id="<?= $jom_id ?>"
+                                                                data-jom-tid="<?= $jom_tid ?>"
+                                                                data-jom-customer="<?= $jom_cname ?>"
+                                                                data-jom-status="<?= htmlspecialchars($jom['validation_status'] ?? 'Completed') ?>"
+                                                                data-jom-paystatus="<?= htmlspecialchars($jom_pstatus) ?>"
+                                                                data-jom-paymethod="<?= htmlspecialchars($jom['payment_method'] ?? 'Cash') ?>"
+                                                                data-jom-total="<?= (float)$jom_total_amt ?>"
+                                                                data-jom-service="<?= $jom_service ?>"
+                                                                data-jom-plate="<?= $jom_plate ?>"
+                                                                data-jom-mechanic="<?= $jom_mechanic ?>"
+                                                                data-jom-merch="<?= $jom_merch_sum ?>"
+                                                                onclick="return openCombinedAdjustModal(event, this);"
+                                                                class="txn-btn secondary"
+                                                                style="flex:1;padding:6px 4px;font-size:13px !important;font-weight:800 !important;border:1.5px solid #94a3b8 !important;background:#f1f5f9 !important;color:#334155 !important;border-radius:5px;cursor:pointer !important;display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap !important;"
+                                                                onmouseover="this.style.background='#dbeafe';this.style.color='#002F70';this.style.borderColor='#3b82f6';"
+                                                                onmouseout="this.style.background='#f1f5f9';this.style.color='#334155';this.style.borderColor='#94a3b8';"
+                                                                title="Request Combined Adjustment">
+                                                            <i class="fas fa-sliders-h" style="font-size:11px !important;"></i> <span style="font-size:13px !important;font-weight:800 !important;white-space:nowrap !important;display:inline !important;">Adjust</span>
+                                                        </button>
+                                                    <?php endif; ?>
+
+                                                    <?php if ($jom_void_req): ?>
+                                                        <span style="flex:1;font-size:11px;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Void request pending"><i class="fas fa-clock"></i> Void Req</span>
+                                                    <?php else: ?>
+                                                        <button type="button"
+                                                                data-jom-id="<?= $jom_id ?>"
+                                                                data-jom-tid="<?= $jom_tid ?>"
+                                                                data-jom-customer="<?= $jom_cname ?>"
+                                                                data-jom-status="<?= htmlspecialchars($jom['validation_status'] ?? 'Completed') ?>"
+                                                                data-jom-paystatus="<?= htmlspecialchars($jom_pstatus) ?>"
+                                                                data-jom-total="<?= (float)$jom_total_amt ?>"
+                                                                data-jom-service="<?= $jom_service ?>"
+                                                                data-jom-plate="<?= $jom_plate ?>"
+                                                                data-jom-mechanic="<?= $jom_mechanic ?>"
+                                                                data-jom-merch="<?= $jom_merch_sum ?>"
+                                                                onclick="return openCombinedVoidModal(event, this);"
+                                                                class="void-btn"
+                                                                title="Request Combined Void">
+                                                            <i class="fas fa-ban"></i> <span>Void</span>
+                                                        </button>
+                                                    <?php endif; ?>
+                                                </div>
+                                            <?php endif; ?>
+                                        </div>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
@@ -6922,12 +7320,12 @@ setTimeout(function() {
                             </div>
 
                             <!-- Pagination Footer -->
-                            <div id="jomPaginationFooter" style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-top:1px solid #e2e8f0;background:#ffffff;border-radius:0 0 12px 12px;font-size:13px;color:#475569;flex-wrap:wrap;gap:12px;">
-                                <div><span id="jomShowingEntriesText" style="font-size:13px;color:#64748b;font-weight:600;">Showing 1–<?= min(10,count($jom_recent)) ?> of <?= count($jom_recent) ?> entries</span></div>
+                            <div id="jomPaginationFooter" style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-top:1px solid #e2e8f0;background:#ffffff;border-radius:0 0 12px 12px;font-size:13.5px;color:#475569;flex-wrap:wrap;gap:12px;">
+                                <div><span id="jomShowingEntriesText" style="font-size:13.5px;color:#475569;font-weight:700;">Showing 1–<?= min(10,count($jom_recent)) ?> of <?= count($jom_recent) ?> entries</span></div>
                                 <div style="display:flex;align-items:center;gap:16px;">
                                     <div style="display:flex;align-items:center;gap:8px;">
-                                        <label style="margin:0;font-weight:600;color:#64748b;font-size:13px;">Rows per page:</label>
-                                        <select id="jomPerPage" onchange="jomChangePerPage()" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;font-weight:600;background:transparent;color:#334155;outline:none;cursor:pointer;">
+                                        <label style="margin:0;font-weight:700;color:#334155;font-size:13.5px;">Rows per page:</label>
+                                        <select id="jomPerPage" onchange="jomChangePerPage()" style="padding:5px 10px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:13.5px;font-weight:700;background:transparent;color:#0f172a;outline:none;cursor:pointer;">
                                             <option value="10" selected>10</option>
                                             <option value="20">20</option>
                                             <option value="50">50</option>
@@ -6935,12 +7333,12 @@ setTimeout(function() {
                                     </div>
                                     <div style="display:flex;align-items:center;gap:6px;">
                                         <button id="jomPrevBtn" onclick="jomGoPage(jomState.page-1)"
-                                                style="width:32px;height:32px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;cursor:not-allowed;color:#cbd5e1;display:flex;align-items:center;justify-content:center;">
+                                                style="width:34px;height:34px;background:#fff;border:1.5px solid #cbd5e1;border-radius:6px;cursor:not-allowed;color:#cbd5e1;display:flex;align-items:center;justify-content:center;">
                                             <i class="fas fa-chevron-left"></i>
                                         </button>
-                                        <span id="jomPageLabel" style="color:#334155;font-size:13px;font-weight:600;padding:0 4px;">Page 1 of <?= max(1,ceil(count($jom_recent)/10)) ?></span>
+                                        <span id="jomPageLabel" style="color:#0f172a;font-size:13.5px;font-weight:700;padding:0 6px;">Page 1 of <?= max(1,ceil(count($jom_recent)/10)) ?></span>
                                         <button id="jomNextBtn" onclick="jomGoPage(jomState.page+1)"
-                                                style="width:32px;height:32px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;cursor:<?= count($jom_recent)>10?'pointer':'not-allowed' ?>;color:<?= count($jom_recent)>10?'#475569':'#cbd5e1' ?>;display:flex;align-items:center;justify-content:center;">
+                                                style="width:34px;height:34px;background:#fff;border:1.5px solid #cbd5e1;border-radius:6px;cursor:<?= count($jom_recent)>10?'pointer':'not-allowed' ?>;color:<?= count($jom_recent)>10?'#002F70':'#cbd5e1' ?>;display:flex;align-items:center;justify-content:center;">
                                             <i class="fas fa-chevron-right"></i>
                                         </button>
                                     </div>
@@ -7049,8 +7447,8 @@ setTimeout(function() {
                             }
 
                             // Tab button styles
-                            if (formBtn) formBtn.className = 'txn-subtab-btn green ' + (isForm     ? 'active' : 'inactive');
-                            if (histBtn) histBtn.className = 'txn-subtab-btn green ' + (isHistory  ? 'active' : 'inactive');
+                            if (formBtn) formBtn.className = 'txn-subtab-btn darkblue ' + (isForm     ? 'active' : 'inactive');
+                            if (histBtn) histBtn.className = 'txn-subtab-btn darkblue ' + (isHistory  ? 'active' : 'inactive');
                             if (combBtn) combBtn.className = 'txn-subtab-btn darkblue ' + (isCombined ? 'active' : 'inactive');
 
                             var headerBtns = document.getElementById('merchHistoryHeaderButtons');
@@ -7117,13 +7515,14 @@ setTimeout(function() {
                             if (_isRefreshingMH) return;
                             if (document.hidden) return; // Skip if tab is in background
 
+                            // NEVER refresh if ANY modal is currently open
+                            if (typeof window.isAnyModalOpen === 'function' && window.isAnyModalOpen()) return;
+                            var vm = document.getElementById('viewMerchandiseModal');
+                            if (vm && vm.style.display !== 'none' && vm.style.display !== '') return;
+
                             // Only refresh if Merchandise History tab is currently visible
                             var histPanel = document.getElementById('merchTab_history');
                             if (!histPanel || histPanel.style.display === 'none') return;
-
-                            // Do not refresh if any modal is open
-                            var openModal = document.querySelector('.modal[style*="display: block"], .modal[style*="display: flex"], .modal.show, .swal2-shown');
-                            if (openModal) return;
 
                             // Do not refresh if user is currently interacting with an input or dropdown
                             var activeEl = document.activeElement;
@@ -7140,12 +7539,15 @@ setTimeout(function() {
                                 if (!resp.ok) return;
                                 var data = await resp.json();
 
-                                if (data && typeof data.mh_count !== 'undefined') {
-                                    var currentRows = document.querySelectorAll('#mhTableBody .mh-row');
-                                    if (data.mh_count !== currentRows.length) {
-                                        window.location.reload();
+                                if (data && data.kpis) {
+                                    if (document.getElementById('mhKpiTxnCount') && typeof data.kpis.txn_count !== 'undefined') {
+                                        document.getElementById('mhKpiTxnCount').textContent = data.kpis.txn_count;
+                                    }
+                                    if (document.getElementById('mhKpiTotalEncoded') && typeof data.kpis.total_encoded !== 'undefined') {
+                                        document.getElementById('mhKpiTotalEncoded').textContent = data.kpis.total_encoded;
                                     }
                                 }
+                                // Silent KPI refresh only — NEVER reload page in background
                             } catch (e) {
                                 // Silent background fail
                             } finally {
@@ -7180,8 +7582,8 @@ setTimeout(function() {
                     </div>
 
                     <!-- Shift info -->
-                    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:10px;color:#166534;display:flex;align-items:center;gap:6px;">
-                        <i class="fas fa-clock"></i>
+                    <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:11px;color:#002F70;display:flex;align-items:center;gap:6px;">
+                        <i class="fas fa-clock" style="color:#002F70;"></i>
                         <span><strong><?= htmlspecialchars($merch_shift_name) ?></strong> · <?= htmlspecialchars($me['name'] ?? $me['username']) ?></span>
                     </div>
 
@@ -7450,7 +7852,7 @@ setTimeout(function() {
                 <!-- ── Cart header ────────────────────────────────── -->
                 <div class="cart-header">
                     <span style="font-size:12px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;">
-                        <i class="fas fa-shopping-basket" style="color:#28a745;"></i>Cart
+                        <i class="fas fa-shopping-basket" style="color:var(--petron-blue);"></i>Cart
                     </span>
                     <button type="button" class="txn-btn danger" onclick="clearCart()">
                         <i class="fas fa-trash"></i> Clear
@@ -9272,7 +9674,6 @@ setTimeout(function() {
                                 <div style="font-size:16px;font-weight:800;color:#00264D;">Request New Customer</div>
                                 <div style="font-size:12px;color:#64748b;">Submitted to the Manager for approval.</div>
                             </div>
-                            
                         </div>
                         <div style="padding:20px 22px;max-height:70vh;overflow:auto;">
                             <div class="txn-form-grid" style="margin-bottom:14px;">
@@ -9333,10 +9734,10 @@ setTimeout(function() {
                             <div id="customerRequestError" style="display:none;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:12px;padding:10px 12px;margin-bottom:14px;"></div>
                             <div style="display:flex;gap:10px;justify-content:flex-end;">
                                 <button type="button" onclick="closeCustomerRequestModal()"
-                         style="height:38px !important;padding:0 22px !important;background:#ffffff !important;background-color:#ffffff !important;color:#1e293b !important;border:1.5px solid #94a3b8 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 1px 2px rgba(0,0,0,0.05) !important;"
-                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('color','#0f172a','important');"
-                         onmouseout="this.style.setProperty('background-color','#ffffff','important');this.style.setProperty('color','#1e293b','important');">
-                   <span style="color:#1e293b !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
+                         style="height:38px !important;padding:0 22px !important;background:transparent !important;background-color:transparent !important;color:#334155 !important;border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:none !important;"
+                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('border-color','#94a3b8','important');this.style.setProperty('color','#0f172a','important');"
+                         onmouseout="this.style.setProperty('background-color','transparent','important');this.style.setProperty('border-color','#cbd5e1','important');this.style.setProperty('color','#334155','important');">
+                   <span style="color:#334155 !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
                  </button>
                                 <button type="button" id="customerRequestSubmitBtn" onclick="submitCustomerRequest()" class="txn-btn primary">
                                     <i class="fas fa-paper-plane"></i> Submit Request
@@ -11296,19 +11697,19 @@ setTimeout(function() {
                 const subtotal = item.quantity * item.unit_price;
                 const icon = item.item_type === 'service' ? 'fa-wrench' : 'fa-box';
                 const color = item.item_type === 'service' ? '#b45309' : '#28a745';
-                return `<div class="cart-item-row" style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-bottom:1px solid #f1f5f9;">
-                    <i class="fas ${icon}" style="color:${color};margin-top:3px;font-size:11px;flex-shrink:0;"></i>
+                return `<div class="cart-item-row" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #f1f5f9;">
+                    <i class="fas ${icon}" style="color:${color};font-size:13px;flex-shrink:0;"></i>
                     <div style="flex:1;min-width:0;">
-                        <div style="font-size:12px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(item.product_name)}</div>
-                        <div style="font-size:10px;color:#64748b;">₱${fmtNum(item.unit_price)} × ${item.quantity}</div>
+                        <div style="font-size:13.5px;font-weight:700;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(item.product_name)}</div>
+                        <div style="font-size:12px;font-weight:600;color:#475569;">₱${fmtNum(item.unit_price)} × ${item.quantity}</div>
                     </div>
                     <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
-                        <button type="button" onclick="cartQty(${idx},-1)" style="width:22px;height:22px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:4px;cursor:pointer;font-size:13px;line-height:1;padding:0;">−</button>
-                        <span style="font-size:12px;font-weight:700;text-align:center;">${item.quantity}</span>
-                        <button type="button" onclick="cartQty(${idx},+1)" style="width:22px;height:22px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:4px;cursor:pointer;font-size:13px;line-height:1;padding:0;">+</button>
+                        <button type="button" onclick="cartQty(${idx},-1)" style="width:26px;height:26px;border:1.5px solid #cbd5e1;background:#f8fafc;border-radius:5px;cursor:pointer;font-size:15px;font-weight:800;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;">−</button>
+                        <span style="font-size:13.5px;font-weight:800;color:#0f172a;min-width:18px;text-align:center;">${item.quantity}</span>
+                        <button type="button" onclick="cartQty(${idx},+1)" style="width:26px;height:26px;border:1.5px solid #cbd5e1;background:#f8fafc;border-radius:5px;cursor:pointer;font-size:15px;font-weight:800;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;">+</button>
                     </div>
-                    <div style="font-size:12px;font-weight:700;color:var(--petron-blue);text-align:right;flex-shrink:0;">₱${fmtNum(subtotal)}</div>
-                    <button type="button" onclick="cartRemove(${idx})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:13px;padding:0 2px;flex-shrink:0;" title="Remove">×</button>
+                    <div style="font-size:13.5px;font-weight:800;color:#002F70;text-align:right;flex-shrink:0;min-width:60px;">₱${fmtNum(subtotal)}</div>
+                    <button type="button" onclick="cartRemove(${idx})" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:16px;font-weight:700;padding:0 4px;flex-shrink:0;" title="Remove">×</button>
                 </div>`;
             }).join('');
 
@@ -11891,23 +12292,6 @@ setTimeout(function() {
         // Staff view: simple tracker without manager-level KPIs
         ?>
 
-        <?php if (!empty($jo_variance_alerts)): ?>
-        <!-- Job Order Variance Alert Banner -->
-        <div style="margin-bottom:14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px 16px;">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                <i class="fas fa-exclamation-triangle" style="color:#dc2626;font-size:14px;"></i>
-                <span style="font-weight:700;font-size:12.5px;color:#991b1b;">
-                    <?= count($jo_variance_alerts) ?> Job Order Variance Alert<?= count($jo_variance_alerts) > 1 ? 's' : '' ?> Detected
-                </span>
-            </div>
-            <div style="font-size:11.5px;color:#7f1d1d;line-height:1.6;padding-left:22px;">
-                <?php foreach ($jo_variance_alerts as $jva): ?>
-                    <div>• <strong><?= htmlspecialchars($jva['jo_ref']) ?></strong>: <?= htmlspecialchars($jva['message']) ?></div>
-                <?php endforeach; ?>
-            </div>
-        </div>
-        <?php endif; ?>
-
         <!-- Filter bar -->
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:14px;">
             <!-- Row 1: Search -->
@@ -12035,7 +12419,7 @@ setTimeout(function() {
             <div class="txn-card-body" style="padding:0;">
                 
                 <div style="width:100%; overflow-x:hidden; border-radius:0 0 8px 8px;">
-                <table class="txn-table" id="joUnifiedTable" style="width:100%; border-collapse:collapse; table-layout:fixed;">
+                <table class="txn-table report-table no-min-width print-table" id="joUnifiedTable" style="width:100%; border-collapse:collapse; table-layout:fixed;">
                     <colgroup>
                         <col style="width:11%;"><!-- JO # / OR NO. -->
                         <col style="width:20%;"><!-- CUSTOMER & VEHICLE -->
@@ -12046,16 +12430,16 @@ setTimeout(function() {
                         <col style="width:9%;"><!-- STATUS -->
                         <col style="width:10%;"><!-- ACTIONS -->
                     </colgroup>
-                    <thead style="background:linear-gradient(135deg,#002F70 0%,#003d8f 100%);">
-                        <tr>
-                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 8px;text-align:left;white-space:nowrap;overflow:hidden;">JO # / OR NO.</th>
-                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 8px;text-align:left;white-space:nowrap;overflow:hidden;">CUSTOMER & VEHICLE</th>
-                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 8px;text-align:left;white-space:nowrap;overflow:hidden;">SERVICE & MECHANIC</th>
-                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 8px;text-align:left;white-space:nowrap;overflow:hidden;">FEES</th>
-                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 8px;text-align:left;white-space:nowrap;overflow:hidden;">PAYMENT</th>
-                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 8px;text-align:left;white-space:nowrap;overflow:hidden;">SCHEDULE & DATE</th>
-                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 8px;text-align:center;white-space:nowrap;overflow:hidden;">STATUS</th>
-                            <th style="font-size:11.5px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:12px 8px;text-align:center;white-space:nowrap;overflow:hidden;">ACTIONS</th>
+                    <thead style="background:#002F70;">
+                        <tr style="background:#002F70;">
+                            <th style="font-size:13px;font-weight:800;color:#ffffff;background:#002F70;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:left;white-space:nowrap;overflow:hidden;border-bottom:2px solid #001f4d;">JO # / OR NO.</th>
+                            <th style="font-size:13px;font-weight:800;color:#ffffff;background:#002F70;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:left;white-space:nowrap;overflow:hidden;border-bottom:2px solid #001f4d;">CUSTOMER & VEHICLE</th>
+                            <th style="font-size:13px;font-weight:800;color:#ffffff;background:#002F70;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:left;white-space:nowrap;overflow:hidden;border-bottom:2px solid #001f4d;">SERVICE & MECHANIC</th>
+                            <th style="font-size:13px;font-weight:800;color:#ffffff;background:#002F70;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:left;white-space:nowrap;overflow:hidden;border-bottom:2px solid #001f4d;">FEES</th>
+                            <th style="font-size:13px;font-weight:800;color:#ffffff;background:#002F70;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:left;white-space:nowrap;overflow:hidden;border-bottom:2px solid #001f4d;">PAYMENT</th>
+                            <th style="font-size:13px;font-weight:800;color:#ffffff;background:#002F70;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:left;white-space:nowrap;overflow:hidden;border-bottom:2px solid #001f4d;">SCHEDULE & DATE</th>
+                            <th style="font-size:13px;font-weight:800;color:#ffffff;background:#002F70;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:center;white-space:nowrap;overflow:hidden;border-bottom:2px solid #001f4d;">STATUS</th>
+                            <th style="font-size:13px;font-weight:800;color:#ffffff;background:#002F70;text-transform:uppercase;letter-spacing:.4px;padding:12px 10px;text-align:center;white-space:nowrap;overflow:hidden;border-bottom:2px solid #001f4d;">ACTIONS</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -12360,42 +12744,44 @@ setTimeout(function() {
                                 <button type="button"
                                         onclick='viewJobOrderDetails(<?= htmlspecialchars($jo_data, ENT_QUOTES) ?>)'
                                         class="txn-btn secondary" 
-                                        style="width:100%;padding:4px 6px;font-size:11px;font-weight:700;box-sizing:border-box;text-align:center;justify-content:center;background:#eff6ff;color:#002F70;border:1px solid #bfdbfe;">
-                                    <i class="fas fa-eye" style="font-size:10px;"></i> View
+                                        style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;background:#f1f5f9 !important;color:#002F70 !important;border:1.5px solid #94a3b8 !important;white-space:nowrap !important;"
+                                        onmouseover="this.style.background='#dbeafe';this.style.borderColor='#3b82f6';"
+                                        onmouseout="this.style.background='#f1f5f9';this.style.borderColor='#94a3b8';">
+                                    <i class="fas fa-eye" style="font-size:12px !important;"></i> <span style="font-size:13px !important;font-weight:800 !important;white-space:nowrap !important;display:inline !important;">View</span>
                                 </button>
 
                                 <?php if ($wf_label === 'Voided'): ?>
-                                    <span style="font-size:10.5px;color:#991b1b;font-weight:700;text-align:center;padding:2px 0;">
+                                    <span style="font-size:12px;color:#991b1b;font-weight:800;text-align:center;padding:2px 0;">
                                         <i class="fas fa-ban"></i> Voided
                                     </span>
 
                                 <?php elseif ($wf_label === 'Void Requested' || ($pending_req && ($pending_req['request_type'] ?? '') === 'Void')): ?>
                                     <button type="button"
                                             onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
-                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-print"></i> Reprint
                                     </button>
-                                    <span style="font-size:10.5px;color:#dc2626;font-weight:700;text-align:center;padding:2px 0;">
+                                    <span style="font-size:12px;color:#dc2626;font-weight:800;text-align:center;padding:2px 0;">
                                         <i class="fas fa-clock"></i> Void Requested
                                     </span>
 
                                 <?php elseif ($wf_label === 'Adjustment Requested' || ($pending_req && ($pending_req['request_type'] ?? '') === 'Adjustment')): ?>
                                     <button type="button"
                                             onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
-                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-print"></i> Reprint
                                     </button>
-                                    <span style="font-size:10.5px;color:#d97706;font-weight:700;text-align:center;padding:2px 0;">
+                                    <span style="font-size:12px;color:#d97706;font-weight:800;text-align:center;padding:2px 0;">
                                         <i class="fas fa-clock"></i> Adjustment Requested
                                     </span>
 
                                 <?php elseif ($wf_label === 'Adjusted'): ?>
                                     <button type="button"
                                             onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
-                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-print"></i> Reprint
                                     </button>
-                                    <span style="font-size:10.5px;color:#4338ca;font-weight:700;text-align:center;padding:2px 0;">
+                                    <span style="font-size:12px;color:#4338ca;font-weight:800;text-align:center;padding:2px 0;">
                                         <i class="fas fa-check-circle"></i> Adjusted
                                     </span>
                                     <?php if (in_array($wf_status, ['Completed','Released'])): ?>
@@ -12415,7 +12801,7 @@ setTimeout(function() {
                                                 data-jo-vtype="<?= htmlspecialchars($job['vehicle_type'] ?? '') ?>"
                                                 data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
                                                 onclick="return openRequestAdjustModal(event, this);"
-                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                                class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
                                             <i class="fas fa-sliders-h"></i> Request Adjust
                                         </button>
                                         <button type="button"
@@ -12426,7 +12812,7 @@ setTimeout(function() {
                                                 data-jo-status="<?= htmlspecialchars($wf_label) ?>"
                                                 data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
                                                 onclick="return openRequestVoidModal(event, this);"
-                                                class="txn-btn danger" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;background:#dc2626;color:#fff;border:none;cursor:pointer;">
+                                                class="void-btn" >
                                             <i class="fas fa-ban"></i> Request Void
                                         </button>
                                     <?php endif; ?>
@@ -12434,21 +12820,21 @@ setTimeout(function() {
                                 <?php elseif ($wf_status === 'Released'): ?>
                                     <button type="button"
                                             onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
-                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-print"></i> Reprint
                                     </button>
 
                                 <?php elseif ($wf_status === 'Completed'): ?>
                                     <button type="button"
                                             onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
-                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-print"></i> Reprint
                                     </button>
 
                                     <?php if ($pay_status !== 'Paid'): ?>
                                         <button type="button"
                                                 onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
-                                                class="txn-btn success" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                                class="txn-btn success" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                             <i class="fas fa-money-bill-wave"></i>
                                             <?= in_array($pay_status, ['Partially Paid','Partial Payment','Partial']) ? 'Settle Balance' : 'Mark Paid' ?>
                                         </button>
@@ -12460,7 +12846,7 @@ setTimeout(function() {
                                         <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
                                         <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                         <button type="submit" 
-                                                class="txn-btn primary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;background:#002F70;color:#fff;border:none;">
+                                                class="txn-btn primary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;background:#002F70;color:#fff;border:none;">
                                             <i class="fas fa-car-side"></i> Release Vehicle
                                         </button>
                                     </form>
@@ -12481,7 +12867,7 @@ setTimeout(function() {
                                             data-jo-vtype="<?= htmlspecialchars($job['vehicle_type'] ?? '') ?>"
                                             data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
                                             onclick="return openRequestAdjustModal(event, this);"
-                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
                                         <i class="fas fa-sliders-h"></i> Request Adjust
                                     </button>
                                     <button type="button"
@@ -12492,7 +12878,7 @@ setTimeout(function() {
                                             data-jo-status="<?= htmlspecialchars($wf_label) ?>"
                                             data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
                                             onclick="return openRequestVoidModal(event, this);"
-                                            class="txn-btn danger" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;background:#dc2626;color:#fff;border:none;cursor:pointer;">
+                                            class="void-btn" >
                                         <i class="fas fa-ban"></i> Request Void
                                     </button>
 
@@ -12503,14 +12889,14 @@ setTimeout(function() {
                                             <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
                                             <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                             <button type="submit" 
-                                                    class="txn-btn success" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                                    class="txn-btn success" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                                 <i class="fas fa-check"></i> Mark Complete
                                             </button>
                                         </form>
                                     <?php else: ?>
                                         <button type="button"
                                                 onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',true,'tracker')"
-                                                class="txn-btn success" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                                class="txn-btn success" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                             <i class="fas fa-check"></i> Complete & Settle
                                         </button>
                                     <?php endif; ?>
@@ -12531,7 +12917,7 @@ setTimeout(function() {
                                             data-jo-vtype="<?= htmlspecialchars($job['vehicle_type'] ?? '') ?>"
                                             data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
                                             onclick="return openRequestAdjustModal(event, this);"
-                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
                                         <i class="fas fa-sliders-h"></i> Request Adjust
                                     </button>
                                     <button type="button"
@@ -12542,7 +12928,7 @@ setTimeout(function() {
                                             data-jo-status="<?= htmlspecialchars($wf_label) ?>"
                                             data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
                                             onclick="return openRequestVoidModal(event, this);"
-                                            class="txn-btn danger" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;background:#dc2626;color:#fff;border:none;cursor:pointer;">
+                                            class="void-btn" >
                                         <i class="fas fa-ban"></i> Request Void
                                     </button>
 
@@ -12553,7 +12939,7 @@ setTimeout(function() {
                                             <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
                                             <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                             <button type="submit" 
-                                                    class="txn-btn primary" style="width:100%;padding:4px 6px;font-size:10.5px;box-sizing:border-box;text-align:center;justify-content:center;">
+                                                    class="txn-btn primary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                                 <i class="fas fa-play"></i> Start In Progress
                                             </button>
                                         </form>
@@ -12575,7 +12961,7 @@ setTimeout(function() {
                                             data-jo-vtype="<?= htmlspecialchars($job['vehicle_type'] ?? '') ?>"
                                             data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
                                             onclick="return openRequestAdjustModal(event, this);"
-                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
                                         <i class="fas fa-sliders-h"></i> Request Adjust
                                     </button>
                                     <button type="button"
@@ -12586,7 +12972,7 @@ setTimeout(function() {
                                             data-jo-status="<?= htmlspecialchars($wf_label) ?>"
                                             data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
                                             onclick="return openRequestVoidModal(event, this);"
-                                            class="txn-btn danger" style="width:100%;padding:4px 6px;font-size:10px;box-sizing:border-box;text-align:center;justify-content:center;background:#dc2626;color:#fff;border:none;cursor:pointer;">
+                                            class="void-btn" >
                                         <i class="fas fa-ban"></i> Request Void
                                     </button>
                                 <?php endif; ?>
@@ -12796,16 +13182,14 @@ setTimeout(function() {
             if (_isRefreshingJO) return;
             if (document.hidden) return; // Skip if browser tab is in background
 
+            // NEVER refresh if ANY modal is currently open
+            if (typeof window.isAnyModalOpen === 'function' && window.isAnyModalOpen()) return;
+            var vm = document.getElementById('viewMerchandiseModal');
+            if (vm && vm.style.display !== 'none' && vm.style.display !== '') return;
+
             // Only refresh if Tracker tab is currently visible
             const trackerTab = document.getElementById('innerTab_tracker');
             if (trackerTab && trackerTab.style.display === 'none') return;
-
-            // Do not refresh if user has any modal open
-            const modals = ['paymentSettleModal', 'viewJobOrderModal', 'updateStatusModal', 'adjustJobOrderModal', 'txnRequestModal', 'requestAdjustModal', 'requestVoidModal'];
-            for (let mId of modals) {
-                const m = document.getElementById(mId);
-                if (m && (m.style.display === 'flex' || m.style.display === 'block')) return;
-            }
 
             try {
                 _isRefreshingJO = true;
@@ -12819,15 +13203,7 @@ setTimeout(function() {
                     if (document.getElementById('jo_kpi_completed_jo')) document.getElementById('jo_kpi_completed_jo').textContent = data.kpis.completed_jo;
                     if (document.getElementById('jo_kpi_merch_sold')) document.getElementById('jo_kpi_merch_sold').textContent = data.kpis.merch_sold;
                 }
-
-                if (typeof data.jo_count !== 'undefined') {
-                    const rows = document.querySelectorAll('#joUnifiedTable tbody tr.jo-data-row');
-                    const noRecRow = document.getElementById('joNoRecordsRow');
-                    const currentCount = rows.length;
-                    if (data.jo_count !== currentCount) {
-                        window.location.reload();
-                    }
-                }
+                // Silent KPI refresh only — NEVER reload page in background
             } catch (e) {
                 console.warn('Job Order Tracker refresh notice:', e);
             } finally {
@@ -12846,6 +13222,83 @@ setTimeout(function() {
         ══════════════════════════════════════════════════════════ -->
         <style>
         @keyframes pmSlideIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+
+        /* ── Modal Layout Centering Fix ──────────────────────────────────────
+           Centers all modal dialogs within the main content layout area ONLY.
+           Does NOT cover or include the sidebar navigation.
+        ──────────────────────────────────────────────────────────────────── */
+        #viewJobOrderModal,
+        #viewMerchandiseModal,
+        #updateStatusModal,
+        #adjustJobOrderModal,
+        #requestAdjustModal,
+        #requestVoidModal,
+        #paymentSettleModal,
+        #txnRequestModal,
+        #customerRequestModal {
+            display: none;               /* hidden by default — JS sets display:flex to open */
+            position: fixed !important;
+            top: 70px !important;       /* Below fixed top-header */
+            left: 250px !important;     /* To the right of the sidebar navigation — do NOT cover sidebar */
+            width: calc(100vw - 250px) !important; /* Only spans main content layout */
+            height: calc(100vh - 70px) !important; /* Layout height */
+            margin: 0 !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+            align-items: center !important;
+            justify-content: center !important;
+            overflow-y: auto !important;
+            z-index: 99999 !important;
+        }
+
+        /* When sidebar is collapsed */
+        body.sidebar-collapsed #viewJobOrderModal,
+        body.sidebar-collapsed #viewMerchandiseModal,
+        body.sidebar-collapsed #updateStatusModal,
+        body.sidebar-collapsed #adjustJobOrderModal,
+        body.sidebar-collapsed #requestAdjustModal,
+        body.sidebar-collapsed #requestVoidModal,
+        body.sidebar-collapsed #paymentSettleModal,
+        body.sidebar-collapsed #txnRequestModal,
+        body.sidebar-collapsed #customerRequestModal {
+            left: 70px !important;
+            width: calc(100vw - 70px) !important;
+        }
+
+        /* Mobile / small screen fallback */
+        @media (max-width: 991px) {
+            #viewJobOrderModal,
+            #viewMerchandiseModal,
+            #updateStatusModal,
+            #adjustJobOrderModal,
+            #requestAdjustModal,
+            #requestVoidModal,
+            #paymentSettleModal,
+            #txnRequestModal,
+            #customerRequestModal {
+                left: 0 !important;
+                top: 60px !important;
+                width: 100vw !important;
+                height: calc(100vh - 60px) !important;
+            }
+        }
+
+        /* Center the inner dialog card inside every modal backdrop */
+        #viewJobOrderModal > div,
+        #viewMerchandiseModal > div,
+        #updateStatusModal > div,
+        #adjustJobOrderModal > div,
+        #requestAdjustModal > div,
+        #requestVoidModal > div,
+        #paymentSettleModal > div,
+        #txnRequestModal > div,
+        #customerRequestModal > div {
+            margin: auto !important;
+            flex-shrink: 0;
+            max-width: min(1040px, calc(100% - 24px)) !important;
+            max-height: min(calc(100vh - 110px), 820px) !important;
+        }
+
         .pm-method-btn{flex:1;padding:8px 4px;border:1.5px solid #e2e8f0;border-radius:8px;
             background:#f8fafc;font-size:11px;font-weight:600;color:#64748b;cursor:pointer;text-align:center;
             transition:all .15s;line-height:1.4;}
@@ -12857,8 +13310,8 @@ setTimeout(function() {
             color:#1e293b;background:#fff;outline:none;box-sizing:border-box;transition:border-color .15s;}
         .pm-input:focus{border-color:#003d7a;}
         .pm-row{margin-bottom:13px;}
-        .pm-cancel-btn{padding:12px 20px !important;background:#ffffff !important;color:#334155 !important;border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;min-height:44px !important;white-space:nowrap !important;box-shadow:0 1px 2px rgba(0,0,0,0.05) !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all .15s ease !important;}
-        .pm-cancel-btn:hover{background:#f1f5f9 !important;color:#0f172a !important;border-color:#94a3b8 !important;}
+        .pm-cancel-btn{padding:12px 20px !important;background:transparent !important;background-color:transparent !important;color:#334155 !important;border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;min-height:44px !important;white-space:nowrap !important;box-shadow:none !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all .15s ease !important;}
+        .pm-cancel-btn:hover{background:#f1f5f9 !important;background-color:#f1f5f9 !important;color:#0f172a !important;border-color:#94a3b8 !important;}
         </style>
         <div id="paymentSettleModal" style="display:none;position:fixed;inset:0;z-index:10000000;
              background:rgba(0,0,0,.5);align-items:center;justify-content:center;">
@@ -13315,8 +13768,75 @@ setTimeout(function() {
 
             setText('viewJORemarks', val(joData.remarks || joData.staff_remarks || joData.service_description));
 
+            // Enhance status badges
+            var wfEl = document.getElementById('viewJOWorkflow');
+            if (wfEl) {
+                var wf = (joData.workflow_status || '').toLowerCase();
+                var wfColor = '#475569';
+                var wfBg = '#f1f5f9';
+                if (wf === 'completed' || wf === 'released' || wf === 'done') { wfColor = '#15803d'; wfBg = '#dcfce7'; }
+                else if (wf === 'in progress' || wf === 'in_progress') { wfColor = '#0369a1'; wfBg = '#e0f2fe'; }
+                else if (wf === 'pending') { wfColor = '#b45309'; wfBg = '#fef3c7'; }
+                else if (wf === 'cancelled' || wf === 'rejected') { wfColor = '#b91c1c'; wfBg = '#fee2e2'; }
+                wfEl.style.color = wfColor;
+                wfEl.style.backgroundColor = wfBg;
+            }
+
+            var payEl = document.getElementById('viewJOPayment');
+            if (payEl) {
+                var ps = (joData.payment_status || '').toLowerCase();
+                var pColor = '#475569';
+                var pBg = '#f1f5f9';
+                if (ps === 'paid') { pColor = '#15803d'; pBg = '#dcfce7'; }
+                else if (ps === 'partial') { pColor = '#b45309'; pBg = '#fef3c7'; }
+                else if (ps === 'unpaid') { pColor = '#b91c1c'; pBg = '#fee2e2'; }
+                payEl.style.color = pColor;
+                payEl.style.backgroundColor = pBg;
+            }
+
             var modal = document.getElementById('viewJobOrderModal');
-            if (modal) modal.style.display = 'flex';
+            if (modal) {
+                // Position modal relative to .main content area (EXCLUDES sidebar).
+                // We read the actual bounding rect of .main so the backdrop
+                // covers only the content area — sidebar stays fully visible.
+                var mainEl = document.querySelector('main.main') || document.querySelector('.main');
+                var isCollapsed = document.body.classList.contains('sidebar-collapsed');
+                var defaultSidebarW = isCollapsed ? 70 : 250;
+                var mLeft = (window.innerWidth >= 992) ? defaultSidebarW : 0;
+                var mTop = (window.innerWidth >= 992) ? 70 : 60;
+                var mWidth = window.innerWidth - mLeft;
+                var mHeight = window.innerHeight - mTop;
+                if (mainEl) {
+                    var r = mainEl.getBoundingClientRect();
+                    if (r.left > 0) mLeft = Math.round(r.left);
+                    if (r.top > 0) mTop = Math.round(r.top);
+                    if (r.width > 0) mWidth = Math.round(r.width);
+                    if (r.height > 0) mHeight = Math.round(r.height);
+                }
+
+                // Keep modal inside the DOM where it is (inside .main is fine —
+                // the sidebar's higher z-index naturally keeps it on top).
+                modal.style.setProperty('position',         'fixed',              'important');
+                modal.style.setProperty('left',             mLeft   + 'px',       'important');
+                modal.style.setProperty('top',              mTop    + 'px',       'important');
+                modal.style.setProperty('width',            mWidth  + 'px',       'important');
+                modal.style.setProperty('height',           mHeight + 'px',       'important');
+                modal.style.setProperty('right',            'auto',               'important');
+                modal.style.setProperty('bottom',           'auto',               'important');
+                modal.style.setProperty('display',          'flex',               'important');
+                modal.style.setProperty('align-items',      'center',             'important');
+                modal.style.setProperty('justify-content',  'center',             'important');
+                modal.style.setProperty('z-index',          '99999',              'important');
+                modal.style.setProperty('padding',          '16px',               'important');
+                modal.style.setProperty('box-sizing',       'border-box',         'important');
+                modal.style.setProperty('overflow-y',       'auto',               'important');
+                modal.style.setProperty('background',       'rgba(15,23,42,0.65)','important');
+                modal.style.setProperty('backdrop-filter',  'blur(4px)',          'important');
+
+                // Scroll body to top
+                var scrollBody = modal.querySelector('.vjo-scroll-body');
+                if (scrollBody) scrollBody.scrollTop = 0;
+            }
         }
 
         function printJobOrderReceiptFromModal() {
@@ -13326,7 +13846,8 @@ setTimeout(function() {
         }
         
         function closeViewJobOrderModal() {
-            document.getElementById('viewJobOrderModal').style.display = 'none';
+            var m = document.getElementById('viewJobOrderModal');
+            if (m) m.style.setProperty('display', 'none', 'important');
         }
         
         // Update Status Modal
@@ -13448,6 +13969,25 @@ setTimeout(function() {
                         document.getElementById('viewMTRemarks').textContent = txn.remarks || '—';
                         document.getElementById('viewMTStaff').textContent = txn.staff_name || '—';
                         
+                        // Combined Transaction - Job Order Details handling
+                        var isCombined = (txn.transaction_type === 'combined') || (txn.job_order_service && txn.job_order_service !== '');
+                        var joSection = document.getElementById('viewMTJobOrderSection');
+                        var itemsHeading = document.getElementById('viewMTItemsHeading');
+                        if (joSection) {
+                            if (isCombined) {
+                                joSection.style.display = 'block';
+                                var elServ = document.getElementById('viewMTJOService'); if (elServ) elServ.textContent = txn.job_order_service || '—';
+                                var elMech = document.getElementById('viewMTJOMechanic'); if (elMech) elMech.textContent = txn.job_order_mechanic_name || '—';
+                                var elPlate = document.getElementById('viewMTJOPlate'); if (elPlate) elPlate.textContent = txn.job_order_vehicle_plate || '—';
+                                var vehicleInfo = [txn.job_order_vehicle_brand, txn.job_order_vehicle_model, txn.job_order_vehicle_type].filter(Boolean).join(' ');
+                                var elVeh = document.getElementById('viewMTJOVehicle'); if (elVeh) elVeh.textContent = vehicleInfo || '—';
+                                if (itemsHeading) itemsHeading.innerHTML = '<i class="fas fa-boxes" style="margin-right:6px;color:#002F70;"></i> Purchased Items (Services & Merchandise)';
+                            } else {
+                                joSection.style.display = 'none';
+                                if (itemsHeading) itemsHeading.innerHTML = '<i class="fas fa-boxes" style="margin-right:6px;color:#002F70;"></i> Purchased Items';
+                            }
+                        }
+
                         // Populate items table (NO ACTION BUTTONS)
                         var items = txn.items || [];
                         var countBadge = document.getElementById('viewMTItemCountBadge');
@@ -13461,14 +14001,15 @@ setTimeout(function() {
                                 var unitPrice = parseFloat(item.unit_price || 0);
                                 var subtotal = parseFloat(item.subtotal || (qty * unitPrice));
                                 var sku = item.sku || '—';
-                                var cat = item.category || 'General';
+                                var cat = (item.category || 'General').replace(/</g, '&lt;');
+                                var name = (item.product_name || '—').replace(/</g, '&lt;');
 
                                 return '<tr style="border-bottom:1px solid #f1f5f9;">' +
-                                    '<td style="padding:10px 12px;font-weight:700;color:#1e293b;">' + (item.product_name || '—') + '</td>' +
-                                    '<td style="padding:10px;color:#64748b;font-size:11px;">' + (sku !== '—' ? '<span style="font-family:monospace;font-weight:600;color:#002F70;">' + sku + '</span><br>' : '') + cat + '</td>' +
-                                    '<td style="padding:10px;text-align:center;font-weight:700;color:#334155;">' + qtyDisplay + ' <span style="font-size:11px;color:#64748b;font-weight:500;">' + unit + '</span></td>' +
-                                    '<td style="padding:10px;text-align:right;color:#475569;font-weight:600;">₱' + unitPrice.toFixed(2) + '</td>' +
-                                    '<td style="padding:10px 12px;text-align:right;font-weight:800;color:#002F70;">₱' + subtotal.toFixed(2) + '</td>' +
+                                    '<td style="padding:7px 8px;font-weight:700;color:#1e293b;word-break:break-word;font-size:12px;line-height:1.3;">' + name + '</td>' +
+                                    '<td style="padding:7px 8px;color:#64748b;font-size:11px;word-break:break-word;line-height:1.3;">' + (sku !== '—' ? '<span style="font-family:monospace;font-weight:600;color:#002F70;">' + sku.replace(/</g, '&lt;') + '</span><br>' : '') + cat + '</td>' +
+                                    '<td style="padding:7px 6px;text-align:center;font-weight:700;color:#334155;font-size:12px;">' + qtyDisplay + ' <span style="font-size:11px;color:#64748b;font-weight:500;">' + unit.replace(/</g, '&lt;') + '</span></td>' +
+                                    '<td style="padding:7px 8px;text-align:right;color:#475569;font-weight:600;font-size:12px;white-space:nowrap;">₱' + unitPrice.toFixed(2) + '</td>' +
+                                    '<td style="padding:7px 8px;text-align:right;font-weight:800;color:#002F70;font-size:12px;white-space:nowrap;">₱' + subtotal.toFixed(2) + '</td>' +
                                 '</tr>';
                             }).join('');
                         } else {
@@ -13856,7 +14397,7 @@ setTimeout(function() {
                 var panel = document.getElementById('innerTab_' + t);
                 var btn   = document.getElementById('innerTabBtn_' + t);
                 if (!panel || !btn) return;
-                var themeMap = {merchandise:'green', tracker:'darkblue'};
+                var themeMap = {merchandise:'darkblue', tracker:'darkblue'};
                 var active = (t === tab);
                 panel.style.display = active ? 'block' : 'none';
                 btn.className = 'txn-subtab-btn ' + themeMap[t] + ' ' + (active ? 'active' : 'inactive');
@@ -13943,15 +14484,15 @@ setTimeout(function() {
                 <?php else: ?>
                 <div style="width:100%;">
                 <table class="txn-table" id="fuelHistoryTable" style="width:100%;table-layout:fixed;word-wrap:break-word;">
-                    <thead>
-                        <tr>
-                            <th style="width:22%">Txn ID</th>
-                            <th style="width:12%">Fuel Type</th>
-                            <th style="width:10%">Liters</th>
-                            <th style="width:12%">Amount</th>
-                            <th style="width:12%">Payment</th>
-                            <th style="width:18%">Date</th>
-                            <th style="width:14%">Status</th>
+                    <thead style="background:#002F70;">
+                        <tr style="background:#002F70;">
+                            <th style="width:22%;background:#002F70;color:#ffffff;border-bottom:2px solid #001f4d;">Txn ID</th>
+                            <th style="width:12%;background:#002F70;color:#ffffff;border-bottom:2px solid #001f4d;">Fuel Type</th>
+                            <th style="width:10%;background:#002F70;color:#ffffff;border-bottom:2px solid #001f4d;">Liters</th>
+                            <th style="width:12%;background:#002F70;color:#ffffff;border-bottom:2px solid #001f4d;">Amount</th>
+                            <th style="width:12%;background:#002F70;color:#ffffff;border-bottom:2px solid #001f4d;">Payment</th>
+                            <th style="width:18%;background:#002F70;color:#ffffff;border-bottom:2px solid #001f4d;">Date</th>
+                            <th style="width:14%;background:#002F70;color:#ffffff;border-bottom:2px solid #001f4d;">Status</th>
                         </tr>
                     </thead>
                     <tbody id="fhTableBody">
@@ -13961,8 +14502,12 @@ setTimeout(function() {
                         <td><?= htmlspecialchars($ft['fuel_type'] ?? '—') ?></td>
                         <td><?= number_format((float)($ft['liters'] ?? $ft['liters_sold'] ?? 0), 2) ?> L</td>
                         <td style="font-weight:700;color:var(--petron-blue);">₱<?= number_format((float)($ft['total_amount'] ?? $ft['amount'] ?? 0), 2) ?></td>
-                        <td style="font-size:11px;"><?= htmlspecialchars($ft['payment_method'] ?? '—') ?></td>
-                        <td style="font-size:11px;color:#64748b;white-space:nowrap;"><?= date('M j, Y h:i A', strtotime($ft['transaction_date'] ?? $ft['created_at'] ?? 'now')) ?></td>
+                        <td style="vertical-align:middle;box-sizing:border-box;">
+                            <div style="font-size:11.5px;color:#0f172a;font-weight:700;line-height:1.25;white-space:nowrap;"><?= date('M j, Y', strtotime($ft['transaction_date'] ?? $ft['created_at'] ?? 'now')) ?></div>
+                            <div style="font-size:10.5px;color:#64748b;font-weight:600;margin-top:2px;white-space:nowrap;display:inline-flex;align-items:center;gap:3px;">
+                                <i class="far fa-clock" style="font-size:9.5px;color:#94a3b8;"></i> <?= date('h:i A', strtotime($ft['transaction_date'] ?? $ft['created_at'] ?? 'now')) ?>
+                            </div>
+                        </td>
                         <td><?= status_badge($ft['status'] ?? 'Pending') ?></td>
                     </tr>
                     <?php endforeach; ?>
@@ -14042,204 +14587,243 @@ setTimeout(function() {
 
 
 
-<!-- View Job Order Details Modal -->
-        <div id="viewJobOrderModal" onclick="if(event.target===this) closeViewJobOrderModal();" style="display:none;position:fixed;inset:0;z-index:9999;
-             background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
-          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
-                      width:100%;max-width:600px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
-            <div style="background:#fff;border-bottom:1px solid #e2e8f0;padding:18px 24px;
-                        display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-              <div style="display:flex;align-items:center;gap:12px;">
-                <div style="width:36px;height:36px;background:#f0f7ff;border-radius:10px;
-                            display:flex;align-items:center;justify-content:center;">
-                  <i class="fas fa-clipboard-list" style="color:#002F70;font-size:16px;"></i>
-                </div>
-                <div>
-                  <div style="color:#002F70;font-weight:700;font-size:15px;">Job Order Details</div>
-                  <div id="viewJORef" style="color:#64748b;font-size:12px;margin-top:2px;"></div>
-                </div>
-              </div>
-            </div>
-            <div style="padding:20px 24px 24px 24px;flex:1;overflow-y:auto;">
-              <!-- Transaction Information -->
-              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:8px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
-                <i class="fas fa-info-circle" style="margin-right:6px;"></i>Transaction Information
-              </div>
-              <div style="display:grid;gap:10px;">
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">JO Number:</span>
-                  <span id="viewJORef2" style="font-size:13px;color:#002F70;font-weight:700;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">OR Number:</span>
-                  <span id="viewJOOrNo" style="font-size:12px;color:#475569;font-family:monospace;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Customer:</span>
-                  <span id="viewJOCustomer" style="font-size:13px;color:#1e293b;font-weight:600;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Contact:</span>
-                  <span id="viewJOContact" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Vehicle:</span>
-                  <span id="viewJOVehicle" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Brand / Model:</span>
-                  <span id="viewJOBrandModel" style="font-size:13px;color:#475569;font-weight:600;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Year Model:</span>
-                  <span id="viewJOYearModel" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Engine No.:</span>
-                  <span id="viewJOEngineNo" style="font-size:13px;color:#475569;font-family:monospace;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Chassis No.:</span>
-                  <span id="viewJOChassisNo" style="font-size:13px;color:#475569;font-family:monospace;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Mechanic:</span>
-                  <span id="viewJOMechanic" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Date Created:</span>
-                  <span id="viewJOCreated" style="font-size:12px;color:#64748b;">—</span>
-                </div>
-              </div>
-              <!-- Services -->
-              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
-                <i class="fas fa-wrench" style="margin-right:6px;"></i>Services
-              </div>
-              <div style="display:grid;gap:10px;">
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Service Type:</span>
-                  <span id="viewJOService" style="font-size:13px;color:#475569;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Est. Duration:</span>
-                  <span id="viewJODuration" style="font-size:13px;color:#475569;">—</span>
-                </div>
-              </div>
-              <!-- Merchandise -->
-              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
-                <i class="fas fa-box" style="margin-right:6px;"></i>Merchandise
-              </div>
-              <div style="display:grid;gap:10px;">
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Parts / Items:</span>
-                  <span id="viewJOParts" style="font-size:13px;color:#475569;">—</span>
-                </div>
-              </div>
-              <!-- Remarks -->
-              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
-                <i class="fas fa-comment-alt" style="margin-right:6px;"></i>Remarks
-              </div>
-              <div style="display:grid;gap:10px;">
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Notes:</span>
-                  <span id="viewJORemarks" style="font-size:13px;color:#475569;word-break:break-word;">—</span>
-                </div>
-              </div>
-              <!-- Payment -->
-              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#002F70;background:#f0f7ff;padding:8px 14px;margin:20px -24px 16px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
-                <i class="fas fa-credit-card" style="margin-right:6px;"></i>Payment
-              </div>
-              <div style="display:grid;gap:10px;">
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Status:</span>
-                  <span id="viewJOWorkflow" style="font-size:11px;font-weight:700;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Status:</span>
-                  <span id="viewJOPayment" style="font-size:11px;font-weight:700;">—</span>
-                </div>
-                <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;">
-                  <span style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Payment Method:</span>
-                  <span id="viewJOPayMethod" style="font-size:12px;color:#475569;font-weight:600;">—</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:4px;">
-                  <span style="font-size:12px;color:#64748b;font-weight:600;">Total Cost:</span>
-                  <span id="viewJOTotal" style="font-size:16px;font-weight:800;color:#003d7a;">₱0.00</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                  <span style="font-size:12px;color:#64748b;font-weight:600;">Amount Paid:</span>
-                  <span id="viewJOPaid" style="font-size:14px;font-weight:700;color:#166534;">₱0.00</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                  <span style="font-size:12px;color:#64748b;font-weight:600;">Balance Due:</span>
-                  <span id="viewJOBalance" style="font-size:14px;font-weight:700;color:#dc2626;">₱0.00</span>
-                </div>
-              </div>
-            </div>
-            <div style="padding:16px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-shrink:0;">
-              <button onclick="closeViewJobOrderModal()" style="padding:0 24px !important;height:40px !important;background:#003d7a !important;color:#ffffff !important;
-                      border:none !important;border-radius:8px !important;font-size:14px !important;font-weight:800 !important;cursor:pointer !important;
-                      display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all 0.15s !important;min-width:110px !important;box-shadow:0 2px 6px rgba(0,61,122,.3) !important;"
-                      onmouseover="this.style.background='#002855'"
-                      onmouseout="this.style.background='#003d7a'">
-                <i class="fas fa-times" style="margin-right:6px;color:#ffffff !important;"></i> Close
-              </button>
-            </div>
-          </div>
-        </div>
-        <!-- View Merchandise Transaction Modal -->
-        <div id="viewMerchandiseModal" onclick="if(event.target===this) closeViewMerchandiseModal();" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;
-             background:rgba(15,23,42,0.65);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
-          <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
-                      width:100%;max-width:760px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
+<!-- View Job Order Details Modal (Landscape Widescreen) -->
+        <div id="viewJobOrderModal" class="modal" onclick="if(event.target===this) closeViewJobOrderModal();" style="display:none;position:fixed;background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;overflow-y:auto;">
+
+          <div onclick="if(event.stopPropagation)event.stopPropagation();" style="background:#ffffff;border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,.35);border:1.5px solid #cbd5e1;
+                      width:100%;max-width:1040px;max-height:min(calc(100vh - 110px), 820px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;margin:auto;">
             
-            <!-- Modal Header -->
-            <div style="background:linear-gradient(135deg,#002F70,#004b99);padding:18px 24px;
+            <!-- Modal Header (Landscape) -->
+            <div style="background:linear-gradient(135deg,#002F70 0%,#004b99 100%);padding:14px 22px;border-bottom:2px solid #001f4d;
                         display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
               <div style="display:flex;align-items:center;gap:12px;">
-                <div style="width:38px;height:38px;background:rgba(255,255,255,.18);border-radius:10px;
+                <div style="width:38px;height:38px;background:rgba(255,255,255,.18);border-radius:8px;
                             display:flex;align-items:center;justify-content:center;">
-                  <i class="fas fa-shopping-cart" style="color:#fff;font-size:16px;"></i>
+                  <i class="fas fa-clipboard-list" style="color:#ffffff;font-size:18px;"></i>
                 </div>
                 <div>
-                  <div style="color:#fff;font-weight:800;font-size:15px;letter-spacing:.3px;">Merchandise Transaction Details</div>
-                  <div id="viewMTxnRef" style="color:#bfdbfe;font-size:11.5px;font-family:monospace;margin-top:2px;"></div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="color:#ffffff;font-weight:800;font-size:17px;letter-spacing:.3px;">Job Order Details</span>
+                    <span id="viewJORef" style="background:rgba(255,255,255,.22);color:#ffffff;font-size:13px;font-weight:800;font-family:monospace;padding:2px 10px;border-radius:6px;letter-spacing:.5px;"></span>
+                  </div>
+                  <div style="color:#bfdbfe;font-size:12px;margin-top:2px;">Complete customer, vehicle, services, merchandise, and payment audit</div>
                 </div>
               </div>
             </div>
 
-            <!-- Modal Body -->
-            <div style="padding:20px 24px;max-height:calc(100vh - 280px);overflow-y:auto;">
+            <!-- Modal Body (Landscape 2-Column Grid) -->
+            <div class="vjo-scroll-body" style="padding:16px 20px;flex:1;min-height:0;overflow-y:auto;background:#f8fafc;display:grid;grid-template-columns:1.08fr 1fr;gap:16px;box-sizing:border-box;">
+              
+              <!-- LEFT COLUMN: Customer & Vehicle -->
+              <div style="display:flex;flex-direction:column;gap:14px;">
+                
+                <!-- 1. Customer & Transaction Information -->
+                <div style="background:#ffffff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+                  <div style="font-size:12.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#002F70;background:#eff6ff;border:1px solid #bfdbfe;padding:6px 12px;border-radius:6px;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+                    <i class="fas fa-id-card"></i> Customer &amp; Transaction Info
+                  </div>
+                  <div style="display:grid;gap:9px;">
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">JO Number:</span>
+                      <span id="viewJORef2" style="font-size:14px;color:#002F70;font-weight:800;font-family:monospace;">—</span>
+                      <span id="viewJOTxnId" style="display:none;"></span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">OR Number:</span>
+                      <span id="viewJOOrNo" style="font-size:13.5px;color:#334155;font-family:monospace;font-weight:700;">—</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Customer:</span>
+                      <span id="viewJOCustomer" style="font-size:14.5px;color:#0f172a;font-weight:800;">—</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Contact:</span>
+                      <span id="viewJOContact" style="font-size:13.5px;color:#1e293b;font-weight:700;">—</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Date Created:</span>
+                      <span id="viewJOCreated" style="font-size:13px;color:#475569;font-weight:600;">—</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 2. Vehicle Specifications -->
+                <div style="background:#ffffff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+                  <div style="font-size:12.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#002F70;background:#eff6ff;border:1px solid #bfdbfe;padding:6px 12px;border-radius:6px;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+                    <i class="fas fa-car"></i> Vehicle Specifications
+                  </div>
+                  <div style="display:grid;gap:9px;">
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Vehicle / Plate:</span>
+                      <span id="viewJOVehicle" style="font-size:14px;color:#002F70;font-weight:800;">—</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Brand / Model:</span>
+                      <span id="viewJOBrandModel" style="font-size:13.5px;color:#1e293b;font-weight:700;">—</span>
+                      <span id="viewJOVehicleBrand" style="display:none;"></span>
+                      <span id="viewJOVehicleModel" style="display:none;"></span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Year Model:</span>
+                      <span id="viewJOYearModel" style="font-size:13.5px;color:#334155;font-weight:700;">—</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Engine No.:</span>
+                      <span id="viewJOEngineNo" style="font-size:13px;color:#334155;font-family:monospace;font-weight:700;">—</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Chassis No.:</span>
+                      <span id="viewJOChassisNo" style="font-size:13px;color:#334155;font-family:monospace;font-weight:700;">—</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Mechanic:</span>
+                      <span id="viewJOMechanic" style="font-size:14px;color:#002F70;font-weight:800;">—</span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              <!-- RIGHT COLUMN: Services, Merchandise, Remarks & Payment -->
+              <div style="display:flex;flex-direction:column;gap:14px;">
+                
+                <!-- 3. Services & Merchandise Items -->
+                <div style="background:#ffffff;border:1.5px solid #e2e8f0;border-radius:10px;padding:12px 16px;box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+                  <div style="font-size:12.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#002F70;background:#eff6ff;border:1px solid #bfdbfe;padding:6px 12px;border-radius:6px;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+                    <i class="fas fa-wrench"></i> Services &amp; Merchandise
+                  </div>
+                  <div style="display:grid;gap:9px;">
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Service Type:</span>
+                      <span id="viewJOService" style="font-size:14px;color:#0f172a;font-weight:800;">—</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Est. Duration:</span>
+                      <span id="viewJODuration" style="font-size:13.5px;color:#334155;font-weight:700;">—</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Parts / Items:</span>
+                      <span id="viewJOParts" style="font-size:13.5px;color:#0f172a;font-weight:700;">—</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Notes / Remarks:</span>
+                      <span id="viewJORemarks" style="font-size:13px;color:#475569;font-weight:600;word-break:break-word;">—</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 4. Payment & Billing Summary -->
+                <div style="background:#ffffff;border:1.5px solid #e2e8f0;border-radius:10px;padding:12px 16px;box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+                  <div style="font-size:12.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#002F70;background:#eff6ff;border:1px solid #bfdbfe;padding:6px 12px;border-radius:6px;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+                    <i class="fas fa-credit-card"></i> Payment &amp; Billing Summary
+                  </div>
+                  <div style="display:grid;gap:9px;">
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:center;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Workflow Status:</span>
+                      <div><span id="viewJOWorkflow" style="font-size:12.5px;font-weight:800;display:inline-block;padding:3px 10px;border-radius:12px;">—</span></div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:center;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Payment Status:</span>
+                      <div><span id="viewJOPayment" style="font-size:12.5px;font-weight:800;display:inline-block;padding:3px 10px;border-radius:12px;">—</span></div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:125px 1fr;gap:8px;align-items:baseline;">
+                      <span style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;">Payment Method:</span>
+                      <span id="viewJOPayMethod" style="font-size:13.5px;color:#1e293b;font-weight:700;">—</span>
+                    </div>
+                  </div>
+
+                  <!-- Financial Totals Box -->
+                  <div style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:8px;padding:10px 14px;display:flex;flex-direction:column;gap:6px;margin-top:10px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <span style="font-size:13px;color:#002F70;font-weight:800;text-transform:uppercase;">Total Cost:</span>
+                      <span id="viewJOTotal" style="font-size:20px;font-weight:900;color:#002F70;">₱0.00</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <span style="font-size:12.5px;color:#166534;font-weight:700;text-transform:uppercase;">Amount Paid:</span>
+                      <span id="viewJOPaid" style="font-size:15px;font-weight:800;color:#166534;">₱0.00</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <span style="font-size:12.5px;color:#dc2626;font-weight:700;text-transform:uppercase;">Balance Due:</span>
+                      <span id="viewJOBalance" style="font-size:15px;font-weight:800;color:#dc2626;">₱0.00</span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+
+            <!-- Modal Footer (Landscape) -->
+            <div style="padding:12px 22px;border-top:1.5px solid #e2e8f0;background:#ffffff;display:flex;justify-content:flex-end;align-items:center;flex-shrink:0;">
+              <button type="button" onclick="closeViewJobOrderModal()"
+                      style="padding:0 30px !important;height:38px !important;background:transparent !important;background-color:transparent !important;color:#334155 !important;
+                             border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:14px !important;font-weight:700 !important;cursor:pointer !important;
+                             display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all 0.15s ease !important;min-width:110px !important;box-shadow:none !important;"
+                      onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('border-color','#94a3b8','important');this.style.setProperty('color','#0f172a','important');"
+                      onmouseout="this.style.setProperty('background-color','transparent','important');this.style.setProperty('border-color','#cbd5e1','important');this.style.setProperty('color','#334155','important');">
+                Close
+              </button>
+            </div>
+
+
+          </div>
+        </div>
+        <!-- View Merchandise Transaction Modal -->
+        <div id="viewMerchandiseModal" class="modal" style="display:none;position:fixed;
+             background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;overflow-y:auto;">
+          <div onclick="if(event.stopPropagation)event.stopPropagation();" style="background:#fff;border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,.35);border:1.5px solid #cbd5e1;
+                      width:100%;max-width:1040px;max-height:min(calc(100vh - 110px), 820px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;margin:auto;">
+            
+            <!-- Modal Header -->
+            <div style="background:linear-gradient(135deg,#002F70,#004b99);padding:12px 20px;
+                        display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="width:36px;height:36px;background:rgba(255,255,255,.18);border-radius:8px;
+                            display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-shopping-cart" style="color:#fff;font-size:16px;"></i>
+                </div>
+                <div>
+                  <div style="color:#fff;font-weight:800;font-size:16px;letter-spacing:.3px;display:flex;align-items:center;gap:8px;">
+                    <span>Merchandise Transaction Details</span>
+                    <span id="viewMTxnRef" style="background:rgba(255,255,255,.22);color:#ffffff;font-size:12px;font-family:monospace;font-weight:800;padding:2px 8px;border-radius:6px;"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Modal Body (Landscape 2-Column Grid) -->
+            <div style="padding:14px 18px;flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;background:#f8fafc;box-sizing:border-box;">
               
               <!-- ── TOP TRANSACTION-LEVEL ACTION BAR ─────────────────── -->
-              <div id="viewMTTopActionBar" style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:12px 16px;margin-bottom:20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;">
+              <div id="viewMTTopActionBar" style="background:#ffffff;border:1.5px solid #e2e8f0;border-radius:10px;padding:8px 14px;margin-bottom:12px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;">
                 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;" id="viewMTActionButtonsGroup">
                   <!-- Settle & Pay Button -->
                   <button type="button" id="viewMTSettlePayBtn" onclick="onViewMTSettleClick()"
                           class="txn-btn success"
-                          style="display:none;background:#16a34a !important;color:#ffffff !important;border:none !important;padding:8px 16px !important;border-radius:8px !important;font-size:12px !important;font-weight:700 !important;cursor:pointer !important;box-shadow:0 2px 6px rgba(22,163,74,0.3) !important;">
-                    <i class="fas fa-hand-holding-usd" style="margin-right:6px;"></i> Settle &amp; Pay
+                          style="display:none;background:#16a34a !important;color:#ffffff !important;border:none !important;padding:6px 14px !important;border-radius:6px !important;font-size:12px !important;font-weight:700 !important;cursor:pointer !important;box-shadow:0 2px 6px rgba(22,163,74,0.3) !important;">
+                    <i class="fas fa-hand-holding-usd" style="margin-right:5px;"></i> Settle &amp; Pay
                   </button>
 
                   <!-- Reprint Receipt Button -->
                   <button type="button" id="viewMTReprintBtn" onclick="onViewMTReprintClick()"
                           class="txn-btn secondary"
-                          style="padding:8px 14px !important;border-radius:8px !important;font-size:12px !important;font-weight:700 !important;cursor:pointer !important;">
-                    <i class="fas fa-print" style="margin-right:6px;"></i> Reprint Receipt
+                          style="padding:6px 12px !important;border-radius:6px !important;font-size:12px !important;font-weight:700 !important;cursor:pointer !important;">
+                    <i class="fas fa-print" style="margin-right:5px;"></i> Reprint Receipt
                   </button>
 
                   <!-- Request Adjustment Button -->
                   <button type="button" id="viewMTAdjustBtn" onclick="onViewMTAdjustClick(event)"
                           class="txn-btn secondary"
-                          style="padding:8px 14px !important;border-radius:8px !important;font-size:12px !important;font-weight:700 !important;color:#d97706 !important;border-color:#fcd34d !important;cursor:pointer !important;">
-                    <i class="fas fa-sliders-h" style="margin-right:6px;"></i> Request Adjustment
+                          style="padding:6px 12px !important;border-radius:6px !important;font-size:12px !important;font-weight:700 !important;color:#d97706 !important;border-color:#fcd34d !important;cursor:pointer !important;">
+                    <i class="fas fa-sliders-h" style="margin-right:5px;"></i> Request Adjustment
                   </button>
 
                   <!-- Request Void Button -->
                   <button type="button" id="viewMTVoidBtn" onclick="onViewMTVoidClick(event)"
                           class="txn-btn danger"
-                          style="padding:8px 14px !important;border-radius:8px !important;font-size:12px !important;font-weight:700 !important;background:#dc2626 !important;color:#ffffff !important;border:none !important;cursor:pointer !important;">
-                    <i class="fas fa-ban" style="margin-right:6px;"></i> Request Void
+                          style="padding:6px 12px !important;border-radius:6px !important;font-size:12px !important;font-weight:700 !important;background:#dc2626 !important;color:#ffffff !important;border:none !important;cursor:pointer !important;">
+                    <i class="fas fa-ban" style="margin-right:5px;"></i> Request Void
                   </button>
                 </div>
 
@@ -14247,137 +14831,148 @@ setTimeout(function() {
                 <div id="viewMTStatusBadges" style="display:flex;align-items:center;gap:6px;"></div>
               </div>
 
-              <!-- Transaction Information Grid -->
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:18px;">
-                <div style="display:grid;gap:8px;">
-                  <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:baseline;">
-                    <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Customer:</span>
-                    <span id="viewMTCustomer" style="font-size:13px;color:#1e293b;font-weight:700;">—</span>
-                  </div>
-                  <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:baseline;">
-                    <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Date Released:</span>
-                    <span id="viewMTDate" style="font-size:12.5px;color:#334155;">—</span>
-                  </div>
-                  <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:baseline;">
-                    <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Shift:</span>
-                    <span id="viewMTShift" style="font-size:12.5px;color:#334155;">—</span>
-                  </div>
-                </div>
-
-                <div style="display:grid;gap:8px;">
-                  <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:baseline;">
-                    <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Payment Method:</span>
-                    <span id="viewMTPayMethod" style="font-size:12.5px;color:#1e293b;font-weight:600;">—</span>
-                  </div>
-                  <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:baseline;">
-                    <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Payment Status:</span>
-                    <span id="viewMTPayStatus" style="font-size:11px;font-weight:700;">—</span>
-                  </div>
-                  <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:baseline;">
-                    <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Encoded By:</span>
-                    <span id="viewMTStaff" style="font-size:12.5px;color:#334155;">—</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Job Order Service Details (for Combined Transactions) -->
-              <div id="viewMTJobOrderSection" style="display:none;background:#f0f7ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:14px 16px;margin-bottom:18px;">
-                <div style="font-size:11px;font-weight:800;color:#1d4ed8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                  <i class="fas fa-wrench"></i> Job Order Service Details (Combined Transaction)
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                  <div style="display:grid;gap:6px;">
-                    <div style="display:grid;grid-template-columns:100px 1fr;gap:6px;align-items:baseline;">
-                      <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Service:</span>
-                      <span id="viewMTJOService" style="font-size:12.5px;color:#1e293b;font-weight:700;">—</span>
+              <!-- 2-Column Content Grid -->
+              <div style="display:grid;grid-template-columns:1fr 1.12fr;gap:12px;align-items:start;">
+                
+                <!-- LEFT COLUMN: Info, JO Details, Financials, Remarks -->
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                  
+                  <!-- Transaction Information -->
+                  <div style="background:#ffffff;border:1.5px solid #e2e8f0;border-radius:10px;padding:10px 14px;">
+                    <div style="font-size:11.5px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                      <i class="fas fa-id-card"></i> Transaction &amp; Customer Info
                     </div>
-                    <div style="display:grid;grid-template-columns:100px 1fr;gap:6px;align-items:baseline;">
-                      <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Mechanic:</span>
-                      <span id="viewMTJOMechanic" style="font-size:12.5px;color:#334155;">—</span>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;">
+                      <div>
+                        <div style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;">Customer</div>
+                        <div id="viewMTCustomer" style="font-size:13px;color:#0f172a;font-weight:800;">—</div>
+                      </div>
+                      <div>
+                        <div style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;">Payment Method</div>
+                        <div id="viewMTPayMethod" style="font-size:12.5px;color:#1e293b;font-weight:700;">—</div>
+                      </div>
+                      <div>
+                        <div style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;">Date Released</div>
+                        <div id="viewMTDate" style="font-size:12px;color:#334155;font-weight:600;">—</div>
+                      </div>
+                      <div>
+                        <div style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;">Payment Status</div>
+                        <div id="viewMTPayStatus" style="font-size:11.5px;font-weight:800;">—</div>
+                      </div>
+                      <div>
+                        <div style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;">Shift</div>
+                        <div id="viewMTShift" style="font-size:12px;color:#334155;font-weight:600;">—</div>
+                      </div>
+                      <div>
+                        <div style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;">Encoded By</div>
+                        <div id="viewMTStaff" style="font-size:12px;color:#334155;font-weight:600;">—</div>
+                      </div>
                     </div>
                   </div>
-                  <div style="display:grid;gap:6px;">
-                    <div style="display:grid;grid-template-columns:100px 1fr;gap:6px;align-items:baseline;">
-                      <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Plate No:</span>
-                      <span id="viewMTJOPlate" style="font-size:12px;font-weight:700;color:#1d4ed8;">—</span>
+
+                  <!-- Job Order Service Details (for Combined Transactions) -->
+                  <div id="viewMTJobOrderSection" style="display:none;background:#f0f7ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:10px 14px;">
+                    <div style="font-size:11px;font-weight:800;color:#1d4ed8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                      <i class="fas fa-wrench"></i> Job Order Service Details (Combined)
                     </div>
-                    <div style="display:grid;grid-template-columns:100px 1fr;gap:6px;align-items:baseline;">
-                      <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Vehicle:</span>
-                      <span id="viewMTJOVehicle" style="font-size:12px;color:#334155;">—</span>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;">
+                      <div>
+                        <span style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;">Service:</span>
+                        <div id="viewMTJOService" style="font-size:12.5px;color:#1e293b;font-weight:800;">—</div>
+                      </div>
+                      <div>
+                        <span style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;">Plate No:</span>
+                        <div id="viewMTJOPlate" style="font-size:12px;font-weight:800;color:#1d4ed8;">—</div>
+                      </div>
+                      <div>
+                        <span style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;">Mechanic:</span>
+                        <div id="viewMTJOMechanic" style="font-size:12px;color:#334155;font-weight:600;">—</div>
+                      </div>
+                      <div>
+                        <span style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;">Vehicle:</span>
+                        <div id="viewMTJOVehicle" style="font-size:12px;color:#334155;font-weight:600;">—</div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              <!-- Product Line Items Table (NO ACTION COLUMN) -->
-              <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:18px;">
-                <div style="background:#f1f5f9;padding:10px 14px;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#334155;display:flex;align-items:center;justify-content:space-between;">
-                  <span id="viewMTItemsHeading"><i class="fas fa-boxes" style="margin-right:6px;color:#002F70;"></i> Purchased Merchandise Items</span>
-                  <span id="viewMTItemCountBadge" style="font-size:10.5px;color:#64748b;font-weight:600;"></span>
-                </div>
-                <div id="viewMTItems" style="max-height:220px;overflow-y:auto;">
-                  <table style="width:100%;font-size:12px;border-collapse:collapse;table-layout:fixed;">
-                    <colgroup>
-                      <col style="width:34%;"><!-- Product Name -->
-                      <col style="width:18%;"><!-- SKU / Cat -->
-                      <col style="width:14%;"><!-- Qty -->
-                      <col style="width:16%;"><!-- Unit Price -->
-                      <col style="width:18%;"><!-- Subtotal -->
-                    </colgroup>
-                    <thead style="background:#f8fafc;position:sticky;top:0;z-index:2;">
-                      <tr>
-                        <th style="text-align:left;padding:8px 12px;border-bottom:1.5px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:700;">Product</th>
-                        <th style="text-align:left;padding:8px 10px;border-bottom:1.5px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:700;">SKU / Category</th>
-                        <th style="text-align:center;padding:8px 10px;border-bottom:1.5px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:700;">Qty</th>
-                        <th style="text-align:right;padding:8px 10px;border-bottom:1.5px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:700;">Unit Price</th>
-                        <th style="text-align:right;padding:8px 12px;border-bottom:1.5px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:700;">Subtotal</th>
-                      </tr>
-                    </thead>
-                    <tbody id="viewMTItemsBody">
-                      <tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">Loading items...</td></tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                  <!-- Financial Breakdown -->
+                  <div style="background:#ffffff;border:1.5px solid #cbd5e1;border-radius:10px;padding:10px 14px;display:grid;gap:5px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <span style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase;">Subtotal (Vatable):</span>
+                      <span id="viewMTSubtotal" style="font-size:12.5px;font-weight:700;color:#475569;">₱0.00</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <span style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase;">VAT (12%):</span>
+                      <span id="viewMTVAT" style="font-size:12.5px;font-weight:700;color:#475569;">₱0.00</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding-top:6px;border-top:1.5px solid #e2e8f0;">
+                      <span style="font-size:13.5px;color:#002F70;font-weight:900;text-transform:uppercase;">Total Amount:</span>
+                      <span id="viewMTTotal" style="font-size:18px;font-weight:900;color:#002F70;">₱0.00</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <span style="font-size:12px;color:#166534;font-weight:700;text-transform:uppercase;">Amount Paid:</span>
+                      <span id="viewMTPaid" style="font-size:14px;font-weight:800;color:#166534;">₱0.00</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <span style="font-size:12px;color:#dc2626;font-weight:700;text-transform:uppercase;">Outstanding Balance:</span>
+                      <span id="viewMTBalance" style="font-size:15px;font-weight:800;color:#dc2626;">₱0.00</span>
+                    </div>
+                  </div>
 
-              <!-- Financial Breakdown -->
-              <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px 20px;display:grid;gap:8px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                  <span style="font-size:12px;color:#64748b;font-weight:600;">Subtotal (Vatable):</span>
-                  <span id="viewMTSubtotal" style="font-size:13px;font-weight:700;color:#475569;">₱0.00</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                  <span style="font-size:12px;color:#64748b;font-weight:600;">VAT (12%):</span>
-                  <span id="viewMTVAT" style="font-size:13px;font-weight:700;color:#475569;">₱0.00</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1.5px solid #e2e8f0;">
-                  <span style="font-size:14px;color:#1e293b;font-weight:800;">Total Amount:</span>
-                  <span id="viewMTTotal" style="font-size:18px;font-weight:800;color:#002F70;">₱0.00</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                  <span style="font-size:12px;color:#64748b;font-weight:600;">Amount Paid:</span>
-                  <span id="viewMTPaid" style="font-size:14px;font-weight:700;color:#166534;">₱0.00</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:4px;">
-                  <span style="font-size:13px;color:#dc2626;font-weight:700;">Outstanding Balance:</span>
-                  <span id="viewMTBalance" style="font-size:16px;font-weight:800;color:#dc2626;">₱0.00</span>
-                </div>
-              </div>
+                  <!-- Remarks -->
+                  <div id="viewMTRemarksContainer" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px;display:flex;align-items:baseline;gap:8px;">
+                    <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;">Remarks:</span>
+                    <span id="viewMTRemarks" style="font-size:12px;color:#475569;font-style:italic;word-break:break-word;">—</span>
+                  </div>
 
-              <!-- Remarks -->
-              <div id="viewMTRemarksContainer" style="margin-top:14px;display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:baseline;">
-                <span style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Remarks:</span>
-                <span id="viewMTRemarks" style="font-size:12px;color:#475569;font-style:italic;">—</span>
+                </div>
+
+                <!-- RIGHT COLUMN: Purchased Items Table -->
+                <div style="background:#ffffff;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;">
+                  <div style="background:#f1f5f9;padding:8px 12px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                    <span id="viewMTItemsHeading" style="font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#002F70;">
+                      <i class="fas fa-boxes" style="margin-right:6px;color:#002F70;"></i> Purchased Items
+                    </span>
+                    <span id="viewMTItemCountBadge" style="font-size:11px;color:#64748b;font-weight:700;background:#e2e8f0;padding:2px 8px;border-radius:10px;"></span>
+                  </div>
+                  <div id="viewMTItems" style="max-height:360px;overflow-y:auto;overflow-x:hidden !important;width:100% !important;box-sizing:border-box;">
+                    <table class="report-table no-min-width print-table" style="width:100% !important;max-width:100% !important;min-width:0 !important;table-layout:fixed !important;border-collapse:collapse !important;">
+                      <colgroup>
+                        <col style="width:34%;"><!-- Product Name -->
+                        <col style="width:22%;"><!-- SKU / Cat -->
+                        <col style="width:12%;"><!-- Qty -->
+                        <col style="width:16%;"><!-- Unit Price -->
+                        <col style="width:16%;"><!-- Subtotal -->
+                      </colgroup>
+                      <thead style="background:#f8fafc;position:sticky;top:0;z-index:2;">
+                        <tr>
+                          <th style="text-align:left;padding:7px 8px;border-bottom:1.5px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:800;white-space:normal !important;">Product</th>
+                          <th style="text-align:left;padding:7px 8px;border-bottom:1.5px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:800;white-space:normal !important;">Category</th>
+                          <th style="text-align:center;padding:7px 6px;border-bottom:1.5px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:800;white-space:normal !important;">Qty</th>
+                          <th style="text-align:right;padding:7px 8px;border-bottom:1.5px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:800;white-space:normal !important;">Price</th>
+                          <th style="text-align:right;padding:7px 8px;border-bottom:1.5px solid #e2e8f0;color:#64748b;font-size:11px;font-weight:800;white-space:normal !important;">Subtotal</th>
+                        </tr>
+                      </thead>
+                      <tbody id="viewMTItemsBody">
+                        <tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">Loading items...</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
               </div>
 
             </div>
 
             <!-- Modal Footer -->
-            <div style="padding:14px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;gap:10px;">
+            <div style="padding:10px 20px;border-top:1.5px solid #e2e8f0;background:#ffffff;display:flex;justify-content:flex-end;align-items:center;flex-shrink:0;">
               <button type="button" onclick="closeViewMerchandiseModal()"
-                      style="height:38px !important;padding:0 24px !important;background:#002F70 !important;color:#ffffff !important;border:none !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;min-width:100px !important;box-shadow:0 2px 6px rgba(0,47,112,0.2) !important;"
-                      onmouseover="this.style.background='#001f4d'" onmouseout="this.style.background='#002F70'">
-                <i class="fas fa-times" style="margin-right:6px;color:#ffffff !important;"></i> Close
+                      style="padding:0 30px !important;height:38px !important;background:transparent !important;background-color:transparent !important;color:#334155 !important;
+                             border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:14px !important;font-weight:700 !important;cursor:pointer !important;
+                             display:inline-flex !important;align-items:center !important;justify-content:center !important;transition:all 0.15s ease !important;min-width:110px !important;box-shadow:none !important;"
+                      onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('border-color','#94a3b8','important');this.style.setProperty('color','#0f172a','important');"
+                      onmouseout="this.style.setProperty('background-color','transparent','important');this.style.setProperty('border-color','#cbd5e1','important');this.style.setProperty('color','#334155','important');">
+                Close
               </button>
             </div>
 
@@ -14385,10 +14980,10 @@ setTimeout(function() {
         </div>
 
         <!-- Update Status Modal -->
-        <div id="updateStatusModal" style="display:none;position:fixed;inset:0;z-index:9999;
-             background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
+        <div id="updateStatusModal" style="display:none;position:fixed;inset:0;z-index:999999;
+             background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;overflow-y:auto;">
           <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
-                      width:100%;max-width:480px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
+                      width:100%;max-width:480px;margin:auto;max-height:calc(100vh - 40px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
             <div style="background:linear-gradient(135deg,#003d7a,#0369a1);padding:15px 20px;
                         display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
               <div style="display:flex;align-items:center;gap:10px;">
@@ -14443,10 +15038,10 @@ setTimeout(function() {
               </div>
               <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">
                 <button type="button" onclick="closeUpdateStatusModal()"
-                         style="height:38px !important;padding:0 22px !important;background:#ffffff !important;background-color:#ffffff !important;color:#1e293b !important;border:1.5px solid #94a3b8 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 1px 2px rgba(0,0,0,0.05) !important;"
-                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('color','#0f172a','important');"
-                         onmouseout="this.style.setProperty('background-color','#ffffff','important');this.style.setProperty('color','#1e293b','important');">
-                   <span style="color:#1e293b !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
+                         style="height:38px !important;padding:0 22px !important;background:transparent !important;background-color:transparent !important;color:#334155 !important;border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:none !important;"
+                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('border-color','#94a3b8','important');this.style.setProperty('color','#0f172a','important');"
+                         onmouseout="this.style.setProperty('background-color','transparent','important');this.style.setProperty('border-color','#cbd5e1','important');this.style.setProperty('color','#334155','important');">
+                   <span style="color:#334155 !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
                  </button>
                 <button type="submit" class="txn-btn primary">
                   <i class="fas fa-check"></i> Update Status
@@ -14457,10 +15052,10 @@ setTimeout(function() {
         </div>
 
         <!-- Adjust Job Order Modal -->
-        <div id="adjustJobOrderModal" style="display:none;position:fixed;inset:0;z-index:9999;
-             background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:75px 16px 50px 16px;box-sizing:border-box;overflow-y:auto;">
+        <div id="adjustJobOrderModal" style="display:none;position:fixed;inset:0;z-index:999999;
+             background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;overflow-y:auto;">
           <div style="background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.3);
-                      width:100%;max-width:600px;margin:auto;max-height:calc(100vh - 140px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
+                      width:100%;max-width:600px;margin:auto;max-height:calc(100vh - 40px);display:flex;flex-direction:column;overflow:hidden;animation:pmSlideIn .18s ease;">
             <div style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:15px 20px;
                         display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
               <div style="display:flex;align-items:center;gap:10px;">
@@ -14540,10 +15135,10 @@ setTimeout(function() {
               </div>
               <div style="padding:15px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">
                 <button type="button" onclick="closeAdjustJobOrderModal()"
-                         style="height:38px !important;padding:0 22px !important;background:#ffffff !important;background-color:#ffffff !important;color:#1e293b !important;border:1.5px solid #94a3b8 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 1px 2px rgba(0,0,0,0.05) !important;"
-                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('color','#0f172a','important');"
-                         onmouseout="this.style.setProperty('background-color','#ffffff','important');this.style.setProperty('color','#1e293b','important');">
-                   <span style="color:#1e293b !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
+                         style="height:38px !important;padding:0 22px !important;background:transparent !important;background-color:transparent !important;color:#334155 !important;border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:none !important;"
+                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('border-color','#94a3b8','important');this.style.setProperty('color','#0f172a','important');"
+                         onmouseout="this.style.setProperty('background-color','transparent','important');this.style.setProperty('border-color','#cbd5e1','important');this.style.setProperty('color','#334155','important');">
+                   <span style="color:#334155 !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
                  </button>
                 <button type="submit" class="txn-btn primary">
                   <i class="fas fa-save"></i> Save Changes
@@ -14558,9 +15153,8 @@ setTimeout(function() {
           <div style="background:#fff;border-radius:14px;max-width:500px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);margin:auto;max-height:min(88vh, 640px);display:flex;flex-direction:column;overflow:hidden;">
              <div style="background:#002F70;color:#ffffff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
                <h3 style="margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
-                  <i class="fas fa-sliders-h" style="color:#ffffff !important;"></i> <span>REQUEST ADJUSTMENT</span>
+                  <i class="fas fa-sliders-h" style="color:#ffffff !important;"></i> <span id="reqAdjTitleText">REQUEST ADJUSTMENT</span>
                </h3>
-               
              </div>
              <form id="requestAdjustForm" onsubmit="submitRequestAdjust(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
                <input type="hidden" id="reqAdjTxnId" name="transaction_id">
@@ -14575,6 +15169,20 @@ setTimeout(function() {
                    <div><span style="color:#64748b;font-size:11px;">Current Status:</span> <strong id="reqAdjStatus" style="color:#0f172a;display:block;">—</strong></div>
                    <div><span style="color:#64748b;font-size:11px;">Payment Status:</span> <strong id="reqAdjPayStatus" style="color:#0f172a;display:block;">—</strong></div>
                    <div style="grid-column:span 2;"><span style="color:#64748b;font-size:11px;">Payment Method:</span> <strong id="reqAdjPayMethod" style="color:#0f172a;display:block;">—</strong></div>
+                 </div>
+
+                 <!-- Combined Transaction Components Tree (Visible for combined transactions) -->
+                 <div id="reqAdjCombinedTree" style="display:none;margin-bottom:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:11px 13px;font-size:12.5px;color:#166534;">
+                   <div style="font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px;color:#15803d;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">
+                     <i class="fas fa-sitemap"></i> Combined Transaction Adjustment
+                   </div>
+                   <div style="font-family:monospace,Consolas,'Courier New',sans-serif;font-size:12px;line-height:1.6;color:#14532d;background:#ffffff;padding:8px 10px;border-radius:6px;border:1px solid #dcfce7;">
+                     <div>├── <strong style="color:#002F70;">Job Order details:</strong> <span id="reqAdjJOMService">—</span> (<span id="reqAdjJOMPlate">—</span>) | Mech: <span id="reqAdjJOMMechanic">—</span></div>
+                     <div>└── <strong style="color:#002F70;">Merchandise details:</strong> <span id="reqAdjJOMMerch">—</span></div>
+                   </div>
+                   <div style="margin-top:6px;font-size:11.5px;text-align:right;color:#166534;">
+                     Combined Total: <strong id="reqAdjJOMTotal" style="font-size:12.5px;color:#002F70;">₱0.00</strong>
+                   </div>
                  </div>
 
                  <!-- What needs to be corrected? -->
@@ -14622,10 +15230,10 @@ setTimeout(function() {
 
                <div style="padding:14px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
                  <button type="button" onclick="closeRequestAdjustModal()"
-                         style="height:38px !important;padding:0 22px !important;background:#ffffff !important;background-color:#ffffff !important;color:#1e293b !important;border:1.5px solid #94a3b8 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 1px 2px rgba(0,0,0,0.05) !important;"
-                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('color','#0f172a','important');"
-                         onmouseout="this.style.setProperty('background-color','#ffffff','important');this.style.setProperty('color','#1e293b','important');">
-                   <span style="color:#1e293b !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
+                         style="height:38px !important;padding:0 22px !important;background:transparent !important;background-color:transparent !important;color:#334155 !important;border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:none !important;"
+                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('border-color','#94a3b8','important');this.style.setProperty('color','#0f172a','important');"
+                         onmouseout="this.style.setProperty('background-color','transparent','important');this.style.setProperty('border-color','#cbd5e1','important');this.style.setProperty('color','#334155','important');">
+                   <span style="color:#334155 !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
                  </button>
                  <button type="submit" id="reqAdjSubmitBtn"
                          style="height:38px !important;padding:0 22px !important;background:#002F70 !important;color:#ffffff !important;border:none !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 2px 6px rgba(0,47,112,0.25) !important;">
@@ -14641,9 +15249,8 @@ setTimeout(function() {
           <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);margin:auto;max-height:min(88vh, 580px);display:flex;flex-direction:column;overflow:hidden;">
              <div style="background:#dc2626;color:#ffffff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
                <h3 style="margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
-                  <i class="fas fa-ban" style="color:#ffffff !important;"></i> <span>REQUEST VOID</span>
+                  <i class="fas fa-ban" style="color:#ffffff !important;"></i> <span id="reqVoidTitleText">REQUEST VOID</span>
                </h3>
-               
              </div>
              <form id="requestVoidForm" onsubmit="submitRequestVoid(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
                <input type="hidden" id="reqVoidTxnId" name="transaction_id">
@@ -14657,6 +15264,23 @@ setTimeout(function() {
                    <div><span style="color:#7f1d1d;font-size:11px;">Customer:</span> <strong id="reqVoidCustomer" style="color:#0f172a;display:block;">—</strong></div>
                    <div><span style="color:#7f1d1d;font-size:11px;">JO Status:</span> <strong id="reqVoidStatus" style="color:#0f172a;display:block;">—</strong></div>
                    <div><span style="color:#7f1d1d;font-size:11px;">Payment Status:</span> <strong id="reqVoidPayStatus" style="color:#0f172a;display:block;">—</strong></div>
+                 </div>
+
+                 <!-- Combined Transaction Notice & Tree (Visible for combined transactions) -->
+                 <div id="reqVoidCombinedNotice" style="display:none;margin-bottom:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:9px 12px;font-size:12px;color:#991b1b;line-height:1.4;">
+                   <i class="fas fa-exclamation-triangle" style="margin-right:4px;"></i> <strong>Combined Transaction Notice:</strong> Voiding this transaction will cancel both the Job Order and Merchandise items together under a single void request.
+                 </div>
+                 <div id="reqVoidCombinedTree" style="display:none;margin-bottom:14px;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:11px 13px;font-size:12.5px;color:#9f1239;">
+                   <div style="font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px;color:#be123c;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">
+                     <i class="fas fa-sitemap"></i> Void Combined Transaction
+                   </div>
+                   <div style="font-family:monospace,Consolas,'Courier New',sans-serif;font-size:12px;line-height:1.6;color:#881337;background:#ffffff;padding:8px 10px;border-radius:6px;border:1px solid #ffe4e6;">
+                     <div>├── <strong style="color:#991b1b;">Job Order details:</strong> <span id="reqVoidJOMService">—</span> (<span id="reqVoidJOMPlate">—</span>)</div>
+                     <div>└── <strong style="color:#991b1b;">Merchandise details:</strong> <span id="reqVoidJOMMerch">—</span></div>
+                   </div>
+                   <div style="margin-top:6px;font-size:11.5px;text-align:right;color:#9f1239;">
+                     Total to Void: <strong id="reqVoidJOMTotal" style="font-size:12.5px;color:#991b1b;">₱0.00</strong>
+                   </div>
                  </div>
 
                  <!-- Void Reason -->
@@ -14684,10 +15308,10 @@ setTimeout(function() {
 
                <div style="padding:14px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
                  <button type="button" onclick="closeRequestVoidModal()"
-                         style="height:38px !important;padding:0 22px !important;background:#ffffff !important;background-color:#ffffff !important;color:#1e293b !important;border:1.5px solid #94a3b8 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 1px 2px rgba(0,0,0,0.05) !important;"
-                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('color','#0f172a','important');"
-                         onmouseout="this.style.setProperty('background-color','#ffffff','important');this.style.setProperty('color','#1e293b','important');">
-                   <span style="color:#1e293b !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
+                         style="height:38px !important;padding:0 22px !important;background:transparent !important;background-color:transparent !important;color:#334155 !important;border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:none !important;"
+                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('border-color','#94a3b8','important');this.style.setProperty('color','#0f172a','important');"
+                         onmouseout="this.style.setProperty('background-color','transparent','important');this.style.setProperty('border-color','#cbd5e1','important');this.style.setProperty('color','#334155','important');">
+                   <span style="color:#334155 !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
                  </button>
                  <button type="submit" id="reqVoidSubmitBtn"
                          style="height:38px !important;padding:0 22px !important;background:#dc2626 !important;color:#ffffff !important;border:none !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 2px 6px rgba(220,38,38,0.25) !important;">
@@ -14705,7 +15329,6 @@ setTimeout(function() {
                <h3 id="txnRequestTitle" style="margin:0;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
                   <i id="txnRequestIcon" class="fas fa-paper-plane" style="color:#ffffff !important;"></i> <span id="txnRequestTitleText" style="color:#ffffff !important;">Request Transaction Action</span>
                </h3>
-               
              </div>
              <form id="txnRequestForm" onsubmit="submitTxnRequest(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
                <input type="hidden" id="txnRequestTxnId" name="transaction_id">
@@ -14729,10 +15352,10 @@ setTimeout(function() {
               </div>
               <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;background:#f8fafc;flex-shrink:0;">
                 <button type="button" onclick="closeTxnRequestModal()"
-                         style="height:38px !important;padding:0 22px !important;background:#ffffff !important;background-color:#ffffff !important;color:#1e293b !important;border:1.5px solid #94a3b8 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 1px 2px rgba(0,0,0,0.05) !important;"
-                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('color','#0f172a','important');"
-                         onmouseout="this.style.setProperty('background-color','#ffffff','important');this.style.setProperty('color','#1e293b','important');">
-                   <span style="color:#1e293b !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
+                         style="height:38px !important;padding:0 22px !important;background:transparent !important;background-color:transparent !important;color:#334155 !important;border:1.5px solid #cbd5e1 !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:none !important;"
+                         onmouseover="this.style.setProperty('background-color','#f1f5f9','important');this.style.setProperty('border-color','#94a3b8','important');this.style.setProperty('color','#0f172a','important');"
+                         onmouseout="this.style.setProperty('background-color','transparent','important');this.style.setProperty('border-color','#cbd5e1','important');this.style.setProperty('color','#334155','important');">
+                   <span style="color:#334155 !important;font-weight:700 !important;font-size:13px !important;">Cancel</span>
                  </button>
                 <button type="submit" id="txnRequestSubmitBtn" class="txn-btn primary">
                   <i class="fas fa-paper-plane"></i> Submit Request
@@ -14872,11 +15495,11 @@ window.viewMerchandiseDetails = function(txnId, btn) {
                         var cat = (item.category || 'General').replace(/</g, '&lt;');
                         var name = (item.product_name || '—').replace(/</g, '&lt;');
                         return '<tr style="border-bottom:1px solid #f1f5f9;">' +
-                            '<td style="padding:10px 12px;font-weight:700;color:#1e293b;">' + name + '</td>' +
-                            '<td style="padding:10px;color:#64748b;font-size:11px;">' + (sku !== '—' ? '<span style="font-family:monospace;font-weight:600;color:#002F70;">' + sku.replace(/</g, '&lt;') + '</span><br>' : '') + cat + '</td>' +
-                            '<td style="padding:10px;text-align:center;font-weight:700;color:#334155;">' + qtyDisplay + ' <span style="font-size:11px;color:#64748b;font-weight:500;">' + unit.replace(/</g, '&lt;') + '</span></td>' +
-                            '<td style="padding:10px;text-align:right;color:#475569;font-weight:600;">₱' + unitPrice.toFixed(2) + '</td>' +
-                            '<td style="padding:10px 12px;text-align:right;font-weight:800;color:#002F70;">₱' + subtotal.toFixed(2) + '</td>' +
+                            '<td style="padding:7px 8px;font-weight:700;color:#1e293b;word-break:break-word;font-size:12px;line-height:1.3;">' + name + '</td>' +
+                            '<td style="padding:7px 8px;color:#64748b;font-size:11px;word-break:break-word;line-height:1.3;">' + (sku !== '—' ? '<span style="font-family:monospace;font-weight:600;color:#002F70;">' + sku.replace(/</g, '&lt;') + '</span><br>' : '') + cat + '</td>' +
+                            '<td style="padding:7px 6px;text-align:center;font-weight:700;color:#334155;font-size:12px;">' + qtyDisplay + ' <span style="font-size:11px;color:#64748b;font-weight:500;">' + unit.replace(/</g, '&lt;') + '</span></td>' +
+                            '<td style="padding:7px 8px;text-align:right;color:#475569;font-weight:600;font-size:12px;white-space:nowrap;">₱' + unitPrice.toFixed(2) + '</td>' +
+                            '<td style="padding:7px 8px;text-align:right;font-weight:800;color:#002F70;font-size:12px;white-space:nowrap;">₱' + subtotal.toFixed(2) + '</td>' +
                         '</tr>';
                     }).join('');
                 } else {
@@ -14952,6 +15575,40 @@ window.openTxnRequestModal = function(e, txnId, recordSource, requestType, custo
         return window.openRequestAdjustModal(joData);
     } else {
         return window.openRequestVoidModal(joData);
-    }
+    };
 };
+</script>
+
+<script>
+/* ── MODAL PORTAL FIX ────────────────────────────────────────────────────────
+   Moves all modal overlays to <body> at page load.
+   This is necessary because .main has { position:fixed; z-index:1 } which
+   creates a stacking context, making the sidebar (z-index:1001) render
+   above any position:fixed modal inside .main regardless of the modal's z-index.
+   By re-parenting modals to <body>, they enter the root stacking context and
+   z-index:999999 properly covers everything including the sidebar.
+─────────────────────────────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', function() {
+    var modalIds = [
+        'viewJobOrderModal',
+        'viewMerchandiseModal',
+        'updateStatusModal',
+        'adjustJobOrderModal',
+        'requestAdjustModal',
+        'requestVoidModal',
+        'txnRequestModal',
+        'customerRequestModal',
+        'paymentSettleModal',
+        'globalRemarksModal',
+        'addServiceModal',
+        'addVehicleModal',
+        'addProductModal'
+    ];
+    modalIds.forEach(function(id) {
+        var m = document.getElementById(id);
+        if (m && m.parentNode !== document.body) {
+            document.body.appendChild(m);
+        }
+    });
+});
 </script>

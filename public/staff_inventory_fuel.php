@@ -462,49 +462,173 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
 ?>
 <div class="stock-page">
 <style>
-.stock-page{overflow-x:hidden;max-width:100%;padding:0 !important;margin:0 !important;}
-.int-head { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-top:0 !important; margin-bottom:25px !important; padding:0 !important; border:none !important; width:100%; }
-.int-head h1 { margin:0; color:#002f70 !important; font-size:24px !important; font-weight:700 !important; text-transform:uppercase !important; letter-spacing:0.5px !important; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important; display:flex !important; align-items:center !important; gap:10px !important; line-height:1.2 !important; }
-.main, .main-content { padding-top: 0 !important; }
+html, body {
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+}
+.stock-page {
+    overflow-x: hidden !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 12px 24px 130px 16px !important;
+    margin: 0 !important;
+}
+#toggleScrollBtn, .toggle-scroll-btn {
+    right: 12px !important;
+    bottom: 48px !important;
+    z-index: 999 !important;
+}
+.page-head, .int-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+    margin-top: 0 !important;
+    margin-bottom: 25px !important;
+    padding: 0 !important;
+    border: none !important;
+    width: 100%;
+}
+.page-head h1, .page-head .h1, .int-head h1 {
+    margin: 0;
+    color: #002F70 !important;
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    line-height: 1.2 !important;
+}
+.main, .main-content {
+    padding-top: 0 !important;
+}
 
-.inv-card { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #e9ecef; margin-bottom:20px; }
-.inv-card-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e9ecef; flex-wrap:wrap; gap:8px; }
-.inv-card-title { font-size:1rem; font-weight:700; color:#002F70; display:flex; align-items:center; gap:8px; }
-.inv-card-body  { padding:20px; }
+.inv-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    border: 1.5px solid #cbd5e1;
+    margin-bottom: 14px;
+    overflow: hidden;
+}
+.inv-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 18px;
+    border-bottom: 1.5px solid #cbd5e1;
+    flex-wrap: wrap;
+    gap: 8px;
+    background: #fff;
+}
+.inv-card-title {
+    font-size: 1rem !important;
+    font-weight: 700 !important;
+    color: #002F70 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+}
+.inv-card-body {
+    padding: 14px 18px;
+}
 
-/* ── Sub Tabs Styling - Matches Reports sub-tab design ── */
-.fuel-sub-tabs { display: flex !important; flex-wrap: wrap !important; margin-bottom: 22px !important; border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; border-bottom: 3px solid #00264D !important; gap: 0 !important; background: transparent !important; padding: 0 !important; width: 100% !important; }
-.fuel-sub-tab-btn { flex: 1 !important; min-width: 140px !important; padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-radius: 0 !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; text-align: center !important; cursor: pointer !important; margin-bottom: 0 !important; box-shadow: none !important; }
-.fuel-sub-tab-btn:last-child { border-right: none !important; }
-.fuel-sub-tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
-.fuel-sub-tab-btn.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; box-shadow: none !important; }
+/* ── Sub Tabs Styling ── */
+.fuel-sub-tabs {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    margin-bottom: 12px !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+    border-bottom: 3px solid #002F6C !important;
+    gap: 0 !important;
+    background: transparent !important;
+    padding: 0 !important;
+    width: 100% !important;
+}
+.fuel-sub-tab-btn {
+    flex: 1 !important;
+    min-width: 140px !important;
+    padding: 10px 16px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    color: #334155 !important;
+    background: #ffffff !important;
+    border: none !important;
+    border-right: 1.5px solid #cbd5e1 !important;
+    border-radius: 0 !important;
+    text-decoration: none !important;
+    transition: all 0.15s ease !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    text-align: center !important;
+    cursor: pointer !important;
+    margin-bottom: 0 !important;
+    box-shadow: none !important;
+}
+.fuel-sub-tab-btn:last-child {
+    border-right: none !important;
+}
+.fuel-sub-tab-btn:hover {
+    background: #f1f5f9 !important;
+    color: #002F6C !important;
+    text-decoration: none !important;
+}
+.fuel-sub-tab-btn.active {
+    background: #002F6C !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    box-shadow: none !important;
+}
 
-/* â”€â”€ Filter Bar â”€â”€ */
-.inv-filter-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px; position:relative; z-index:25; isolation:isolate; pointer-events:auto; }
+/* ── Filter Bar ── */
+.inv-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 12px;
+    position: relative;
+    z-index: 25;
+    isolation: isolate;
+    pointer-events: auto;
+}
 .inv-filter-bar select, .inv-filter-bar input[type=text], .inv-filter-bar input[type=date] {
-    padding:8px 10px;
-    border:1px solid #ced4da;
-    border-radius:6px;
-    font-size:15.5px;
-    color:#374151;
-    background:#fff;
-    height:36px;
-    outline:none;
-    pointer-events:auto;
-    position:relative;
-    z-index:2;
+    padding: 8px 12px;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #0f172a;
+    background: #fff;
+    height: 36px;
+    outline: none;
+    pointer-events: auto;
+    position: relative;
+    z-index: 2;
 }
 .inv-filter-bar select {
-    cursor:pointer;
-    appearance:none;
-    -webkit-appearance:none;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2394a3b8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 10px center;
     padding-right: 28px;
 }
-.inv-filter-bar select option { background:#fff; color:#374151; }
-.inv-filter-bar select option:checked { background:#f1f5f9; color:#002F70; font-weight:600; }
+.inv-filter-bar select option { background:#fff; color:#0f172a; }
+.inv-filter-bar select option:checked { background:#f1f5f9; color:#002F70; font-weight:700; }
 .inv-filter-bar input[type=text] { cursor:text; }
 .fuel-filter-actions { display:flex; align-items:center; gap:8px; }
 
@@ -523,68 +647,90 @@ input#sq, input#df {
 #sq { cursor: text !important; }
 .inv-filter-bar button, .inv-filter-bar a { pointer-events:auto !important; position:relative; z-index:3; }
 
-/* â”€â”€ No-Scroll Fixed-Layout Table â”€â”€ */
-body, html { overflow-x: hidden !important; }
-
+/* ── Zero-Scroll Fixed-Layout Tables ── */
 .table-wrap {
-    width: 100%;
-    max-width: 100%;
-    overflow: hidden;
-    padding: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border-radius: 8px !important;
+    border: 1.5px solid #cbd5e1 !important;
+    box-sizing: border-box !important;
 }
-.fuel-table {
+table.fuel-table, table.stock-alerts-table {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
-    table-layout: auto !important; min-width: 0 !important;
-    border-collapse: collapse;
-    border-spacing: 0;
-    font-size: 15px;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    border-spacing: 0 !important;
+    margin: 0 !important;
 }
-.fuel-table thead tr { background: #002F6C; }
-.fuel-table thead th {
-    padding: 10px 6px; 
-    text-align: center; 
-    font-size: 14px; 
-    font-weight: 700;
-    color: #fff; 
-    text-transform: uppercase; 
-    letter-spacing: .3px;
-    white-space: normal; 
-    word-wrap: break-word; 
-    overflow-wrap: break-word;
-    line-height: 1.35; 
-    vertical-align: middle;
+table.fuel-table thead tr, table.stock-alerts-table thead tr {
+    background: #002F70 !important;
 }
-.fuel-table tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .1s; }
-.fuel-table tbody tr:hover { background: #eff6ff; }
-.fuel-table tbody td {
-    padding: 9px 6px; 
-    color: #1e293b; 
-    vertical-align: middle;
-    text-align: center; 
-    overflow: hidden; 
-    text-overflow: ellipsis;
-    white-space: nowrap; 
-    line-height: 1.4; 
+table.fuel-table thead th, table.stock-alerts-table thead th {
+    padding: 10px 8px !important;
+    text-align: center;
+    font-size: 11.5px !important;
+    font-weight: 800 !important;
+    color: #ffffff !important;
+    text-transform: uppercase !important;
+    letter-spacing: .2px !important;
+    border: 1px solid #00264D !important;
+    white-space: nowrap !important;
+    vertical-align: middle !important;
+    line-height: 1.25 !important;
+    box-sizing: border-box !important;
 }
-.fuel-table tbody td:last-child {
-    overflow: visible;
-    text-overflow: clip;
-    white-space: normal;
+table.fuel-table tbody tr, table.stock-alerts-table tbody tr {
+    border-bottom: 1px solid #e2e8f0;
+    transition: background .1s;
 }
-.fuel-table tbody td.bold { font-weight: 700; color: #002F70; }
+table.fuel-table tbody tr:hover, table.stock-alerts-table tbody tr:hover {
+    background: #f8fafc !important;
+}
+table.fuel-table tbody td, table.stock-alerts-table tbody td {
+    padding: 8px 8px !important;
+    color: #0f172a !important;
+    vertical-align: middle !important;
+    text-align: center;
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
+    border: 1px solid #e2e8f0 !important;
+    line-height: 1.35 !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+}
+table.fuel-table tbody td.bold, table.stock-alerts-table tbody td.bold {
+    font-weight: 800 !important;
+    color: #002F70 !important;
+}
 .status-pill {
-    display: inline-block; 
-    padding: 3px 10px; 
-    border-radius: 20px;
-    font-size: 14px; 
-    font-weight: 700; 
-    white-space: nowrap;
+    display: inline-block !important;
+    padding: 3px 8px !important;
+    border-radius: 20px !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+    line-height: 1.2 !important;
 }
 .var-zero { color: #6c757d; }
 .var-pos  { color: #28a745; font-weight: 700; }
 .var-neg  { color: #dc3545; font-weight: 700; }
+
+/* ── Actions Column & View Button Spacing (Never covered by edge) ── */
+table.fuel-table th:last-child,
+table.fuel-table td:last-child {
+    text-align: center !important;
+    padding-left: 8px !important;
+    padding-right: 16px !important;
+    white-space: nowrap !important;
+    vertical-align: middle !important;
+}
 
 /* ── Modal Elements & Sidebar-Aware Workspace Centering ── */
 .sr-modal-overlay {
@@ -714,7 +860,7 @@ body.sidebar-collapsed .sr-modal-box {
 }
 
 /* Custom Outlined Buttons for Petron-clean Look */
-.flt-btn { display:inline-flex; align-items:center; gap:6px; padding:0 14px; height:35px; border-radius:6px; font-size:14.5px; font-weight:600; cursor:pointer; text-decoration:none; border:1px solid transparent; background:#fff !important; transition:all .15s; }
+.flt-btn { display:inline-flex; align-items:center; gap:6px; padding:0 12px; height:36px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; text-decoration:none; border:1px solid transparent; background:#fff !important; transition:all .15s; }
 .flt-btn-search { color:#0891b2 !important; -webkit-text-fill-color:#0891b2 !important; border-color:#0891b2 !important; background:#fff !important; }
 .flt-btn-search:hover { background:#0891b2 !important; color:#fff !important; -webkit-text-fill-color:#fff !important; }
 .flt-btn-reset { color:#475569 !important; -webkit-text-fill-color:#475569 !important; border-color:#cbd5e1 !important; background:#fff !important; }
@@ -728,14 +874,32 @@ body.sidebar-collapsed .sr-modal-box {
 
 /* Custom Outlined Buttons for Petron-clean Look */
 .int-btn-outline {
-    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 6px 14px; border-radius: 6px; font-size: 14.5px; font-weight: 700;
-    cursor: pointer; border: 1.5px solid #002F70 !important; transition: all 0.2s;
-    background: #ffffff !important; color: #002F70 !important; -webkit-text-fill-color: #002F70 !important; height: 32px;
-    line-height: 1; white-space: nowrap; text-decoration: none; box-sizing: border-box;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    padding: 3px 10px !important;
+    border-radius: 5px !important;
+    font-size: 11.5px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    border: 1px solid #002F70 !important;
+    transition: all 0.15s !important;
+    background: #ffffff !important;
+    color: #002F70 !important;
+    -webkit-text-fill-color: #002F70 !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    text-decoration: none !important;
+    box-sizing: border-box !important;
+    margin: 0 auto !important;
 }
 .int-btn-outline:hover {
-    background: #002F70 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important;
+    background: #002F70 !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
 }
 
 .btn-cancel {
@@ -856,9 +1020,9 @@ body.sidebar-collapsed .modal-overlay,
 .txn-btn.secondary:hover { background-color:#475569 !important; background:#475569 !important; color:#ffffff !important; }
 </style>
 
-<div class="int-head">
+<div class="page-head">
     <div>
-        <h1><i class="fas fa-gas-pump"></i> Fuel Inventory</h1>
+        <h1 class="h1"><i class="fas fa-gas-pump"></i> Fuel Inventory</h1>
     </div>
 </div>
 
@@ -882,48 +1046,48 @@ body.sidebar-collapsed .modal-overlay,
 </div>
 
 <!-- ══ Dashboard Cards (4 Cards ONLY) ══ -->
-<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:24px;">
+<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:14px;">
     <!-- Card 1: Total Fuel Available -->
-    <div style="background:#fff; border-radius:8px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
+    <div style="background:#fff; border-radius:8px; padding:12px 16px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1.5px solid #cbd5e1;">
         <div>
-            <div style="font-size:15.5px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Total Fuel Available (L)</div>
-            <div style="font-size:20px; font-weight:800; color:#0284c7; margin-top:4px;"><?= number_format($total_fuel_available, 2) ?> L</div>
+            <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px;">Total Fuel Available (L)</div>
+            <div style="font-size:20px; font-weight:700; color:#0284c7;"><?= number_format($total_fuel_available, 2) ?> L</div>
         </div>
-        <div style="background:#e0f2fe; color:#0284c7; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-gas-pump"></i></div>
+        <div style="background:#e0f2fe; color:#0284c7; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0;"><i class="fas fa-gas-pump"></i></div>
     </div>
     <!-- Card 2: Diesel Available -->
-    <div style="background:#fff; border-radius:8px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
+    <div style="background:#fff; border-radius:8px; padding:12px 16px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1.5px solid #cbd5e1;">
         <div>
-            <div style="font-size:15.5px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Diesel Available (L)</div>
-            <div style="font-size:20px; font-weight:800; color:#002F6C; margin-top:4px;"><?= number_format($diesel_available, 2) ?> L</div>
+            <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px;">Diesel Available (L)</div>
+            <div style="font-size:20px; font-weight:700; color:#002F6C;"><?= number_format($diesel_available, 2) ?> L</div>
         </div>
-        <div style="background:#e8f4fd; color:#002F6C; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-tint"></i></div>
+        <div style="background:#e8f4fd; color:#002F6C; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0;"><i class="fas fa-tint"></i></div>
     </div>
     <!-- Card 3: Premium Available -->
-    <div style="background:#fff; border-radius:8px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
+    <div style="background:#fff; border-radius:8px; padding:12px 16px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1.5px solid #cbd5e1;">
         <div>
-            <div style="font-size:15.5px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Premium Available (L)</div>
-            <div style="font-size:20px; font-weight:800; color:#7c3aed; margin-top:4px;"><?= number_format($premium_available, 2) ?> L</div>
+            <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px;">Premium Available (L)</div>
+            <div style="font-size:20px; font-weight:700; color:#7c3aed;"><?= number_format($premium_available, 2) ?> L</div>
         </div>
-        <div style="background:#ede9fe; color:#7c3aed; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-star"></i></div>
+        <div style="background:#ede9fe; color:#7c3aed; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0;"><i class="fas fa-star"></i></div>
     </div>
     <!-- Card 4: Regular Available -->
-    <div style="background:#fff; border-radius:8px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1px solid #e2e8f0;">
+    <div style="background:#fff; border-radius:8px; padding:12px 16px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; border:1.5px solid #cbd5e1;">
         <div>
-            <div style="font-size:15.5px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Regular Available (L)</div>
-            <div style="font-size:20px; font-weight:800; color:#059669; margin-top:4px;"><?= number_format($regular_available, 2) ?> L</div>
+            <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px;">Regular Available (L)</div>
+            <div style="font-size:20px; font-weight:700; color:#059669;"><?= number_format($regular_available, 2) ?> L</div>
         </div>
-        <div style="background:#d1fae5; color:#059669; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px;"><i class="fas fa-leaf"></i></div>
+        <div style="background:#d1fae5; color:#059669; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0;"><i class="fas fa-leaf"></i></div>
     </div>
 </div>
 
-<!-- â• â•  Search & Filter Bar â• â•  -->
-<form id="fuelFilterForm" class="inv-filter-bar" onsubmit="applyFuelInventoryFilters(event)" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
+<!-- ══ Search & Filter Bar ══ -->
+<form id="fuelFilterForm" class="inv-filter-bar" onsubmit="applyFuelInventoryFilters(event)" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
     <div style="position:relative;">
-        <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:14.5px;"></i>
-        <input type="text" id="sq" placeholder="Search Fuel Type / UGT No..." oninput="filterFuelTable()" autocomplete="off" style="padding-left:28px; width:240px;">
+        <i class="fas fa-search" style="position:absolute; left:12px; top:11px; color:#94a3b8; font-size:13px;"></i>
+        <input type="text" id="sq" placeholder="Search Fuel Type / UGT No..." oninput="filterFuelTable()" autocomplete="off" style="padding-left:32px; width:260px; height:36px; font-size:13px; font-weight:600; border:1.5px solid #cbd5e1; border-radius:6px;">
     </div>
-    <select id="cf" onchange="filterFuelTable()">
+    <select id="cf" onchange="filterFuelTable()" style="height:36px; font-size:13px; font-weight:600; border:1.5px solid #cbd5e1; border-radius:6px;">
         <option value="">All Fuel Types</option>
         <option value="diesel">Diesel</option>
         <option value="kerosene">Kerosene</option>
@@ -931,19 +1095,16 @@ body.sidebar-collapsed .modal-overlay,
         <option value="xcs">XCS Plus</option>
         <option value="xtra">XTRA UNL</option>
     </select>
-    <select id="sf" onchange="filterFuelTable()">
+    <select id="sf" onchange="filterFuelTable()" style="height:36px; font-size:13px; font-weight:600; border:1.5px solid #cbd5e1; border-radius:6px;">
         <option value="">All Statuses</option>
         <option value="normal">Normal</option>
         <option value="low">Low Fuel</option>
-        
         <option value="out of stock">Out of Stock</option>
     </select>
     <div class="fuel-filter-actions">
-        <button type="submit" class="flt-btn flt-btn-search"><i class="fas fa-search"></i> Filter</button>
-        <button type="button" class="flt-btn flt-btn-reset" onclick="resetFuelInventoryFilters()"><i class="fas fa-rotate-left"></i> Reset</button>
+        <button type="submit" class="flt-btn flt-btn-search" style="height:36px; font-size:12px; font-weight:600; padding:0 14px;"><i class="fas fa-search"></i> Filter</button>
+        <button type="button" class="flt-btn flt-btn-reset" onclick="resetFuelInventoryFilters()" style="height:36px; font-size:12px; font-weight:600; padding:0 14px;"><i class="fas fa-rotate-left"></i> Reset</button>
     </div>
-
-
 </form>
 
 <!-- ══ Sub Tabs ══ -->
@@ -956,7 +1117,7 @@ body.sidebar-collapsed .modal-overlay,
         <?php
         $alert_count = count(array_filter($rows, fn($r) => in_array($r['status'] ?? '', ['Critical','Low','Out of Stock'])));
         if ($alert_count > 0): ?>
-            <span style="background:#dc2626 !important;color:#ffffff !important;border-radius:20px;padding:2px 8px;font-size:14px;font-weight:700;margin-left:4px;line-height:1;"><?= $alert_count ?></span>
+            <span style="background:#dc2626 !important;color:#ffffff !important;border-radius:20px;padding:2px 7px;font-size:11px;font-weight:800;margin-left:4px;line-height:1;"><?= $alert_count ?></span>
         <?php endif; ?>
     </button>
 </div>
@@ -980,29 +1141,39 @@ body.sidebar-collapsed .modal-overlay,
 })();
 </script>
 
-<!-- â•â• TAB: FUEL INVENTORY OVERVIEW â•â• -->
+<!-- ══ TAB: FUEL INVENTORY OVERVIEW ══ -->
 <div id="section-tank-overview">
 <div class="inv-card">
     <div class="inv-card-head" style="display:flex; align-items:center; justify-content:space-between;">
-        <div class="inv-card-title"><i class="fas fa-gas-pump"></i> Fuel Inventory Overview</div>
-        <button type="button" onclick="openFuelSrModal()" class="sr-btn-outline" style="background:#ffffff !important; background-color:#ffffff !important; color:#002F70 !important; -webkit-text-fill-color:#002F70 !important; border:1.5px solid #cbd5e1 !important; border-radius:6px; padding:7px 16px; font-size:15.5px; font-weight:700 !important; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 1px 3px rgba(0,0,0,0.05) !important; text-decoration:none;">
+        <div class="inv-card-title"><i class="fas fa-gas-pump"></i> Fuel Stock Overview</div>
+        <button type="button" onclick="openFuelSrModal()" class="sr-btn-outline" style="background:#ffffff !important; background-color:#ffffff !important; color:#002F70 !important; -webkit-text-fill-color:#002F70 !important; border:1.5px solid #cbd5e1 !important; border-radius:6px; padding:6px 14px; font-size:12.5px; font-weight:700 !important; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 1px 3px rgba(0,0,0,0.05) !important; text-decoration:none;">
             <i class="fas fa-paper-plane" style="color:#002F70 !important; -webkit-text-fill-color:#002F70 !important;"></i> Stock Request
         </button>
     </div>
 
     <div class="inv-card-body">
         <div class="table-wrap">
-            <table class="fuel-table" id="fuelTable">
+            <table class="fuel-table report-table no-min-width print-table" id="fuelTable" style="width:100% !important; max-width:100% !important; min-width:0 !important; table-layout:fixed !important; border-collapse:collapse;">
+                <colgroup>
+                    <col style="width: 9%;">  <!-- UGT No. -->
+                    <col style="width: 15%;"> <!-- Fuel Type -->
+                    <col style="width: 12%;"> <!-- Capacity -->
+                    <col style="width: 13%;"> <!-- Current Volume -->
+                    <col style="width: 13%;"> <!-- Available Space -->
+                    <col style="width: 12%;"> <!-- Status -->
+                    <col style="width: 14%;"> <!-- Updated -->
+                    <col style="width: 12%;"> <!-- Actions -->
+                </colgroup>
                 <thead>
                     <tr>
-                        <th>UGT No.</th>
-                        <th>Fuel Type</th>
+                        <th style="text-align:left;">UGT No.</th>
+                        <th style="text-align:left;">Fuel Type</th>
                         <th style="text-align:right;">Capacity</th>
                         <th style="text-align:right;">Current Volume</th>
                         <th style="text-align:right;">Available Space</th>
                         <th style="text-align:center;">Status</th>
-                        <th>Last Updated</th>
-                        <th style="text-align:center;">Actions</th>
+                        <th style="text-align:center;">Updated</th>
+                        <th style="text-align:center; padding-left:8px !important; padding-right:16px !important;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1027,20 +1198,20 @@ body.sidebar-collapsed .modal-overlay,
                         data-fuel-type="<?= htmlspecialchars(strtolower($r['fuel_type'])) ?>"
                         data-status="<?= htmlspecialchars(strtolower($r['status'])) ?>"
                         data-date="<?= $row_date ?>">
-                        <td><code style="font-weight:700;color:#002F70;font-size:14.5px;"><?= htmlspecialchars($ugt_str) ?></code></td>
-                        <td style="font-weight:700;color:#0f172a;"><?= htmlspecialchars($r['fuel_type']) ?></td>
-                        <td style="text-align:right;font-weight:600;color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
-                        <td style="text-align:right;font-weight:800;color:#002F70;"><?= number_format($r['current_level'], 2) ?> L</td>
-                        <td style="text-align:right;font-weight:700;color:#16a34a;"><?= number_format($avail_space, 2) ?> L</td>
+                        <td><code style="font-weight:700;color:#002F70;font-size:12px;"><?= htmlspecialchars($ugt_str) ?></code></td>
+                        <td style="font-weight:700;color:#0f172a;font-size:12.5px;"><?= htmlspecialchars($r['fuel_type']) ?></td>
+                        <td style="text-align:right;font-weight:600;color:#475569;font-size:12.5px;"><?= number_format($r['capacity'], 0) ?> L</td>
+                        <td style="text-align:right;font-weight:800;color:#002F70;font-size:13.5px;"><?= number_format($r['current_level'], 2) ?> L</td>
+                        <td style="text-align:right;font-weight:700;color:#16a34a;font-size:12.5px;"><?= number_format($avail_space, 2) ?> L</td>
                         <td style="text-align:center;">
                             <span class="status-pill" style="background:<?= $r['status_color'] ?>18;color:<?= $r['status_color'] ?>;border:1px solid <?= $r['status_color'] ?>40;">
                                 <?= htmlspecialchars($st_label) ?>
                             </span>
                         </td>
-                        <td style="color:#475569; font-size:14.5px; font-weight:500; white-space:nowrap;"><?= $ts_str ?></td>
-                        <td style="text-align:center;">
+                        <td style="color:#64748b; font-size:12px; font-weight:600; white-space:nowrap;"><?= $ts_str ?></td>
+                        <td style="text-align:center; padding-left:8px !important; padding-right:16px !important; white-space:nowrap !important;">
                             <button type="button" class="int-btn-outline" onclick='openTankModal(<?= $r_json ?>)'>
-                                <i class="fas fa-eye"></i> View
+                                <i class="fas fa-eye" style="font-size:10px;"></i> View
                             </button>
                         </td>
 
@@ -1065,7 +1236,7 @@ body.sidebar-collapsed .modal-overlay,
 <div id="section-fuel-deliveries" style="display:none;">
 <div class="inv-card">
     <div class="inv-card-head">
-        <div class="inv-card-title"><i class="fas fa-bell"></i> Fuel Stock Alerts</div>
+        <div class="inv-card-title"><i class="fas fa-bell"></i> Stock Alerts</div>
     </div>
     <div class="inv-card-body">
         <?php
@@ -1078,14 +1249,21 @@ body.sidebar-collapsed .modal-overlay,
             </div>
         <?php else: ?>
         <div class="table-wrap">
-            <table style="width:100%; border-collapse:collapse; font-size:15.5px;">
+            <table class="stock-alerts-table report-table no-min-width print-table" style="width:100% !important; max-width:100% !important; min-width:0 !important; table-layout:fixed !important; border-collapse:collapse;">
+                <colgroup>
+                    <col style="width: 16%;"> <!-- UGT No. -->
+                    <col style="width: 24%;"> <!-- Fuel Type -->
+                    <col style="width: 22%;"> <!-- Current Stock -->
+                    <col style="width: 20%;"> <!-- Reorder Level -->
+                    <col style="width: 18%;"> <!-- Status -->
+                </colgroup>
                 <thead>
                     <tr style="background:#002F70; color:#fff;">
-                        <th style="padding:10px 12px;">UGT No.</th>
-                        <th style="padding:10px 12px;">Fuel Type</th>
-                        <th style="padding:10px 12px; text-align:right;">Current Volume</th>
-                        <th style="padding:10px 12px; text-align:right;">Reorder Level</th>
-                        <th style="padding:10px 12px; text-align:center;">Status</th>
+                        <th style="padding:10px 8px; text-align:left;">UGT No.</th>
+                        <th style="padding:10px 8px; text-align:left;">Fuel Type</th>
+                        <th style="padding:10px 8px; text-align:right;">Current Stock</th>
+                        <th style="padding:10px 8px; text-align:right;">Reorder Level</th>
+                        <th style="padding:10px 8px; text-align:center;">Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1099,13 +1277,13 @@ body.sidebar-collapsed .modal-overlay,
                     };
                     $ugt_str = 'UGT-' . str_pad($r['tanker_num'], 2, '0', STR_PAD_LEFT);
                 ?>
-                <tr style="border-bottom:1px solid #f1f5f9; background:<?= $sc ?>08;">
-                    <td style="padding:10px 12px; font-weight:700; color:#002F70;"><?= htmlspecialchars($ugt_str) ?></td>
-                    <td style="padding:10px 12px; font-weight:600;"><?= htmlspecialchars($r['fuel_type']) ?></td>
-                    <td style="padding:10px 12px; text-align:right; font-weight:800; color:#002F70;"><?= number_format($r['current_level'], 2) ?> L</td>
-                    <td style="padding:10px 12px; text-align:right; color:#d97706; font-weight:600;"><?= number_format($r['reorder_level'] ?? 0, 0) ?> L</td>
-                    <td style="padding:10px 12px; text-align:center;">
-                        <span style="background:<?= $sc ?>18; color:<?= $sc ?>; border:1px solid <?= $sc ?>40; border-radius:20px; padding:3px 10px; font-size:14px; font-weight:700;">
+                <tr style="border-bottom:1px solid #e2e8f0; background:<?= $sc ?>08;">
+                    <td style="padding:8px 8px; font-weight:800; color:#002F6C; font-size:12px; text-align:left;"><?= htmlspecialchars($ugt_str) ?></td>
+                    <td style="padding:8px 8px; font-weight:700; color:#0f172a; font-size:12.5px; text-align:left;"><?= htmlspecialchars($r['fuel_type']) ?></td>
+                    <td style="padding:8px 8px; text-align:right; font-weight:800; color:#002F6C; font-size:13.5px;"><?= number_format($r['current_level'], 2) ?> L</td>
+                    <td style="padding:8px 8px; text-align:right; color:#b45309; font-weight:800; font-size:13.5px;"><?= number_format($r['reorder_level'] ?? 0, 0) ?> L</td>
+                    <td style="padding:8px 8px; text-align:center;">
+                        <span class="status-pill" style="background:<?= $sc ?>18; color:<?= $sc ?>; border:1.5px solid <?= $sc ?>50; border-radius:20px; padding:3px 8px; font-size:11px; font-weight:800;">
                             <?= htmlspecialchars($st_label) ?>
                         </span>
                     </td>
@@ -1129,53 +1307,51 @@ body.sidebar-collapsed .modal-overlay,
         </div>
         <div class="modal-body" style="padding:20px;">
             <!-- UGT Information -->
-            <div style="font-size:14px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-info-circle"></i> UGT Information</div>
+            <div style="font-size:12px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-info-circle"></i> UGT Information</div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px 24px; margin-bottom:20px;">
-                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">UGT No.</div><div id="detUgtNo" style="font-weight:800; color:#002F70; font-size:15px;"></div></div>
-                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Fuel Type</div><div id="detFuelType" style="font-weight:800; color:#0f172a; font-size:15px;"></div></div>
-                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Tank Capacity</div><div id="detCapacity" style="font-weight:600; color:#475569;"></div></div>
-                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Current Volume</div><div id="detVolume" style="font-weight:800; color:#002F70; font-size:16px;"></div></div>
-                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Available Space</div><div id="detAvailableSpace" style="font-weight:700; color:#16a34a; font-size:15px;"></div></div>
-                <div><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Status</div><div id="detStatus"></div></div>
-                <div style="grid-column:span 2;"><div style="font-size:15.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Last Updated</div><div id="detUpdated" style="font-weight:600; color:#64748b;"></div></div>
+                <div><div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">UGT No.</div><div id="detUgtNo" style="font-weight:800; color:#002F70; font-size:13.5px;"></div></div>
+                <div><div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Fuel Type</div><div id="detFuelType" style="font-weight:700; color:#0f172a; font-size:13.5px;"></div></div>
+                <div><div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Tank Capacity</div><div id="detCapacity" style="font-weight:600; color:#475569; font-size:13px;"></div></div>
+                <div><div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Current Volume</div><div id="detVolume" style="font-weight:800; color:#002F70; font-size:14px;"></div></div>
+                <div><div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Available Space</div><div id="detAvailableSpace" style="font-weight:700; color:#16a34a; font-size:13.5px;"></div></div>
+                <div><div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Status</div><div id="detStatus"></div></div>
+                <div style="grid-column:span 2;"><div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.3px;">Last Updated</div><div id="detUpdated" style="font-weight:600; color:#64748b; font-size:12.5px;"></div></div>
             </div>
             <!-- Fuel Delivery History (Read Only) -->
-            <div style="font-size:14px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-truck"></i> Fuel Delivery History (Read Only)</div>
+            <div style="font-size:12px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-truck"></i> Fuel Delivery History (Read Only)</div>
             <div id="detDeliverySummary">
-                <div style="text-align:center;padding:16px;color:#94a3b8;font-size:15.5px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                <div style="text-align:center;padding:16px;color:#94a3b8;font-size:13px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
             </div>
         </div>
         <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px; background:#f8fafc; padding:12px 20px;">
-            <button type="button" onclick="closeTankModal()" class="btn-cancel" style="height:36px; font-size:15.5px; padding:0 16px;"><i class="fas fa-times"></i> Close</button>
+            <button type="button" onclick="closeTankModal()" class="btn-cancel" style="height:32px; font-size:12.5px; font-weight:600; padding:0 14px;"><i class="fas fa-times"></i> Close</button>
         </div>
     </div>
 </div>
 
-<!-- â•â• Delivery Detail Modal â•â• -->
+<!-- ══ Delivery Detail Modal ══ -->
 <div class="modal-overlay" id="deliveryDetailModal">
     <div class="modal-box" style="width:480px;">
-        <div class="modal-header">
+        <div class="modal-header" style="justify-content:center;">
             <h3>Delivery Details</h3>
-            <button onclick="closeDeliveryDetail()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;">&times;</button>
         </div>
         <div class="modal-body" id="deliveryDetailBody"></div>
         <div class="modal-footer">
-            <button onclick="closeDeliveryDetail()" class="btn-cancel" style="height:34px;font-size:14.5px;padding:0 14px;">Close</button>
+            <button onclick="closeDeliveryDetail()" class="btn-cancel" style="height:32px;font-size:12.5px;padding:0 14px;">Close</button>
         </div>
     </div>
 </div>
 
-<!-- â•â• Fuel Movement Modal â•â• -->
+<!-- ══ Fuel Movement Modal ══ -->
 <div class="modal-overlay" id="movementModal">
     <div class="modal-box" style="width:750px;">
-        <div class="modal-header">
+        <div class="modal-header" style="justify-content:center;">
             <h3 id="movementModalTitle">Fuel Movement History</h3>
-            <button onclick="closeMovementModal()" style="background:none; border:none; font-size:20px; cursor:pointer; color:#64748b;">&times;</button>
         </div>
         <div class="modal-body" style="padding:0;">
             <div style="display:flex; border-bottom:2px solid #e2e8f0; background:#f8fafc; padding:0 10px;">
-                <button class="modal-tab-btn active" id="tabDelBtn" onclick="switchMovTab('deliveries')" style="padding:12px 16px; border:none; background:none; font-weight:700; font-size:14.5px; text-transform:uppercase; color:#002F70; border-bottom:2px solid #002F70; cursor:pointer; display:flex; align-items:center; gap:6px;"><i class="fas fa-truck"></i> Deliveries</button>
-                <button class="modal-tab-btn" id="tabSalesBtn" onclick="switchMovTab('sales')" style="padding:12px 16px; border:none; background:none; font-weight:700; font-size:14.5px; text-transform:uppercase; color:#64748b; border-bottom:2px solid transparent; cursor:pointer; display:flex; align-items:center; gap:6px;"><i class="fas fa-receipt"></i> Sales Transactions</button>
+                <button class="modal-tab-btn active" id="tabDelBtn" onclick="switchMovTab('deliveries')" style="padding:10px 14px; border:none; background:none; font-weight:700; font-size:13px; text-transform:uppercase; color:#002F70; border-bottom:2px solid #002F70; cursor:pointer; display:flex; align-items:center; gap:6px;"><i class="fas fa-truck"></i> Deliveries</button>
+                <button class="modal-tab-btn" id="tabSalesBtn" onclick="switchMovTab('sales')" style="padding:10px 14px; border:none; background:none; font-weight:700; font-size:13px; text-transform:uppercase; color:#64748b; border-bottom:2px solid transparent; cursor:pointer; display:flex; align-items:center; gap:6px;"><i class="fas fa-receipt"></i> Sales Transactions</button>
             </div>
             <div style="padding:20px;">
                 <!-- Tab: Deliveries -->
@@ -1216,55 +1392,54 @@ body.sidebar-collapsed .modal-overlay,
     </div>
 </div>
 
-<!-- â•â• FUEL STOCK REQUEST MODAL â•â• -->
+<!-- ══ FUEL STOCK REQUEST MODAL ══ -->
 <div class="sr-modal-overlay" id="fuelSrModal">
     <div class="sr-modal-box" style="max-width:1100px;">
-        <div class="sr-modal-head" style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="sr-modal-head" style="display:flex; justify-content:center; align-items:center;">
             <div class="sr-modal-title">
                 <i class="fas fa-gas-pump"></i> Fuel Stock Request
             </div>
-            <button class="sr-modal-close" id="fuelSrClose" style="background:none; border:none; font-size:22px; cursor:pointer; color:#64748b;">&times;</button>
         </div>
 
         <div class="sr-modal-body">
             <div style="display:grid; grid-template-columns:280px minmax(0,1fr); gap:20px;">
                 <!-- LEFT COLUMN: Request Information -->
                 <div>
-                    <div style="background:#f8fafc; padding:16px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:16px;">
-                        <h4 style="margin:0 0 12px; font-size:14px; font-weight:700; color:#002F70; text-transform:uppercase; border-bottom:1px solid #cbd5e1; padding-bottom:6px;">
+                    <div style="background:#f8fafc; padding:14px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:14px;">
+                        <h4 style="margin:0 0 10px; font-size:12px; font-weight:700; color:#002F70; text-transform:uppercase; border-bottom:1px solid #cbd5e1; padding-bottom:6px;">
                             <i class="fas fa-file-alt"></i> Request Information
                         </h4>
-                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:15px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:12.5px;">
                             <span style="color:#64748b; font-weight:600;">Request No:</span>
                             <span style="font-weight:700; color:#1e293b;">Auto-Assigned</span>
                         </div>
-                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:15px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:12.5px;">
                             <span style="color:#64748b; font-weight:600;">Request Date:</span>
                             <span style="font-weight:700; color:#1e293b;"><?= date('M d, Y') ?></span>
                         </div>
-                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:15px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:12.5px;">
                             <span style="color:#64748b; font-weight:600;">Requested By:</span>
                             <span style="font-weight:700; color:#1e293b;"><?= htmlspecialchars($me['name'] ?? $me['username'] ?? 'Staff') ?></span>
                         </div>
                     </div>
 
-                    <div style="margin-top:14px;">
-                        <label style="display:block;font-size:14.5px;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px;">Remarks / Notes</label>
-                        <textarea id="fsrRemarks" rows="4" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;color:#334155;resize:vertical;box-sizing:border-box;outline:none;" placeholder="Optional remarks..."></textarea>
+                    <div style="margin-top:12px;">
+                        <label style="display:block;font-size:11px;font-weight:700;color:#374151;margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px;">Remarks / Notes</label>
+                        <textarea id="fsrRemarks" rows="4" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#334155;resize:vertical;box-sizing:border-box;outline:none;" placeholder="Optional remarks..."></textarea>
                     </div>
                 </div>
 
                 <!-- RIGHT COLUMN: Fuel Selection -->
                 <div style="display:flex; flex-direction:column;">
-                    <label style="display:block;font-size:15px;font-weight:700;color:#374151;margin-bottom:8px;">
+                    <label style="display:block;font-size:12.5px;font-weight:700;color:#374151;margin-bottom:6px;">
                         <i class="fas fa-gas-pump" style="color:#eab308;margin-right:4px;"></i> Fuel Types <span style="color:#dc2626;">*</span>
                     </label>
                     
                     <!-- Select-all bar -->
-                    <div class="fsr-select-bar" style="margin-bottom:8px;">
+                    <div class="fsr-select-bar" style="margin-bottom:8px;font-size:12px;">
                         <input type="checkbox" id="fsrSelectAll">
-                        <label for="fsrSelectAll" style="cursor:pointer;margin:0;margin-left:8px;">Select All</label>
-                        <span id="fsrSelectedCount" style="margin-left:auto;color:#002F70;"></span>
+                        <label for="fsrSelectAll" style="cursor:pointer;margin:0;margin-left:8px;font-size:12px;font-weight:600;">Select All</label>
+                        <span id="fsrSelectedCount" style="margin-left:auto;color:#002F70;font-size:12px;font-weight:700;"></span>
                     </div>
 
                     <!-- Fuel list with checkboxes -->
@@ -1272,14 +1447,14 @@ body.sidebar-collapsed .modal-overlay,
                 </div>
             </div>
 
-            <div id="fsrError" style="display:none;background:#fee2e2;color:#dc3545;padding:10px 14px;border-radius:6px;margin-top:12px;font-size:15.5px;"></div>
+            <div id="fsrError" style="display:none;background:#fee2e2;color:#dc3545;padding:8px 12px;border-radius:6px;margin-top:10px;font-size:12px;"></div>
         </div>
 
-        <div class="sr-modal-footer" style="display:flex !important; justify-content:flex-end !important; align-items:center !important; gap:12px !important; padding:16px 24px !important; background:#f8fafc !important; border-top:1px solid #cbd5e1 !important; box-sizing:border-box !important;">
-            <button type="button" id="fsrCancelBtn" onclick="closeFuelSrModal()" style="padding:9px 20px !important; border:1.5px solid #00264D !important; background:#ffffff !important; background-color:#ffffff !important; color:#00264D !important; -webkit-text-fill-color:#00264D !important; border-radius:6px !important; font-size:13px !important; font-weight:700 !important; cursor:pointer !important; display:inline-flex !important; align-items:center !important; gap:6px !important; opacity:1 !important; visibility:visible !important;">
+        <div class="sr-modal-footer" style="display:flex !important; justify-content:flex-end !important; align-items:center !important; gap:10px !important; padding:12px 20px !important; background:#f8fafc !important; border-top:1px solid #cbd5e1 !important; box-sizing:border-box !important;">
+            <button type="button" id="fsrCancelBtn" onclick="closeFuelSrModal()" style="padding:7px 16px !important; border:1.5px solid #00264D !important; background:#ffffff !important; background-color:#ffffff !important; color:#00264D !important; -webkit-text-fill-color:#00264D !important; border-radius:6px !important; font-size:12.5px !important; font-weight:700 !important; cursor:pointer !important; display:inline-flex !important; align-items:center !important; gap:6px !important; opacity:1 !important; visibility:visible !important; height:34px !important;">
                 <i class="fas fa-times"></i> Cancel
             </button>
-            <button type="button" id="fsrSubmitBtn" onclick="fsrHandleSubmit(this)" style="padding:9px 22px !important; background:#002F70 !important; background-color:#002F70 !important; color:#ffffff !important; -webkit-text-fill-color:#ffffff !important; border:none !important; border-radius:6px !important; font-size:13px !important; font-weight:700 !important; cursor:pointer !important; display:inline-flex !important; align-items:center !important; gap:6px !important; opacity:1 !important; visibility:visible !important;">
+            <button type="button" id="fsrSubmitBtn" onclick="fsrHandleSubmit(this)" style="padding:7px 18px !important; background:#002F70 !important; background-color:#002F70 !important; color:#ffffff !important; -webkit-text-fill-color:#ffffff !important; border:none !important; border-radius:6px !important; font-size:12.5px !important; font-weight:700 !important; cursor:pointer !important; display:inline-flex !important; align-items:center !important; gap:6px !important; opacity:1 !important; visibility:visible !important; height:34px !important;">
                 <i class="fas fa-paper-plane"></i> Submit Stock Request
             </button>
         </div>
@@ -1333,9 +1508,9 @@ function renderFsrCheckList() {
 
     var rows = needsRestock.map(function(it) {
         var idx = allFuelData.indexOf(it);
-        var badge = '<span style="background:' + it.color + '20;color:' + it.color + ';border:1px solid ' + it.color + '40;border-radius:20px;padding:1px 7px;font-size:15.5px;font-weight:700;">' + esc(it.status) + '</span>';
+        var badge = '<span style="background:' + it.color + '20;color:' + it.color + ';border:1px solid ' + it.color + '40;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:800;">' + esc(it.status) + '</span>';
         var ugtNo = it.tanker_num ? it.tanker_num : (it.tanker_label || '');
-        return '<tr class="fsr-cb-row ' + it.statusCls + '" data-idx="' + idx + '" style="cursor:pointer;">' +
+        return '<tr class="fsr-cb-row ' + it.statusCls + '" data-idx="' + idx + '" style="cursor:pointer;font-size:12px;">' +
             '<td style="text-align:center;"><input type="checkbox" class="fsr-cb fsr-item-cb" data-idx="' + idx + '"></td>' +
             '<td style="font-weight:700;color:#002F70;">' + esc(it.name) + '</td>' +
             '<td style="font-family:monospace;font-weight:700;">' + esc(ugtNo) + '</td>' +
@@ -1345,14 +1520,14 @@ function renderFsrCheckList() {
         '</tr>';
     }).join('');
     var html = '<div style="max-height:360px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;">' +
-        '<table class="sr-table" style="width:100%;border-collapse:collapse;font-size:14.5px;">' +
+        '<table class="sr-table" style="width:100%;border-collapse:collapse;font-size:12px;">' +
             '<thead><tr style="background:#002F70;color:#fff;position:sticky;top:0;z-index:5;">' +
-                '<th style="width:7%;text-align:center;">Select</th>' +
-                '<th style="width:24%;text-align:left;">Fuel Type</th>' +
-                '<th style="width:16%;text-align:left;">UGT No.</th>' +
-                '<th style="width:19%;text-align:right;">Current Liters</th>' +
-                '<th style="width:18%;text-align:right;">Reorder Level</th>' +
-                '<th style="width:16%;text-align:center;">Status</th>' +
+                '<th style="width:7%;text-align:center;padding:8px 6px;font-size:11.5px;font-weight:800;text-transform:uppercase;">Select</th>' +
+                '<th style="width:24%;text-align:left;padding:8px 6px;font-size:11.5px;font-weight:800;text-transform:uppercase;">Fuel Type</th>' +
+                '<th style="width:16%;text-align:left;padding:8px 6px;font-size:11.5px;font-weight:800;text-transform:uppercase;">UGT No.</th>' +
+                '<th style="width:19%;text-align:right;padding:8px 6px;font-size:11.5px;font-weight:800;text-transform:uppercase;">Current Liters</th>' +
+                '<th style="width:18%;text-align:right;padding:8px 6px;font-size:11.5px;font-weight:800;text-transform:uppercase;">Reorder Level</th>' +
+                '<th style="width:16%;text-align:center;padding:8px 6px;font-size:11.5px;font-weight:800;text-transform:uppercase;">Status</th>' +
             '</tr></thead><tbody>' + rows + '</tbody></table></div>';
     document.getElementById('fsrCheckList').innerHTML = html;
 
@@ -1635,30 +1810,30 @@ function openTankModal(r) {
         .then(function(res) { return res.json(); })
         .then(function(data) {
             if (!data.success || !data.deliveries || data.deliveries.length === 0) {
-                dSummary.innerHTML = '<div style="text-align:center;padding:12px;color:#94a3b8;font-size:15.5px;">No delivery records found for this fuel type.</div>';
+                dSummary.innerHTML = '<div style="text-align:center;padding:12px;color:#94a3b8;font-size:12.5px;">No delivery records found for this fuel type.</div>';
                 return;
             }
-            var html = '<table style="width:100%;border-collapse:collapse;font-size:14.5px;"><thead><tr style="background:#f1f5f9;">' +
-                '<th style="padding:8px 10px;text-align:left;color:#475569;font-size:15.5px;text-transform:uppercase;">Delivery No.</th>' +
-                '<th style="padding:8px 10px;text-align:left;color:#475569;font-size:15.5px;text-transform:uppercase;">Supplier</th>' +
-                '<th style="padding:8px 10px;text-align:right;color:#475569;font-size:15.5px;text-transform:uppercase;">Liters Received</th>' +
-                '<th style="padding:8px 10px;text-align:center;color:#475569;font-size:15.5px;text-transform:uppercase;">Delivery Date</th>' +
+            var html = '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f1f5f9;">' +
+                '<th style="padding:6px 8px;text-align:left;color:#475569;font-size:11px;font-weight:800;text-transform:uppercase;">Delivery No.</th>' +
+                '<th style="padding:6px 8px;text-align:left;color:#475569;font-size:11px;font-weight:800;text-transform:uppercase;">Supplier</th>' +
+                '<th style="padding:6px 8px;text-align:right;color:#475569;font-size:11px;font-weight:800;text-transform:uppercase;">Liters Received</th>' +
+                '<th style="padding:6px 8px;text-align:center;color:#475569;font-size:11px;font-weight:800;text-transform:uppercase;">Delivery Date</th>' +
                 '</tr></thead><tbody>';
             data.deliveries.slice(0, 10).forEach(function(d) {
                 var dNo = d.invoice_no || ('DEL-' + String(d.id || 0).padStart(5, '0'));
                 var dateStr = d.delivery_date ? new Date(d.delivery_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
                 html += '<tr style="border-bottom:1px solid #f1f5f9;">' +
-                    '<td style="padding:8px 10px;font-weight:700;color:#002F70;"><code style="font-size:14px;">' + esc(dNo) + '</code></td>' +
-                    '<td style="padding:8px 10px;font-weight:600;">' + esc(d.supplier || 'Petron Corporation') + '</td>' +
-                    '<td style="padding:8px 10px;text-align:right;font-weight:700;color:#16a34a;">' + Number(d.delivery_liters || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>' +
-                    '<td style="padding:8px 10px;text-align:center;color:#64748b;">' + dateStr + '</td>' +
+                    '<td style="padding:6px 8px;font-weight:700;color:#002F70;"><code style="font-size:11.5px;">' + esc(dNo) + '</code></td>' +
+                    '<td style="padding:6px 8px;font-weight:600;">' + esc(d.supplier || 'Petron Corporation') + '</td>' +
+                    '<td style="padding:6px 8px;text-align:right;font-weight:700;color:#16a34a;font-size:12.5px;">' + Number(d.delivery_liters || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>' +
+                    '<td style="padding:6px 8px;text-align:center;color:#64748b;">' + dateStr + '</td>' +
                     '</tr>';
             });
             html += '</tbody></table>';
             dSummary.innerHTML = html;
         })
         .catch(function() {
-            dSummary.innerHTML = '<div style="text-align:center;padding:12px;color:#dc3545;font-size:15.5px;">Failed to load delivery history.</div>';
+            dSummary.innerHTML = '<div style="text-align:center;padding:12px;color:#dc3545;font-size:12.5px;">Failed to load delivery history.</div>';
         });
     }
     

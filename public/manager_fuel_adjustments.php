@@ -296,8 +296,8 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 
 /* Petron clean headers */
 .int-head { display: flex !important; align-items: center !important; justify-content: space-between !important; flex-wrap: wrap !important; gap: 15px !important; margin-top: 0 !important; margin-bottom: 25px !important; padding: 0 !important; border: none !important; width: 100% !important; }
-.int-head h1 { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important; font-size: 24px !important; font-weight: 700 !important; color: #002f70 !important; margin: 0 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; display: flex !important; align-items: center !important; gap: 10px !important; line-height: 1.2 !important; }
-.int-head .sub { font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.4; }
+.int-head h1 { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important; font-size: 26px !important; font-weight: 800 !important; color: #002f70 !important; margin: 0 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; display: flex !important; align-items: center !important; gap: 10px !important; line-height: 1.2 !important; }
+.int-head .sub { font-size: 14px; color: #64748b; margin-top: 4px; line-height: 1.4; }
 
 /* Modal close button overrides to prevent global button background override */
 .modal-header button {
@@ -310,12 +310,12 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 
 /* Tabs system */
 .tabs-navigation { display: flex; gap: 10px; border-bottom: 2px solid #e2e8f0; margin-bottom: 22px; width: 100%; }
-.tab-btn { display: flex; align-items: center; gap: 8px; padding: 12px 20px; font-size: 13.5px; font-weight: 600; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s ease; }
+.tab-btn { display: flex; align-items: center; gap: 8px; padding: 12px 22px; font-size: 15px; font-weight: 700; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s ease; }
 .tab-btn:hover { color: #002F70; }
-.tab-btn.active { color: #002F70; border-bottom-color: #002F70; font-weight: 700; }
+.tab-btn.active { color: #002F70; border-bottom-color: #002F70; font-weight: 800; }
 
 /* Standard buttons */
-.ato-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 16px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid transparent; text-decoration: none; transition: all .15s; height: 36px; white-space: nowrap; background: white !important; }
+.ato-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 18px; border-radius: 7px; font-size: 14px !important; font-weight: 700 !important; cursor: pointer; border: 1.5px solid transparent; text-decoration: none; transition: all .15s; height: 42px !important; white-space: nowrap; background: white !important; }
 .ato-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
 .ato-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .ato-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
@@ -330,53 +330,106 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .ato-btn-reset:hover { background: #f1f5f9 !important; }
 
 /* Summary Cards */
-.afto-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
-.afto-card { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+.afto-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.afto-card { background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 18px 22px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
 .afto-card-info { display: flex; flex-direction: column; }
-.afto-card-lbl { font-size: 10.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-.afto-card-val { font-size: 19px; font-weight: 700; color: #1e293b; }
-.afto-card-icon { font-size: 22px; opacity: 0.85; }
+.afto-card-lbl { font-size: 13px !important; font-weight: 800 !important; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+.afto-card-val { font-size: 26px !important; font-weight: 900 !important; color: #1e293b; }
+.afto-card-icon { font-size: 28px !important; opacity: 0.85; }
 .afto-card.blue .afto-card-icon { color: #0ea5e9; }
 .afto-card.green .afto-card-icon { color: #10b981; }
 .afto-card.yellow .afto-card-icon { color: #f59e0b; }
 .afto-card.purple .afto-card-icon { color: #8b5cf6; }
 
 /* Filters */
-.afto-filter { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; }
-.afto-fg { display: flex; flex-direction: column; gap: 3px; }
-.afto-fg label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .4px; }
-.afto-fg input, .afto-fg select { height: 36px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px; color: #1e293b; background: #fff; outline: none; }
+.afto-filter { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; background: #fff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; margin-bottom: 20px; box-sizing: border-box; }
+.afto-fg { display: flex; flex-direction: column; gap: 5px; }
+.afto-fg label { font-size: 13px !important; font-weight: 800 !important; color: #002F70 !important; text-transform: uppercase; letter-spacing: .3px; }
+.afto-fg input, .afto-fg select { height: 42px !important; padding: 0 12px; border: 1.5px solid #cbd5e1; border-radius: 7px; font-size: 14px !important; font-weight: 600 !important; color: #0f172a; background: #fff; outline: none; box-sizing: border-box; }
 .afto-fg input:focus, .afto-fg select:focus { border-color: #002F70; box-shadow: 0 0 0 3px rgba(0,47,112,.1); }
 
-/* Table styles */
-.afto-table-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 11px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.04); width: 100%; }
-.afto-table-hd { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #f1f5f9; }
-.afto-table-title { font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: .3px; margin: 0; }
-.afto-tbl-wrap { width: 100%; overflow-x: auto; }
-.afto-tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
-.afto-tbl thead tr { background: #002F70; }
-.afto-tbl thead th { padding: 9px 10px; text-align: left; font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; }
+/* Table styles - Strict Zero Horizontal Scroll */
+.afto-table-card { background: #fff; border: 1.5px solid #e2e8f0; border-radius: 11px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.04); width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
+.afto-table-hd { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #f1f5f9; }
+.afto-table-title { font-size: 16px !important; font-weight: 800 !important; color: #002F70 !important; text-transform: uppercase; letter-spacing: .4px; margin: 0; }
+.afto-tbl-wrap { width: 100% !important; max-width: 100% !important; overflow-x: hidden !important; box-sizing: border-box; }
+.afto-tbl,
+table.afto-tbl.report-table.no-min-width.print-table { 
+    width: 100% !important; 
+    min-width: 0 !important; 
+    max-width: 100% !important; 
+    border-collapse: collapse !important; 
+    table-layout: fixed !important; 
+}
+.afto-tbl thead tr { background: #002F70 !important; }
+.afto-tbl thead th { 
+    padding: 11px 6px !important; 
+    text-align: left; 
+    font-size: 12px !important; 
+    font-weight: 800 !important; 
+    color: #ffffff !important; 
+    text-transform: uppercase !important; 
+    letter-spacing: .3px !important; 
+    white-space: normal !important; 
+    line-height: 1.3 !important; 
+    word-break: normal !important; 
+    overflow-wrap: normal !important; 
+    overflow: hidden !important; 
+    box-sizing: border-box !important;
+    border-bottom: 2px solid #001f4d !important;
+    vertical-align: bottom !important;
+}
 .afto-tbl tbody tr { border-bottom: 1px solid #f1f5f9; }
-.afto-tbl tbody tr:hover td { background: #eff6ff; }
-.afto-tbl tbody td { padding: 9px 10px; color: #334155; vertical-align: middle; background: #fff; }
+.afto-tbl tbody tr:hover td { background: #eff6ff !important; }
+.afto-tbl tbody td { 
+    padding: 11px 6px !important; 
+    color: #0f172a; 
+    vertical-align: middle; 
+    background: #fff; 
+    font-size: 13.5px !important; 
+    line-height: 1.4 !important; 
+    white-space: normal !important; 
+    word-break: break-word !important; 
+    overflow-wrap: break-word !important; 
+    overflow: hidden !important; 
+    box-sizing: border-box !important;
+}
 
-.row-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; border-radius: 5px; font-size: 10px; font-weight: 700; border: 1px solid #002F70; cursor: pointer; height: 24px; background: white !important; color: #002F70 !important; text-decoration: none; text-transform: uppercase; }
-.row-btn:hover { background: #002F70 !important; color: white !important; }
+.row-btn { 
+    display: inline-flex; 
+    align-items: center; 
+    justify-content: center; 
+    gap: 4px; 
+    padding: 0 8px; 
+    border-radius: 5px; 
+    font-size: 12.5px !important; 
+    font-weight: 700 !important; 
+    border: 1.5px solid #002F70; 
+    cursor: pointer; 
+    height: 30px !important; 
+    background: #eff6ff !important; 
+    color: #002F70 !important; 
+    text-decoration: none; 
+    width: 100% !important; 
+    max-width: 100% !important; 
+    box-sizing: border-box !important; 
+}
+.row-btn:hover { background: #002F70 !important; color: #ffffff !important; }
 
 /* Modal */
-.modal { display: none; position: fixed; inset: 0; z-index: 9999; background: rgba(15,23,42,0.55); backdrop-filter: blur(4px); align-items: center; justify-content: center; }
-.modal-content { background: #fff; border-radius: 12px; width: 90%; max-width: 550px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); overflow: hidden; animation: modalIn 0.2s ease; }
+.modal { display: none; position: fixed; inset: 0; z-index: 9999; background: rgba(15,23,42,0.55); backdrop-filter: blur(4px); align-items: center; justify-content: center; overflow-x: hidden !important; }
+.modal-content { background: #fff; border-radius: 12px; width: 92%; max-width: 620px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); overflow: hidden !important; animation: modalIn 0.2s ease; box-sizing: border-box !important; }
 @keyframes modalIn { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
-.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
-.modal-header h3 { margin: 0; font-size: 14px; color: #00264D; font-weight: 700; text-transform: uppercase; }
-.modal-body { padding: 20px; }
-.modal-footer { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 20px; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; box-sizing: border-box; }
+.modal-header h3 { margin: 0; font-size: 16px !important; color: #00264D; font-weight: 800 !important; text-transform: uppercase; }
+.modal-body { padding: 22px; max-height: calc(100vh - 180px); overflow-y: auto !important; overflow-x: hidden !important; box-sizing: border-box !important; }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; padding: 14px 22px; border-top: 1px solid #e2e8f0; background: #f8fafc; box-sizing: border-box; }
 
-.details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
-.details-item { border-bottom: 1px solid #f1f5f9; padding-bottom: 6px; }
+.details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 22px; box-sizing: border-box; }
+.details-item { border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; box-sizing: border-box; min-width: 0; }
 .details-item.full-width { grid-column: span 2; }
-.details-lbl { font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: bold; }
-.details-val { font-size: 12px; color: #1e293b; font-weight: 600; margin-top: 2px; }
+.details-lbl { font-size: 12.5px !important; color: #64748b; text-transform: uppercase; font-weight: 800 !important; }
+.details-val { font-size: 15px !important; color: #0f172a; font-weight: 700 !important; margin-top: 3px; }
 
 /* Badges */
 .badge-diff { font-weight: bold; }
@@ -419,7 +472,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
         <div class="afto-card purple">
             <div class="afto-card-info">
                 <span class="afto-card-lbl">Last Adjustment</span>
-                <span class="afto-card-val" id="fa_kpi_last" style="font-size:12.5px;"><?= $last_adj_str ?></span>
+                <span class="afto-card-val" id="fa_kpi_last" style="font-size:15px; font-weight:800;"><?= $last_adj_str ?></span>
             </div>
             <div class="afto-card-icon"><i class="fas fa-clock"></i></div>
         </div>
@@ -459,7 +512,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
             </div>
             <div class="afto-fg">
                 <label>Staff</label>
-                <input type="text" name="staff" value="<?= htmlspecialchars($staff_filter) ?>" placeholder="Staff name...">
+                <input type="text" name="staff" value="<?= htmlspecialchars($staff_filter) ?>" placeholder="Staff name">
             </div>
         <?php else: ?>
             <div class="afto-fg">
@@ -486,12 +539,12 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
         <?php if ($active_tab === 'transactions'): ?>
             <div class="afto-fg">
                 <label>Search Trans No.</label>
-                <input type="text" name="search_tx" value="<?= htmlspecialchars($search_tx) ?>" placeholder="FUEL2026...">
+                <input type="text" name="search_tx" value="<?= htmlspecialchars($search_tx) ?>" placeholder="e.g. FTX-0001">
             </div>
         <?php else: ?>
             <div class="afto-fg">
                 <label>Search Delivery No.</label>
-                <input type="text" name="search_del" value="<?= htmlspecialchars($search_del) ?>" placeholder="DEL-...">
+                <input type="text" name="search_del" value="<?= htmlspecialchars($search_del) ?>" placeholder="e.g. DEL-0001">
             </div>
         <?php endif; ?>
 
@@ -510,18 +563,32 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
             </h3>
         </div>
         <div class="afto-tbl-wrap">
-            <table class="afto-tbl">
+            <table class="afto-tbl report-table no-min-width print-table">
                 <?php if ($active_tab === 'transactions'): ?>
+                    <colgroup>
+                        <col style="width: 7.0%;">
+                        <col style="width: 9.5%;">
+                        <col style="width: 8.5%;">
+                        <col style="width: 7.5%;">
+                        <col style="width: 7.0%;">
+                        <col style="width: 8.5%;">
+                        <col style="width: 8.0%;">
+                        <col style="width: 8.0%;">
+                        <col style="width: 13.0%;">
+                        <col style="width: 9.0%;">
+                        <col style="width: 8.0%;">
+                        <col style="width: 6.0%;">
+                    </colgroup>
                     <thead>
                         <tr>
-                            <th>Adjustment ID</th>
-                            <th>Transaction No.</th>
+                            <th>Adj. ID</th>
+                            <th>Txn No.</th>
                             <th>Fuel Line</th>
                             <th>Fuel Type</th>
                             <th>Shift</th>
                             <th>Staff</th>
-                            <th style="text-align:right;">Prev Calibration</th>
-                            <th style="text-align:right;">New Calibration</th>
+                            <th style="text-align:right;">Prev. Cal.</th>
+                            <th style="text-align:right;">New Cal.</th>
                             <th>Reason</th>
                             <th>Adjusted By</th>
                             <th>Date & Time</th>
@@ -551,11 +618,14 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                                     <td><?= htmlspecialchars($adj['fuel_type']) ?></td>
                                     <td><?= htmlspecialchars($shift_name) ?></td>
                                     <td><?= htmlspecialchars($staff_name) ?></td>
-                                    <td style="text-align:right;"><?= number_format($prev_cal, 2) ?></td>
-                                    <td style="text-align:right;"><?= number_format($new_cal, 2) ?></td>
+                                    <td style="text-align:right; font-weight: 600;"><?= number_format($prev_cal, 2) ?></td>
+                                    <td style="text-align:right; font-weight: 700; color: #002F70;"><?= number_format($new_cal, 2) ?></td>
                                     <td><?= htmlspecialchars($reason_text) ?></td>
                                     <td><?= htmlspecialchars($adj['manager_name']) ?></td>
-                                    <td><?= date('M d, Y h:i A', strtotime($adj['created_at'])) ?></td>
+                                    <td>
+                                        <div style="font-weight: 600;"><?= date('M d, Y', strtotime($adj['created_at'])) ?></div>
+                                        <div style="font-size: 11px; color: #64748b; font-weight: 600;"><?= date('h:i A', strtotime($adj['created_at'])) ?></div>
+                                    </td>
                                     <td style="text-align:center;">
                                         <button class="row-btn" onclick="viewTxDetails(<?= htmlspecialchars(json_encode([
                                             'adj_id' => 'ADJ-' . $adj['id'],
@@ -580,14 +650,27 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                         <?php endif; ?>
                     </tbody>
                 <?php else: ?>
+                    <colgroup>
+                        <col style="width: 7.0%;">
+                        <col style="width: 9.5%;">
+                        <col style="width: 13.0%;">
+                        <col style="width: 7.5%;">
+                        <col style="width: 9.0%;">
+                        <col style="width: 9.0%;">
+                        <col style="width: 8.5%;">
+                        <col style="width: 13.0%;">
+                        <col style="width: 9.0%;">
+                        <col style="width: 8.5%;">
+                        <col style="width: 6.0%;">
+                    </colgroup>
                     <thead>
                         <tr>
-                            <th>Adjustment ID</th>
+                            <th>Adj. ID</th>
                             <th>Delivery No.</th>
                             <th>Supplier</th>
                             <th>Fuel Type</th>
-                            <th style="text-align:right;">Previous Quantity</th>
-                            <th style="text-align:right;">New Quantity</th>
+                            <th style="text-align:right;">Prev. Qty.</th>
+                            <th style="text-align:right;">New Qty.</th>
                             <th style="text-align:right;">Difference</th>
                             <th>Reason</th>
                             <th>Adjusted By</th>
@@ -607,17 +690,20 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                             ?>
                                 <tr>
                                     <td><strong>ADJ-<?= $adj['id'] ?></strong></td>
-                                    <td><strong>DEL-<?= htmlspecialchars($notes_data['delivery_id'] ?? '—') ?></strong></td>
+                                    <td><strong><?= !empty($notes_data['delivery_id']) ? ('DEL-' . htmlspecialchars($notes_data['delivery_id'])) : '—' ?></strong></td>
                                     <td><?= htmlspecialchars('Petron Corporation') ?></td>
                                     <td><?= htmlspecialchars($adj['fuel_type']) ?></td>
-                                    <td style="text-align:right;"><?= number_format($prev_lit, 2) ?> L</td>
-                                    <td style="text-align:right;"><?= number_format($new_lit, 2) ?> L</td>
+                                    <td style="text-align:right; font-weight: 600;"><?= number_format($prev_lit, 2) ?> L</td>
+                                    <td style="text-align:right; font-weight: 700; color: #002F70;"><?= number_format($new_lit, 2) ?> L</td>
                                     <td style="text-align:right;" class="badge-diff <?= $diff >= 0 ? 'plus' : 'minus' ?>">
                                         <?= ($diff >= 0 ? '+' : '') . number_format($diff, 2) ?> L
                                     </td>
                                     <td><?= htmlspecialchars($adj['reason'] ?: '—') ?></td>
                                     <td><?= htmlspecialchars($adj['manager_name']) ?></td>
-                                    <td><?= date('M d, Y h:i A', strtotime($adj['created_at'])) ?></td>
+                                    <td>
+                                        <div style="font-weight: 600;"><?= date('M d, Y', strtotime($adj['created_at'])) ?></div>
+                                        <div style="font-size: 11px; color: #64748b; font-weight: 600;"><?= date('h:i A', strtotime($adj['created_at'])) ?></div>
+                                    </td>
                                     <td style="text-align:center;">
                                         <button class="row-btn" onclick="viewDelDetails(<?= htmlspecialchars(json_encode([
                                             'adj_id' => 'ADJ-' . $adj['id'],

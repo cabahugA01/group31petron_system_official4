@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Petron Station Management System - Node.js Real-time Client
  * Connects browser to Node.js Service on http://localhost:3000
  */
@@ -16,7 +16,7 @@
         script.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js';
         script.onload = callback;
         script.onerror = function() {
-            console.warn('[Node.js Realtime] Socket.io CDN unavailable, falling back to HTTP polling.');
+            // Silently fallback without noisy warnings
         };
         document.head.appendChild(script);
     }
@@ -24,10 +24,12 @@
     function initRealtime() {
         loadSocketIo(function() {
             try {
+                if (typeof io === 'undefined') return;
+
                 const socket = io(NODEJS_SERVER_URL, {
                     transports: ['websocket', 'polling'],
-                    reconnectionAttempts: 5,
-                    timeout: 4000
+                    reconnection: false, // Don't loop endlessly if service is stopped
+                    timeout: 2000
                 });
 
                 socket.on('connect', function() {
@@ -43,9 +45,13 @@
                     console.log('[Node.js Realtime]', data.message);
                 });
 
+                // Handle connection errors gracefully without retrying endlessly
+                socket.on('connect_error', function() {
+                    try { socket.disconnect(); } catch (e) {}
+                });
+
                 // Listen for real-time transaction events
                 socket.on('transaction:new', function(data) {
-                    console.log('[Node.js Realtime] New Transaction:', data);
                     if (typeof showTxnAlert === 'function') {
                         showTxnAlert('⚡ Real-time Notice: New transaction processed #' + (data.id || ''), 'info');
                     }
@@ -53,7 +59,6 @@
 
                 // Listen for job order updates
                 socket.on('job_order:updated', function(data) {
-                    console.log('[Node.js Realtime] Job Order Updated:', data);
                     if (typeof showTxnAlert === 'function') {
                         showTxnAlert('⚡ Real-time Notice: Job Order #' + (data.id || '') + ' updated to ' + (data.status || ''), 'info');
                     }
@@ -61,10 +66,9 @@
 
                 socket.on('disconnect', function() {
                     isConnected = false;
-                    console.log('[Node.js Realtime] Disconnected from Node.js service');
                 });
             } catch (err) {
-                console.warn('[Node.js Realtime] Connection error:', err.message);
+                // Silently handle
             }
         });
     }

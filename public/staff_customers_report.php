@@ -72,126 +72,298 @@ require_once __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-    body { margin: 0; padding: 0; background: white; }
-    .main-content { width: 100%; max-width: 100%; padding: 0; margin: 0; }
-    .container { max-width: 100%; margin: 0; padding: 0; background: white; }
-    .controls {
-        padding: 12px 20px;
-        background: #fff;
-        border-bottom: 1px solid #000;
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-end;
-        flex-wrap: wrap;
-        gap: 10px;
+    html, body {
+        max-width: 100vw !important;
+        overflow-x: hidden !important;
     }
-    .filter-controls { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; font-size: 12px; }
-    .filter-group { display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
-    .filter-group label { font-weight: 700; color: #000; }
+    .pagination-wrapper,
+    .client-side-pagination,
+    .petron-pagination-bar,
+    .petron-rows-select-wrap,
+    .rows-per-page {
+        display: none !important;
+    }
+    .main-content {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+    }
+    .stock-page {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        padding: 16px !important;
+        overflow-x: hidden !important;
+    }
+    .scr-card-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        background: #ffffff !important;
+        border: 1.5px solid #cbd5e1 !important;
+        border-radius: 12px !important;
+        padding: 20px !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important;
+        overflow-x: hidden !important;
+    }
+    .controls {
+        background: #ffffff !important;
+        border: 1.5px solid #cbd5e1 !important;
+        border-radius: 12px !important;
+        padding: 14px 18px !important;
+        margin-bottom: 16px !important;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        flex-wrap: wrap !important;
+        gap: 12px !important;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.03) !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    .filter-controls {
+        display: flex !important;
+        gap: 10px !important;
+        align-items: center !important;
+        flex-wrap: wrap !important;
+        flex: 1 1 auto !important;
+    }
+    .filter-group {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 6px !important;
+    }
+    .filter-group label {
+        font-weight: 800 !important;
+        color: #002F6C !important;
+        font-size: 13px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.3px !important;
+        white-space: nowrap !important;
+    }
     .filter-group input,
     .filter-group select {
-        padding: 6px 10px;
-        border: 1px solid #000;
-        background: #fff;
-        color: #000;
-        font-size: 12px;
-        min-height: 32px;
+        height: 38px !important;
+        padding: 6px 10px !important;
+        border: 1.5px solid #cbd5e1 !important;
+        border-radius: 7px !important;
+        font-size: 13.5px !important;
+        font-weight: 600 !important;
+        color: #1e293b !important;
+        background: #ffffff !important;
+        outline: none !important;
+        box-sizing: border-box !important;
     }
-    .action-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .btn {
-        padding: 7px 12px;
-        border: 1px solid #000;
-        background: #fff;
-        cursor: pointer;
-        font-size: 12px;
-        font-weight: 700;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        color: #000;
-        min-height: 32px;
+    .filter-group input:focus,
+    .filter-group select:focus {
+        border-color: #002F6C !important;
+        box-shadow: 0 0 0 3px rgba(0,47,108,0.12) !important;
     }
-    .btn:hover { background: #f5f5f5; }
-    .btn-primary { background: #000; color: #fff; }
-    .btn-primary:hover { background: #333; }
+    .btn-apply-cust {
+        height: 38px !important;
+        padding: 0 18px !important;
+        background: #002F6C !important;
+        color: #ffffff !important;
+        font-weight: 800 !important;
+        border: none !important;
+        border-radius: 7px !important;
+        font-size: 13.5px !important;
+        cursor: pointer !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        transition: background 0.15s !important;
+    }
+    .btn-apply-cust:hover {
+        background: #001f4d !important;
+    }
+    .action-controls {
+        display: flex !important;
+        gap: 8px !important;
+        align-items: center !important;
+        flex-wrap: nowrap !important;
+        margin-left: auto !important;
+    }
     
-    /* Export Buttons (Filter Button Style) */
+    /* Export Buttons */
     .flt-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        padding: 6px 14px;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 600;
-        cursor: pointer;
-        border: 1px solid transparent;
-        transition: all 0.15s;
-        height: 34px;
-        line-height: 1;
-        white-space: nowrap;
-        text-decoration: none;
-        background: white !important;
+        height: 38px !important;
+        padding: 0 14px !important;
+        font-size: 13px !important;
+        font-weight: 800 !important;
+        border-radius: 7px !important;
+        cursor: pointer !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        background: #ffffff !important;
+        border: 1.5px solid !important;
+        transition: all 0.18s !important;
+        text-decoration: none !important;
+        box-sizing: border-box !important;
+        white-space: nowrap !important;
     }
-    .flt-btn-search { color: #002F70 !important; border-color: #002F70 !important; }
-    .flt-btn-search:hover { background: #002F70 !important; color: #fff !important; }
-    .flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; }
-    .flt-btn-reset:hover  { background: #6b7280 !important; color: #fff !important; }
-    .flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
-    .flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
-    .flt-btn-pdf { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
-    .flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
-    .flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
-    .flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+    .flt-btn-excel { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+    .flt-btn-excel:hover { background: #16a34a !important; color: #ffffff !important; }
+    .flt-btn-csv   { color: #0284c7 !important; border-color: #0284c7 !important; background: #ffffff !important; }
+    .flt-btn-csv:hover   { background: #0284c7 !important; color: #ffffff !important; }
+    .flt-btn-pdf   { color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
+    .flt-btn-pdf:hover   { background: #dc2626 !important; color: #ffffff !important; }
+    .flt-btn-print { color: #002F6C !important; border-color: #002F6C !important; background: #ffffff !important; }
+    .flt-btn-print:hover { background: #002F6C !important; color: #ffffff !important; }
     
-    .print-area { background: #fff; }
+    .print-area { background: #fff; width: 100% !important; }
     .header {
         background: #fff;
         color: #000;
         padding: 16px 20px;
         text-align: center;
-        border-bottom: 2px solid #000;
-        margin-bottom: 0;
+        border-bottom: 2.5px solid #002F6C;
+        margin-bottom: 20px;
     }
-    .header h1 { font-size: 24px; margin: 0 0 8px 0; font-weight: 800; color: #000; }
-    .header p { font-size: 12px; color: #000; margin: 3px 0; }
-    .content { padding: 16px 20px 24px; }
+    .header h1 { font-size: 24px; margin: 0 0 6px 0; font-weight: 900; color: #002F6C; font-family: 'Segoe UI', sans-serif; }
+    .header p { font-size: 13.5px; color: #475569; margin: 3px 0; font-weight: 600; }
+    .content { padding: 0 !important; width: 100% !important; }
     .section-title {
-        font-size: 16px;
-        font-weight: 800;
-        margin: 20px 0 10px;
-        color: #000;
-        padding-bottom: 8px;
-        border-bottom: 2px solid #000;
-        text-transform: uppercase;
+        font-size: 16px !important;
+        font-weight: 900 !important;
+        margin: 24px 0 12px !important;
+        color: #002F6C !important;
+        padding-bottom: 8px !important;
+        border-bottom: 2px solid #002F6C !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.3px !important;
     }
     .summary-cards {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 10px;
-        margin-bottom: 14px;
+        display: grid !important;
+        grid-template-columns: repeat(5, 1fr) !important;
+        gap: 12px !important;
+        margin-bottom: 18px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
     }
-    .summary-card { border: 1px solid #000; padding: 12px; background: #fff; min-height: 72px; }
-    .summary-card .label { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #000; }
-    .summary-card .value { font-size: 24px; font-weight: 800; margin-top: 8px; color: #000; }
-    .table-container { overflow-x: auto; margin-bottom: 18px; width: 100%; }
-    table { width: 100%; border-collapse: collapse; background: white; border: 1px solid #000; font-size: 10px; table-layout: fixed; }
-    thead { background: #fff; color: #000; }
-    th { padding: 7px 5px; text-align: left; font-weight: 800; font-size: 9px; text-transform: uppercase; border: 1px solid #000; white-space: nowrap; }
-    td { padding: 6px 5px; border: 1px solid #000; font-size: 10px; vertical-align: top; }
-    tbody tr { background: #fff; }
-    .text-right { text-align: right; }
-    .text-center { text-align: center; }
-    .font-bold { font-weight: 800; }
-    .two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
-    .three-col { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
-    .summary-box { border: 1px solid #000; padding: 12px; background: #fff; }
-    .summary-box h3 { font-size: 13px; text-transform: uppercase; margin: 0 0 8px; color: #000; border-bottom: 1px solid #000; padding-bottom: 6px; }
-    .summary-box .count { font-size: 24px; font-weight: 800; text-align: center; padding: 8px 0; }
+    @media (max-width: 900px) {
+        .summary-cards { grid-template-columns: repeat(2, 1fr) !important; }
+    }
+    .summary-card {
+        border: 1.5px solid #cbd5e1 !important;
+        border-radius: 8px !important;
+        padding: 14px 16px !important;
+        background: #ffffff !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+        box-sizing: border-box !important;
+    }
+    .summary-card .label {
+        font-size: 12.5px !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+        color: #475569 !important;
+        letter-spacing: 0.3px !important;
+    }
+    .summary-card .value {
+        font-size: 26px !important;
+        font-weight: 900 !important;
+        margin-top: 6px !important;
+        color: #002F6C !important;
+    }
+    .table-container {
+        overflow: hidden !important;
+        margin-bottom: 18px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        border-radius: 8px !important;
+        border: 1.5px solid #cbd5e1 !important;
+    }
+    table.report-table {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        border-collapse: collapse !important;
+        background: #ffffff !important;
+        margin: 0 !important;
+        table-layout: fixed !important;
+        box-sizing: border-box !important;
+    }
+    table.report-table th,
+    table.report-table td {
+        white-space: normal !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+        vertical-align: middle !important;
+        box-sizing: border-box !important;
+    }
+    table.report-table th {
+        background: #002F6C !important;
+        color: #ffffff !important;
+        font-size: 13.5px !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.3px !important;
+        padding: 12px 8px !important;
+        border: 1px solid #001f4d !important;
+    }
+    table.report-table td {
+        padding: 10px 8px !important;
+        border: 1px solid #e2e8f0 !important;
+        color: #0f172a !important;
+        font-size: 14px !important;
+        background: #ffffff;
+    }
+    table.report-table tr:hover td {
+        background: #f8fafc !important;
+    }
+    .text-right { text-align: right !important; }
+    .text-center { text-align: center !important; }
+    .font-bold { font-weight: 800 !important; }
+    
+    .two-col {
+        display: grid !important;
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 14px !important;
+        margin-bottom: 18px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    .three-col {
+        display: grid !important;
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 14px !important;
+        margin-bottom: 18px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    .summary-box {
+        border: 1.5px solid #cbd5e1 !important;
+        border-radius: 8px !important;
+        padding: 16px !important;
+        background: #ffffff !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+        box-sizing: border-box !important;
+    }
+    .summary-box h3 {
+        font-size: 14px !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+        margin: 0 0 10px !important;
+        color: #002F6C !important;
+        border-bottom: 1.5px solid #e2e8f0 !important;
+        padding-bottom: 8px !important;
+        letter-spacing: 0.3px !important;
+    }
+    .summary-box .count {
+        font-size: 28px !important;
+        font-weight: 900 !important;
+        text-align: center !important;
+        padding: 6px 0 !important;
+        color: #002F6C !important;
+    }
     .print-summary-table { display: none; }
+    .print-only-signature { display: none !important; }
     .footer-table { max-width: 520px; margin: 0 auto; }
 
     @media print {
@@ -239,7 +411,8 @@ require_once __DIR__ . '/../partials/header.php';
         .sfss-print-only .summary-box { border: 1px solid #000 !important; padding: 5px !important; }
         .sfss-print-only .summary-box h3 { font-size: 9px !important; border-bottom: 1px solid #000 !important; padding-bottom: 2px !important; margin: 0 0 4px !important; }
         .sfss-print-only, .sfss-print-only * { min-height: 0 !important; height: auto !important; }
-        .sfss-print-only .container, .sfss-print-only .content { margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
+        .sfss-print-only .container, .sfss-print-only .scr-card-container, .sfss-print-only .content { margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
+        .print-only-signature, .sfss-print-only .print-only-signature { display: table !important; width: 100% !important; }
     }
 </style>
 
@@ -282,7 +455,9 @@ require_once __DIR__ . '/../partials/header.php';
                 <?php endforeach; ?>
             </select>
         </div>
-        <button type="submit" class="btn btn-primary">Apply</button>
+        <button type="submit" class="btn-apply-cust">
+            <i class="fas fa-filter"></i> Apply
+        </button>
     </form>
     <div class="action-controls">
         <!-- Excel -->
@@ -307,11 +482,11 @@ require_once __DIR__ . '/../partials/header.php';
 </div>
 
 <div class="print-area">
-    <div class="container">
+    <div class="scr-card-container">
         <div class="header" style="text-align:center;">
-            <h1 style="color:#002F6C; font-weight:800;">CUSTOMER REPORT</h1>
-            <p class="rpt-address" style="color:#555; font-size:12px;"><?= staff_customer_report_h($station_location ?: $station_name) ?></p>
-            <p class="rpt-date-range" style="color:#555; font-size:12px;"><strong>Period:</strong> <?= date('F d, Y', strtotime($filters['date_start'])) ?> - <?= date('F d, Y', strtotime($filters['date_end'])) ?></p>
+            <h1 style="color:#002F6C; font-weight:900;">CUSTOMER REPORT</h1>
+            <p class="rpt-address" style="color:#475569; font-size:14px; font-weight:700;"><?= staff_customer_report_h($station_location ?: $station_name) ?></p>
+            <p class="rpt-date-range" style="color:#475569; font-size:13.5px; font-weight:600;"><strong>Period:</strong> <?= date('F d, Y', strtotime($filters['date_start'])) ?> – <?= date('F d, Y', strtotime($filters['date_end'])) ?></p>
         </div>
 
         <div class="content">
@@ -323,7 +498,7 @@ require_once __DIR__ . '/../partials/header.php';
                 <div class="summary-card"><div class="label">New Registered Customers</div><div class="value"><?= number_format($summary['new_registered']) ?></div></div>
                 <div class="summary-card"><div class="label">Returning Customers</div><div class="value"><?= number_format($summary['returning']) ?></div></div>
             </div>
-            <table class="print-summary-table">
+            <table class="print-summary-table report-table no-min-width print-table">
                 <tbody>
                     <tr><td class="font-bold">Total Customers Served</td><td class="text-right font-bold"><?= number_format($summary['total_served']) ?></td></tr>
                     <tr><td class="font-bold">Walk-in Customers</td><td class="text-right font-bold"><?= number_format($summary['walkin']) ?></td></tr>
@@ -335,7 +510,17 @@ require_once __DIR__ . '/../partials/header.php';
 
             <div class="section-title">Customer Transaction Report</div>
             <div class="table-container">
-                <table id="customersTable">
+                <table id="customersTable" class="report-table no-min-width print-table">
+                    <colgroup>
+                        <col style="width: 12%;">
+                        <col style="width: 18%;">
+                        <col style="width: 10%;">
+                        <col style="width: 13%;">
+                        <col style="width: 14%;">
+                        <col style="width: 12%;">
+                        <col style="width: 10%;">
+                        <col style="width: 11%;">
+                    </colgroup>
                     <thead>
                         <tr>
                             <th>Customer ID</th>
@@ -343,7 +528,7 @@ require_once __DIR__ . '/../partials/header.php';
                             <th>Type</th>
                             <th>Vehicle</th>
                             <th>Transaction Type</th>
-                            <th>Total Amount</th>
+                            <th style="text-align:right;">Total Amount</th>
                             <th>Date</th>
                             <th>Staff</th>
                         </tr>
@@ -351,17 +536,17 @@ require_once __DIR__ . '/../partials/header.php';
                     <tbody>
                         <?php if (count($rows) > 0): foreach ($rows as $row): ?>
                             <tr>
-                                <td class="font-bold"><?= staff_customer_report_h($row['customer_id_display']) ?></td>
-                                <td><?= staff_customer_report_h($row['customer_name']) ?></td>
+                                <td class="font-bold" style="color:#002F6C;"><?= staff_customer_report_h($row['customer_id_display']) ?></td>
+                                <td class="font-bold" style="color:#1e293b;"><?= staff_customer_report_h($row['customer_name']) ?></td>
                                 <td><?= staff_customer_report_h($row['customer_type']) ?></td>
                                 <td><?= staff_customer_report_h($row['vehicle']) ?></td>
                                 <td><?= staff_customer_report_h($row['transaction_type']) ?></td>
-                                <td class="text-right font-bold">₱<?= number_format((float)$row['total_amount'], 2) ?></td>
+                                <td class="text-right font-bold" style="color:#002F6C; font-size:14.5px;">₱<?= number_format((float)$row['total_amount'], 2) ?></td>
                                 <td><?= staff_customer_report_h(staff_customer_report_date($row['transaction_date'])) ?></td>
                                 <td><?= staff_customer_report_h($row['staff_name']) ?></td>
                             </tr>
                         <?php endforeach; else: ?>
-                            <tr><td colspan="8" class="text-center" style="padding: 30px;">No customer transactions found for the selected filters.</td></tr>
+                            <tr><td colspan="8" class="text-center" style="padding: 30px; font-weight:700; color:#64748b; font-size:15px; font-style:italic;">No customer transactions found for the selected filters.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
@@ -382,16 +567,20 @@ require_once __DIR__ . '/../partials/header.php';
 
             <div class="section-title">Staff Customer Summary</div>
             <div class="table-container">
-                <table>
-                    <thead><tr><th>Staff</th><th>Customers Served</th></tr></thead>
+                <table class="report-table no-min-width print-table">
+                    <colgroup>
+                        <col style="width: 65%;">
+                        <col style="width: 35%;">
+                    </colgroup>
+                    <thead><tr><th>Staff</th><th style="text-align:right;">Customers Served</th></tr></thead>
                     <tbody>
                         <?php if (count($report['staff_summary']) > 0): foreach ($report['staff_summary'] as $staff): ?>
                             <tr>
-                                <td class="font-bold"><?= staff_customer_report_h($staff['staff']) ?></td>
-                                <td class="text-right font-bold"><?= number_format($staff['customers_served']) ?></td>
+                                <td class="font-bold" style="color:#002F6C;"><?= staff_customer_report_h($staff['staff']) ?></td>
+                                <td class="text-right font-bold" style="font-size:14.5px;"><?= number_format($staff['customers_served']) ?></td>
                             </tr>
                         <?php endforeach; else: ?>
-                            <tr><td colspan="2" class="text-center" style="padding: 20px;">No staff customer data found.</td></tr>
+                            <tr><td colspan="2" class="text-center" style="padding: 20px; font-weight:700; color:#64748b; font-size:14px;">No staff customer data found.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
@@ -399,18 +588,24 @@ require_once __DIR__ . '/../partials/header.php';
 
             <div class="section-title">Daily Customer Summary</div>
             <div class="table-container">
-                <table>
-                    <thead><tr><th>Date</th><th>Walk-in</th><th>Registered</th><th>Total</th></tr></thead>
+                <table class="report-table no-min-width print-table">
+                    <colgroup>
+                        <col style="width: 28%;">
+                        <col style="width: 24%;">
+                        <col style="width: 24%;">
+                        <col style="width: 24%;">
+                    </colgroup>
+                    <thead><tr><th>Date</th><th style="text-align:right;">Walk-in</th><th style="text-align:right;">Registered</th><th style="text-align:right;">Total</th></tr></thead>
                     <tbody>
                         <?php if (count($report['daily_summary']) > 0): foreach ($report['daily_summary'] as $day): ?>
                             <tr>
-                                <td class="font-bold"><?= staff_customer_report_h(staff_customer_report_date($day['date'])) ?></td>
-                                <td class="text-right"><?= number_format($day['walkin']) ?></td>
-                                <td class="text-right"><?= number_format($day['registered']) ?></td>
-                                <td class="text-right font-bold"><?= number_format($day['total']) ?></td>
+                                <td class="font-bold" style="color:#002F6C;"><?= staff_customer_report_h(staff_customer_report_date($day['date'])) ?></td>
+                                <td class="text-right" style="font-size:14px;"><?= number_format($day['walkin']) ?></td>
+                                <td class="text-right" style="font-size:14px;"><?= number_format($day['registered']) ?></td>
+                                <td class="text-right font-bold" style="color:#002F6C; font-size:14.5px;"><?= number_format($day['total']) ?></td>
                             </tr>
                         <?php endforeach; else: ?>
-                            <tr><td colspan="4" class="text-center" style="padding: 20px;">No daily customer data found.</td></tr>
+                            <tr><td colspan="4" class="text-center" style="padding: 20px; font-weight:700; color:#64748b; font-size:14px;">No daily customer data found.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
@@ -418,32 +613,37 @@ require_once __DIR__ . '/../partials/header.php';
 
             <div class="section-title">Repeat Customers</div>
             <div class="table-container">
-                <table>
-                    <thead><tr><th>Customer</th><th>Visits</th><th>Last Visit</th></tr></thead>
+                <table class="report-table no-min-width print-table">
+                    <colgroup>
+                        <col style="width: 50%;">
+                        <col style="width: 25%;">
+                        <col style="width: 25%;">
+                    </colgroup>
+                    <thead><tr><th>Customer</th><th style="text-align:right;">Visits</th><th>Last Visit</th></tr></thead>
                     <tbody>
                         <?php if (count($report['repeat_customers']) > 0): foreach ($report['repeat_customers'] as $repeat): ?>
                             <tr>
-                                <td class="font-bold"><?= staff_customer_report_h($repeat['customer']) ?></td>
-                                <td class="text-right"><?= number_format($repeat['visits']) ?></td>
-                                <td><?= staff_customer_report_h(staff_customer_report_date($repeat['last_visit'])) ?></td>
+                                <td class="font-bold" style="color:#002F6C;"><?= staff_customer_report_h($repeat['customer']) ?></td>
+                                <td class="text-right font-bold" style="font-size:14.5px;"><?= number_format($repeat['visits']) ?></td>
+                                <td style="font-size:14px;"><?= staff_customer_report_h(staff_customer_report_date($repeat['last_visit'])) ?></td>
                             </tr>
                         <?php endforeach; else: ?>
-                            <tr><td colspan="3" class="text-center" style="padding: 20px;">No repeat customers found for the selected period.</td></tr>
+                            <tr><td colspan="3" class="text-center" style="padding: 20px; font-weight:700; color:#64748b; font-size:14px;">No repeat customers found for the selected period.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
             </div>
 
             <!-- PREPARED BY SIGNATURE -->
-            <table style="width:100%; margin-top:25px; page-break-inside:avoid; border:none; border-collapse:collapse;">
+            <table class="print-only-signature report-table no-min-width print-table" style="display:none; width:100%; margin-top:25px; page-break-inside:avoid; border:none; border-collapse:collapse; background:transparent !important;">
                 <tr>
-                    <td style="border:none;"></td>
-                    <td style="border:none; width:220px; text-align:center;">
-                        <div style="font-size:10px; font-weight:700; color:#333; margin-bottom:25px;">PREPARED BY:</div>
-                        <div style="border-top:1px solid #000; padding-top:4px; font-weight:700; font-size:11px; color:#000;">
+                    <td style="border:none; background:transparent !important;"></td>
+                    <td style="border:none; width:220px; text-align:center; background:transparent !important;">
+                        <div style="font-size:11px; font-weight:800; color:#002F6C; margin-bottom:28px;">PREPARED BY:</div>
+                        <div style="border-top:1.5px solid #002F6C; padding-top:4px; font-weight:800; font-size:13px; color:#0f172a;">
                             <?= staff_customer_report_h($generated_by) ?>
                         </div>
-                        <div style="font-size:9.5px; color:#555; margin-top:2px;"><?= staff_customer_report_h(ucfirst($role)) ?></div>
+                        <div style="font-size:11px; color:#64748b; font-weight:600; margin-top:2px;"><?= staff_customer_report_h(ucfirst($role)) ?></div>
                     </td>
                 </tr>
             </table>

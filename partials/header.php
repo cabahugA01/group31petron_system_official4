@@ -3,6 +3,12 @@
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
+header('Content-Type: text/html; charset=UTF-8');
+
+// Set PHP internal encoding to UTF-8 for proper multi-byte character handling
+if (function_exists('mb_internal_encoding')) {
+    mb_internal_encoding('UTF-8');
+}
 
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/../public/db_connect.php';
@@ -700,6 +706,7 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     .map-modal-close,
     .txn-modal-close,
     .va-modal-close,
+    .mi-close,
     button[class*="modal-close"],
     button[class*="close-modal"],
     .modal-header .close,
@@ -809,6 +816,18 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     /* ── Dynamically-injected detail action buttons (JS-generated) ── */
     #detailsActions button {
         background-color: unset !important;
+    }
+    /* ── Pricing & Specification View Modals: clean buttons (preserve transparent / custom background) ── */
+    #viewAdminServiceModal button,
+    #viewAdminMerchModal button,
+    #viewFuelModalAdmin button,
+    #priceHistoryModal button,
+    #viewAdminBatchesModal button,
+    #adminViewProdModal button,
+    #adminViewMovModal button,
+    #adminViewSiModal button {
+        background-color: transparent !important;
+        background: transparent !important;
     }
     /* Sub-tabs & Navigation tabs styling fix: ensure inactive tab text is crisp, clear, and visible with white background */
     .tab-btn:not(.active),
@@ -1427,8 +1446,9 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     
     /* Desktop Sidebar Layout (Header + Sidebar Integration, Fixed Footer) */
     @media (min-width: 992px) {
-        body { 
+        html, body { 
             overflow: hidden !important;
+            height: 100% !important;
             pointer-events: auto !important;
         }
 
@@ -1466,24 +1486,21 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
             flex: 1 1 auto; 
             overflow-y: auto;
             overflow-x: hidden;
-            padding-top: 8px; /* removed the 52px padding for hamburger button */
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            padding-top: 8px;
             padding-bottom: 8px;
-            scrollbar-width: thin;
-            scrollbar-color: rgba(255,255,255,0.3) transparent;
+            scrollbar-width: none !important;
+            -ms-overflow-style: none !important;
             pointer-events: auto !important;
         }
-        .sidebar-menu::-webkit-scrollbar {
-            width: 4px;
-        }
-        .sidebar-menu::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        .sidebar-menu::-webkit-scrollbar-thumb {
-            background: rgba(255,255,255,0.3);
-            border-radius: 2px;
-        }
-        .sidebar-menu::-webkit-scrollbar-thumb:hover {
-            background: rgba(255,255,255,0.5);
+        .sidebar::-webkit-scrollbar,
+        .sidebar-menu::-webkit-scrollbar,
+        .sidebar-menu *::-webkit-scrollbar {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            background: transparent !important;
         } 
 
         /* â”€â”€ Sidebar Identity Footer â”€â”€ */
@@ -3153,18 +3170,19 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
 
 <style>
 /* Global No Text Overlapping Rule */
-.table-wrap, .table-responsive, .cust-section, .card, .table-card {
+.table-wrap:not(.adm-table-responsive), .table-responsive:not(.adm-table-responsive), .cust-section, .card:not(.adm-card), .table-card {
     overflow-x: auto !important;
+    overflow-y: visible !important;
     width: 100% !important;
 }
 @media screen {
-    table:not(.report-table):not(.no-min-width):not(.print-table) {
+    table:not(.report-table):not(.rpt-table):not(.adm-table):not(.mgr-table):not(.no-min-width):not(.dashboard-table):not(.adm-dashboard table):not(.mgr-dashboard table):not(.print-table):not(.cust-modal table):not(.modal-backdrop table):not(.modal-body table):not(.modal table) {
         width: 100% !important;
         min-width: 1050px !important;
         table-layout: auto !important;
     }
-    table:not(.report-table):not(.no-min-width):not(.print-table) th,
-    table:not(.report-table):not(.no-min-width):not(.print-table) td {
+    table:not(.report-table):not(.rpt-table):not(.adm-table):not(.mgr-table):not(.no-min-width):not(.dashboard-table):not(.adm-dashboard table):not(.mgr-dashboard table):not(.print-table):not(.cust-modal table):not(.modal-backdrop table):not(.modal-body table):not(.modal table) th,
+    table:not(.report-table):not(.rpt-table):not(.adm-table):not(.mgr-table):not(.no-min-width):not(.dashboard-table):not(.adm-dashboard table):not(.mgr-dashboard table):not(.print-table):not(.cust-modal table):not(.modal-backdrop table):not(.modal-body table):not(.modal table) td {
         white-space: nowrap !important;
     }
 }
@@ -3317,7 +3335,8 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
         position: fixed !important;
         pointer-events: auto !important;
         z-index: 1 !important;
-        isolation: isolate !important;
+        /* NOTE: isolation:isolate was removed — it caused position:fixed modals
+           to anchor to .main instead of the viewport, breaking centering */
     }
     
     /* Everything inside main MUST be clickable */
@@ -3381,10 +3400,12 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
         .mi-overlay,
         .modal-backdrop-custom {
             padding-left: 270px !important; /* Offset by 250px sidebar width + 20px padding */
-            padding-top: 80px !important;
-            padding-bottom: 20px !important;
+            padding-top: 75px !important;
+            padding-bottom: 75px !important; /* EQUAL spacing at footer matching top */
             padding-right: 20px !important;
             box-sizing: border-box !important;
+            align-items: center !important;
+            justify-content: center !important;
         }
 
         body.sidebar-collapsed .modal-overlay,
@@ -3396,20 +3417,52 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
 
         .modal-box,
         .sr-modal-box,
+        .mi-box,
         .modal-dialog,
         .modal-card,
         .modal-card-wide,
         .modal-card-xl {
             max-width: min(1100px, calc(100vw - 310px)) !important;
+            max-height: calc(100vh - 150px) !important;
             margin-left: auto !important;
             margin-right: auto !important;
+            display: flex !important;
+            flex-direction: column !important;
         }
 
         body.sidebar-collapsed .modal-box,
         body.sidebar-collapsed .sr-modal-box,
+        body.sidebar-collapsed .mi-box,
         body.sidebar-collapsed .modal-dialog,
         body.sidebar-collapsed .modal-card {
             max-width: min(1100px, calc(100vw - 110px)) !important;
+            max-height: calc(100vh - 150px) !important;
+        }
+    }
+
+    @media (max-width: 991px) {
+        .modal-overlay,
+        .sr-modal-overlay,
+        .mi-overlay,
+        .modal-backdrop-custom {
+            padding-left: 16px !important;
+            padding-right: 16px !important;
+            padding-top: 65px !important;
+            padding-bottom: 65px !important; /* EQUAL spacing at footer matching top */
+            box-sizing: border-box !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+
+        .modal-box,
+        .sr-modal-box,
+        .mi-box,
+        .modal-dialog,
+        .modal-card {
+            max-height: calc(100vh - 130px) !important;
+            margin: auto !important;
+            display: flex !important;
+            flex-direction: column !important;
         }
     }
     
@@ -3432,16 +3485,26 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
         overflow: hidden !important;
     }
     
-    /* Scrollable containers */
+    /* Scrollable container - only .main is the primary vertical scroll container on desktop */
     .main,
-    .content,
-    .container,
-    .container-fluid,
-    .table-responsive,
     .overflow-auto,
     .scroll-container {
         pointer-events: auto !important;
         overflow-y: auto !important;
+    }
+
+    /* Prevent redundant inner vertical scrollbars on child wrappers inside .main */
+    .main > .main-content,
+    .main-content,
+    .main .container,
+    .main .container-fluid,
+    .main .table-responsive,
+    .main .table-wrap,
+    .main .card:not(.card-scrollable),
+    .main .table-card {
+        overflow-y: visible !important;
+        height: auto !important;
+        max-height: none !important;
     }
 </style>
 
@@ -3999,7 +4062,6 @@ require_once __DIR__ . '/rbac_menu.php';
   // live pending/action counts and stay visible until items are resolved.
   $badge_page_map = [
       // STAFF pages
-      'staff_stock_requests'                      => ['staff_stock_requests'],
       'staff_fuel_deliveries_history'             => ['staff_fuel_del_history'],
       'staff_delivery_history'                    => ['staff_delivery_history'],
       'staff_transactions_hub'                    => ['staff_new_transaction'],
@@ -4050,7 +4112,6 @@ require_once __DIR__ . '/rbac_menu.php';
       // Map: filename base (without .php) → badge module keys to mark seen
       var navBadgeMap = {
           // Staff
-          'staff_stock_requests':               ['staff_stock_requests'],
           'staff_fuel_deliveries_history':      ['staff_fuel_del_history'],
           'staff_delivery_history':             ['staff_delivery_history'],
           'staff_transactions_hub':             ['staff_new_transaction'],
@@ -4212,7 +4273,7 @@ require_once __DIR__ . '/rbac_menu.php';
             <div id="searchWrapper" style="position: relative; width: 100%; max-width: 440px; pointer-events: auto;">
                 <div style="position: relative; display: flex; align-items: center;">
                     <i class="fas fa-search" style="position: absolute; left: 14px; color: #94a3b8; font-size: 14px; pointer-events: none;"></i>
-                    <input type="search" id="searchInput" name="app_global_search_q" 
+                    <input type="search" id="searchInput" 
                            placeholder="Search Customer, JO, Product, OR No..." 
                            autocomplete="off" 
                            autocapitalize="off" 
@@ -4281,13 +4342,13 @@ require_once __DIR__ . '/rbac_menu.php';
                                     </div>
                                     <div style="flex:1;min-width:0;line-height:1.3;">
                                         <div style="font-size:14px;color:#050505;margin-bottom:2px;">
-                                            <strong style="font-weight:600;"><?php echo htmlspecialchars($hn['title'] ?? 'Notification'); ?></strong>
+                                            <strong style="font-weight:600;"><?php echo htmlspecialchars(function_exists('clean_mojibake') ? clean_mojibake($hn['title'] ?? 'Notification') : ($hn['title'] ?? 'Notification'), ENT_QUOTES, 'UTF-8'); ?></strong>
                                         </div>
                                         <div style="color:#65676B;font-size:13px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">
-                                            <?php echo htmlspecialchars($hn['message'] ?? ''); ?>
+                                            <?php echo htmlspecialchars(function_exists('clean_mojibake') ? clean_mojibake($hn['message'] ?? '') : ($hn['message'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>
                                         </div>
                                         <div style="color:<?php echo $hn_unread ? '#002F6C' : '#65676B'; ?>;font-size:12px;font-weight:<?php echo $hn_unread ? '600' : 'normal'; ?>;margin-top:4px;">
-                                            <?php echo htmlspecialchars($header_time_ago($hn['created_at'] ?? '')); ?>
+                                            <?php echo htmlspecialchars($header_time_ago($hn['created_at'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>
                                         </div>
                                     </div>
                                     <?php if ($hn_unread): ?>
@@ -4927,8 +4988,10 @@ require_once __DIR__ . '/rbac_menu.php';
 
     window.resolveRedirectUrl = function(url) {
         if (!url || url === '#' || url === '' || url === 'null') return '#';
-        if (url.startsWith('http://') || url.startsWith('https://')) return url;
-        return url.replace(/^\/?(public\/)?/, '');
+        if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/')) return url;
+        // Relative path from search.php (e.g. "staff_inventory.php") — resolve to /public/
+        var base = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
+        return base + '/public/' + url;
     };
 
 
@@ -5480,15 +5543,15 @@ require_once __DIR__ . '/rbac_menu.php';
                 
                 
         
-        // â”€â”€ Global Search Autocomplete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Global Search Autocomplete ────────────────────────────────────────────────────────
         (function () {
-            const searchInput       = document.getElementById('searchInput');
-            const searchSuggestions = document.getElementById('searchSuggestions');
+            var searchInput       = document.getElementById('searchInput');
+            var searchSuggestions = document.getElementById('searchSuggestions');
             if (!searchInput || !searchSuggestions) return;
 
             // Clear any browser autofill (e.g. email) on initialization and focus
             function cleanAutofill() {
-                if (searchInput.value && (searchInput.value.includes('@') || searchInput.value.includes('.com') || searchInput.value.includes('.edu'))) {
+                if (searchInput.value && (searchInput.value.indexOf('@') !== -1 || searchInput.value.indexOf('.com') !== -1 || searchInput.value.indexOf('.edu') !== -1)) {
                     searchInput.value = '';
                     searchSuggestions.style.display = 'none';
                     searchSuggestions.innerHTML = '';
@@ -5501,31 +5564,158 @@ require_once __DIR__ . '/rbac_menu.php';
             window.addEventListener('load', cleanAutofill);
             searchInput.addEventListener('focus', cleanAutofill);
 
-            // Icon + colour per result type (mirrors search.php $ICONS / $COLORS)
-            const TYPE_META = {
-                'Transaction'   : { icon: 'fas fa-shopping-cart',   color: '#3b82f6' },
-                'Customer'      : { icon: 'fas fa-user',             color: '#10b981' },
-                'Vehicle'       : { icon: 'fas fa-car',              color: '#0284c7' },
-                'Product'       : { icon: 'fas fa-box',              color: '#f59e0b' },
-                'Job Order'     : { icon: 'fas fa-wrench',           color: '#8b5cf6' },
-                'Delivery'      : { icon: 'fas fa-truck',            color: '#ef4444' },
-                'Calendar'      : { icon: 'fas fa-calendar-alt',     color: '#06b6d4' },
-                'Report'        : { icon: 'fas fa-chart-bar',        color: '#64748b' },
-                'Station'       : { icon: 'fas fa-gas-pump',         color: '#002F6C' },
-                'Admin'         : { icon: 'fas fa-user-shield',      color: '#7c3aed' },
-                'System Log'    : { icon: 'fas fa-server',           color: '#dc2626' },
-                'Security'      : { icon: 'fas fa-shield-alt',       color: '#b91c1c' },
-                'Audit Trail'   : { icon: 'fas fa-history',          color: '#0891b2' },
-                'Product Mgmt'  : { icon: 'fas fa-tags',             color: '#e11d48' },
-                'Fuel Management': { icon: 'fas fa-gas-pump',        color: '#f97316' },
+            // Icon + colour per result type
+            var TYPE_META = {
+                'Transaction'    : { icon: 'fas fa-shopping-cart',  color: '#3b82f6' },
+                'Customer'       : { icon: 'fas fa-user',            color: '#10b981' },
+                'Vehicle'        : { icon: 'fas fa-car',             color: '#0284c7' },
+                'Product'        : { icon: 'fas fa-box',             color: '#f59e0b' },
+                'Job Order'      : { icon: 'fas fa-wrench',          color: '#8b5cf6' },
+                'Delivery'       : { icon: 'fas fa-truck',           color: '#ef4444' },
+                'Calendar'       : { icon: 'fas fa-calendar-alt',    color: '#06b6d4' },
+                'Report'         : { icon: 'fas fa-chart-bar',       color: '#64748b' },
+                'Station'        : { icon: 'fas fa-gas-pump',        color: '#002F6C' },
+                'Admin'          : { icon: 'fas fa-user-shield',     color: '#7c3aed' },
+                'System Log'     : { icon: 'fas fa-server',          color: '#dc2626' },
+                'Security'       : { icon: 'fas fa-shield-alt',      color: '#b91c1c' },
+                'Audit Trail'    : { icon: 'fas fa-history',         color: '#0891b2' },
+                'Product Mgmt'   : { icon: 'fas fa-tags',            color: '#e11d48' },
+                'Fuel Management': { icon: 'fas fa-gas-pump',        color: '#f97316' }
             };
 
-            let debounceTimer;
+            // ── Resolve a relative link from search.php to an absolute URL ──
+            function resolveLink(link) {
+                if (!link || link === '#') return '#';
+                if (link.indexOf('http://') === 0 || link.indexOf('https://') === 0 || link.indexOf('/') === 0) {
+                    return link;
+                }
+                var base = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
+                return base + '/public/' + link;
+            }
+            // Expose globally
+            window.resolveRedirectUrl = resolveLink;
 
-            searchInput.addEventListener('input', function () {
+            // ── State ──
+            var debounceTimer;
+            var flatResults = [];
+            var activeIndex = -1;
+
+            // ── Keyboard active-item highlight helpers ──
+            function setActive(index) {
+                clearActive();
+                activeIndex = index;
+                var rows = searchSuggestions.querySelectorAll('a[data-search-row]');
+                for (var i = 0; i < rows.length; i++) {
+                    if (parseInt(rows[i].getAttribute('data-search-row')) === index) {
+                        rows[i].style.background = '#f0f6ff';
+                    }
+                }
+            }
+            function clearActive() {
+                activeIndex = -1;
+                var rows = searchSuggestions.querySelectorAll('a[data-search-row]');
+                for (var i = 0; i < rows.length; i++) { rows[i].style.background = ''; }
+            }
+
+            // ── Escape HTML to prevent XSS in innerHTML ──
+            function esc(str) {
+                return String(str).replace(/[&<>"']/g, function(c) {
+                    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+                });
+            }
+
+            // ── Render suggestions ──
+            function renderSuggestions(data, query) {
+                searchSuggestions.innerHTML = '';
+                flatResults = [];
+                activeIndex = -1;
+
+                if (!data || data.length === 0) {
+                    searchSuggestions.innerHTML =
+                        '<div style="padding:20px 16px;color:#94a3b8;font-size:13px;text-align:center;">' +
+                        '<i class="fas fa-inbox" style="display:block;font-size:22px;margin-bottom:6px;"></i>' +
+                        'No results found.</div>';
+                    searchSuggestions.style.display = 'block';
+                    return;
+                }
+
+                // Group by type
+                var grouped = {};
+                var typeOrder = [];
+                data.forEach(function(item) {
+                    if (!grouped[item.type]) { grouped[item.type] = []; typeOrder.push(item.type); }
+                    grouped[item.type].push(item);
+                });
+
+                typeOrder.forEach(function(type) {
+                    var meta  = TYPE_META[type] || { icon: 'fas fa-circle', color: '#64748b' };
+                    var color = meta.color;
+
+                    // Group header
+                    var hdr = document.createElement('div');
+                    hdr.style.cssText =
+                        'padding:6px 14px 4px;font-size:11px;font-weight:700;text-transform:uppercase;' +
+                        'letter-spacing:.6px;color:#94a3b8;background:#f8fafc;' +
+                        'border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:6px;';
+                    hdr.innerHTML = '<i class="' + meta.icon + '" style="color:' + color + ';font-size:10px;"></i>' + esc(type) + 's';
+                    searchSuggestions.appendChild(hdr);
+
+                    grouped[type].forEach(function(item) {
+                        var rowIndex = flatResults.length;
+                        flatResults.push(item);
+
+                        var row = document.createElement('a');
+                        row.href = resolveLink(item.link);
+                        row.setAttribute('data-search-row', rowIndex);
+                        row.style.cssText =
+                            'display:flex;align-items:center;gap:10px;padding:9px 14px;' +
+                            'text-decoration:none;color:inherit;border-bottom:1px solid #f8fafc;' +
+                            'transition:background .12s;cursor:pointer;';
+                        (function(ri) {
+                            row.addEventListener('mouseenter', function() { setActive(ri); });
+                            row.addEventListener('mouseleave', function() { clearActive(); });
+                            row.addEventListener('click', function(e) {
+                                e.preventDefault();
+                                var dest = resolveLink(item.link);
+                                if (dest && dest !== '#') window.location.href = dest;
+                            });
+                        })(rowIndex);
+                        row.innerHTML =
+                            '<div style="width:30px;height:30px;border-radius:8px;background:' + color + '18;' +
+                            'display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
+                            '<i class="' + meta.icon + '" style="color:' + color + ';font-size:12px;"></i></div>' +
+                            '<div style="flex:1;min-width:0;">' +
+                            '<div style="font-size:13px;font-weight:600;color:#1e293b;' +
+                            'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(item.title) + '</div>' +
+                            '<div style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;' +
+                            'text-overflow:ellipsis;">' + esc(item.subtitle) + '</div></div>' +
+                            '<i class="fas fa-chevron-right" style="color:#cbd5e1;font-size:10px;flex-shrink:0;"></i>';
+                        searchSuggestions.appendChild(row);
+                    });
+                });
+
+                // "View all results" footer link
+                var _base = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
+                var viewAll = document.createElement('a');
+                viewAll.href = _base + '/public/search.php?q=' + encodeURIComponent(query);
+                viewAll.style.cssText =
+                    'display:flex;align-items:center;justify-content:center;gap:6px;' +
+                    'padding:10px 14px;font-size:12px;font-weight:600;color:#3b82f6;' +
+                    'border-top:1px solid #e2e8f0;text-decoration:none;background:#f8fafc;' +
+                    'border-radius:0 0 12px 12px;transition:background .12s;';
+                viewAll.addEventListener('mouseenter', function() { viewAll.style.background = '#eff6ff'; });
+                viewAll.addEventListener('mouseleave', function() { viewAll.style.background = '#f8fafc'; });
+                viewAll.innerHTML = '<i class="fas fa-search" style="font-size:11px;"></i> View all results for &ldquo;' + esc(query) + '&rdquo;';
+                searchSuggestions.appendChild(viewAll);
+
+                searchSuggestions.style.display = 'block';
+            }
+
+            // ── Input event: debounced fetch ──
+            searchInput.addEventListener('input', function() {
                 clearTimeout(debounceTimer);
-                const query = this.value.trim();
-                if (query.includes('@') && (query.includes('.') || query.includes('com'))) {
+                var query = this.value.trim();
+                if (query.indexOf('@') !== -1 && (query.indexOf('.') !== -1 || query.indexOf('com') !== -1)) {
                     this.value = '';
                     searchSuggestions.style.display = 'none';
                     return;
@@ -5534,108 +5724,63 @@ require_once __DIR__ . '/rbac_menu.php';
                     searchSuggestions.style.display = 'none';
                     return;
                 }
-                // Show loading state
                 searchSuggestions.innerHTML =
                     '<div style="padding:14px 16px;color:#94a3b8;font-size:13px;text-align:center;">' +
-                    '<i class="fas fa-spinner fa-spin"></i> Searching…</div>';
+                    '<i class="fas fa-spinner fa-spin"></i> Searching&hellip;</div>';
                 searchSuggestions.style.display = 'block';
 
-                debounceTimer = setTimeout(() => {
-                    const _searchBase = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
-                    fetch(_searchBase + '/public/search.php?q=' + encodeURIComponent(query) + '&ajax=1')
-                        .then(r => r.json())
-                        .then(data => {
-                            searchSuggestions.innerHTML = '';
-                            if (!data || data.length === 0) {
-                                searchSuggestions.innerHTML =
-                                    '<div style="padding:20px 16px;color:#94a3b8;font-size:13px;text-align:center;">' +
-                                    '<i class="fas fa-inbox" style="display:block;font-size:22px;margin-bottom:6px;"></i>' +
-                                    'No results found.</div>';
-                                return;
-                            }
-
-                            // Group by type
-                            const grouped = {};
-                            data.forEach(item => {
-                                if (!grouped[item.type]) grouped[item.type] = [];
-                                grouped[item.type].push(item);
-                            });
-
-                            Object.keys(grouped).forEach(type => {
-                                const meta  = TYPE_META[type] || { icon: 'fas fa-circle', color: '#64748b' };
-                                const color = meta.color;
-
-                                // Group header
-                                const hdr = document.createElement('div');
-                                hdr.style.cssText =
-                                    'padding:6px 14px 4px;font-size:11px;font-weight:700;text-transform:uppercase;' +
-                                    'letter-spacing:.6px;color:#94a3b8;background:#f8fafc;' +
-                                    'border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:6px;';
-                                hdr.innerHTML =
-                                    `<i class="${meta.icon}" style="color:${color};font-size:10px;"></i>${type}s`;
-                                searchSuggestions.appendChild(hdr);
-
-                                grouped[type].forEach(item => {
-                                    const row = document.createElement('a');
-                                    row.href = item.link || '#';
-                                    row.style.cssText =
-                                        'display:flex;align-items:center;gap:10px;padding:9px 14px;' +
-                                        'text-decoration:none;color:inherit;border-bottom:1px solid #f8fafc;' +
-                                        'transition:background .12s;cursor:pointer;';
-                                    row.onmouseenter = () => row.style.background = '#f8fafc';
-                                    row.onmouseleave = () => row.style.background = '';
-                                    
-                                    // Add click handler to ensure navigation works
-                                    row.onclick = function(e) {
-                                        e.preventDefault();
-                                        if (item.link && item.link !== '#') {
-                                            window.location.href = window.resolveRedirectUrl(item.link);
-                                        }
-                                    };
-                                    
-                                    row.innerHTML =
-                                        `<div style="width:30px;height:30px;border-radius:8px;background:${color}18;` +
-                                        `display:flex;align-items:center;justify-content:center;flex-shrink:0;">` +
-                                        `<i class="${meta.icon}" style="color:${color};font-size:12px;"></i></div>` +
-                                        `<div style="flex:1;min-width:0;">` +
-                                        `<div style="font-size:13px;font-weight:600;color:#1e293b;` +
-                                        `white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.title}</div>` +
-                                        `<div style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;` +
-                                        `text-overflow:ellipsis;">${item.subtitle}</div></div>` +
-                                        `<i class="fas fa-chevron-right" style="color:#cbd5e1;font-size:10px;flex-shrink:0;"></i>`;
-                                    searchSuggestions.appendChild(row);
-                                });
-                            });
-
-
-
-                            searchSuggestions.style.display = 'block';
-                        })
-                        .catch(() => {
-                            searchSuggestions.style.display = 'none';
-                        });
+                var capturedQuery = query;
+                debounceTimer = setTimeout(function() {
+                    var _base = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
+                    fetch(_base + '/public/search.php?q=' + encodeURIComponent(capturedQuery) + '&ajax=1')
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) { renderSuggestions(data, capturedQuery); })
+                        .catch(function() { searchSuggestions.style.display = 'none'; });
                 }, 280);
             });
 
-            // Keyboard: Enter navigates directly to first matching result item, Escape closes dropdown
-            searchInput.addEventListener('keydown', function (e) {
+            // ── Keyboard: Enter / Escape / Up / Down ──
+            searchInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    const firstResult = searchSuggestions.querySelector('div[style*="cursor:pointer"]');
-                    if (firstResult) {
-                        firstResult.click();
+                    e.stopPropagation();
+                    if (searchSuggestions.style.display !== 'none') {
+                        // Navigate to highlighted row
+                        if (activeIndex >= 0 && flatResults[activeIndex]) {
+                            var dest = resolveLink(flatResults[activeIndex].link);
+                            if (dest && dest !== '#') { window.location.href = dest; return; }
+                        }
+                        // Navigate to first result
+                        if (flatResults.length > 0) {
+                            var dest2 = resolveLink(flatResults[0].link);
+                            if (dest2 && dest2 !== '#') { window.location.href = dest2; return; }
+                        }
                     }
+                    // Fallback: full search page
+                    var q = this.value.trim();
+                    if (q.length >= 2) {
+                        var _base = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
+                        window.location.href = _base + '/public/search.php?q=' + encodeURIComponent(q);
+                    }
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (flatResults.length > 0) setActive(Math.min(activeIndex + 1, flatResults.length - 1));
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (flatResults.length > 0) setActive(Math.max(activeIndex - 1, 0));
                 } else if (e.key === 'Escape') {
                     searchSuggestions.style.display = 'none';
+                    clearActive();
                     this.blur();
                 }
             });
 
-            // Hide on outside click
-            document.addEventListener('click', function (e) {
-                const wrapper = document.getElementById('searchWrapper');
+            // ── Hide dropdown on outside click ──
+            document.addEventListener('click', function(e) {
+                var wrapper = document.getElementById('searchWrapper');
                 if (wrapper && !wrapper.contains(e.target)) {
                     searchSuggestions.style.display = 'none';
+                    clearActive();
                 }
             });
         })();
@@ -5721,6 +5866,15 @@ require_once __DIR__ . '/rbac_menu.php';
                 return Math.floor(diff / 86400) + ' days ago';
             }
 
+            function cleanMojibake(str) {
+                if (!str) return '';
+                return String(str)
+                    .replace(/ΓÇö|ГÇÖ|ΓÇÖ|ΓÇô|â€”|â€“/g, '—')
+                    .replace(/Γé▒|â‚±/g, '₱')
+                    .replace(/â€™|ΓÇÿ/g, "'")
+                    .replace(/â€œ|â€|ΓÇ£|ΓÇ¥/g, '"');
+            }
+
             function renderNotifications(list) {
                 const el = document.getElementById('notificationList');
                 if (!el) return;
@@ -5737,8 +5891,8 @@ require_once __DIR__ . '/rbac_menu.php';
                         : 'javascript:void(0)';
                     const unread = n.status === 'unread';
                     const hoverClass = unread ? 'notif-item unread' : 'notif-item';
-                    const title = (n.title || 'Notification').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                    const msg   = (n.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const title = cleanMojibake(n.title || 'Notification').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const msg   = cleanMojibake(n.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     return `<a href="${targetUrl}" class="${hoverClass}"
                                  style="padding:12px 16px;cursor:pointer;display:flex;align-items:flex-start;gap:12px;text-decoration:none !important;color:inherit;"
                                  onclick="saMarkRead(${n.id})">
@@ -5955,6 +6109,15 @@ require_once __DIR__ . '/rbac_menu.php';
                 });
             }
 
+            function cleanMojibake(str) {
+                if (!str) return '';
+                return String(str)
+                    .replace(/ΓÇö|ГÇÖ|ΓÇÖ|ΓÇô|â€”|â€“/g, '—')
+                    .replace(/Γé▒|â‚±/g, '₱')
+                    .replace(/â€™|ΓÇÿ/g, "'")
+                    .replace(/â€œ|â€ |ΓÇ£|ΓÇ¥/g, '"');
+            }
+
             function escapeJsString(value) {
                 return String(value || '')
                     .replace(/\\/g, '\\\\')
@@ -6031,8 +6194,8 @@ require_once __DIR__ . '/rbac_menu.php';
                             const targetUrl = (rawUrl && rawUrl !== '#' && rawUrl !== 'null') 
                                 ? (window.resolveRedirectUrl ? window.resolveRedirectUrl(rawUrl) : rawUrl)
                                 : 'javascript:void(0)';
-                            const title  = escapeHtml(n.title || 'Notification');
-                            const msg    = escapeHtml(n.message || '');
+                            const title  = escapeHtml(cleanMojibake(n.title || 'Notification'));
+                            const msg    = escapeHtml(cleanMojibake(n.message || ''));
                             const ago    = escapeHtml(n.time_ago || timeAgo(n.created_at));
                             const hoverClass = unread ? 'notif-item unread' : 'notif-item';
                             const onclickAttr = unread ? `onclick="staffMarkRead(${n.id})"` : '';
@@ -6655,5 +6818,19 @@ try {
     setInterval(checkStatus, 10000);
 })();
 </script>
-<!-- Node.js Real-time Service Integration -->
+<!-- Node.js Real-time Service Integration (Graceful check to prevent console connection errors when service is stopped) -->
+<?php
+$node_online = false;
+if (isset($_SESSION['nodejs_active']) && (time() - ($_SESSION['nodejs_last_check'] ?? 0) < 30)) {
+    $node_online = (bool)$_SESSION['nodejs_active'];
+} else {
+    $fp = @fsockopen('127.0.0.1', 3000, $errno, $errstr, 0.03);
+    $node_online = (bool)$fp;
+    if ($fp) { fclose($fp); }
+    $_SESSION['nodejs_active'] = $node_online;
+    $_SESSION['nodejs_last_check'] = time();
+}
+?>
+<?php if ($node_online): ?>
 <script src="<?= htmlspecialchars($public_base_url) ?>/js/nodejs_realtime.js"></script>
+<?php endif; ?>

@@ -831,6 +831,14 @@ try {
 
         if ($sub_tab === 'jo_list') {
             try {
+                $jo_scope_where = (!$is_manager_or_admin) ? " AND (jo.user_id = ? OR jo.$jo_enc = ?)" : "";
+                $jo_scope_params = [$station_id];
+                if (!$is_manager_or_admin) {
+                    $jo_scope_params[] = $user_id;
+                    $jo_scope_params[] = $user_id;
+                }
+                $jo_scope_params[] = $date_start;
+                $jo_scope_params[] = $date_end;
                 $stmt = $pdo->prepare("
                     SELECT jo.id,
                            $jo_num_col AS job_order_id,
@@ -848,10 +856,10 @@ try {
                     FROM job_orders jo
                     $cust_join
                     $enc_join
-                    WHERE jo.station_id = ? AND DATE(jo.created_at) BETWEEN ? AND ?
+                    WHERE jo.station_id = ? $jo_scope_where AND DATE(jo.created_at) BETWEEN ? AND ?
                     ORDER BY jo.created_at DESC
                 ");
-                $stmt->execute([$station_id, $date_start, $date_end]);
+                $stmt->execute($jo_scope_params);
                 $report_data = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
             } catch (Exception $e) {
                 $report_data = [];
