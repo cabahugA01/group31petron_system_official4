@@ -948,8 +948,11 @@ tr.grand-total td {
                     <label class="ms-1"><i class="fas fa-wrench me-1"></i> Mechanic</label>
                     <select name="filter_mech" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
                         <option value="">All Mechanics</option>
-                        <?php foreach ($mechs_list as $m): ?>
-                            <option value="<?= htmlspecialchars($m['name']) ?>" <?= $sel_mech === htmlspecialchars($m['name']) ? 'selected' : '' ?>><?= htmlspecialchars($m['name']) ?></option>
+                        <?php foreach ($mechs_list as $m): 
+                            $m_name = (string)($m['name'] ?? $m['mechanic_name'] ?? '');
+                            if ($m_name === '') continue;
+                        ?>
+                            <option value="<?= htmlspecialchars($m_name) ?>" <?= $sel_mech === htmlspecialchars($m_name) ? 'selected' : '' ?>><?= htmlspecialchars($m_name) ?></option>
                         <?php endforeach; ?>
                     </select>
 
@@ -1433,11 +1436,40 @@ function buildPrintHTML() {
         .bg-info { background: #e0f2fe !important; color: #0369a1 !important; border: 1px solid #bae6fd; }
         @page { size: A4 landscape; margin: 0.4in 0.5in; }
         tr { page-break-inside: avoid; }
-        .table-responsive { overflow: visible; }
-        .rpt-summary-cards { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-        .rpt-summary-card { border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px; background: #fff; text-align: center; min-width: 100px; }
-        .rpt-summary-card .card-label { font-size: 7.5px; font-weight: 700; text-transform: uppercase; color: #64748b; display: block; margin-bottom: 3px; }
-        .rpt-summary-card .card-value { font-size: 12px; font-weight: 800; display: block; }
+        .table-responsive { overflow: visible !important; }
+
+        /* Summary Card Grid: render as proper boxes for print */
+        .row { display: flex !important; flex-wrap: wrap !important; margin: 0 -4px !important; }
+        .col { box-sizing: border-box !important; padding: 4px !important; }
+        .row-cols-md-5 > .col { flex: 0 0 20% !important; max-width: 20% !important; }
+        .row-cols-md-3 > .col { flex: 0 0 33.333% !important; max-width: 33.333% !important; }
+        .rpt-summary-cards { display: flex !important; flex-wrap: wrap !important; gap: 8px !important; margin-bottom: 12px !important; }
+        .rpt-summary-card {
+            border: 1px solid #cbd5e1 !important;
+            border-radius: 4px !important;
+            padding: 8px 6px !important;
+            background: #ffffff !important;
+            text-align: center !important;
+            min-height: 52px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        .rpt-summary-card .label, .rpt-summary-card .card-label {
+            font-size: 7.5px !important;
+            font-weight: 700 !important;
+            text-transform: uppercase !important;
+            color: #64748b !important;
+            margin-bottom: 3px !important;
+            display: block !important;
+        }
+        .rpt-summary-card .value, .rpt-summary-card .card-value {
+            font-size: 12px !important;
+            font-weight: 800 !important;
+            display: block !important;
+        }
         .no-print { display: none !important; }
         .mgr-signature-row { display: flex !important; justify-content: space-between !important; align-items: flex-end !important; page-break-inside: avoid !important; margin-top: 25px !important; width: 100% !important; }
         .str-sig-line { border-top: 1.5px solid #002F6C !important; width: 100% !important; margin-bottom: 3px !important; }
@@ -1457,7 +1489,40 @@ function buildPrintHTML() {
 }
 
 function printReport() {
-    _doDirectNativePrint();
+    const html = buildPrintHTML();
+    if (!html) {
+        _doDirectNativePrint();
+        return;
+    }
+
+    let frame = document.getElementById('report_print_frame');
+    if (frame) frame.remove();
+
+    frame = document.createElement('iframe');
+    frame.id = 'report_print_frame';
+    frame.style.position = 'fixed';
+    frame.style.top = '-9999px';
+    frame.style.left = '-9999px';
+    frame.style.width = '1024px';
+    frame.style.height = '768px';
+    frame.style.border = 'none';
+    frame.style.visibility = 'hidden';
+    document.body.appendChild(frame);
+
+    const doc = frame.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    setTimeout(function() {
+        try {
+            frame.contentWindow.focus();
+            frame.contentWindow.print();
+        } catch (e) {
+            _doDirectNativePrint();
+        }
+        setTimeout(function() { if (frame) frame.remove(); }, 60000);
+    }, 350);
 }
 
 function _doDirectNativePrint(afterPrint) {
@@ -1499,6 +1564,28 @@ function _doDirectNativePrint(afterPrint) {
     }, 150);
 }
 
+function getCleanCellText(cell) {
+    if (!cell) return '';
+    const clone = cell.cloneNode(true);
+    clone.querySelectorAll('i, svg, script, style').forEach(el => el.remove());
+    let txt = clone.innerText || clone.textContent || '';
+    return txt.replace(/\r?\n|\r/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function getSectionHeadingForTable(tbl) {
+    let curr = tbl.closest('.table-responsive') || tbl;
+    let prev = curr.previousElementSibling;
+    while (prev) {
+        if (prev.classList && prev.classList.contains('rpt-section-heading')) {
+            return prev.innerText.trim();
+        }
+        let nested = prev.querySelector ? prev.querySelector('.rpt-section-heading') : null;
+        if (nested) return nested.innerText.trim();
+        prev = prev.previousElementSibling;
+    }
+    return '';
+}
+
 function exportReport(type) {
     const printableArea = document.getElementById('adminReportPrintable');
     if (!printableArea) { alert('No printable report content available.'); return; }
@@ -1533,6 +1620,8 @@ function exportReport(type) {
     const tables = Array.from(printableArea.querySelectorAll('table'));
     if (!tables.length) { alert('No data table found to export.'); return; }
 
+    const mgrStaffName = "<?= htmlspecialchars($mgr_staff_name ?? 'Station Manager') ?>";
+
     if (type === 'csv') {
         let csv = '';
         headerLines.forEach(line => {
@@ -1540,24 +1629,52 @@ function exportReport(type) {
         });
         csv += '\n';
 
-        tables.forEach((tbl) => {
-            let sectionHeading = '';
-            let prev = tbl.closest('.table-responsive')?.previousElementSibling;
-            if (prev && prev.classList.contains('rpt-section-heading')) {
-                sectionHeading = prev.innerText.trim();
+        // Executive Summary Cards (if present)
+        const summaryCards = printableArea.querySelectorAll('.rpt-summary-card');
+        if (summaryCards.length > 0) {
+            const sumLabels = [];
+            const sumVals = [];
+            summaryCards.forEach(card => {
+                const lbl = card.querySelector('.card-label');
+                const val = card.querySelector('.card-value');
+                if (lbl && val) {
+                    sumLabels.push('"' + lbl.innerText.trim().replace(/"/g, '""') + '"');
+                    sumVals.push('"' + val.innerText.trim().replace(/"/g, '""') + '"');
+                }
+            });
+            if (sumLabels.length > 0) {
+                csv += '"EXECUTIVE SUMMARY"\n';
+                csv += sumLabels.join(',') + '\n';
+                csv += sumVals.join(',') + '\n\n';
             }
+        }
+
+        tables.forEach((tbl) => {
+            const sectionHeading = getSectionHeadingForTable(tbl);
             if (sectionHeading) {
                 csv += '"' + sectionHeading.replace(/"/g, '""') + '"\n';
             }
 
             tbl.querySelectorAll('tr').forEach(r => {
-                const cols = r.querySelectorAll('th, td');
+                const rowCells = r.querySelectorAll('th, td');
                 const rowData = [];
-                cols.forEach(c => rowData.push('"' + c.innerText.replace(/"/g, '""').trim() + '"'));
+                rowCells.forEach(c => {
+                    const cSpan = parseInt(c.getAttribute('colspan') || 1, 10);
+                    const txt = getCleanCellText(c);
+                    rowData.push('"' + txt.replace(/"/g, '""') + '"');
+                    for (let s = 1; s < cSpan; s++) {
+                        rowData.push('""');
+                    }
+                });
                 if (rowData.length) csv += rowData.join(',') + '\n';
             });
             csv += '\n';
         });
+
+        // Signatures Block
+        csv += '"Prepared By:","","Verified By:","","Approved By:"\n';
+        csv += '"' + mgrStaffName.replace(/"/g, '""') + '","","Shift Supervisor","","Station Manager"\n';
+        csv += '"Signature over Printed Name","","Signature over Printed Name","","Signature over Printed Name"\n';
 
         const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
@@ -1569,67 +1686,137 @@ function exportReport(type) {
         setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
 
     } else if (type === 'excel') {
-        let maxCols = 1;
-        tables.forEach((tbl) => {
-            tbl.querySelectorAll('tr').forEach(r => {
-                const colCount = r.querySelectorAll('th, td').length;
-                if (colCount > maxCols) maxCols = colCount;
-            });
-        });
+        if (typeof XLSX !== 'undefined') {
+            const aoa = [];
+            // Header Lines
+            headerLines.forEach(h => aoa.push([h]));
+            aoa.push([]); // blank spacer
 
-        let html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel">
+            // Summary Cards Block
+            const summaryCards = printableArea.querySelectorAll('.rpt-summary-card');
+            if (summaryCards.length > 0) {
+                const sumRow1 = [];
+                const sumRow2 = [];
+                summaryCards.forEach(card => {
+                    const lbl = card.querySelector('.card-label');
+                    const val = card.querySelector('.card-value');
+                    if (lbl && val) {
+                        sumRow1.push(lbl.innerText.trim());
+                        sumRow2.push(val.innerText.trim());
+                    }
+                });
+                if (sumRow1.length > 0) {
+                    aoa.push(['--- EXECUTIVE SUMMARY ---']);
+                    aoa.push(sumRow1);
+                    aoa.push(sumRow2);
+                    aoa.push([]);
+                }
+            }
+
+            // Tables
+            tables.forEach((tbl) => {
+                const heading = getSectionHeadingForTable(tbl);
+                if (heading) {
+                    aoa.push(['--- ' + heading.toUpperCase() + ' ---']);
+                }
+
+                tbl.querySelectorAll('tr').forEach(r => {
+                    const rowCells = r.querySelectorAll('th, td');
+                    const rowData = [];
+                    rowCells.forEach(c => {
+                        const cSpan = parseInt(c.getAttribute('colspan') || 1, 10);
+                        const txt = getCleanCellText(c);
+                        rowData.push(txt);
+                        for (let s = 1; s < cSpan; s++) {
+                            rowData.push('');
+                        }
+                    });
+                    if (rowData.length > 0) {
+                        aoa.push(rowData);
+                    }
+                });
+                aoa.push([]); // blank line between tables
+            });
+
+            // Signatures Block
+            aoa.push([]);
+            aoa.push(['Prepared By:', '', 'Verified By:', '', 'Approved By:']);
+            aoa.push([mgrStaffName, '', 'Shift Supervisor', '', 'Station Manager']);
+            aoa.push(['Signature over Printed Name', '', 'Signature over Printed Name', '', 'Signature over Printed Name']);
+
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+            // Compute optimal column widths
+            let maxCols = 1;
+            aoa.forEach(row => { if (row.length > maxCols) maxCols = row.length; });
+            const colWidths = [];
+            for (let c = 0; c < maxCols; c++) {
+                let maxLen = 10;
+                aoa.forEach(row => {
+                    const val = (row[c] !== undefined && row[c] !== null) ? String(row[c]) : '';
+                    if (val.length > maxLen && val.length < 50) maxLen = val.length;
+                });
+                colWidths.push({ wch: maxLen + 2 });
+            }
+            ws['!cols'] = colWidths;
+
+            const wb = XLSX.utils.book_new();
+            const sheetName = (tab.replace(/_/g, ' ').substring(0, 30) || 'Report').toUpperCase();
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            XLSX.writeFile(wb, filename + '.xlsx');
+
+        } else {
+            // Graceful Fallback if XLSX library is not loaded
+            let maxCols = 1;
+            tables.forEach((tbl) => {
+                tbl.querySelectorAll('tr').forEach(r => {
+                    const colCount = r.querySelectorAll('th, td').length;
+                    if (colCount > maxCols) maxCols = colCount;
+                });
+            });
+
+            let html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel">
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<!--[if gte mso 9]><xml>
-<x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
-<x:Name>${tab.replace(/_/g, ' ').substring(0, 30).toUpperCase()}</x:Name>
-<x:WorksheetOptions><x:Print><x:ValidPrinterInfo/></x:Print></x:WorksheetOptions>
-</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook>
-</xml><![endif]-->
 <style>
     body { font-family: Arial, sans-serif; font-size: 11px; }
     table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #000; padding: 6px 10px; }
+    th, td { border: 1px solid #cbd5e1; padding: 6px 10px; }
     th { background-color: #00264D; color: #ffffff; font-weight: bold; text-align: center; }
-    .text-center { text-align: center; }
-    .text-right { text-align: right; }
 </style>
 </head>
 <body>
 <table>`;
 
-        headerLines.forEach((line, idx) => {
-            const fontStyle = idx === 0 ? 'font-size:16px; font-weight:bold; color:#00264D;' : 'font-size:11px; color:#333;';
-            html += `<tr><td colspan="${maxCols}" align="center" style="border:none; text-align:center !important; ${fontStyle} padding:4px 0;">${line.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td></tr>`;
-        });
-        html += `<tr><td colspan="${maxCols}" style="border:none; padding:4px;"></td></tr>`;
-
-        tables.forEach((tbl) => {
-            let sectionHeading = '';
-            let prev = tbl.closest('.table-responsive')?.previousElementSibling;
-            if (prev && prev.classList.contains('rpt-section-heading')) {
-                sectionHeading = prev.innerText.trim();
-            }
-            if (sectionHeading) {
-                html += `<tr><td colspan="${maxCols}" align="left" style="border:none; font-weight:bold; font-size:12px; color:#00264D; padding:8px 0 4px 0;">${sectionHeading.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td></tr>`;
-            }
-
-            tbl.querySelectorAll('tr').forEach(r => {
-                html += r.outerHTML;
+            headerLines.forEach((line, idx) => {
+                const fontStyle = idx === 0 ? 'font-size:16px; font-weight:bold; color:#00264D;' : 'font-size:11px; color:#333;';
+                html += `<tr><td colspan="${maxCols}" align="center" style="border:none; text-align:center !important; ${fontStyle} padding:4px 0;">${line.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td></tr>`;
             });
             html += `<tr><td colspan="${maxCols}" style="border:none; padding:4px;"></td></tr>`;
-        });
 
-        html += `</table></body></html>`;
+            tables.forEach((tbl) => {
+                const heading = getSectionHeadingForTable(tbl);
+                if (heading) {
+                    html += `<tr><td colspan="${maxCols}" align="left" style="border:none; font-weight:bold; font-size:12px; color:#00264D; padding:8px 0 4px 0;">${heading.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td></tr>`;
+                }
 
-        const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename + '.xls';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+                tbl.querySelectorAll('tr').forEach(r => {
+                    html += r.outerHTML;
+                });
+                html += `<tr><td colspan="${maxCols}" style="border:none; padding:4px;"></td></tr>`;
+            });
+
+            html += `</table></body></html>`;
+
+            const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename + '.xls';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+        }
     }
 }
 

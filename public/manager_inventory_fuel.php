@@ -649,13 +649,51 @@ include __DIR__ . '/../partials/header.php'; ?>
 <style>
 /* Prevent Column Text Overlap CSS */
 .table-wrap, .table-responsive {
-    overflow-x: hidden !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
     width: 100% !important;
+    box-sizing: border-box !important;
 }
-#mgrMerchTable, table.pricing-table, table.tbl-requests, table.table {
+#mgrFuelTable, #mgrMerchTable, table.pricing-table, table.tbl-requests, table.table {
     table-layout: auto !important;
     min-width: 0 !important;
     width: 100% !important;
+}
+#mgrFuelTable th {
+    padding: 10px 8px !important;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .3px !important;
+    white-space: nowrap !important;
+}
+#mgrFuelTable td {
+    padding: 10px 8px !important;
+    font-size: 13.5px !important;
+    white-space: nowrap !important;
+}
+#mgrFuelTable thead th:last-child {
+    text-align: center !important;
+    min-width: 130px !important;
+    width: 130px !important;
+    position: sticky !important;
+    right: 0 !important;
+    background: #002F6C !important;
+    z-index: 5 !important;
+    box-shadow: -2px 0 5px rgba(0,0,0,0.12) !important;
+}
+#mgrFuelTable tbody td:last-child {
+    text-align: center !important;
+    min-width: 130px !important;
+    width: 130px !important;
+    position: sticky !important;
+    right: 0 !important;
+    background: #ffffff !important;
+    z-index: 4 !important;
+    box-shadow: -2px 0 5px rgba(0,0,0,0.06) !important;
+}
+#mgrFuelTable tbody tr:hover td:last-child {
+    background: #f8fafc !important;
 }
 #mgrMerchTable th, table.pricing-table th, table.tbl-requests th {
     padding: 10px 10px !important;
@@ -1108,20 +1146,32 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
         </div>
     </div>
 
-    <div class="table-wrap">
+    <div class="table-wrap" style="width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;">
         <table class="table" id="mgrFuelTable">
+            <colgroup>
+                <col style="width: 7%; min-width: 70px;">
+                <col style="width: 11%; min-width: 90px;">
+                <col style="width: 12%; min-width: 105px;">
+                <col style="width: 9%; min-width: 80px;">
+                <col style="width: 11%; min-width: 95px;">
+                <col style="width: 9%; min-width: 85px;">
+                <col style="width: 9%; min-width: 85px;">
+                <col style="width: 8%; min-width: 75px;">
+                <col style="width: 11%; min-width: 115px;">
+                <col style="width: 13%; min-width: 135px;">
+            </colgroup>
             <thead>
                 <tr>
-                    <th>UGT No.</th>
-                    <th>Fuel Type</th>
-                    <th style="text-align:right;">Current Volume</th>
-                    <th style="text-align:right;">Capacity</th>
-                    <th style="text-align:right;">Available Space</th>
-                    <th style="text-align:right;">Reorder Level</th>
-                    <th style="text-align:right;">Critical Level</th>
-                    <th style="text-align:center;">Status</th>
-                    <th>Last Updated</th>
-                    <th style="text-align:center;">Actions</th>
+                    <th style="white-space:nowrap;">UGT No.</th>
+                    <th style="white-space:nowrap;">Fuel Type</th>
+                    <th style="text-align:right;white-space:nowrap;">Current Volume</th>
+                    <th style="text-align:right;white-space:nowrap;">Capacity</th>
+                    <th style="text-align:right;white-space:nowrap;">Available Space</th>
+                    <th style="text-align:right;white-space:nowrap;">Reorder Level</th>
+                    <th style="text-align:right;white-space:nowrap;">Critical Level</th>
+                    <th style="text-align:center;white-space:nowrap;">Status</th>
+                    <th style="white-space:nowrap;">Last Updated</th>
+                    <th style="text-align:center;white-space:nowrap;min-width:135px;width:135px;">Actions</th>
                 </tr>
             </thead>
             <tbody id="fuelTableBody">
@@ -1151,12 +1201,12 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
                         </span>
                     </td>
                     <td style="font-size:14px;color:#64748b;"><?= $ts_str ?></td>
-                    <td style="text-align:center;">
-                        <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
-                            <button type="button" class="int-btn-outline" style="width:100%;font-size:13px;height:28px;padding:0 8px;cursor:pointer;white-space:nowrap;" data-fuel="<?= htmlspecialchars(json_encode($r), ENT_QUOTES) ?>" onclick="event.stopPropagation(); openFuelModalFromBtn(this)">
+                    <td style="text-align:center;white-space:nowrap;min-width:135px;width:135px;">
+                        <div style="display:flex;flex-direction:column;gap:4px;align-items:center;width:100%;min-width:120px;max-width:130px;margin:0 auto;">
+                            <button type="button" class="int-btn-outline" style="width:100%;font-size:12px;height:26px;padding:0 8px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:4px;" data-fuel="<?= htmlspecialchars(json_encode($r), ENT_QUOTES) ?>" onclick="event.stopPropagation(); openFuelModalFromBtn(this)">
                                 <i class="fas fa-eye"></i> View
                             </button>
-                            <button type="button" class="int-btn-outline" style="width:100%;font-size:13px;height:28px;padding:0 8px;cursor:pointer;border-color:#5b21b6;color:#5b21b6;white-space:nowrap;" data-fuel="<?= htmlspecialchars(json_encode($r), ENT_QUOTES) ?>" onclick="event.stopPropagation(); openAdjustReadingModalFromBtn(this)">
+                            <button type="button" class="int-btn-outline" style="width:100%;font-size:12px;height:26px;padding:0 8px;cursor:pointer;border-color:#5b21b6;color:#5b21b6;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:4px;" data-fuel="<?= htmlspecialchars(json_encode($r), ENT_QUOTES) ?>" onclick="event.stopPropagation(); openAdjustReadingModalFromBtn(this)">
                                 <i class="fas fa-balance-scale"></i> Adjust Reading
                             </button>
                         </div>

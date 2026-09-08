@@ -208,9 +208,9 @@ $subtotal = array_sum(array_column($items, 'total'));
 $total_amount = $subtotal;
 
 /* back link depending on role */
-$back_url = 'admin_inventory_history.php?tab=stock_in';
+$back_url = 'admin_inventory_merchandise.php?tab=overview';
 if ($role === 'admin' || $role === 'superadmin') {
-    $back_url = 'admin_inventory_history.php?tab=stock_in';
+    $back_url = 'admin_inventory_merchandise.php?tab=overview';
 }
 ?>
 <!DOCTYPE html>

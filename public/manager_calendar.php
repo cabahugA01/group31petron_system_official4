@@ -598,33 +598,36 @@ try {
         switch($type_key) {
             case 'job_order':
                 if ($role === 'admin') return 'admin_all_transactions.php?search=JO-' . $id_num;
-                if ($role === 'manager') return 'manager_transactions_hub.php?tab=job_orders';
-                return 'staff_transactions_hub.php?tab=job_orders';
+                if ($role === 'manager') return 'manager_job_orders.php';
+                return 'staff_job_orders.php';
             case 'merchandise_delivery':
             case 'fuel_delivery':
-                if ($role === 'admin') return 'admin_fuel_transactions_oversight.php';
-                if ($role === 'manager') return 'deliveries_oversight.php';
+                if ($role === 'admin') return 'admin_deliveries_oversight.php';
+                if ($role === 'manager') return 'manager_merchandise_deliveries.php';
                 return 'staff_transactions_hub.php?tab=deliveries';
             case 'validation_task':
             case 'validation_delivery':
             case 'manager_approval':
             case 'master_data_approval':
             case 'admin_approval':
-                if ($role === 'admin') return 'admin_user_management.php';
+                if ($role === 'admin') return 'admin_set_prices.php';
                 return 'manager_fuel_transaction_validation.php';
             case 'fuel_calibration':
-                if ($role === 'admin') return 'admin_calibration_review.php';
-                if ($role === 'manager') return 'manager_calibration_review.php';
+                if ($role === 'admin') return 'admin_fuel_adjustments_oversight.php';
+                if ($role === 'manager') return 'manager_fuel_adjustments.php';
                 return 'staff_fuel_adjustments.php';
             case 'stock_request':
             case 'restock_reminder':
             case 'stock_alert':
-                if ($role === 'admin') return 'admin_inventory_management.php';
-                return 'inventory_management.php';
+                if ($role === 'admin') return 'admin_inventory_merchandise.php?tab=alerts';
+                return 'manager_inventory_merchandise.php?tab=alerts';
             case 'report_schedule':
                 if ($role === 'admin') return 'admin_reports.php';
                 if ($role === 'manager') return 'manager_reports.php';
                 return 'staff_reports.php';
+            case 'staff_shift':
+                if ($role === 'admin') return 'users.php';
+                return 'staff_schedules.php';
             default:
                 return '#';
         }
@@ -2026,22 +2029,17 @@ function closeDetailsModal() {
     document.getElementById('detailsModal').style.display = 'none';
 }
 
-// Click on day — Shows Day Overview modal with all events or directly opens Create Event modal
+// Click on day — Shows Day Overview modal with all events
 function clickDay(date) {
     const dayEvts = (allCalendarEvents && allCalendarEvents[date]) ? allCalendarEvents[date] : [];
     if (dayEvts.length > 0) {
         showDayOverviewModal(date, dayEvts);
-    } else {
-        showEventModal(date);
     }
 }
 
 function showDayOverviewModal(date, events) {
     const modal = document.getElementById('dayOverviewModal');
-    if (!modal) {
-        showEventModal(date);
-        return;
-    }
+    if (!modal) return;
     const dObj = new Date(date + 'T00:00:00');
     const dateFormatted = dObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
     
@@ -2081,10 +2079,8 @@ function showDayOverviewModal(date, events) {
         `;
     }).join('');
 
-    document.getElementById('dayOverviewAddBtn').onclick = function() {
-        closeDayOverviewModal();
-        showEventModal(date);
-    };
+    const addBtn = document.getElementById('dayOverviewAddBtn');
+    if (addBtn) addBtn.style.display = 'none';
 
     modal.style.display = 'flex';
 }

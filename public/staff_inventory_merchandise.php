@@ -400,13 +400,140 @@ body,html{overflow-x:hidden;max-width:100%;}
 .mv-neg{color:#dc2626;font-weight:700;}
 .mv-none{color:#94a3b8;}
 
-/* ── Table ── */
-.table-wrap{overflow-x:hidden!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important;}
-#merchTable, .cust-table{width:100%!important;max-width:100%!important;border-collapse:collapse!important;table-layout:fixed!important;box-sizing:border-box!important;}
-#merchTable thead th{background:#002F70!important;color:#fff!important;padding:10px 4px!important;font-size:11.5px!important;font-weight:800!important;text-transform:uppercase!important;letter-spacing:.2px!important;vertical-align:middle!important;box-sizing:border-box!important;line-height:1.25!important;text-align:left;white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important;}
-#merchTable tbody td{padding:8px 4px!important;font-size:12.5px!important;border-bottom:1px solid #f1f5f9!important;vertical-align:middle!important;box-sizing:border-box!important;line-height:1.35!important;white-space:normal;word-break:break-word;overflow:hidden;}
-#merchTable tbody tr:hover td{background:#f8faff!important;}
-#merchTable td code{font-family:inherit!important;}
+/* ── Table Styling - Aligned with Manager & Admin ── */
+.table-wrap {
+    overflow-x: hidden !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+#merchTable,
+table.merch-tbl,
+.cust-table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse !important;
+    box-sizing: border-box !important;
+}
+#merchTable th,
+#merchTable td,
+table.merch-tbl th,
+table.merch-tbl td {
+    overflow: hidden !important;
+    max-width: 0 !important;
+    box-sizing: border-box !important;
+    vertical-align: middle !important;
+}
+#merchTable thead th,
+table.merch-tbl thead th {
+    padding: 11px 8px !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .3px !important;
+    color: #ffffff !important;
+    background: #002F70 !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+}
+#merchTable tbody td,
+table.merch-tbl tbody td {
+    padding: 9px 8px !important;
+    font-size: 13px !important;
+    line-height: 1.35 !important;
+    color: #0f172a !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+}
+#merchTable tbody tr:hover td,
+table.merch-tbl tbody tr:hover td {
+    background: #f8faff !important;
+}
+#merchTable td code {
+    font-family: inherit !important;
+}
+#merchTable td:nth-child(2),
+table.merch-tbl td:nth-child(2),
+#merchTable td:nth-child(4),
+table.merch-tbl td:nth-child(4) {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    max-width: 0 !important;
+}
+#merchTable tr.cat-header td,
+.cat-header td {
+    background: #f1f5f9 !important;
+    font-weight: 800 !important;
+    font-size: 13px !important;
+    padding: 8px 12px !important;
+    color: #002F70 !important;
+    text-align: left !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+.inv-stock-badge {
+    display: inline-block !important;
+    padding: 4px 9px !important;
+    border-radius: 6px !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    white-space: nowrap !important;
+    line-height: 1.2 !important;
+}
+.act-btn-wrap {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+    width: 100% !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+}
+.act-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    padding: 3px 8px !important;
+    border-radius: 6px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    line-height: 1.2 !important;
+    width: 100% !important;
+    max-width: 80px !important;
+    height: 27px !important;
+    margin-bottom: 0 !important;
+    transition: all .18s ease-in-out !important;
+    background: #ffffff !important;
+    text-decoration: none !important;
+    box-sizing: border-box !important;
+}
+.act-btn:last-child { margin-bottom: 0 !important; }
+.act-btn-view {
+    color: #002F70 !important;
+    border: 1.5px solid #002F70 !important;
+    background: #ffffff !important;
+}
+.act-btn-view:hover {
+    background: #002F70 !important;
+    color: #ffffff !important;
+}
+.act-btn-adjust,
+.act-btn-edit {
+    color: #16a34a !important;
+    border: 1.5px solid #16a34a !important;
+    background: #ffffff !important;
+}
+.act-btn-adjust:hover,
+.act-btn-edit:hover {
+    background: #16a34a !important;
+    color: #ffffff !important;
+}
 .cust-table thead th{background:#002F70!important;color:#fff!important;padding:12px 14px!important;font-size:13.5px!important;font-weight:800!important;text-transform:uppercase!important;letter-spacing:.3px!important;box-sizing:border-box!important;}
 .cust-table tbody td{padding:12px 14px!important;font-size:14px!important;box-sizing:border-box!important;vertical-align:middle!important;}
 @media(max-width:768px){
@@ -731,41 +858,36 @@ body.modal-open .main {
 
 
         <!-- Table -->
-        <div class="table-wrap">
-            <table id="merchTable">
+        <div class="table-wrap" style="width:100% !important;max-width:100% !important;overflow-x:hidden !important;box-sizing:border-box !important;">
+            <table class="table report-table no-min-width print-table merch-tbl afto-tbl" id="merchTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
                 <colgroup>
-                    <col style="width: 8%;">   <!-- Batch ID -->
-                    <col style="width: 7.5%;"> <!-- SKU -->
-                    <col style="width: 19%;">  <!-- Product Name -->
-                    <col style="width: 9%;">   <!-- Category -->
-                    <col style="width: 5.5%;"> <!-- UOM -->
-                    <col style="width: 7.5%;"> <!-- Expiration Date -->
-                    <col style="width: 5.5%;"> <!-- Initial Stock -->
-                    <col style="width: 8.5%;"> <!-- Current Stock -->
-                    <col style="width: 6%;">   <!-- Reorder Level -->
-                    <col style="width: 8%;">   <!-- Status -->
-                    <col style="width: 7.5%;"> <!-- Last Updated -->
-                    <col style="width: 8%;">   <!-- Actions -->
+                    <col style="width:11%;"><!-- ITEM IDENTIFIERS -->
+                    <col style="width:24%;"><!-- PRODUCT & CATEGORY -->
+                    <col style="width:11%;"><!-- EXPIRATION -->
+                    <col style="width:16%;"><!-- STOCK LEVELS -->
+                    <col style="width:12%;"><!-- STATUS -->
+                    <col style="width:14%;"><!-- LAST UPDATED -->
+                    <col style="width:12%;"><!-- ACTIONS -->
                 </colgroup>
                 <thead>
                     <tr>
-                        <th style="text-align:left;padding-left:6px;">Batch ID</th>
-                        <th style="text-align:left;">SKU</th>
-                        <th style="text-align:left;">Product Name</th>
-                        <th style="text-align:center;">Category</th>
-                        <th style="text-align:center;">UOM</th>
-                        <th style="text-align:center;">Exp. Date</th>
-                        <th style="text-align:right;">Initial</th>
-                        <th style="text-align:center;">Current</th>
-                        <th style="text-align:right;padding-right:6px;">Reorder</th>
-                        <th style="text-align:center;">Status</th>
-                        <th style="text-align:center;">Updated</th>
-                        <th style="text-align:center;">Actions</th>
+                        <th style="white-space:nowrap;">ITEM IDENTIFIERS</th>
+                        <th style="white-space:nowrap;">PRODUCT & CATEGORY</th>
+                        <th style="white-space:nowrap;text-align:center;">EXPIRATION</th>
+                        <th style="white-space:nowrap;">STOCK LEVELS</th>
+                        <th style="white-space:nowrap;text-align:center;">STATUS</th>
+                        <th style="white-space:nowrap;">LAST UPDATED</th>
+                        <th style="white-space:nowrap;text-align:center;">ACTIONS</th>
                     </tr>
                 </thead>
                 <tbody id="merchTableBody">
                 <?php if (empty($js_items)): ?>
-                    <tr><td colspan="12" style="text-align:center;padding:32px;color:#6c757d;">No merchandise data available.</td></tr>
+                    <tr>
+                        <td colspan="7" class="align-center" style="padding:24px; color:#64748b; text-align:center;">
+                            <i class="fas fa-box-open" style="font-size:24px; margin-bottom:8px; display:block;"></i>
+                            No merchandise inventory records matched your filters.
+                        </td>
+                    </tr>
                 <?php else: ?>
                     <?php
                     // Group by category from $js_items (already filtered to active only)
@@ -774,9 +896,21 @@ body.modal-open .main {
                     ksort($grouped);
                     foreach ($grouped as $cat_label => $items):
                     ?>
-                    <tr class="cat-header"><td colspan="12" style="font-weight:800; background:#e2e8f0!important; color:#002F70!important; text-transform:uppercase; font-size:12px; letter-spacing:.5px; border-bottom:2px solid #cbd5e1; padding:7px 12px; text-align:center;"><strong><?php echo htmlspecialchars($cat_label); ?></strong></td></tr>
+                    <tr class="cat-header no-paginate">
+                        <td colspan="7" style="background:#f1f5f9;font-weight:800;font-size:13px;padding:8px 12px;color:#002F70;text-align:left;">
+                            <i class="fas fa-folder" style="color:#2563eb;margin-right:6px;"></i><?= htmlspecialchars($cat_label) ?>
+                        </td>
+                    </tr>
                     <?php foreach ($items as $it):
-                        $ts = $it['last_updated'] ? (new DateTime($it['last_updated']))->format('M d, Y') : '-';
+                        $timestamp_date = '—';
+                        $timestamp_time = '';
+                        if (!empty($it['last_updated'])) {
+                            try {
+                                $dt_up = new DateTime($it['last_updated']);
+                                $timestamp_date = $dt_up->format('M d, Y');
+                                $timestamp_time = $dt_up->format('h:i A');
+                            } catch (Exception $e) {}
+                        }
                         $has_variance = ($it['variance'] !== null && (float)$it['variance'] != 0);
                         $display_status = $has_variance ? 'VARIANCE DETECTED' : $it['status'];
                         $display_color = $has_variance ? '#fd7e14' : $it['color'];
@@ -803,6 +937,10 @@ body.modal-open .main {
                             } catch (Exception $e) { $exp_date = 'Jul 20, 2029'; }
                         }
                         $initial_qty = (int)($it['stock_in'] ?? 0) > 0 ? (int)$it['stock_in'] : (int)($it['capacity'] ?? 480);
+                        $stock = (float)$it['stock'];
+                        $reorder = (float)$it['reorder'];
+                        $unit = htmlspecialchars($it['unit'] ?? 'pcs');
+                        $fill_pct = min(100, round($it['fill_pct'] ?? 0));
                     ?>
                     <tr class="merch-row"
                         data-name="<?php echo strtolower(htmlspecialchars($it['name'])); ?>"
@@ -815,40 +953,81 @@ body.modal-open .main {
                         data-stock="<?php echo $it['stock']; ?>"
                         data-updated="<?php echo htmlspecialchars($it['last_updated']); ?>"
                         data-idx="<?php echo htmlspecialchars(json_encode($it)); ?>">
-                        <td style="padding:8px 4px 8px 6px;"><div style="font-size:12px;font-weight:800;color:#002F70;line-height:1.25;word-break:break-word;letter-spacing:-0.2px;"><?php echo str_replace('-', '-<wbr>', htmlspecialchars($batch_id)); ?></div></td>
-                        <td style="padding:8px 4px;"><div style="font-size:12px;font-weight:700;color:#334155;line-height:1.25;word-break:break-word;letter-spacing:-0.2px;"><?php echo str_replace('-', '-<wbr>', htmlspecialchars($it['sku'])); ?></div></td>
-                        <td style="white-space:normal;line-height:1.35;word-break:break-word;padding:8px 6px;"><strong style="font-size:13.5px;font-weight:800;color:#0f172a;display:block;"><?php echo htmlspecialchars($it['name']); ?></strong></td>
-                        <td style="text-align:center;font-size:12.5px;font-weight:600;line-height:1.3;word-break:break-word;color:#334155;padding:8px 4px;"><?php echo htmlspecialchars($it['category']); ?></td>
-                        <td style="text-align:center;font-size:12.5px;font-weight:700;line-height:1.25;color:#334155;word-break:break-word;padding:8px 3px;"><?php echo htmlspecialchars($it['unit']); ?></td>
-                        <td style="text-align:center;font-size:12px;font-weight:700;line-height:1.25;word-break:break-word;color:<?php echo $exp_date !== 'N/A' ? '#0f172a' : '#94a3b8'; ?>;padding:8px 3px;"><?php echo str_replace(', ', ',<br>', htmlspecialchars($exp_date)); ?></td>
-                        <td style="text-align:right;font-size:13.5px;font-weight:800;color:#0f172a;padding:8px 5px;"><?php echo number_format($initial_qty); ?></td>
-                        <td style="text-align:center;padding:8px 4px;">
-                            <div class="fill-bar-wrap" style="height:5px;margin-bottom:3px;">
-                                <div class="fill-bar-inner" style="width:<?php echo min(100, round($it['fill_pct'])); ?>%;background:<?php echo $display_color; ?>;"></div>
+
+                        <!-- 1. ITEM IDENTIFIERS -->
+                        <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
+                            <div style="font-family:monospace;font-size:12.5px;font-weight:700;color:#002F70;white-space:nowrap;" title="Batch ID">
+                                <i class="fas fa-layer-group" style="font-size:10.5px;color:#2563eb;margin-right:2px;"></i> <?= htmlspecialchars($batch_id) ?>
                             </div>
-                            <div style="font-size:13.5px;font-weight:800;color:#0f172a;line-height:1.15;"><?php echo number_format($it['stock']); ?></div>
-                            <div style="font-size:11px;font-weight:600;color:#64748b;line-height:1.1;"><?php echo htmlspecialchars($it['unit']); ?></div>
+                            <div style="font-family:monospace;font-size:11.5px;font-weight:700;color:#4f46e5;margin-top:2px;white-space:nowrap;" title="SKU">
+                                <?= htmlspecialchars($it['sku'] ?: '—') ?>
+                            </div>
                         </td>
-                        <td style="text-align:right;font-size:13.5px;font-weight:800;color:#ea580c;padding:8px 6px;"><?php echo number_format($it['reorder'] ?? 24); ?></td>
-                        <td style="text-align:center;padding:8px 3px;">
-                            <span class="status-badge" style="background:<?php echo $display_color; ?>20;color:<?php echo $display_color; ?>;border:1.5px solid <?php echo $display_color; ?>50;font-size:11px;padding:3px 6px;font-weight:800;white-space:normal;line-height:1.2;border-radius:6px;display:inline-block;word-break:break-word;">
-                                <?php echo htmlspecialchars($display_status); ?>
+
+                        <!-- 2. PRODUCT & CATEGORY -->
+                        <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
+                            <div style="font-weight:800;font-size:13.5px;color:#0f172a;line-height:1.3;word-break:break-word;overflow-wrap:break-word;"><?= htmlspecialchars($it['name']) ?></div>
+                            <div style="font-size:11.5px;color:#64748b;margin-top:3px;font-weight:600;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                                <span style="color:#0369a1;"><i class="fas fa-tag" style="font-size:10px;"></i> <?= htmlspecialchars($it['category'] ?? 'General') ?></span>
+                                <span style="color:#cbd5e1;">•</span>
+                                <span style="color:#475569;font-weight:700;"><?= $unit ?></span>
+                            </div>
+                        </td>
+
+                        <!-- 3. EXPIRATION -->
+                        <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;">
+                            <span style="font-size:12.5px;font-weight:700;color:<?= $exp_date !== 'N/A' ? '#0f172a' : '#94a3b8' ?>;white-space:nowrap;">
+                                <i class="fas fa-calendar-alt" style="font-size:11px;color:<?= $exp_date !== 'N/A' ? '#2563eb' : '#cbd5e1' ?>;margin-right:3px;"></i> <?= htmlspecialchars($exp_date) ?>
                             </span>
                         </td>
-                        <td style="text-align:center;font-size:12px;font-weight:600;color:#64748b;padding:8px 3px;line-height:1.25;word-break:break-word;"><?php echo str_replace(', ', ',<br>', htmlspecialchars($ts)); ?></td>
-                        <td style="padding:6px 3px;text-align:center;">
-                            <div style="display:flex;flex-direction:column;gap:3px;align-items:center;width:100%;">
-                                <button type="button" class="txn-btn primary sm" onclick='viewDetails(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)' style="width:100%;padding:3px 4px;font-size:11.5px;height:24px;min-height:24px;gap:3px;font-weight:700;border-radius:4px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;" title="View Details"><i class="fas fa-eye" style="font-size:10px;"></i> View</button>
-                                <button type="button" class="txn-btn warning sm" onclick='openAdjustmentModal(<?php echo htmlspecialchars(json_encode($it), ENT_QUOTES); ?>)' style="width:100%;background:#16a34a!important;border-color:#16a34a!important;color:#fff!important;padding:3px 4px;font-size:11.5px;height:24px;min-height:24px;gap:3px;font-weight:700;border-radius:4px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;" title="Adjust Stock"><i class="fas fa-edit" style="font-size:10px;"></i> Adjust</button>
+
+                        <!-- 4. STOCK LEVELS -->
+                        <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
+                            <div class="fill-bar-wrap" style="height:6px;border-radius:3px;background:#e2e8f0;overflow:hidden;margin-bottom:3px;">
+                                <div class="fill-bar-inner" style="width:<?= $fill_pct ?>%;background:<?= $display_color ?>;height:100%;"></div>
+                            </div>
+                            <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px;">
+                                <span style="font-size:13px;font-weight:800;color:#0f172a;white-space:nowrap;"><?= number_format($stock, 0) ?> <small style="font-size:11px;color:#64748b;font-weight:600;"><?= $unit ?></small></span>
+                                <span style="font-size:11px;color:#64748b;white-space:nowrap;font-weight:600;">Reorder: <strong style="color:#ea580c;"><?= number_format($reorder, 0) ?></strong></span>
+                            </div>
+                            <div style="font-size:10.5px;color:#64748b;margin-top:2px;white-space:nowrap;">Init: <?= number_format($initial_qty) ?></div>
+                        </td>
+
+                        <!-- 5. STATUS -->
+                        <td style="padding:9px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;">
+                            <span class="inv-stock-badge" style="background:<?= $display_color ?>20;color:<?= $display_color ?>;border:1.5px solid <?= $display_color ?>50;padding:4px 9px;border-radius:6px;font-size:11px;font-weight:800;text-transform:uppercase;white-space:nowrap;display:inline-block;">
+                                <?= htmlspecialchars($display_status) ?>
+                            </span>
+                        </td>
+
+                        <!-- 6. LAST UPDATED -->
+                        <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
+                            <?php if ($timestamp_date !== '—'): ?>
+                                <div style="font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;"><?= $timestamp_date ?></div>
+                                <div style="font-size:11px;color:#64748b;font-weight:600;margin-top:2px;white-space:nowrap;"><?= $timestamp_time ?></div>
+                            <?php else: ?>
+                                <span style="color:#94a3b8;font-size:12px;">—</span>
+                            <?php endif; ?>
+                        </td>
+
+                        <!-- 7. ACTIONS -->
+                        <td style="padding:8px 6px;max-width:0;overflow:hidden;box-sizing:border-box;text-align:center;vertical-align:middle;">
+                            <div class="act-btn-wrap">
+                                <button type="button" class="act-btn act-btn-view" onclick='viewDetails(<?= htmlspecialchars(json_encode($it), ENT_QUOTES) ?>)' title="View Details">
+                                    <i class="fas fa-eye"></i> View
+                                </button>
+                                <button type="button" class="act-btn act-btn-adjust" onclick='openAdjustmentModal(<?= htmlspecialchars(json_encode($it), ENT_QUOTES) ?>)' title="Adjust Stock">
+                                    <i class="fas fa-edit"></i> Adjust
+                                </button>
                             </div>
                         </td>
                     </tr>
                     <?php endforeach; ?>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
         <div id="merchPagination"></div>
     </div>
 </div>

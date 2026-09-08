@@ -320,10 +320,10 @@ if (isset($_GET['print_id'])) {
     box-sizing: border-box !important;
 }
 .act-btn:last-child { margin-bottom: 0 !important; }
-.act-btn-view { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
-.act-btn-view:hover { background: #16a34a !important; color: #ffffff !important; }
-.act-btn-edit { color: #002F6C !important; border-color: #002F6C !important; background: #ffffff !important; }
-.act-btn-edit:hover { background: #002F6C !important; color: #ffffff !important; }
+.act-btn-view { color: #002F70 !important; border-color: #002F70 !important; background: #ffffff !important; }
+.act-btn-view:hover { background: #002F70 !important; color: #ffffff !important; }
+.act-btn-edit { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+.act-btn-edit:hover { background: #16a34a !important; color: #ffffff !important; }
 
 </style>
     </head>
@@ -830,8 +830,8 @@ try {
                    NULLIF(CONCAT_WS('-', NULLIF(il.reference_type, 'merchandise_transaction'), il.reference_id), ''),
                    CONCAT('LOG-', LPAD(il.id, 5, '0'))
                ) AS reference_no,
-               COALESCE(ip.product_name, p.name, 'Unknown') AS product_name,
-               COALESCE(ip.sku, CONCAT('P', LPAD(p.id,4,'0')), '') AS sku,
+                COALESCE(NULLIF(ip.product_name,''), NULLIF(p.name,''), 'Merchandise Item') AS product_name,
+                COALESCE(NULLIF(ip.sku,''), CONCAT('P', LPAD(COALESCE(p.id, il.id),4,'0')), '') AS sku,
                COALESCE(NULLIF(si.unit,''), NULLIF(ip.size,''), 'pcs') AS unit,
                COALESCE(NULLIF(u.name,''), NULLIF(CONCAT(u.first_name, ' ', u.last_name),' '), u.username, 'System') AS user_name
         FROM inventory_logs il
@@ -848,8 +848,8 @@ try {
                msi.qty_received AS quantity,
                COALESCE(NULLIF(msi.remarks,''), CONCAT('PO: ', COALESCE(msi.po_number,'—'), ' | Batch: ', COALESCE(msi.batch_ref,'—'))) AS notes,
                COALESCE(NULLIF(msi.po_number, ''), NULLIF(msi.batch_ref, ''), CONCAT('SI-', LPAD(msi.id, 5, '0'))) AS reference_no,
-               COALESCE(ip.product_name, p.name, msi.product_name, 'Unknown') AS product_name,
-               COALESCE(ip.sku, msi.sku, CONCAT('P', LPAD(p.id,4,'0')), '') AS sku,
+               COALESCE(NULLIF(msi.product_name,''), NULLIF(ip.product_name,''), NULLIF(p.name,''), 'Merchandise Item') AS product_name,
+               COALESCE(NULLIF(msi.sku,''), NULLIF(ip.sku,''), CONCAT('P', LPAD(COALESCE(p.id, msi.id),4,'0')), '') AS sku,
                COALESCE(NULLIF(si.unit,''), NULLIF(ip.size,''), 'pcs') AS unit,
                COALESCE(NULLIF(u.name,''), NULLIF(CONCAT(u.first_name, ' ', u.last_name),' '), 'Staff') AS user_name
         FROM merchandise_stock_in msi
@@ -867,8 +867,8 @@ try {
                -mti.quantity AS quantity,
                COALESCE(NULLIF(mt.manager_notes,''), NULLIF(mt.staff_remarks,''), 'Sale Transaction') AS notes,
                COALESCE(NULLIF(mt.transaction_id, ''), CONCAT('SO-', LPAD(mt.id, 5, '0'))) AS reference_no,
-               COALESCE(ip.product_name, p.name, 'Unknown') AS product_name,
-               COALESCE(ip.sku, CONCAT('P', LPAD(p.id,4,'0')), '') AS sku,
+               COALESCE(NULLIF(mti.product_name,''), NULLIF(ip.product_name,''), NULLIF(p.name,''), 'Merchandise Item') AS product_name,
+               COALESCE(NULLIF(mti.item_sku,''), NULLIF(ip.sku,''), CONCAT('P', LPAD(COALESCE(p.id, mti.id),4,'0')), '') AS sku,
                COALESCE(NULLIF(si.unit,''), NULLIF(ip.size,''), 'pcs') AS unit,
                COALESCE(NULLIF(u.name,''), NULLIF(CONCAT(u.first_name, ' ', u.last_name),' '), 'Staff') AS user_name
         FROM merchandise_transactions mt
@@ -1058,184 +1058,131 @@ html, body, .mim-wrap, .main-content, .card, .tbl-card, .table-wrap, .table-resp
     white-space: normal !important;
 }
 
-/* SKU & Batch ID - Large, Bold & Highly Legible */
-#mgrMerchTable td:nth-child(1) code, #mgrMerchTable td:nth-child(2) code,
-#adminMerchTable td:nth-child(1) code, #adminMerchTable td:nth-child(2) code,
-#mgrMerchTable td:nth-child(1), #mgrMerchTable td:nth-child(2),
-#adminMerchTable td:nth-child(1), #adminMerchTable td:nth-child(2) {
-    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace !important;
-    font-size: 13px !important;
-    font-weight: 700 !important;
-    color: #002F70 !important;
-    white-space: nowrap !important;
-    overflow: visible !important;
-    text-overflow: clip !important;
+/* ── Admin Merchandise Table (adminMerchTable) - Aligned with Manager Table ── */
+#adminMerchTable,
+table.merch-tbl {
+    table-layout: fixed !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse !important;
 }
 
-/* Product Description: Wrap text cleanly onto lines, never overlap, never truncate */
-#mgrMerchTable td:nth-child(3), #adminMerchTable td:nth-child(3) {
-    font-size: 13px !important;
-    font-weight: 700 !important;
-    color: #002F6C !important;
-    white-space: normal !important;
-    word-break: break-word !important;
-    overflow-wrap: break-word !important;
-    line-height: 1.3 !important;
-    overflow: visible !important;
-    text-overflow: clip !important;
-    text-align: left !important;
+#adminMerchTable th,
+#adminMerchTable td,
+table.merch-tbl th,
+table.merch-tbl td {
+    overflow: hidden !important;
+    max-width: 0 !important;
+    box-sizing: border-box !important;
+    vertical-align: middle !important;
 }
 
-/* Category & UOM: Clean wrap, no ellipsis */
-#mgrMerchTable td:nth-child(4), #adminMerchTable td:nth-child(4),
-#mgrMerchTable td:nth-child(5), #adminMerchTable td:nth-child(5) {
-    white-space: normal !important;
-    word-break: break-word !important;
-    overflow-wrap: break-word !important;
-    font-size: 12.5px !important;
-    line-height: 1.25 !important;
-    overflow: visible !important;
-    text-overflow: clip !important;
-    text-align: center !important;
-}
-
-/* Dates (Expiration & Last Updated): Clean wrap, no ellipsis */
-#mgrMerchTable td:nth-child(6), #adminMerchTable td:nth-child(6),
-#mgrMerchTable td:nth-child(11), #adminMerchTable td:nth-child(11) {
+#adminMerchTable thead th,
+table.merch-tbl thead th {
+    padding: 11px 8px !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .3px !important;
+    color: #ffffff !important;
+    background: #002F70 !important;
     white-space: normal !important;
     word-break: normal !important;
-    font-size: 12.5px !important;
-    line-height: 1.25 !important;
-    overflow: visible !important;
-    text-overflow: clip !important;
-    text-align: center !important;
+    overflow-wrap: normal !important;
 }
 
-/* Stock quantities & Reorder Level */
-#mgrMerchTable td:nth-child(7), #adminMerchTable td:nth-child(7) {
+#adminMerchTable tbody td,
+table.merch-tbl tbody td {
+    padding: 9px 8px !important;
     font-size: 13px !important;
-    font-weight: 700 !important;
-    text-align: right !important;
-    overflow: visible !important;
-    text-overflow: clip !important;
+    line-height: 1.35 !important;
+    color: #0f172a !important;
+    border-bottom: 1px solid #f1f5f9 !important;
 }
 
-#mgrMerchTable td:nth-child(8), #adminMerchTable td:nth-child(8) {
+/* Col 2 (Product & Category) & Col 4 (Stock Levels): clean multi-line wrapping */
+#adminMerchTable td:nth-child(2),
+table.merch-tbl td:nth-child(2),
+#adminMerchTable td:nth-child(4),
+table.merch-tbl td:nth-child(4) {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    max-width: 0 !important;
+}
+
+/* Category header: Clean soft background, navy bold text */
+#adminMerchTable tr.cat-header td,
+.cat-header td {
+    background: #f1f5f9 !important;
+    font-weight: 800 !important;
     font-size: 13px !important;
-    font-weight: 700 !important;
-    overflow: visible !important;
-    text-overflow: clip !important;
+    padding: 8px 12px !important;
+    color: #002F70 !important;
+    text-align: left !important;
+    border-bottom: 1px solid #e2e8f0 !important;
 }
 
-#mgrMerchTable td:nth-child(9), #adminMerchTable td:nth-child(9) {
-    font-size: 13px !important;
-    font-weight: 700 !important;
-    text-align: right !important;
-    overflow: visible !important;
-    text-overflow: clip !important;
-}
-
-/* Status Badge: Single Line High Contrast */
-.badge-lbl, .badge, .status-badge, .pstatus-badge {
-    white-space: nowrap !important;
+/* Inv Stock Badge */
+.inv-stock-badge {
     display: inline-block !important;
-    padding: 3px 6px !important;
+    padding: 4px 9px !important;
+    border-radius: 6px !important;
     font-size: 11px !important;
     font-weight: 800 !important;
-    border-radius: 4px !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.2px !important;
-    overflow: visible !important;
-    text-overflow: clip !important;
+    white-space: nowrap !important;
 }
-.bg-amber { background-color: #fef3c7 !important; color: #b45309 !important; }
-.bg-green { background-color: #dcfce7 !important; color: #15803d !important; }
-.bg-red   { background-color: #fee2e2 !important; color: #b91c1c !important; }
-.bg-gray  { background-color: #f1f5f9 !important; color: #475569 !important; }
 
-/* Action Buttons: Vertically Stacked Legible Buttons */
-.act-btn-wrap {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 3px !important;
-    align-items: center !important;
-    justify-content: center !important;
+/* Fill bar styles */
+.fill-bar-wrap {
+    background: #e2e8f0 !important;
+    border-radius: 3px !important;
+    height: 6px !important;
+    overflow: hidden !important;
+    margin-bottom: 3px !important;
     width: 100% !important;
 }
-
-.act-btn, .act-btn-view, .act-btn-edit, a.act-btn, button.act-btn {
-    height: 25px !important;
-    padding: 0 6px !important;
-    font-size: 11.5px !important;
-    font-weight: 800 !important;
-    width: 58px !important;
-    min-width: 58px !important;
-    white-space: nowrap !important;
-    border-radius: 4px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 3px !important;
-    box-sizing: border-box !important;
-    line-height: 1.2 !important;
-    background: #ffffff !important;
-    border: 1.5px solid #cbd5e1 !important;
-    text-decoration: none !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-    cursor: pointer !important;
+.fill-bar-inner {
+    height: 100% !important;
+    border-radius: 3px !important;
 }
 
-.act-btn-view, button.act-btn-view, a.act-btn-view {
-    color: #16a34a !important;
-    border-color: #16a34a !important;
-    background: #ffffff !important;
-}
-
-.act-btn-view:hover {
-    background: #16a34a !important;
-    color: #ffffff !important;
-}
-
-.act-btn-edit, button.act-btn-edit, a.act-btn-edit {
-    color: #002F6C !important;
-    border-color: #002F6C !important;
-    background: #ffffff !important;
-}
-
-.act-btn-edit:hover {
-    background: #002F6C !important;
-    color: #ffffff !important;
-}
-
-/* Movement Table Specific Styling - Senior Legible, Complete Text, No Truncation */
+/* Movement Table Specific Styling - Explicit alignment matching each column */
 #adminMovTable th {
     background: #002F70 !important;
     color: #ffffff !important;
-    padding: 8px 6px !important;
-    font-size: 12.5px !important;
+    padding: 10px 10px !important;
+    font-size: 11.5px !important;
     font-weight: 800 !important;
-    letter-spacing: 0.25px !important;
+    letter-spacing: 0.3px !important;
     text-transform: uppercase !important;
     border-bottom: 2px solid #001a3d !important;
     vertical-align: middle !important;
-    white-space: normal !important;
-    overflow: visible !important;
-    text-overflow: clip !important;
+    white-space: nowrap !important;
+    box-sizing: border-box !important;
 }
 
 #adminMovTable td {
-    padding: 8px 6px !important;
-    font-size: 13.5px !important;
+    padding: 10px 10px !important;
+    font-size: 13px !important;
     line-height: 1.35 !important;
     vertical-align: middle !important;
     border-bottom: 1px solid #f1f5f9 !important;
     color: #334155 !important;
-    overflow: visible !important;
-    text-overflow: clip !important;
-    white-space: normal !important;
-    word-break: break-word !important;
+    box-sizing: border-box !important;
 }
+
+/* Explicit per-column alignment matching headers and data perfectly */
+#adminMovTable th:nth-child(1), #adminMovTable td:nth-child(1) { text-align: center !important; }
+#adminMovTable th:nth-child(2), #adminMovTable td:nth-child(2) { text-align: center !important; }
+#adminMovTable th:nth-child(3), #adminMovTable td:nth-child(3) { text-align: center !important; }
+#adminMovTable th:nth-child(4), #adminMovTable td:nth-child(4) { text-align: left !important; }
+#adminMovTable th:nth-child(5), #adminMovTable td:nth-child(5) { text-align: right !important; }
+#adminMovTable th:nth-child(6), #adminMovTable td:nth-child(6) { text-align: left !important; }
+#adminMovTable th:nth-child(7), #adminMovTable td:nth-child(7) { text-align: left !important; }
+#adminMovTable th:nth-child(8), #adminMovTable td:nth-child(8) { text-align: left !important; }
 
 /* Movement Type: No colored backgrounds, clean text */
 .mov-type-txt {
@@ -1468,35 +1415,52 @@ html, body {
 .flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
 .flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 
-/* â”€â”€ Admin Custom Dropdown (always opens downward) â”€â”€ */
-.adm-cdd-wrap{position:relative;display:block;}
-.adm-cdd-trigger{display:flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;color:#374151;background:#fff;cursor:pointer;user-select:none;white-space:nowrap;width:100%;box-sizing:border-box;}
-.adm-cdd-trigger:hover{border-color:#94a3b8;}
-.adm-cdd-wrap.adm-cdd-open .adm-cdd-trigger{border-color:#002F70;box-shadow:0 0 0 2px rgba(0,47,112,.1);}
-.adm-cdd-arrow{font-size:14.5px;color:#94a3b8;margin-left:auto;transition:transform .15s;flex-shrink:0;}
-.adm-cdd-wrap.adm-cdd-open .adm-cdd-arrow{transform:rotate(180deg);}
-.adm-cdd-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
-.adm-cdd-menu{display:none;position:absolute;top:calc(100% + 3px);left:0;min-width:100%;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.13);z-index:9999;max-height:260px;overflow-y:auto;}
-.adm-cdd-wrap.adm-cdd-open .adm-cdd-menu{display:block;}
-.adm-cdd-item{padding:9px 14px;font-size:15.5px;color:#374151;cursor:pointer;white-space:nowrap;}
-.adm-cdd-item:hover{background:#f1f5f9;}
-.adm-cdd-item.adm-cdd-active{font-weight:700;color:#fff;background:#1a6fd4;}
-.adm-cdd-wrap{display:none!important;}
-.afto-filter{overflow:visible;}
-.fd-select-source{display:none!important;}
-.fd-select{position:relative;display:inline-block;min-width:130px;}
-.afto-filter .fd-select{width:100%;}
-.fd-select-trigger{display:flex;align-items:center;gap:8px;width:100%;height:36px;padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#1e293b;font-size:15.5px;font-family:inherit;cursor:pointer;box-sizing:border-box;white-space:nowrap;}
-.fd-select-trigger:hover{border-color:#94a3b8;}
-.fd-select.fd-open .fd-select-trigger{border-color:var(--petron-blue, #00264D);box-shadow:0 0 0 3px rgba(0,38,77,.1);}
-.fd-select-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:left;}
-.fd-select-arrow{font-size:15.5px;color:#94a3b8;margin-left:auto;transition:transform .15s;flex-shrink:0;}
-.fd-select.fd-open .fd-select-arrow{transform:rotate(180deg);}
-.fd-select-menu{display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:100%;max-height:280px;overflow-y:auto;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.16);z-index:10000;}
-.fd-select.fd-open .fd-select-menu{display:block;}
-.fd-select-option{padding:9px 14px;font-size:15.5px;color:#1e293b;cursor:pointer;white-space:nowrap;}
-.fd-select-option:hover{background:#f1f5f9;}
-.fd-select-option.fd-active{font-weight:700;color:#fff;background:#1a6fd4;}
+/* ── Clean Consistent Petron Filter Controls (Matches Master Data Requests) ── */
+.filter-select,
+.afto-fg select,
+select.filter-select {
+    height: 36px !important;
+    padding: 0 12px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 7px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #1e293b !important;
+    background: #ffffff !important;
+    outline: none !important;
+    transition: border-color 0.15s, box-shadow 0.15s !important;
+    cursor: pointer !important;
+    box-sizing: border-box !important;
+    line-height: 34px !important;
+}
+.filter-select:focus,
+.afto-fg select:focus,
+select.filter-select:focus {
+    border-color: #002F70 !important;
+    box-shadow: 0 0 0 3px rgba(0, 47, 112, 0.1) !important;
+}
+
+.filter-input,
+.afto-fg input,
+input.filter-input {
+    height: 36px !important;
+    padding: 0 12px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 7px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #1e293b !important;
+    background: #ffffff !important;
+    outline: none !important;
+    transition: border-color 0.15s, box-shadow 0.15s !important;
+    box-sizing: border-box !important;
+}
+.filter-input:focus,
+.afto-fg input:focus,
+input.filter-input:focus {
+    border-color: #002F70 !important;
+    box-shadow: 0 0 0 3px rgba(0, 47, 112, 0.1) !important;
+}
 
 .txn-btn {
     display: inline-flex;
@@ -1820,33 +1784,101 @@ html, body {
 }
 
 /* == ACTION BUTTON STYLES (VERTICAL STACKING) == */
+.act-btn-wrap {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+    width: 100% !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+}
 .act-btn {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     gap: 5px !important;
-    padding: 4px 8px !important;
+    padding: 3px 8px !important;
     border-radius: 6px !important;
-    font-size: 10.5px !important;
+    font-size: 11px !important;
     font-weight: 700 !important;
     cursor: pointer !important;
     white-space: nowrap !important;
     line-height: 1.2 !important;
     width: 100% !important;
-    max-width: 90px !important;
-    margin-bottom: 3px !important;
+    max-width: 80px !important;
+    height: 27px !important;
+    margin-bottom: 0 !important;
     transition: all .18s ease-in-out !important;
     background: #ffffff !important;
-    border: 1.5px solid #cbd5e1 !important;
     text-decoration: none !important;
     box-sizing: border-box !important;
 }
 .act-btn:last-child { margin-bottom: 0 !important; }
-.act-btn-view { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
-.act-btn-view:hover { background: #16a34a !important; color: #ffffff !important; }
-.act-btn-edit { color: #002F6C !important; border-color: #002F6C !important; background: #ffffff !important; }
-.act-btn-edit:hover { background: #002F6C !important; color: #ffffff !important; }
+.act-btn-view { color: #002F70 !important; border: 1.5px solid #002F70 !important; background: #ffffff !important; }
+.act-btn-view:hover { background: #002F70 !important; color: #ffffff !important; }
+.act-btn-edit { color: #16a34a !important; border: 1.5px solid #16a34a !important; background: #ffffff !important; }
+.act-btn-edit:hover { background: #16a34a !important; color: #ffffff !important; }
 
+/* == Petron Clean KPI Summary Cards (Matches Master Data Requests Exactly) == */
+.txn-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+    width: 100%;
+    box-sizing: border-box;
+}
+@media (max-width: 1100px) {
+    .txn-kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+@media (max-width: 480px) {
+    .txn-kpi-grid {
+        grid-template-columns: 1fr;
+    }
+}
+.txn-kpi-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: none;
+    transition: transform .15s, box-shadow .15s;
+    box-sizing: border-box;
+}
+.txn-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,.09);
+}
+.txn-kpi-lbl {
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .5px !important;
+    color: #64748b !important;
+    margin-bottom: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    line-height: 1.3 !important;
+    white-space: nowrap !important;
+}
+.txn-kpi-val {
+    font-size: 26px !important;
+    font-weight: 800 !important;
+    color: #002F70 !important;
+    line-height: 1.1 !important;
+}
+.txn-kpi-card.blue   .txn-kpi-val { color: #0284c7 !important; }
+.txn-kpi-card.green  .txn-kpi-val { color: #16a34a !important; }
+.txn-kpi-card.danger .txn-kpi-val { color: #dc2626 !important; }
+.txn-kpi-card.dark-danger .txn-kpi-val { color: #991b1b !important; }
+.txn-kpi-card.orange .txn-kpi-val { color: #d97706 !important; }
+.txn-kpi-card.yellow .txn-kpi-val { color: #d97706 !important; }
+.txn-kpi-card.purple .txn-kpi-val { color: #7c3aed !important; }
+.txn-kpi-card.teal   .txn-kpi-val { color: #0d9488 !important; }
 </style>
 
 <div class="main-content">
@@ -1854,67 +1886,6 @@ html, body {
 <div class="int-head">
     <div>
         <h1><i class="fas fa-boxes"></i> Merchandise Inventory Management</h1>
-    </div>
-</div>
-
-<!-- Summary Cards -->
-<div class="afto-cards">
-    <!-- Card 1: Total Products -->
-    <div class="afto-card blue <?= ($status_filter === 'all' || $status_filter === '') ? 'card-active' : '' ?>" onclick="filterAdminByCard('all')" style="cursor:pointer;" title="View All Products">
-        <div class="afto-card-info">
-            <span class="afto-card-lbl">Total Products</span>
-            <span class="afto-card-val"><?= number_format($kpi_total_products) ?></span>
-        </div>
-        <div class="afto-card-icon"><i class="fas fa-box"></i></div>
-    </div>
-    <!-- Card 2: Total Inventory -->
-    <div class="afto-card blue">
-        <div class="afto-card-info">
-            <span class="afto-card-lbl">Total Inventory</span>
-            <span class="afto-card-val"><?= number_format($kpi_total_stock) ?></span>
-        </div>
-        <div class="afto-card-icon"><i class="fas fa-cubes"></i></div>
-    </div>
-    <!-- Card 3: Total Inventory Value -->
-    <div class="afto-card purple">
-        <div class="afto-card-info">
-            <span class="afto-card-lbl">Total Inventory Value</span>
-            <span class="afto-card-val" style="font-size:15px;">₱<?= number_format($kpi_total_value, 2) ?></span>
-        </div>
-        <div class="afto-card-icon"><i class="fas fa-coins"></i></div>
-    </div>
-    <!-- Card 4: Low Stock Items -->
-    <div class="afto-card yellow <?= in_array($status_filter, ['low', 'low stock'], true) ? 'card-active' : '' ?>" onclick="filterAdminByCard('low')" style="cursor:pointer;" title="View Low Stock Items">
-        <div class="afto-card-info">
-            <span class="afto-card-lbl">Low Stock Items</span>
-            <span class="afto-card-val"><?= number_format($kpi_low_stock) ?></span>
-        </div>
-        <div class="afto-card-icon"><i class="fas fa-exclamation-triangle"></i></div>
-    </div>
-
-    <!-- Card 6: Out of Stock -->
-    <div class="afto-card red <?= in_array($status_filter, ['out', 'out of stock'], true) ? 'card-active' : '' ?>" onclick="filterAdminByCard('out')" style="cursor:pointer;" title="View Out of Stock Items">
-        <div class="afto-card-info">
-            <span class="afto-card-lbl">Out of Stock</span>
-            <span class="afto-card-val"><?= number_format($kpi_out_of_stock) ?></span>
-        </div>
-        <div class="afto-card-icon"><i class="fas fa-times-circle"></i></div>
-    </div>
-    <!-- Card 7: Total Stock Movements Today -->
-    <div class="afto-card green">
-        <div class="afto-card-info">
-            <span class="afto-card-lbl">Movements Today</span>
-            <span class="afto-card-val"><?= number_format($stock_movements_today) ?></span>
-        </div>
-        <div class="afto-card-icon"><i class="fas fa-chart-line"></i></div>
-    </div>
-    <!-- Card 8: Pending Stock Adjustments -->
-    <div class="afto-card yellow">
-        <div class="afto-card-info">
-            <span class="afto-card-lbl">Pending Adjustments</span>
-            <span class="afto-card-val"><?= number_format($pending_adjustments_count) ?></span>
-        </div>
-        <div class="afto-card-icon"><i class="fas fa-clock"></i></div>
     </div>
 </div>
 
@@ -1932,12 +1903,51 @@ html, body {
        class="tab-btn <?= $active_tab === 'alerts' ? 'active' : '' ?>">
         <i class="fas fa-exclamation-triangle"></i> Stock Alerts
         <?php if (($kpi_low_stock + $kpi_out_of_stock) > 0): ?>
-            <span style="background:#dc2626 !important;color:#fff !important;border-radius:10px;padding:1px 8px;font-size:14px;font-weight:700;line-height:1;"><?= ($kpi_low_stock + $kpi_out_of_stock) ?></span>
+            <span style="background:#dc2626 !important;color:#fff !important;border-radius:10px;padding:1px 8px;font-size:12px;font-weight:700;line-height:1;"><?= ($kpi_low_stock + $kpi_out_of_stock) ?></span>
         <?php endif; ?>
     </a>
 </div>
 
 <?php if ($active_tab === 'overview'): ?>
+
+<!-- Summary Cards (Matches Master Data Requests Design & Size) -->
+<div class="txn-kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
+    <!-- Card 1: Total Products -->
+    <div onclick="filterAdminByCard('all')" class="txn-kpi-card blue" style="cursor:pointer;" title="Click to show All Products">
+        <div class="txn-kpi-lbl"><i class="fas fa-boxes" style="color:#0284c7;margin-right:4px;"></i> Total Products</div>
+        <div class="txn-kpi-val"><?= number_format($kpi_total_products) ?></div>
+    </div>
+    <!-- Card 2: Total Inventory -->
+    <div class="txn-kpi-card blue">
+        <div class="txn-kpi-lbl"><i class="fas fa-cubes" style="color:#002F70;margin-right:4px;"></i> Total Inventory</div>
+        <div class="txn-kpi-val"><?= number_format($kpi_total_stock) ?></div>
+    </div>
+    <!-- Card 3: Total Inventory Value -->
+    <div class="txn-kpi-card teal">
+        <div class="txn-kpi-lbl"><i class="fas fa-peso-sign" style="color:#0d9488;margin-right:4px;"></i> Total Inventory Value</div>
+        <div class="txn-kpi-val" style="font-size:22px !important;">₱<?= number_format($kpi_total_value, 2) ?></div>
+    </div>
+    <!-- Card 4: Low Stock Items -->
+    <div onclick="filterAdminByCard('low')" class="txn-kpi-card orange" style="cursor:pointer;" title="Click to filter low stock items">
+        <div class="txn-kpi-lbl"><i class="fas fa-exclamation-triangle" style="color:#d97706;margin-right:4px;"></i> Low Stock Items</div>
+        <div class="txn-kpi-val"><?= number_format($kpi_low_stock) ?></div>
+    </div>
+    <!-- Card 5: Out of Stock -->
+    <div onclick="filterAdminByCard('out')" class="txn-kpi-card dark-danger" style="cursor:pointer;" title="Click to filter out of stock items">
+        <div class="txn-kpi-lbl"><i class="fas fa-times-circle" style="color:#991b1b;margin-right:4px;"></i> Out of Stock</div>
+        <div class="txn-kpi-val"><?= number_format($kpi_out_of_stock) ?></div>
+    </div>
+    <!-- Card 6: Total Stock Movements Today -->
+    <div class="txn-kpi-card green">
+        <div class="txn-kpi-lbl"><i class="fas fa-chart-line" style="color:#16a34a;margin-right:4px;"></i> Movements Today</div>
+        <div class="txn-kpi-val"><?= number_format($stock_movements_today) ?></div>
+    </div>
+    <!-- Card 7: Pending Stock Adjustments -->
+    <div class="txn-kpi-card yellow">
+        <div class="txn-kpi-lbl"><i class="fas fa-clock" style="color:#d97706;margin-right:4px;"></i> Pending Adjustments</div>
+        <div class="txn-kpi-val"><?= number_format($pending_adjustments_count) ?></div>
+    </div>
+</div>
 <!-- Filter Bar -->
 <form method="GET" action="admin_inventory_merchandise.php" class="afto-filter">
     <div class="afto-fg">
@@ -1945,98 +1955,56 @@ html, body {
         <input type="text" name="search_query" id="search_query" placeholder="Search SKU, name, brand..." value="<?= htmlspecialchars($search_query) ?>">
     </div>
     
-    <!-- Hidden inputs for form submission -->
-    <input type="hidden" name="category" id="category" value="<?= htmlspecialchars($category_filter) ?>">
-    <input type="hidden" name="brand" id="brand" value="<?= htmlspecialchars($brand_filter) ?>">
-    <input type="hidden" name="supplier" id="supplier" value="<?= htmlspecialchars($supplier_filter) ?>">
-    <input type="hidden" name="unit" id="unit" value="<?= htmlspecialchars($unit_filter) ?>">
-    <input type="hidden" name="status_filter" id="status_filter" value="<?= htmlspecialchars($status_filter) ?>">
-
     <div class="afto-fg">
-        <label>Category</label>
-        <div class="adm-cdd-wrap" id="acdd-category">
-            <div class="adm-cdd-trigger" onclick="acddToggle('acdd-category')">
-                <span class="adm-cdd-label"><?= $category_filter === 'all' || $category_filter === '' ? 'All Categories' : htmlspecialchars($category_filter) ?></span>
-                <i class="fas fa-chevron-down adm-cdd-arrow"></i>
-            </div>
-            <div class="adm-cdd-menu">
-                <div class="adm-cdd-item <?= ($category_filter === 'all' || $category_filter === '') ? 'adm-cdd-active' : '' ?>" data-val="all">All Categories</div>
-                <?php foreach ($all_categories as $cat): ?>
-                <div class="adm-cdd-item <?= $category_filter === $cat ? 'adm-cdd-active' : '' ?>" data-val="<?= htmlspecialchars($cat) ?>"><?= htmlspecialchars($cat) ?></div>
-                <?php endforeach; ?>
-            </div>
-        </div>
+        <label for="category">Category</label>
+        <select name="category" id="category" class="filter-select">
+            <option value="all">All Categories</option>
+            <?php foreach ($all_categories as $cat): ?>
+            <option value="<?= htmlspecialchars($cat) ?>" <?= ($category_filter === $cat) ? 'selected' : '' ?>><?= htmlspecialchars($cat) ?></option>
+            <?php endforeach; ?>
+        </select>
     </div>
 
     <div class="afto-fg">
-        <label>Brand</label>
-        <div class="adm-cdd-wrap" id="acdd-brand">
-            <div class="adm-cdd-trigger" onclick="acddToggle('acdd-brand')">
-                <span class="adm-cdd-label"><?= $brand_filter === 'all' || $brand_filter === '' ? 'All Brands' : htmlspecialchars($brand_filter) ?></span>
-                <i class="fas fa-chevron-down adm-cdd-arrow"></i>
-            </div>
-            <div class="adm-cdd-menu">
-                <div class="adm-cdd-item <?= ($brand_filter === 'all' || $brand_filter === '') ? 'adm-cdd-active' : '' ?>" data-val="all">All Brands</div>
-                <?php foreach ($all_brands as $b): ?>
-                <div class="adm-cdd-item <?= $brand_filter === $b ? 'adm-cdd-active' : '' ?>" data-val="<?= htmlspecialchars($b) ?>"><?= htmlspecialchars($b) ?></div>
-                <?php endforeach; ?>
-            </div>
-        </div>
+        <label for="brand">Brand</label>
+        <select name="brand" id="brand" class="filter-select">
+            <option value="all">All Brands</option>
+            <?php foreach ($all_brands as $b): ?>
+            <option value="<?= htmlspecialchars($b) ?>" <?= ($brand_filter === $b) ? 'selected' : '' ?>><?= htmlspecialchars($b) ?></option>
+            <?php endforeach; ?>
+        </select>
     </div>
 
     <div class="afto-fg">
-        <label>Supplier</label>
-        <div class="adm-cdd-wrap" id="acdd-supplier">
-            <div class="adm-cdd-trigger" onclick="acddToggle('acdd-supplier')">
-                <span class="adm-cdd-label"><?= $supplier_filter === 'all' || $supplier_filter === '' ? 'All Suppliers' : htmlspecialchars($supplier_filter) ?></span>
-                <i class="fas fa-chevron-down adm-cdd-arrow"></i>
-            </div>
-            <div class="adm-cdd-menu">
-                <div class="adm-cdd-item <?= ($supplier_filter === 'all' || $supplier_filter === '') ? 'adm-cdd-active' : '' ?>" data-val="all">All Suppliers</div>
-                <?php foreach ($all_suppliers as $s): ?>
-                <div class="adm-cdd-item <?= $supplier_filter === $s ? 'adm-cdd-active' : '' ?>" data-val="<?= htmlspecialchars($s) ?>"><?= htmlspecialchars($s) ?></div>
-                <?php endforeach; ?>
-            </div>
-        </div>
+        <label for="supplier">Supplier</label>
+        <select name="supplier" id="supplier" class="filter-select">
+            <option value="all">All Suppliers</option>
+            <?php foreach ($all_suppliers as $s): ?>
+            <option value="<?= htmlspecialchars($s) ?>" <?= ($supplier_filter === $s) ? 'selected' : '' ?>><?= htmlspecialchars($s) ?></option>
+            <?php endforeach; ?>
+        </select>
     </div>
 
     <div class="afto-fg">
-        <label>UOM</label>
-        <div class="adm-cdd-wrap" id="acdd-unit">
-            <div class="adm-cdd-trigger" onclick="acddToggle('acdd-unit')">
-                <span class="adm-cdd-label"><?= $unit_filter === 'all' || $unit_filter === '' ? 'All UOMs' : htmlspecialchars($unit_filter) ?></span>
-                <i class="fas fa-chevron-down adm-cdd-arrow"></i>
-            </div>
-            <div class="adm-cdd-menu">
-                <div class="adm-cdd-item <?= ($unit_filter === 'all' || $unit_filter === '') ? 'adm-cdd-active' : '' ?>" data-val="all">All UOMs</div>
-                <?php foreach ($all_units as $u): ?>
-                <div class="adm-cdd-item <?= $unit_filter === $u ? 'adm-cdd-active' : '' ?>" data-val="<?= htmlspecialchars($u) ?>"><?= htmlspecialchars($u) ?></div>
-                <?php endforeach; ?>
-            </div>
-        </div>
+        <label for="unit">UOM</label>
+        <select name="unit" id="unit" class="filter-select">
+            <option value="all">All UOMs</option>
+            <?php foreach ($all_units as $u): ?>
+            <option value="<?= htmlspecialchars($u) ?>" <?= ($unit_filter === $u) ? 'selected' : '' ?>><?= htmlspecialchars($u) ?></option>
+            <?php endforeach; ?>
+        </select>
     </div>
     
     <div class="afto-fg">
-        <label>Status</label>
-        <div class="adm-cdd-wrap" id="acdd-status">
-            <div class="adm-cdd-trigger" onclick="acddToggle('acdd-status')">
-                <?php
-                $status_labels = ['all'=>'All Statuses','available'=>'Available','low'=>'Low Stock','out'=>'Out of Stock','out of stock'=>'Out of Stock','variance detected'=>'Variance Detected','warning'=>'Stock Alerts','inactive'=>'Inactive'];
-                $status_display = $status_labels[$status_filter] ?? 'All Statuses';
-                ?>
-                <span class="adm-cdd-label"><?= htmlspecialchars($status_display) ?></span>
-                <i class="fas fa-chevron-down adm-cdd-arrow"></i>
-            </div>
-            <div class="adm-cdd-menu">
-                <div class="adm-cdd-item <?= ($status_filter === 'all' || $status_filter === '') ? 'adm-cdd-active' : '' ?>" data-val="all">All Statuses</div>
-                <div class="adm-cdd-item <?= $status_filter === 'available' ? 'adm-cdd-active' : '' ?>" data-val="available">Available</div>
-                <div class="adm-cdd-item <?= $status_filter === 'low' ? 'adm-cdd-active' : '' ?>" data-val="low">Low Stock</div>
-                
-                <div class="adm-cdd-item <?= in_array($status_filter, ['out','out of stock'], true) ? 'adm-cdd-active' : '' ?>" data-val="out">Out of Stock</div>
-                <div class="adm-cdd-item <?= in_array($status_filter, ['variance','variance detected'], true) ? 'adm-cdd-active' : '' ?>" data-val="variance detected">Variance Detected</div>
-                <div class="adm-cdd-item <?= $status_filter === 'inactive' ? 'adm-cdd-active' : '' ?>" data-val="inactive">Inactive</div>
-            </div>
-        </div>
+        <label for="status_filter">Status</label>
+        <select name="status_filter" id="status_filter" class="filter-select">
+            <option value="all" <?= ($status_filter === 'all' || $status_filter === '') ? 'selected' : '' ?>>All Statuses</option>
+            <option value="available" <?= $status_filter === 'available' ? 'selected' : '' ?>>Available</option>
+            <option value="low" <?= $status_filter === 'low' ? 'selected' : '' ?>>Low Stock</option>
+            <option value="out" <?= in_array($status_filter, ['out','out of stock'], true) ? 'selected' : '' ?>>Out of Stock</option>
+            <option value="variance detected" <?= in_array($status_filter, ['variance','variance detected'], true) ? 'selected' : '' ?>>Variance Detected</option>
+            <option value="inactive" <?= $status_filter === 'inactive' ? 'selected' : '' ?>>Inactive</option>
+        </select>
     </div>
 
     <div class="afto-fg">
@@ -2060,60 +2028,59 @@ html, body {
     <div class="tbl-hd">
         <div class="tbl-title"><i class="fas fa-clipboard-list"></i> Merchandise Stock Records</div>
     </div>
-    <div class="table-wrap" style="width:100%; overflow-x:hidden;">
-        <table class="afto-tbl" id="adminMerchTable" style="width:100%; max-width:100%; table-layout:fixed; min-width: 0; border-collapse:collapse;">
+    <div class="table-wrap" style="width:100% !important;max-width:100% !important;overflow-x:hidden !important;box-sizing:border-box !important;">
+        <table class="table report-table no-min-width print-table merch-tbl afto-tbl" id="adminMerchTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
             <colgroup>
-                <col style="width:5.5%;"> <!-- Batch ID -->
-                <col style="width:8.5%;"> <!-- SKU -->
-                <col style="width:16.5%;"><!-- Product Name -->
-                <col style="width:10%;">  <!-- Category -->
-                <col style="width:6%;">   <!-- UOM -->
-                <col style="width:8.5%;"> <!-- Expiration Date -->
-                <col style="width:5.5%;"> <!-- Initial Stock -->
-                <col style="width:10.5%;"><!-- Current Stock -->
-                <col style="width:5%;">   <!-- Reorder Level -->
-                <col style="width:8%;">   <!-- Status -->
-                <col style="width:8.5%;"> <!-- Last Updated -->
-                <col style="width:7.5%;"> <!-- Actions -->
+                <col style="width:11%;"><!-- ITEM IDENTIFIERS -->
+                <col style="width:24%;"><!-- PRODUCT & CATEGORY -->
+                <col style="width:11%;"><!-- EXPIRATION -->
+                <col style="width:16%;"><!-- STOCK LEVELS -->
+                <col style="width:12%;"><!-- STATUS -->
+                <col style="width:14%;"><!-- LAST UPDATED -->
+                <col style="width:12%;"><!-- ACTIONS -->
             </colgroup>
             <thead>
                 <tr>
-                    <th style="text-align:center;">Batch<br>ID</th>
-                    <th style="text-align:center;">SKU</th>
-                    <th style="text-align:left;">Product Name</th>
-                    <th style="text-align:center;">Category</th>
-                    <th style="text-align:center;">UOM</th>
-                    <th style="text-align:center;">Expiration<br>Date</th>
-                    <th style="text-align:center;">Initial<br>Stock</th>
-                    <th style="text-align:left;">Current<br>Stock</th>
-                    <th style="text-align:center;">Reorder<br>Level</th>
-                    <th style="text-align:center;">Status</th>
-                    <th style="text-align:center;">Last<br>Updated</th>
-                    <th style="text-align:center;">Actions</th>
+                    <th style="white-space:nowrap;">ITEM IDENTIFIERS</th>
+                    <th style="white-space:nowrap;">PRODUCT & CATEGORY</th>
+                    <th style="white-space:nowrap;text-align:center;">EXPIRATION</th>
+                    <th style="white-space:nowrap;">STOCK LEVELS</th>
+                    <th style="white-space:nowrap;text-align:center;">STATUS</th>
+                    <th style="white-space:nowrap;">LAST UPDATED</th>
+                    <th style="white-space:nowrap;text-align:center;">ACTIONS</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="adminMerchTableBody">
             <?php if (empty($sorted_filtered)): ?>
                 <tr>
-                    <td colspan="12" class="align-center" style="padding: 24px; color: #64748b;">
+                    <td colspan="7" class="align-center" style="padding: 24px; color: #64748b; text-align:center;">
                         <i class="fas fa-box-open" style="font-size: 24px; margin-bottom: 8px; display:block;"></i>
                         No merchandise inventory records matched your filters.
                     </td>
                 </tr>
             <?php else: ?>
                 <?php foreach ($sorted_filtered as $cat_label => $items): ?>
-                    <tr class="cat-header">
-                        <td colspan="12" style="text-align:center; font-weight:700; background:#e9ecef !important; color:#495057 !important; text-transform:uppercase; font-size:14.5px; letter-spacing:.5px; border-bottom:2px solid #dee2e6; padding:8px 12px;">
-                            <strong><?= htmlspecialchars($cat_label) ?></strong>
+                    <tr class="cat-header no-paginate">
+                        <td colspan="7" style="background:#f1f5f9;font-weight:800;font-size:13px;padding:8px 12px;color:#002F70;text-align:left;">
+                            <i class="fas fa-folder" style="color:#2563eb;margin-right:6px;"></i><?= htmlspecialchars($cat_label) ?>
                         </td>
                     </tr>
                     <?php foreach ($items as $item): 
                         $stock    = (float)$item['stock_level'];
                         $reorder  = (float)($item['reorder_level'] ?? 24);
                         if ($reorder  <= 0) $reorder  = 24;
-                        $price    = (float)$item['price'];
-                        $value    = $stock * $price;
+                        $critical = (float)($item['critical_level'] ?? 10);
+                        if ($critical <= 0) $critical = 10;
+                        $capacity = max(480.0, (float)($item['capacity'] ?? 480));
+                        $unit     = htmlspecialchars(format_product_unit_display($item['unit'] ?? 'pcs', $item['name'] ?? '', $item['category_name'] ?? ''));
+                        $variance = $item['variance'] ?? null;
+                        $has_variance = ($variance !== null && (float)$variance != 0);
+
                         $pid_item = (int)$item['id'];
+                        $pname_norm = strtolower(trim((string)($item['name'] ?? '')));
+                        $stock_in_qty = (float)($prod_added_map_id[$pid_item] ?? $prod_added_map_name[$pname_norm] ?? 0);
+
+                        $fill_pct = $capacity > 0 ? min(100, ($stock / $capacity) * 100) : 0;
                         $batch_id = !empty($item['batch_ref']) ? $item['batch_ref'] : (!empty($item['batch_number']) ? $item['batch_number'] : ('B' . str_pad((string)$pid_item, 3, '0', STR_PAD_LEFT)));
                         $exp_date = 'N/A';
                         if (!empty($item['expiration_date']) && $item['expiration_date'] !== '0000-00-00') {
@@ -2136,47 +2103,105 @@ html, body {
                                 }
                             } catch (Exception $e) { $exp_date = 'Jul 20, 2029'; }
                         }
-                        $stock_in_qty  = (int)($prod_added_map_id[$pid_item] ?? $prod_added_map_name[strtolower(trim((string)$item['name']))] ?? 0);
-                        $initial_qty   = $stock_in_qty > 0 ? $stock_in_qty : max(480, (int)($item['capacity'] ?? 480));
-                    ?>
-                    <?php
-                        $capacity = max(480.0, (float)($item['capacity'] ?? 480));
-                        $fill_pct = $capacity > 0 ? min(100, ($stock / $capacity) * 100) : 0;
-                        $variance = $item['variance'];
-                        $has_variance = ($variance !== null && (float)$variance != 0);
-                        $badgeCls = $has_variance ? 'bg-amber' : getStatusBadgeClass($item['computed_status']);
-                        $badgeLbl = $has_variance ? 'Variance Detected' : getStatusLabel($item['computed_status']);
-                        $status_color = $has_variance ? '#fd7e14' : ($item['computed_status'] === 'available' ? '#28a745' : (in_array($item['computed_status'], ['critical', 'out']) ? '#dc3545' : '#fd7e14'));
-                        $updated = $item['last_updated'] ? date('M d, Y', strtotime($item['last_updated'])) : '-';
+                        $initial_qty = $stock_in_qty > 0 ? (int)$stock_in_qty : (int)$capacity;
+
+                        if ($stock <= 0) {
+                            $st = 'OUT OF STOCK'; $sc = '#dc3545'; $si_cls = 'out of stock';
+                        } elseif ($stock <= $critical) {
+                            $st = 'CRITICAL STOCK'; $sc = '#dc3545'; $si_cls = 'critical';
+                        } elseif ($stock <= $reorder) {
+                            $st = 'LOW STOCK'; $sc = '#fd7e14'; $si_cls = 'low';
+                        } else {
+                            $st = 'AVAILABLE'; $sc = '#28a745'; $si_cls = 'available';
+                        }
+
+                        if ($has_variance) {
+                            $st = 'VARIANCE DETECTED'; $sc = '#fd7e14';
+                            $si_cls = 'variance detected';
+                        }
+
+                        $timestamp_date = '—';
+                        $timestamp_time = '';
+                        if (!empty($item['last_updated'])) {
+                            try {
+                                $dt_up = new DateTime($item['last_updated']);
+                                $timestamp_date = $dt_up->format('M d, Y');
+                                $timestamp_time = $dt_up->format('h:i A');
+                            } catch (Exception $e) {}
+                        }
                     ?>
                     <tr class="merch-row"
-    data-name="<?= htmlspecialchars(strtolower($item['name'])) ?>"
-    data-sku="<?= htmlspecialchars(strtolower($item['sku'])) ?>"
-    data-category="<?= htmlspecialchars(strtolower($item['category_name'])) ?>"
-    data-brand="<?= htmlspecialchars(strtolower($item['brand'] ?? '')) ?>"
-    data-supplier="<?= htmlspecialchars(strtolower($item['supplier'] ?? 'petron corporation')) ?>"
-    data-unit="<?= htmlspecialchars(strtolower($item['unit'])) ?>"
-    data-status="<?= htmlspecialchars(strtolower($badgeLbl)) ?>"
-    data-status-key="<?= htmlspecialchars(strtolower($item['computed_status'])) ?>"
-    data-date="<?= $item['last_updated'] ? date('Y-m-d', strtotime($item['last_updated'])) : '' ?>">
-                        <td><code style="font-size:14px;font-weight:700;color:#002F70;"><?= htmlspecialchars($batch_id) ?></code></td>
-                        <td><code><?= htmlspecialchars($item['sku'] ?: '-') ?></code></td>
-                        <td><strong><?= htmlspecialchars($item['name']) ?></strong></td>
-                        <td class="align-center"><?= htmlspecialchars($item['category_name']) ?></td>
-                        <td class="align-center" style="font-weight:600;color:#475569;"><?= htmlspecialchars($item['unit']) ?></td>
-                        <td class="align-center" style="font-weight:600;color:<?= $exp_date !== 'N/A' ? '#0f172a' : '#94a3b8' ?>;"><?= htmlspecialchars($exp_date) ?></td>
-                        <td style="text-align:right; font-weight:700; color:#0f172a;"><?= number_format($initial_qty) ?></td>
-                        <td>
-                            <div class="fill-bar-wrap">
-                                <div class="fill-bar-inner" style="width:<?= min(100, round($fill_pct)) ?>%;background:<?= $status_color ?>;"></div>
+                        data-id="<?= (int)$item['id'] ?>"
+                        data-name="<?= htmlspecialchars(strtolower($item['name'])) ?>"
+                        data-sku="<?= htmlspecialchars(strtolower($item['sku'] ?? '')) ?>"
+                        data-category="<?= htmlspecialchars(strtolower($item['category_name'] ?? '')) ?>"
+                        data-brand="<?= htmlspecialchars(strtolower($item['brand'] ?? '')) ?>"
+                        data-supplier="<?= htmlspecialchars(strtolower($item['supplier'] ?? 'petron corporation')) ?>"
+                        data-unit="<?= htmlspecialchars(strtolower($unit)) ?>"
+                        data-status="<?= htmlspecialchars(strtolower($st)) ?>"
+                        data-status-key="<?= htmlspecialchars(strtolower($item['computed_status'] ?? '')) ?>"
+                        data-has-variance="<?= $has_variance ? 'true' : 'false' ?>"
+                        data-date="<?= !empty($item['last_updated']) ? date('Y-m-d', strtotime($item['last_updated'])) : '' ?>">
+
+                        <!-- 1. ITEM IDENTIFIERS -->
+                        <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
+                            <div style="font-family:monospace;font-size:12.5px;font-weight:700;color:#002F70;white-space:nowrap;" title="Batch ID">
+                                <i class="fas fa-layer-group" style="font-size:10.5px;color:#2563eb;margin-right:2px;"></i> <?= htmlspecialchars($batch_id) ?>
                             </div>
-                            <span style="font-size:14px;font-weight:600;color:#334155;"><?= number_format($stock, 0) ?> <?= htmlspecialchars($item['unit']) ?></span>
+                            <div style="font-family:monospace;font-size:11.5px;font-weight:700;color:#4f46e5;margin-top:2px;white-space:nowrap;" title="SKU">
+                                <?= htmlspecialchars($item['sku'] ?: '—') ?>
+                            </div>
                         </td>
-                        <td class="align-right" style="font-weight:600;color:#ea580c;"><?= number_format($reorder, 0) ?></td>
-                        <td class="align-center"><span class="badge-lbl <?= $badgeCls ?>"><?= htmlspecialchars($badgeLbl) ?></span></td>
-                        <td style="font-size:14px; color:#64748b;"><?= $updated ?></td>
-                        <td class="align-center">
-                            <div style="display:flex; flex-direction:column; gap:4px; align-items:center; justify-content:center; padding:2px 0;">
+
+                        <!-- 2. PRODUCT & CATEGORY -->
+                        <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
+                            <div style="font-weight:800;font-size:13.5px;color:#0f172a;line-height:1.3;word-break:break-word;overflow-wrap:break-word;"><?= htmlspecialchars($item['name']) ?></div>
+                            <div style="font-size:11.5px;color:#64748b;margin-top:3px;font-weight:600;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                                <span style="color:#0369a1;"><i class="fas fa-tag" style="font-size:10px;"></i> <?= htmlspecialchars($item['category_name'] ?? 'General') ?></span>
+                                <span style="color:#cbd5e1;">•</span>
+                                <span style="color:#475569;font-weight:700;"><?= $unit ?></span>
+                            </div>
+                        </td>
+
+                        <!-- 3. EXPIRATION -->
+                        <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;">
+                            <span style="font-size:12.5px;font-weight:700;color:<?= $exp_date !== 'N/A' ? '#0f172a' : '#94a3b8' ?>;white-space:nowrap;">
+                                <i class="fas fa-calendar-alt" style="font-size:11px;color:<?= $exp_date !== 'N/A' ? '#2563eb' : '#cbd5e1' ?>;margin-right:3px;"></i> <?= htmlspecialchars($exp_date) ?>
+                            </span>
+                        </td>
+
+                        <!-- 4. STOCK LEVELS -->
+                        <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
+                            <div class="fill-bar-wrap" style="height:6px;border-radius:3px;background:#e2e8f0;overflow:hidden;margin-bottom:3px;">
+                                <div class="fill-bar-inner" style="width:<?= min(100, round($fill_pct)) ?>%;background:<?= $sc ?>;height:100%;"></div>
+                            </div>
+                            <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px;">
+                                <span style="font-size:13px;font-weight:800;color:#0f172a;white-space:nowrap;"><?= number_format($stock, 0) ?> <small style="font-size:11px;color:#64748b;font-weight:600;"><?= $unit ?></small></span>
+                                <span style="font-size:11px;color:#64748b;white-space:nowrap;font-weight:600;">Reorder: <strong style="color:#ea580c;"><?= number_format($reorder, 0) ?></strong></span>
+                            </div>
+                            <div style="font-size:10.5px;color:#64748b;margin-top:2px;white-space:nowrap;">Init: <?= number_format($initial_qty) ?></div>
+                        </td>
+
+                        <!-- 5. STATUS -->
+                        <td style="padding:9px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;">
+                            <span class="inv-stock-badge" style="background:<?= $sc ?>20;color:<?= $sc ?>;border:1.5px solid <?= $sc ?>50;padding:4px 9px;border-radius:6px;font-size:11px;font-weight:800;text-transform:uppercase;white-space:nowrap;display:inline-block;">
+                                <?= htmlspecialchars($st) ?>
+                            </span>
+                        </td>
+
+                        <!-- 6. LAST UPDATED -->
+                        <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
+                            <?php if ($timestamp_date !== '—'): ?>
+                                <div style="font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;"><?= $timestamp_date ?></div>
+                                <div style="font-size:11px;color:#64748b;font-weight:600;margin-top:2px;white-space:nowrap;"><?= $timestamp_time ?></div>
+                            <?php else: ?>
+                                <span style="color:#94a3b8;font-size:12px;">—</span>
+                            <?php endif; ?>
+                        </td>
+
+                        <!-- 7. ACTIONS -->
+                        <td style="padding:8px 6px;max-width:0;overflow:hidden;box-sizing:border-box;text-align:center;vertical-align:middle;">
+                            <div class="act-btn-wrap">
                                 <button type="button" class="act-btn act-btn-view"
                                     onclick='adminViewProduct(<?= htmlspecialchars(json_encode([
                                         "id" => $item["id"],
@@ -2210,7 +2235,7 @@ html, body {
             </tbody>
         </table>
     </div>
-    <div id="adminMerchPagination" style="margin: 10px 20px;"></div>
+    <div id="adminMerchPagination" style="padding: 10px 20px;"></div>
 </div>
 <?php endif; ?>
 
@@ -2220,8 +2245,8 @@ html, body {
     <div class="tbl-hd">
         <div class="tbl-title"><i class="fas fa-exchange-alt"></i> Stock Movement Monitoring</div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <input type="text" id="adminMovSearchInput" placeholder="Search product, ref, user..." oninput="filterAdminMovTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;width:220px;">
-            <select id="adminMovTypeFilter" onchange="filterAdminMovTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;font-weight:600;color:#002F70;">
+            <input type="text" id="adminMovSearchInput" placeholder="Search product, ref, user..." oninput="filterAdminMovTable()" class="filter-input" style="width:240px;">
+            <select id="adminMovTypeFilter" onchange="filterAdminMovTable()" class="filter-select" style="width:auto;min-width:180px;">
                 <option value="">All Movement Types</option>
                 <option value="stock in">Stock In</option>
                 <option value="stock out">Stock Out</option>
@@ -2235,14 +2260,14 @@ html, body {
     <div class="table-wrap" style="overflow-x:hidden; width:100%;">
         <table class="afto-tbl" id="adminMovTable" style="width:100%; max-width:100%; table-layout:fixed; min-width: 0; border-collapse:collapse;">
             <colgroup>
-                <col style="width:12%;"> <!-- Date -->
+                <col style="width:13%;"> <!-- Date -->
                 <col style="width:14%;"> <!-- Reference No. -->
-                <col style="width:8.5%;"><!-- Type -->
-                <col style="width:20%;"> <!-- Product -->
-                <col style="width:8.5%;"><!-- Quantity -->
+                <col style="width:9%;">  <!-- Type -->
+                <col style="width:21%;"> <!-- Product -->
+                <col style="width:8%;">  <!-- Quantity -->
                 <col style="width:11%;"> <!-- Performed By -->
                 <col style="width:12%;"> <!-- Branch -->
-                <col style="width:14%;"> <!-- Remarks -->
+                <col style="width:12%;"> <!-- Remarks -->
             </colgroup>
             <thead>
                 <tr>
@@ -2342,34 +2367,22 @@ $alert_rows = array_filter($all_items, function($i) {
 $total_alerts_count = count($alert_rows);
 ?>
 
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:20px;">
-    <div style="background:#fff;border-radius:8px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #fed7aa;display:flex;align-items:center;justify-content:space-between;">
-        <div>
-            <div style="font-size:15px;font-weight:800;color:#ea580c;text-transform:uppercase;letter-spacing:.3px;">Low Stock Items</div>
-            <div style="font-size:28px;font-weight:800;color:#ea580c;margin-top:4px;"><?= number_format($kpi_low_stock) ?></div>
-        </div>
-        <div style="background:#fff7ed;color:#ea580c;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;"><i class="fas fa-exclamation-triangle"></i></div>
+<div class="txn-kpi-grid">
+    <div class="txn-kpi-card orange">
+        <div class="txn-kpi-lbl"><i class="fas fa-exclamation-triangle" style="color:#d97706;margin-right:4px;"></i> Low Stock Items</div>
+        <div class="txn-kpi-val"><?= number_format($kpi_low_stock) ?></div>
     </div>
-    <div style="background:#fff;border-radius:8px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #fecaca;display:flex;align-items:center;justify-content:space-between;">
-        <div>
-            <div style="font-size:15px;font-weight:800;color:#dc2626;text-transform:uppercase;letter-spacing:.3px;">Critical Stock Items</div>
-            <div style="font-size:28px;font-weight:800;color:#dc2626;margin-top:4px;"><?= number_format($kpi_critical_stock) ?></div>
-        </div>
-        <div style="background:#fef2f2;color:#dc2626;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;"><i class="fas fa-fire"></i></div>
+    <div class="txn-kpi-card danger">
+        <div class="txn-kpi-lbl"><i class="fas fa-fire" style="color:#dc2626;margin-right:4px;"></i> Critical Stock Items</div>
+        <div class="txn-kpi-val"><?= number_format($kpi_critical_stock) ?></div>
     </div>
-    <div style="background:#fff;border-radius:8px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #fecaca;display:flex;align-items:center;justify-content:space-between;">
-        <div>
-            <div style="font-size:15px;font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock</div>
-            <div style="font-size:28px;font-weight:800;color:#991b1b;margin-top:4px;"><?= number_format($kpi_out_of_stock) ?></div>
-        </div>
-        <div style="background:#fef2f2;color:#991b1b;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;"><i class="fas fa-times-circle"></i></div>
+    <div class="txn-kpi-card dark-danger">
+        <div class="txn-kpi-lbl"><i class="fas fa-times-circle" style="color:#991b1b;margin-right:4px;"></i> Out of Stock</div>
+        <div class="txn-kpi-val"><?= number_format($kpi_out_of_stock) ?></div>
     </div>
-    <div style="background:#fff;border-radius:8px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
-        <div>
-            <div style="font-size:15px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.3px;">Total Active Alerts</div>
-            <div style="font-size:28px;font-weight:800;color:#002F70;margin-top:4px;"><?= number_format($total_alerts_count) ?></div>
-        </div>
-        <div style="background:#f0f4f8;color:#002F70;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;"><i class="fas fa-bell"></i></div>
+    <div class="txn-kpi-card blue">
+        <div class="txn-kpi-lbl"><i class="fas fa-bell" style="color:#0284c7;margin-right:4px;"></i> Total Active Alerts</div>
+        <div class="txn-kpi-val"><?= number_format($total_alerts_count) ?></div>
     </div>
 </div>
 
@@ -2377,7 +2390,7 @@ $total_alerts_count = count($alert_rows);
     <div class="tbl-hd">
         <div class="tbl-title" style="font-size:16px;font-weight:800;"><i class="fas fa-exclamation-triangle" style="color:#dc2626;"></i> Active Stock Alerts Catalog</div>
         <div style="display:flex;align-items:center;gap:10px;">
-            <input type="text" id="adminAlertSearchInput" placeholder="Search alert products..." oninput="filterAdminAlertTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;width:220px;">
+            <input type="text" id="adminAlertSearchInput" placeholder="Search alert products..." oninput="filterAdminAlertTable()" class="filter-input" style="width:240px;">
         </div>
     </div>
     <div class="table-wrap" style="overflow-x:hidden; width:100%;">
@@ -2992,181 +3005,18 @@ function filterExpTable() {
 }
 
 function filterAdminByCard(statusKey) {
-    var hidden = document.getElementById('status_filter');
-    if (!hidden) return;
-    var labels = {'all':'All Statuses','available':'Available','low':'Low Stock','critical':'Critical Stock','out':'Out of Stock','variance detected':'Variance Detected','inactive':'Inactive','warning':'Stock Alerts'};
-    if (hidden.value === statusKey) {
-        hidden.value = 'all';
-        acddSetLabel('acdd-status', 'all', 'All Statuses');
+    var sel = document.getElementById('status_filter');
+    if (!sel) return;
+    if (sel.value === statusKey) {
+        sel.value = 'all';
     } else {
-        hidden.value = statusKey;
-        acddSetLabel('acdd-status', statusKey, labels[statusKey] || statusKey);
+        sel.value = statusKey;
     }
-    var form = hidden.closest('form');
+    var form = sel.closest('form');
     if (form) form.submit();
 }
 
-// â”€â”€ Admin Custom Dropdown (CDD) Logic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function acddToggle(id) {
-    var wrap = document.getElementById(id);
-    var isOpen = wrap.classList.contains('adm-cdd-open');
-    document.querySelectorAll('.adm-cdd-wrap.adm-cdd-open').forEach(function(w){ w.classList.remove('adm-cdd-open'); });
-    if (!isOpen) wrap.classList.add('adm-cdd-open');
-}
-
-function acddSetLabel(cddId, val, label) {
-    var wrap = document.getElementById(cddId);
-    if (!wrap) return;
-    wrap.querySelector('.adm-cdd-label').textContent = label;
-    wrap.querySelectorAll('.adm-cdd-item').forEach(function(item){
-        item.classList.toggle('adm-cdd-active', item.dataset.val === val);
-    });
-}
-
-function setupDownwardFilterSelects(selectors) {
-    if (!selectors) return;
-    var rawList = Array.isArray(selectors) ? selectors : (selectors instanceof NodeList ? Array.from(selectors) : [selectors]);
-    var selects = [];
-    rawList.forEach(function(item) {
-        if (typeof item === 'string') {
-            document.querySelectorAll(item).forEach(function(el) { if (el) selects.push(el); });
-        } else if (item instanceof NodeList || (item && item.length && item[0])) {
-            Array.from(item).forEach(function(el) { if (el) selects.push(el); });
-        } else if (item && item.nodeType === 1) {
-            selects.push(item);
-        }
-    });
-
-    selects.forEach(function(select) {
-        if (!select || !select.tagName || select.tagName.toLowerCase() !== 'select') return;
-        if (select.dataset && select.dataset.forceDownReady === '1') return;
-        if (select.dataset) select.dataset.forceDownReady = '1';
-        else select.setAttribute('data-force-down-ready', '1');
-
-        var wrap = document.createElement('div');
-        wrap.className = 'fd-select';
-        var computed = window.getComputedStyle(select);
-        if (computed.minWidth && computed.minWidth !== '0px') wrap.style.minWidth = computed.minWidth;
-        if (select.style.width) wrap.style.width = select.style.width;
-        if (select.closest('.afto-fg')) wrap.style.width = '100%';
-
-        var trigger = document.createElement('button');
-        trigger.type = 'button';
-        trigger.className = 'fd-select-trigger';
-        var label = document.createElement('span');
-        label.className = 'fd-select-label';
-        var arrow = document.createElement('i');
-        arrow.className = 'fas fa-chevron-down fd-select-arrow';
-        trigger.appendChild(label);
-        trigger.appendChild(arrow);
-
-        var menu = document.createElement('div');
-        menu.className = 'fd-select-menu';
-        Array.from(select.options).forEach(function(option) {
-            var item = document.createElement('div');
-            item.className = 'fd-select-option';
-            item.dataset.value = option.value;
-            item.textContent = option.textContent;
-            item.addEventListener('click', function() {
-                select.value = option.value;
-                select.dispatchEvent(new Event('change', { bubbles: true }));
-                syncLabel();
-                wrap.classList.remove('fd-open');
-            });
-            menu.appendChild(item);
-        });
-
-        function syncLabel() {
-            var selected = select.options[select.selectedIndex];
-            label.textContent = selected ? selected.textContent.trim() : '';
-            Array.from(menu.querySelectorAll('.fd-select-option')).forEach(function(item) {
-                item.classList.toggle('fd-active', item.dataset.value === select.value);
-            });
-        }
-
-        trigger.addEventListener('click', function(e) {
-            e.stopPropagation();
-            document.querySelectorAll('.fd-select.fd-open').forEach(function(openWrap) {
-                if (openWrap !== wrap) openWrap.classList.remove('fd-open');
-            });
-            wrap.classList.toggle('fd-open');
-        });
-
-        select.addEventListener('change', syncLabel);
-        select.classList.add('fd-select-source');
-        select.parentNode.insertBefore(wrap, select.nextSibling);
-        wrap.appendChild(trigger);
-        wrap.appendChild(menu);
-        syncLabel();
-    });
-
-    if (!window.__forceDownSelectCloseBound) {
-        window.__forceDownSelectCloseBound = true;
-        document.addEventListener('click', function(e) {
-            if (!e.target.closest('.fd-select')) {
-                document.querySelectorAll('.fd-select.fd-open').forEach(function(wrap) {
-                    wrap.classList.remove('fd-open');
-                });
-            }
-        });
-    }
-}
-
 document.addEventListener('DOMContentLoaded', function() {
-    // Wire hidden input map: cdd id â†’ hidden input id
-    var acddInputMap = {
-        'acdd-category': 'category',
-        'acdd-brand':    'brand',
-        'acdd-supplier': 'supplier',
-        'acdd-unit':     'unit',
-        'acdd-status':   'status_filter'
-    };
-    document.querySelectorAll('.adm-cdd-wrap').forEach(function(wrap) {
-        var id = wrap.id;
-        var inputId = acddInputMap[id];
-        var hiddenInput = inputId ? document.getElementById(inputId) : null;
-        if (hiddenInput && !document.getElementById(id + '-native')) {
-            var nativeSelect = document.createElement('select');
-            nativeSelect.id = id + '-native';
-            var fieldWrap = wrap.closest('.afto-fg');
-            var fieldLabel = fieldWrap ? fieldWrap.querySelector('label') : null;
-            nativeSelect.setAttribute('aria-label', fieldLabel ? fieldLabel.textContent : 'Filter');
-            wrap.querySelectorAll('.adm-cdd-item').forEach(function(item) {
-                var option = document.createElement('option');
-                option.value = item.dataset.val || '';
-                option.textContent = item.textContent.trim();
-                if (item.classList.contains('adm-cdd-active')) option.selected = true;
-                nativeSelect.appendChild(option);
-            });
-            nativeSelect.addEventListener('change', function() {
-                hiddenInput.value = nativeSelect.value;
-                var selected = nativeSelect.options[nativeSelect.selectedIndex];
-                acddSetLabel(id, nativeSelect.value, selected ? selected.textContent : '');
-            });
-            wrap.parentNode.insertBefore(nativeSelect, wrap.nextSibling);
-        }
-        wrap.querySelectorAll('.adm-cdd-item').forEach(function(item) {
-            item.addEventListener('click', function() {
-                var val = item.dataset.val;
-                var label = item.textContent.trim();
-                acddSetLabel(id, val, label);
-                wrap.classList.remove('adm-cdd-open');
-                if (inputId) {
-                    var hidden = document.getElementById(inputId);
-                    if (hidden) hidden.value = val;
-                }
-            });
-        });
-    });
-    setupDownwardFilterSelects(document.querySelectorAll('.afto-filter select'));
-    setupDownwardFilterSelects(['#adminMovTypeFilter']);
-
-    // Close on outside click
-    document.addEventListener('click', function(e) {
-        if (!e.target.closest('.adm-cdd-wrap')) {
-            document.querySelectorAll('.adm-cdd-wrap.adm-cdd-open').forEach(function(w){ w.classList.remove('adm-cdd-open'); });
-        }
-    });
 
     <?php if ($active_tab === 'overview'): ?>
     if (typeof setupTablePagination === 'function') {

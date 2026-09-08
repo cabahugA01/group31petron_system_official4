@@ -2089,3 +2089,68 @@ h1.stock-title,
     height: auto !important;
     max-height: none !important;
 }
+
+/* ═══════════════════════════════════════════════════
+   GLOBAL HORIZONTAL SCROLL PREVENTION
+   Prevents any horizontal overflow/scrollbar at page level.
+   Tables and modals that need internal scrolling use
+   overflow-x:auto on their own wrapper (.table-wrap, etc.)
+   ═══════════════════════════════════════════════════ */
+
+html,
+body {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+}
+
+.app {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+}
+
+.main {
+    overflow-x: hidden !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.main-content,
+.page-wrapper,
+.content-wrapper,
+.module-wrapper,
+.inner-wrapper,
+.report-wrapper,
+.section-wrapper,
+.aa-wrapper,
+.pp-wrapper,
+.ff-wrapper,
+.fr-wrapper {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+}
+
+/* Tables: contain inside wrapper, don't bleed */
+.table-wrap,
+.table-responsive {
+    overflow-x: auto !important;
+    max-width: 100% !important;
+    width: 100% !important;
+}
+
+/* Prevent table cells from forcing layout wider than viewport */
+table {
+    max-width: 100%;
+}
+
+td, th {
+    word-break: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Modal internal content: allow its own horizontal scroll if needed */
+.modal-overlay .table-wrap,
+.modal-overlay .table-responsive,
+[id$="Modal"] .table-wrap,
+[id$="Modal"] .table-responsive {
+    overflow-x: auto !important;
+}

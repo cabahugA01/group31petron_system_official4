@@ -505,51 +505,70 @@ require_once __DIR__ . '/../partials/header.php';
     text-transform: none !important;
 }
 
-/* == SUMMARY CARDS == */
-.ato-cards {
+/* == SUMMARY CARDS (Matches Master Data Requests Exactly) == */
+.ato-cards, .txn-kpi-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+    width: 100%;
+    box-sizing: border-box;
 }
-.ato-card {
+@media (max-width: 1100px) {
+    .ato-cards, .txn-kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+@media (max-width: 480px) {
+    .ato-cards, .txn-kpi-grid {
+        grid-template-columns: 1fr;
+    }
+}
+.ato-card, .txn-kpi-card {
     background: #ffffff;
-    border: 1px solid #cbd5e1;
-    border-radius: 10px;
-    padding: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    position: relative;
-    overflow: hidden;
-}
-.ato-card-info {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: none;
+    transition: transform .15s, box-shadow .15s;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
+    justify-content: space-between;
+    min-height: 86px;
 }
-.ato-card-lbl {
-    font-size: 11px;
-    font-weight: 700;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 4px;
+.ato-card:hover, .txn-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,.09);
 }
-.ato-card-val {
-    font-size: 20px;
-    font-weight: 700;
-    color: #1e293b;
+.ato-card-lbl, .txn-kpi-lbl {
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    color: #64748b !important;
+    margin-bottom: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    line-height: 1.3 !important;
+    white-space: nowrap !important;
 }
-.ato-card-icon {
-    font-size: 24px;
-    opacity: 0.8;
+.ato-card-val, .txn-kpi-val {
+    font-size: 26px !important;
+    font-weight: 800 !important;
+    color: #002F70;
+    line-height: 1.1;
 }
+.ato-card.blue .ato-card-val,   .txn-kpi-card.blue .txn-kpi-val   { color: #0284c7 !important; }
+.ato-card.yellow .ato-card-val, .txn-kpi-card.yellow .txn-kpi-val { color: #d97706 !important; }
+.ato-card.green .ato-card-val,  .txn-kpi-card.green .txn-kpi-val  { color: #16a34a !important; }
+.ato-card.red .ato-card-val,    .txn-kpi-card.danger .txn-kpi-val { color: #dc2626 !important; }
 
-.ato-card.blue .ato-card-icon { color: #2563eb; }
-.ato-card.yellow .ato-card-icon { color: #d97706; }
-.ato-card.green .ato-card-icon { color: #16a34a; }
-.ato-card.red .ato-card-icon { color: #dc2626; }
+.ato-card.blue .ato-card-lbl i,   .txn-kpi-card.blue .txn-kpi-lbl i   { color: #0284c7 !important; }
+.ato-card.yellow .ato-card-lbl i, .txn-kpi-card.yellow .txn-kpi-lbl i { color: #d97706 !important; }
+.ato-card.green .ato-card-lbl i,  .txn-kpi-card.green .txn-kpi-lbl i  { color: #16a34a !important; }
+.ato-card.red .ato-card-lbl i,    .txn-kpi-card.danger .txn-kpi-lbl i { color: #dc2626 !important; }
 
 /* == FILTER BAR == */
 .ato-filter {
@@ -828,35 +847,23 @@ require_once __DIR__ . '/../partials/header.php';
 <!-- == ALERTS == -->
 <?php require __DIR__ . '/../partials/flash_toast.php'; ?>
 
-<!-- == SUMMARY CARDS == -->
-<div class="ato-cards">
-    <div class="ato-card blue">
-        <div class="ato-card-info">
-            <span class="ato-card-lbl">Total Adjustments</span>
-            <span class="ato-card-val"><?= number_format($total_adjustments) ?></span>
-        </div>
-        <div class="ato-card-icon"><i class="fas fa-sliders-h"></i></div>
+<!-- == SUMMARY CARDS (Matches Master Data Requests Exactly) == -->
+<div class="txn-kpi-grid">
+    <div class="txn-kpi-card blue">
+        <div class="txn-kpi-lbl"><i class="fas fa-sliders-h" style="color:#0284c7;margin-right:4px;"></i> Total Adjustments</div>
+        <div class="txn-kpi-val"><?= number_format($total_adjustments) ?></div>
     </div>
-    <div class="ato-card yellow">
-        <div class="ato-card-info">
-            <span class="ato-card-lbl">Pending Adjustments</span>
-            <span class="ato-card-val"><?= number_format($pending_adjustments) ?></span>
-        </div>
-        <div class="ato-card-icon"><i class="fas fa-clock"></i></div>
+    <div class="txn-kpi-card yellow">
+        <div class="txn-kpi-lbl"><i class="fas fa-clock" style="color:#d97706;margin-right:4px;"></i> Pending Adjustments</div>
+        <div class="txn-kpi-val"><?= number_format($pending_adjustments) ?></div>
     </div>
-    <div class="ato-card green">
-        <div class="ato-card-info">
-            <span class="ato-card-lbl">Approved Adjustments</span>
-            <span class="ato-card-val"><?= number_format($approved_adjustments) ?></span>
-        </div>
-        <div class="ato-card-icon"><i class="fas fa-check-circle"></i></div>
+    <div class="txn-kpi-card green">
+        <div class="txn-kpi-lbl"><i class="fas fa-check-circle" style="color:#16a34a;margin-right:4px;"></i> Approved Adjustments</div>
+        <div class="txn-kpi-val"><?= number_format($approved_adjustments) ?></div>
     </div>
-    <div class="ato-card red">
-        <div class="ato-card-info">
-            <span class="ato-card-lbl">Rejected Adjustments</span>
-            <span class="ato-card-val"><?= number_format($rejected_adjustments) ?></span>
-        </div>
-        <div class="ato-card-icon"><i class="fas fa-times-circle"></i></div>
+    <div class="txn-kpi-card danger">
+        <div class="txn-kpi-lbl"><i class="fas fa-times-circle" style="color:#dc2626;margin-right:4px;"></i> Rejected Adjustments</div>
+        <div class="txn-kpi-val"><?= number_format($rejected_adjustments) ?></div>
     </div>
 </div>
 

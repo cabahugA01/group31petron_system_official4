@@ -1262,7 +1262,7 @@ include __DIR__ . '/../partials/header.php';
 
 .page-head {
     display:flex; justify-content:space-between; gap:16px; align-items:center;
-    margin-top: 18px !important; margin-bottom: 25px !important;
+    margin-top: 0 !important; margin-bottom: 16px !important;
     padding:0 !important; border:none !important; width:100%;
 }
 .page-head h1, .page-head .h1 {
@@ -1273,7 +1273,7 @@ include __DIR__ . '/../partials/header.php';
     display:flex !important; align-items:center !important; gap:10px !important; line-height:1.2 !important;
 }
 .um-wrap {
-    padding: 15px 0 0 0 !important;
+    padding: 0 !important;
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;

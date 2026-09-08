@@ -691,16 +691,14 @@ th:nth-child(3), th:nth-child(4), th:nth-child(5), th:nth-child(6), th:nth-child
 .rpt-btn-csv   { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
 .rpt-btn-csv:hover   { background: #f0fdf4 !important; color: #166534 !important; }
 
-/* KPI Grid - 6 columns */
-.txn-kpi-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:20px; }
-@media(max-width:1100px){ .txn-kpi-grid{ grid-template-columns:repeat(3,1fr); } }
+/* KPI Grid - 6 columns (Matches Master Data Requests Exactly) */
+.txn-kpi-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:14px; margin-bottom:18px; width:100%; box-sizing:border-box; }
+@media(max-width:1200px){ .txn-kpi-grid{ grid-template-columns:repeat(3,1fr); } }
 @media(max-width:700px){ .txn-kpi-grid{ grid-template-columns:repeat(2,1fr); } }
 @media(max-width:480px){ .txn-kpi-grid{ grid-template-columns:1fr; } }
-.txn-kpi-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; box-shadow:0 1px 4px rgba(0,0,0,.03); transition:transform .15s,box-shadow .15s; }
-.txn-kpi-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.07); }
-.txn-kpi-lbl { font-size:15.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#64748b; margin-bottom:6px; display:flex; align-items: flex-start; gap:6px;
-    line-height: 1.3;
-}
+.txn-kpi-card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px 18px; box-shadow:none; transition:transform .15s,box-shadow .15s; box-sizing:border-box; }
+.txn-kpi-card:hover { transform:translateY(-2px); box-shadow:0 4px 10px rgba(0,0,0,.09); }
+.txn-kpi-lbl { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#64748b; margin-bottom:6px; display:flex; align-items:center; gap:6px; line-height:1.3; white-space:nowrap; }
 .txn-kpi-val { font-size:26px; font-weight:800; color:#002F70; line-height:1.1; }
 .txn-kpi-card.blue   .txn-kpi-val { color:#0284c7; }
 .txn-kpi-card.green  .txn-kpi-val { color:#16a34a; }
@@ -708,6 +706,15 @@ th:nth-child(3), th:nth-child(4), th:nth-child(5), th:nth-child(6), th:nth-child
 .txn-kpi-card.orange .txn-kpi-val { color:#d97706; }
 .txn-kpi-card.purple .txn-kpi-val { color:#7c3aed; }
 .txn-kpi-card.teal   .txn-kpi-val { color:#0d9488; }
+.txn-kpi-card.yellow .txn-kpi-val { color:#d97706; }
+
+.txn-kpi-card.blue   .txn-kpi-lbl i { color:#0284c7 !important; }
+.txn-kpi-card.green  .txn-kpi-lbl i { color:#16a34a !important; }
+.txn-kpi-card.danger .txn-kpi-lbl i { color:#dc2626 !important; }
+.txn-kpi-card.orange .txn-kpi-lbl i { color:#d97706 !important; }
+.txn-kpi-card.purple .txn-kpi-lbl i { color:#7c3aed !important; }
+.txn-kpi-card.teal   .txn-kpi-lbl i { color:#0d9488 !important; }
+.txn-kpi-card.yellow .txn-kpi-lbl i { color:#d97706 !important; }
 
 /* Filter Bar */
 .filters-form { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:14px 18px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
@@ -944,31 +951,31 @@ button.tbl-btn.wkld { color:#475569!important; }
 </div>
 <?php endif; ?>
 
-<!-- KPI Cards (6) -->
+<!-- KPI Cards (6) (Matches Master Data Requests Design & Size) -->
 <div class="txn-kpi-grid">
     <div class="txn-kpi-card blue">
-        <div class="txn-kpi-lbl"><i class="fas fa-users"></i> Total Mechanics</div>
-        <div class="txn-kpi-val" id="mm_kpi_total"><?= $total_mechanics ?></div>
+        <div class="txn-kpi-lbl"><i class="fas fa-users" style="color:#0284c7;margin-right:4px;"></i> Total Mechanics</div>
+        <div class="txn-kpi-val" id="mm_kpi_total"><?= number_format($total_mechanics) ?></div>
     </div>
     <div class="txn-kpi-card green">
-        <div class="txn-kpi-lbl"><i class="fas fa-check-circle"></i> Active</div>
-        <div class="txn-kpi-val" id="mm_kpi_active"><?= $active_mechanics ?></div>
+        <div class="txn-kpi-lbl"><i class="fas fa-check-circle" style="color:#16a34a;margin-right:4px;"></i> Active</div>
+        <div class="txn-kpi-val" id="mm_kpi_active"><?= number_format($active_mechanics) ?></div>
     </div>
     <div class="txn-kpi-card danger">
-        <div class="txn-kpi-lbl"><i class="fas fa-times-circle"></i> Inactive</div>
-        <div class="txn-kpi-val" id="mm_kpi_inactive"><?= $inactive_mechanics ?></div>
+        <div class="txn-kpi-lbl"><i class="fas fa-times-circle" style="color:#dc2626;margin-right:4px;"></i> Inactive</div>
+        <div class="txn-kpi-val" id="mm_kpi_inactive"><?= number_format($inactive_mechanics) ?></div>
     </div>
     <div class="txn-kpi-card orange">
-        <div class="txn-kpi-lbl"><i class="fas fa-wrench"></i> Assigned Today</div>
-        <div class="txn-kpi-val" id="mm_kpi_assigned"><?= $assigned_today ?></div>
+        <div class="txn-kpi-lbl"><i class="fas fa-wrench" style="color:#d97706;margin-right:4px;"></i> Assigned Today</div>
+        <div class="txn-kpi-val" id="mm_kpi_assigned"><?= number_format($assigned_today) ?></div>
     </div>
     <div class="txn-kpi-card purple">
-        <div class="txn-kpi-lbl"><i class="fas fa-user-check"></i> Available</div>
-        <div class="txn-kpi-val" id="mm_kpi_available"><?= $available_mechanics ?></div>
+        <div class="txn-kpi-lbl"><i class="fas fa-user-check" style="color:#7c3aed;margin-right:4px;"></i> Available</div>
+        <div class="txn-kpi-val" id="mm_kpi_available"><?= number_format($available_mechanics) ?></div>
     </div>
     <div class="txn-kpi-card teal">
-        <div class="txn-kpi-lbl"><i class="fas fa-hard-hat"></i> On Duty Today</div>
-        <div class="txn-kpi-val" id="mm_kpi_onduty"><?= $on_duty ?></div>
+        <div class="txn-kpi-lbl"><i class="fas fa-hard-hat" style="color:#0d9488;margin-right:4px;"></i> On Duty Today</div>
+        <div class="txn-kpi-val" id="mm_kpi_onduty"><?= number_format($on_duty) ?></div>
     </div>
 </div>
 

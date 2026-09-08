@@ -3789,16 +3789,13 @@ function switchTab(tabName) {
 (function() {
     var urlParams = new URLSearchParams(window.location.search);
     var tabFromUrl = urlParams.get('tab');
-    var savedTab = null;
-    try { savedTab = sessionStorage.getItem('petron_admin_active_tab'); } catch (e) {}
 
-    var targetTab = tabFromUrl || savedTab;
-    if (targetTab && ['fuel', 'merch', 'services'].indexOf(targetTab) !== -1) {
-        switchTab(targetTab);
+    // Only restore saved tab if there is an explicit ?tab= in the URL.
+    // On fresh sidebar navigation (no tab param), always open the default 'fuel' tab.
+    if (tabFromUrl && ['fuel', 'merch', 'services'].indexOf(tabFromUrl) !== -1) {
+        switchTab(tabFromUrl);
     } else {
-        var activeHidden = document.getElementById('activeSection');
-        var activeTab = activeHidden ? activeHidden.value : 'fuel';
-        if (!activeTab || ['fuel', 'merch', 'services'].indexOf(activeTab) === -1) activeTab = 'fuel';
+        switchTab('fuel');
     }
 })();
 

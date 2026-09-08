@@ -1903,15 +1903,18 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         font-weight: 600 !important;
     }
 
-    .nav-item { color: #eeeeee !important; transition: all 0.2s; display: flex; align-items: center; justify-content: flex-start; padding: 10px 15px; text-decoration: none; min-height: 44px; font-size: 13px !important; font-weight: 500 !important; pointer-events: auto !important; cursor: pointer !important; position: relative !important; z-index: 10 !important; }
-    .nav-item:hover { background-color: rgba(255,255,255,0.1) !important; color: #ffffff !important; font-size: 13px !important; font-weight: 500 !important; }
-    .nav-item.active { background-color: var(--petron-red) !important; color: #ffffff !important; font-size: 13px !important; font-weight: 500 !important; }
-    .nav-item span { font-size: 13px !important; font-weight: 500 !important; }
-    .nav-item.active span { font-size: 13px !important; font-weight: 500 !important; }
-    .sidebar-sub-item { font-size: 12px !important; font-weight: 500 !important; color: #eeeeee !important; text-decoration: none !important; }
-    .sidebar-sub-item span:not(.ico) { white-space: normal !important; word-break: break-word !important; color: #eeeeee !important; text-decoration: none !important; }
-    .sidebar-sub-item:hover { background-color: rgba(255,255,255,0.1) !important; color: #ffffff !important; text-decoration: none !important; }
-    .sidebar-sub-item.active { background-color: transparent !important; color: #ffffff !important; border-left: 3px solid var(--petron-red); text-decoration: none !important; }
+    .nav-item { color: #eeeeee !important; transition: all 0.2s; display: flex; align-items: center; justify-content: flex-start; padding: 10px 14px !important; text-decoration: none; min-height: 44px; height: auto !important; font-size: 15px !important; font-weight: 600 !important; pointer-events: auto !important; cursor: pointer !important; position: relative !important; z-index: 10 !important; }
+    .nav-item:hover { background-color: rgba(255,255,255,0.12) !important; color: #ffffff !important; font-size: 15px !important; font-weight: 600 !important; }
+    .nav-item.active { background-color: var(--petron-red) !important; color: #ffffff !important; font-size: 15px !important; font-weight: 600 !important; }
+    .nav-item span { font-size: 15px !important; font-weight: 600 !important; white-space: normal !important; word-break: normal !important; text-overflow: clip !important; }
+    .nav-item.active span { font-size: 15px !important; font-weight: 600 !important; white-space: normal !important; }
+    .sidebar-sub-item { font-size: 13.5px !important; font-weight: 600 !important; color: #e2e8f0 !important; text-decoration: none !important; padding: 7px 14px 7px 40px !important; height: auto !important; min-height: 36px !important; }
+    .sidebar-sub-item span { font-size: 13.5px !important; font-weight: 600 !important; white-space: normal !important; word-break: normal !important; text-overflow: clip !important; }
+    .sidebar-sub-item span:not(.ico) { font-size: 13.5px !important; font-weight: 600 !important; white-space: normal !important; word-break: normal !important; overflow-wrap: break-word !important; overflow: visible !important; text-overflow: clip !important; color: #e2e8f0 !important; text-decoration: none !important; line-height: 1.35 !important; }
+    .sidebar-sub-item:hover { background-color: rgba(255,255,255,0.12) !important; color: #ffffff !important; text-decoration: none !important; }
+    .sidebar-sub-item:hover span:not(.ico) { color: #ffffff !important; }
+    .sidebar-sub-item.active { background-color: transparent !important; color: #ffffff !important; border-left: 3px solid var(--petron-red) !important; text-decoration: none !important; }
+    .sidebar-sub-item.active span:not(.ico) { color: #ffffff !important; font-weight: 700 !important; }
 
 
     
@@ -1919,25 +1922,28 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 20px;
-        height: 20px;
+        width: 22px;
+        height: 22px;
         margin-right: 12px;
         flex-shrink: 0;
     }
     
     .nav-item .ico i {
-        font-size: 16px;
+        font-size: 17px;
         text-align: center;
         line-height: 1;
     }
     
-    .nav-item span:not(.ico) {
-        font-size: 13px;
-        font-weight: 500;
-        line-height: 1.2;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+    .nav-item span:not(.ico),
+    .nav-item span.nav-label {
+        font-size: 15px !important;
+        font-weight: 600 !important;
+        line-height: 1.25 !important;
+        white-space: normal !important;
+        word-break: normal !important;
+        overflow-wrap: break-word !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
     }
     
     .nav-item-wrapper {
@@ -3133,15 +3139,25 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 </style>
 
 <style>
-/* Senior-Friendly Global Font Size Rule */
+/* Senior-Friendly Global Font Size & Wrapping Rule */
 html, body {
     font-size: 15px;
 }
-.sidebar-nav-item, .sidebar-link, .nav-link {
+.sidebar-nav-item, .sidebar-link, .nav-link, .nav-item, .nav-item span, .nav-item span.nav-label {
     font-size: 15px !important;
+    font-weight: 600 !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+    text-overflow: clip !important;
 }
-.sidebar-sub-item {
-    font-size: 14px !important;
+.sidebar-sub-item, .sidebar-sub-item span, .sidebar-sub-item span:not(.ico) {
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+    text-overflow: clip !important;
 }
 table.tbl-requests th, table.pricing-table th, table.fuel-table th {
     font-size: 13px !important;
@@ -3204,15 +3220,28 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
 <body class="app" data-page="<?php echo htmlspecialchars($page_id); ?>" data-role="<?php echo htmlspecialchars($role); ?>">
 <!-- NUCLEAR-HEADER-FIX: Force header above any overlays and ensure clicks reach controls -->
 <style id="nuclearHeaderFix">
-    .top-header{ position:fixed !important; top:0; left:0; right:0; z-index:12002 !important; pointer-events:auto !important; }
+    .top-header{ position:fixed !important; top:0; left:0; right:0; z-index:2147483640 !important; pointer-events:auto !important; }
     .top-header *{ pointer-events:auto !important; }
+    /* Ensure all header icons and buttons are always above any overlay and clickable */
+    #notificationBell, #themeToggle, #profileMenu, #sidebarCollapseBtn,
+    .notification-bell, .theme-toggle-btn, .profile-access, .sidebar-collapse-btn {
+        position: relative !important;
+        z-index: 2147483645 !important;
+        pointer-events: auto !important;
+        cursor: pointer !important;
+    }
     /* Sidebar must be clickable and not blocked by header */
     .sidebar { pointer-events:auto !important; position: fixed !important; z-index:1001 !important; }
     .sidebar *, .sidebar .nav-item, .sidebar .nav-item *, .sidebar-menu, .sidebar-menu * { pointer-events:auto !important; cursor: pointer !important; }
     /* Make common backdrop/overlay elements pass pointer-events through so header remains clickable */
     .mobile-sidebar-backdrop, .modal-backdrop, .sr-modal-overlay, .overlay-block, .ui-block { pointer-events:none !important; }
     /* Keep dropdowns above everything */
-    #notificationDropdown, #profileDropdown, .notif-dropdown, .profile-dropdown { z-index:12003 !important; pointer-events:auto !important; }
+    #notificationDropdown, #profileDropdown, .notif-dropdown, .profile-dropdown { z-index:2147483647 !important; pointer-events:auto !important; }
+    #notificationDropdown *, #profileDropdown *, .notif-dropdown *, .profile-dropdown * { pointer-events:auto !important; }
+    #notificationDropdown:not(.show), #profileDropdown:not(.show), #varianceAlertDropdown:not(.show),
+    .notif-dropdown:not(.show), .profile-dropdown:not(.show) {
+        display: none !important;
+    }
 </style>
 
 <!-- SIDEBAR CLICKABILITY FIX: Ensure all sidebar navigation items are fully clickable -->
@@ -3377,19 +3406,27 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
         -webkit-overflow-scrolling: touch !important;
     }
     
-    /* Remove any accidental overlays — but exclude modals moved to body via JS */
-    body > *:not(.app):not(.top-header):not(.sidebar):not(.main):not(.fixed-footer):not(script):not(style):not(.mi-overlay):not(.modal-overlay):not(.sr-success-overlay):not(.sr-success-popup):not([id$="Modal"]):not([id$="modal"]):not([id*="Overlay"]):not([id*="overlay"]):not([id*="Popup"]):not([id*="popup"]):not(#toast) {
+    /* Remove any accidental overlays — but exclude modals & dropdowns moved to body via JS */
+    body > *:not(.app):not(.top-header):not(.sidebar):not(.main):not(.fixed-footer):not(script):not(style):not(.mi-overlay):not(.modal-overlay):not(.sr-success-overlay):not(.sr-success-popup):not([id$="Modal"]):not([id$="modal"]):not([id*="Overlay"]):not([id*="overlay"]):not([id*="Popup"]):not([id*="popup"]):not(#toast):not(#notificationDropdown):not(#profileDropdown):not(.notif-dropdown):not(.profile-dropdown) {
         pointer-events: none !important;
     }
 
-    /* Modals and overlays appended to body MUST be fully interactive */
+    /* Modals, dropdowns, and overlays appended to body MUST be fully interactive */
     .mi-overlay,
     .mi-overlay *,
     .modal-overlay,
     .modal-overlay *,
     .sr-success-overlay,
     .sr-success-popup,
-    .sr-success-popup * {
+    .sr-success-popup *,
+    #notificationDropdown,
+    #notificationDropdown *,
+    #profileDropdown,
+    #profileDropdown *,
+    .notif-dropdown,
+    .notif-dropdown *,
+    .profile-dropdown,
+    .profile-dropdown * {
         pointer-events: auto !important;
     }
 
@@ -3515,7 +3552,11 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
         try{
             var el = document.getElementById(id);
             if(!el) return null;
-            if(el.dataset.moved === '1') return el;
+            if(el.dataset.moved === '1') {
+                el.style.zIndex = '2147483647';
+                el.style.pointerEvents = 'auto';
+                return el;
+            }
             var ph = document.createElement('div'); ph.style.display='none'; el.parentNode.insertBefore(ph, el);
             el.dataset._ph = '';
             document.body.appendChild(el);
@@ -3523,6 +3564,8 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
             el.style.left = '0px';
             el.style.top = '0px';
             el.style.margin = '0';
+            el.style.zIndex = '2147483647';
+            el.style.pointerEvents = 'auto';
             el.dataset.moved = '1';
             return el;
         }catch(e){return null;}
@@ -3568,6 +3611,8 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
 
             d.style.left = left + 'px';
             d.style.top = top + 'px';
+            d.style.zIndex = '2147483647';
+            d.style.pointerEvents = 'auto';
             d.style.visibility = '';
             if(wasHidden && !d.classList.contains('show')) d.style.display = 'none';
         }catch(e){console && console.warn && console.warn('positionDropdown err', e);}  
@@ -3578,7 +3623,9 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
         if(!trigger) return;
         var d = moveToBody(dropdownId) || document.getElementById(dropdownId);
         if(!d) return;
-        var showing = d.classList.contains('show');
+        d.style.zIndex = '2147483647';
+        d.style.pointerEvents = 'auto';
+        var showing = d.classList.contains('show') || d.style.display === 'block';
         if(!showing){
             // Close any other header dropdowns first (mutual exclusivity)
             closeAllHeaderDropdowns(dropdownId);
@@ -3605,10 +3652,78 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
             // Also hide any generic dropdown classes used in header
             document.querySelectorAll('.notif-dropdown, .profile-dropdown').forEach(function(el){
                 if(el.id && el.id === exceptId) return;
-                el.classList.remove('show'); el.style.display = 'none';
+                el.classList.remove('show');
+                el.style.display = 'none';
             });
+            var ss = document.getElementById('searchSuggestions');
+            if(ss && exceptId !== 'searchSuggestions') {
+                ss.style.display = 'none';
+            }
         }catch(e){ console && console.warn && console.warn('closeAllHeaderDropdowns err', e); }
     }
+    window.closeAllHeaderDropdowns = closeAllHeaderDropdowns;
+
+    // Automatic close on outside click/pointerdown across all modules
+    function handleHeaderOutsideClick(e){
+        var target = e.target;
+        if(!target) return;
+
+        // Notification dropdown
+        var nd = document.getElementById('notificationDropdown');
+        var nb = document.getElementById('notificationBell');
+        if(nd && (nd.classList.contains('show') || nd.style.display === 'block')){
+            var inNotif = nd.contains(target);
+            var inBell  = nb && (nb === target || nb.contains(target));
+            if(!inNotif && !inBell){
+                nd.classList.remove('show');
+                nd.style.display = 'none';
+            }
+        }
+
+        // Profile dropdown
+        var pd = document.getElementById('profileDropdown');
+        var pm = document.getElementById('profileMenu');
+        if(pd && (pd.classList.contains('show') || pd.style.display === 'block')){
+            var inProfile = pd.contains(target);
+            var inMenu    = pm && (pm === target || pm.contains(target));
+            if(!inProfile && !inMenu){
+                pd.classList.remove('show');
+                pd.style.display = 'none';
+            }
+        }
+
+        // Variance alert dropdown
+        var vd = document.getElementById('varianceAlertDropdown');
+        var vb = document.getElementById('varianceAlertBell');
+        if(vd && (vd.classList.contains('show') || vd.style.display === 'block')){
+            var inVariance = vd.contains(target);
+            var inVBell    = vb && (vb === target || vb.contains(target));
+            if(!inVariance && !inVBell){
+                vd.classList.remove('show');
+                vd.style.display = 'none';
+            }
+        }
+
+        // Search suggestions
+        var ss = document.getElementById('searchSuggestions');
+        var sw = document.getElementById('searchWrapper');
+        if(ss && ss.style.display === 'block'){
+            if(!sw || !sw.contains(target)){
+                ss.style.display = 'none';
+            }
+        }
+    }
+
+    // Capture phase guarantees listener fires before any child elements can stop propagation
+    document.addEventListener('pointerdown', handleHeaderOutsideClick, true);
+    document.addEventListener('click', handleHeaderOutsideClick, true);
+
+    // Close all header dropdowns on Escape key
+    document.addEventListener('keydown', function(e){
+        if(e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27){
+            closeAllHeaderDropdowns();
+        }
+    });
 
     // Replace existing toggle handlers with safe wrappers
     window.petronToggleNotif = function(e){
@@ -3632,11 +3747,15 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
         var pd = document.getElementById('profileMenu');
         var nd = document.getElementById('notificationDropdown');
         var prd = document.getElementById('profileDropdown');
-        if(nd && nd.classList.contains('show') && nb) positionDropdown('notificationDropdown', nb);
-        if(prd && prd.classList.contains('show') && pd) positionDropdown('profileDropdown', pd);
+        if(nd && (nd.classList.contains('show') || nd.style.display === 'block') && nb) positionDropdown('notificationDropdown', nb);
+        if(prd && (prd.classList.contains('show') || prd.style.display === 'block') && pd) positionDropdown('profileDropdown', pd);
     }
     window.addEventListener('resize', function(){ setTimeout(repositionAll, 50); }, {passive:true});
-    window.addEventListener('scroll', function(){ setTimeout(repositionAll, 50); }, {passive:true});
+    window.addEventListener('scroll', function(e){
+        var nd = document.getElementById('notificationDropdown');
+        if(nd && e.target && nd.contains(e.target)) return;
+        setTimeout(repositionAll, 50);
+    }, {passive:true});
 
     // On DOM ready, move dropdowns so they cannot be clipped
     document.addEventListener('DOMContentLoaded', function(){
@@ -3967,7 +4086,7 @@ require_once __DIR__ . '/rbac_menu.php';
         echo '<div class="nav-item-wrapper">';
         echo '<a class="nav-item '.$dash_active.'" href="'.htmlspecialchars($dash_href).'" data-tooltip="Dashboard">';
         echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;flex-shrink:0;"><i class="fas fa-gauge"></i></span>';
-        echo '<span style="flex-grow:1;font-size:13px;font-weight:500;">Dashboard</span>';
+        echo '<span class="nav-label" style="flex-grow:1;font-size:15px;font-weight:600;">Dashboard</span>';
         echo '</a>';
         echo '</div>';
         continue;
@@ -3995,18 +4114,18 @@ require_once __DIR__ . '/rbac_menu.php';
         $parent_cls = $parent_active ? 'nav-item active' : 'nav-item';
         echo '<a class="'.$parent_cls.' has-submenu" href="'.htmlspecialchars($it['href']).'" data-tooltip="'.htmlspecialchars($it['label']).'" onclick="toggleSidebarSub(event,\'sub-'.htmlspecialchars($it['id']).'\')">';
         echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;flex-shrink:0;"><i class="'.htmlspecialchars($it['ico']).'"></i></span>';
-        echo '<span style="flex-grow:1;font-size:13px;font-weight:500;">'.htmlspecialchars($it['label']).'</span>';
-        echo '<i class="fas fa-chevron-down" style="font-size:10px;transition:transform .3s;'.($parent_active?'transform:rotate(180deg)':'').'"></i>';
+        echo '<span class="nav-label" style="flex-grow:1;font-size:15px;font-weight:600;">'.htmlspecialchars($it['label']).'</span>';
+        echo '<i class="fas fa-chevron-down" style="font-size:11px;transition:transform .3s;'.($parent_active?'transform:rotate(180deg)':'').'"></i>';
         echo '</a>';
 
         $display = $parent_active ? 'block' : 'none';
         echo '<div id="sub-'.htmlspecialchars($it['id']).'" style="display:'.$display.';background:transparent;border-left:3px solid rgba(255,255,255,.2);margin-left:0;padding-left:0;">';
         foreach ($it['sub_items'] as $sub) {
             $sub_active = ($page_id === ($sub['id'] ?? '')) ? 'active' : '';
-            echo '<a class="nav-item sidebar-sub-item '.$sub_active.'" href="'.htmlspecialchars($sub['href']).'" style="padding:6px 15px 6px 47px;min-height:auto;" data-tooltip="'.htmlspecialchars($sub['label'] ?? '').'">';
-            echo '<span class="ico" style="margin-right:8px;width:14px;text-align:center;flex-shrink:0;"><i class="fas fa-circle" style="font-size:4px;opacity:.5;"></i></span>';
-            echo '<span style="flex-grow:1;line-height:1.2;">';
-            echo '<span style="display:block;font-size:12px;font-weight:500;">'.htmlspecialchars($sub['label'] ?? '').'</span>';
+            echo '<a class="nav-item sidebar-sub-item '.$sub_active.'" href="'.htmlspecialchars($sub['href']).'" style="padding:7px 15px 7px 42px;min-height:auto;" data-tooltip="'.htmlspecialchars($sub['label'] ?? '').'">';
+            echo '<span class="ico" style="margin-right:8px;width:14px;text-align:center;flex-shrink:0;"><i class="fas fa-circle" style="font-size:5px;opacity:.65;"></i></span>';
+            echo '<span style="flex-grow:1;line-height:1.35;">';
+            echo '<span style="display:block;font-size:13.5px;font-weight:600;">'.htmlspecialchars($sub['label'] ?? '').'</span>';
             echo '</span>';
             echo '</a>';
         }
@@ -4018,7 +4137,7 @@ require_once __DIR__ . '/rbac_menu.php';
         $ico   = htmlspecialchars($it['ico'] ?? 'fas fa-link');
         echo '<a class="nav-item '.$active.'" href="'.$href.'" data-tooltip="'.$label.'">';
         echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;flex-shrink:0;"><i class="'.$ico.'"></i></span>';
-        echo '<span style="flex-grow:1;font-size:13px;font-weight:500;">'.$label.'</span>';
+        echo '<span class="nav-label" style="flex-grow:1;font-size:15px;font-weight:600;">'.$label.'</span>';
         echo '</a>';
     }
 
@@ -4271,25 +4390,38 @@ require_once __DIR__ . '/rbac_menu.php';
         </div><!-- /.header-left -->
         <div class="header-center" style="display: flex; align-items: center; justify-content: center; flex: 1; margin: 0 20px; <?php if (!$show_search_bar) echo 'visibility: hidden; pointer-events: none; opacity: 0;'; ?>">
             <div id="searchWrapper" style="position: relative; width: 100%; max-width: 440px; pointer-events: auto;">
-                <div style="position: relative; display: flex; align-items: center;">
-                    <i class="fas fa-search" style="position: absolute; left: 14px; color: #94a3b8; font-size: 14px; pointer-events: none;"></i>
-                    <input type="search" id="searchInput" 
-                           placeholder="Search Customer, JO, Product, OR No..." 
-                           autocomplete="off" 
-                           autocapitalize="off" 
-                           spellcheck="false" 
-                           data-lpignore="true" 
-                           data-form-type="other" 
-                           aria-autocomplete="none" 
-                           style="width: 100%; padding: 8px 14px 8px 38px; border-radius: 20px; border: 1px solid #cbd5e1; font-size: 13px; outline: none; background: #ffffff; color: #0f172a; transition: all 0.15s ease;" />
-                </div>
-                <div id="searchSuggestions" style="display: none; position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; max-height: 450px; overflow-y: auto; z-index: 99999;"></div>
+                <form autocomplete="off" onsubmit="return false;" style="margin:0; padding:0; width:100%;">
+                    <!-- Hidden decoy inputs to deflect browser identity/credential autofill -->
+                    <input type="text" name="petron_fake_username_decoy" style="display:none !important;" tabindex="-1" autocomplete="username" />
+                    <input type="password" name="petron_fake_password_decoy" style="display:none !important;" tabindex="-1" autocomplete="current-password" />
+                    <div style="position: relative; display: flex; align-items: center;">
+                        <i class="fas fa-search" style="position: absolute; left: 14px; color: #94a3b8; font-size: 14px; pointer-events: none;"></i>
+                        <input type="search" id="searchInput" 
+                               name="petron_global_system_search"
+                               placeholder="Search Customer, JO, Product, OR No..." 
+                               autocomplete="chrome-off" 
+                               autocapitalize="off" 
+                               autocorrect="off"
+                               spellcheck="false" 
+                               data-lpignore="true" 
+                               data-1p-ignore="true"
+                               data-bwignore="true"
+                               data-form-type="other" 
+                               aria-autocomplete="none" 
+                               readonly="readonly"
+                               onpointerdown="this.removeAttribute('readonly');"
+                               onfocus="this.removeAttribute('readonly');"
+                               onblur="this.setAttribute('readonly', 'readonly');"
+                               style="width: 100%; padding: 8px 14px 8px 38px; border-radius: 20px; border: 1px solid #cbd5e1; font-size: 13px; outline: none; background: #ffffff; color: #0f172a; transition: all 0.15s ease;" />
+                    </div>
+                </form>
+                <div id="searchSuggestions" style="display: none; position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; max-height: 450px; overflow-y: auto; z-index: 2147483647;"></div>
             </div>
         </div>
         <div class="header-right">
             <!-- Notification Bell -->
             <?php if(in_array($role, ['staff','admin','manager','superadmin','developer']) && $show_notifications_widget): ?>
-            <div class="notification-bell" id="notificationBell" onclick="petronToggleNotif(event)" style="z-index: 99999 !important; pointer-events: auto !important; position: relative !important; cursor: pointer !important;">
+            <div class="notification-bell" id="notificationBell" onclick="petronToggleNotif(event)" style="z-index: 2147483645 !important; pointer-events: auto !important; position: relative !important; cursor: pointer !important;">
                 <i class="fas fa-bell" style="pointer-events: none !important;"></i>
                 <span class="badge" id="notificationBadge" data-server-count="<?php echo (int)$header_unread_count; ?>" style="display: <?php echo $header_unread_count > 0 ? 'flex' : 'none'; ?>; pointer-events: none !important;"><?php echo $header_unread_count > 99 ? '99+' : (int)$header_unread_count; ?></span>
 
@@ -5177,18 +5309,59 @@ require_once __DIR__ . '/rbac_menu.php';
         });
     };
 
-    // Close dropdowns on outside click
-    document.addEventListener('click', function(e) {
+    // Close dropdowns on outside click (capture phase so no stopPropagation can prevent closing)
+    function petronHandleBodyOutsideClick(e) {
+        var target = e.target;
+        if (!target) return;
+
+        // Notification dropdown
         var nd = document.getElementById('notificationDropdown');
-        var pd = document.getElementById('profileDropdown');
         var nb = document.getElementById('notificationBell');
+        if (nd && (nd.classList.contains('show') || nd.style.display === 'block')) {
+            var inNotif = nd.contains(target);
+            var inBell  = nb && (nb === target || nb.contains(target));
+            if (!inNotif && !inBell) {
+                nd.classList.remove('show');
+                nd.style.display = 'none';
+            }
+        }
+
+        // Profile dropdown
+        var pd = document.getElementById('profileDropdown');
         var pm = document.getElementById('profileMenu');
+        if (pd && (pd.classList.contains('show') || pd.style.display === 'block')) {
+            var inProfile = pd.contains(target);
+            var inMenu    = pm && (pm === target || pm.contains(target));
+            if (!inProfile && !inMenu) {
+                pd.classList.remove('show');
+                pd.style.display = 'none';
+            }
+        }
+
+        // Variance alert dropdown
         var vd = document.getElementById('varianceAlertDropdown');
         var vb = document.getElementById('varianceAlertBell');
-        if (nd && nb && !nb.contains(e.target) && !nd.contains(e.target)) nd.classList.remove('show');
-        if (pd && pm && !pm.contains(e.target) && !pd.contains(e.target)) pd.classList.remove('show');
-        if (vd && vb && !vb.contains(e.target)) vd.classList.remove('show');
-    });
+        if (vd && (vd.classList.contains('show') || vd.style.display === 'block')) {
+            var inVariance = vd.contains(target);
+            var inVBell    = vb && (vb === target || vb.contains(target));
+            if (!inVariance && !inVBell) {
+                vd.classList.remove('show');
+                vd.style.display = 'none';
+            }
+        }
+
+        // Search suggestions
+        var ss = document.getElementById('searchSuggestions');
+        var sw = document.getElementById('searchWrapper');
+        if (ss && ss.style.display === 'block') {
+            if (!sw || !sw.contains(target)) {
+                ss.style.display = 'none';
+            }
+        }
+    }
+    document.addEventListener('pointerdown', petronHandleBodyOutsideClick, true);
+    document.addEventListener('click', petronHandleBodyOutsideClick, true);
+
 
     // Apply saved theme immediately (BEFORE DOMContentLoaded to prevent flicker)
     (function() {
@@ -5275,6 +5448,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 document.body.classList.add('sidebar-collapsed');
             }
         }
+
         // Mobile backdrop click
         var backdrop = document.getElementById('mobileSidebarBackdrop');
         if (backdrop) {
@@ -5285,6 +5459,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 document.body.style.overflow = '';
             });
         }
+
         // Close mobile sidebar on resize
         window.addEventListener('resize', function() {
             if (window.innerWidth >= 992) {
@@ -5296,12 +5471,11 @@ require_once __DIR__ . '/rbac_menu.php';
             }
         });
 
-        // --- FALLBACK: Capture-phase listener to ensure header icons respond even
-        // if other event listeners or overlays interfere. This will call the
-        // existing toggle functions but will NOT prevent default link navigation.
+        // Robust capture-phase listener to ensure header controls respond in all modules
         document.addEventListener('click', function(e) {
             try {
                 var c = e.target;
+                if (!c) return;
                 var sb = c.closest && c.closest('#sidebarCollapseBtn, .sidebar-collapse-btn');
                 if (sb) { petronToggleSidebar(e); return; }
                 var nb = c.closest && c.closest('#notificationBell, .notification-bell');
@@ -5311,95 +5485,25 @@ require_once __DIR__ . '/rbac_menu.php';
                 var pm = c.closest && c.closest('#profileMenu, .profile-access');
                 if (pm) { petronToggleProfile(e); return; }
             } catch (err) {
-                console.error('Header fallback listener error', err);
+                console.error('Header click listener error', err);
             }
-        }, true); // use capture phase
-
-        // Robust initializer: ensure header controls are interactive, remove duplicate
-        // event listeners by cloning nodes, and attach single click handlers.
-        function initHeaderControls() {
-            try {
-                const mapping = {
-                    'sidebarCollapseBtn': window.petronToggleSidebar,
-                    'notificationBell':   window.petronToggleNotif,
-                    'themeToggle':        window.petronToggleTheme,
-                    'profileMenu':        window.petronToggleProfile
-                };
-
-                Object.keys(mapping).forEach(function(id) {
-                    const el = document.getElementById(id);
-                    if (!el) return;
-                    // Force styles so overlays don't block
-                    el.style.pointerEvents = 'auto';
-                    el.style.zIndex = '99999';
-                    el.style.position = el.style.position || 'relative';
-
-                    // Replace element with a shallow clone to remove previously attached listeners
-                    const clone = el.cloneNode(true);
-                    clone.removeAttribute('onclick');
-                    el.parentNode.replaceChild(clone, el);
-
-                    // Attach single click listener
-                    clone.addEventListener('click', function(ev) {
-                        try {
-                            ev.stopPropagation();
-                            // Do not call preventDefault to allow link navigation inside dropdowns
-                            const fn = mapping[id];
-                            if (typeof fn === 'function') fn(ev);
-                        } catch (err) { console.error('Header control handler error', err); }
-                    });
-                });
-
-                // Diagnostic: log topmost element when header area is clicked (helps find overlays)
-                ['header-left','header-center','header-right','top-header'].forEach(function(cls) {
-                    const container = document.querySelector('.' + cls);
-                    if (!container) return;
-                    container.addEventListener('click', function(ev) {
-                        try {
-                            const x = ev.clientX, y = ev.clientY;
-                            const topEl = document.elementFromPoint(x, y);
-                            if (topEl) console.log('Header click at', x, y, 'top element:', topEl.tagName, topEl.id || topEl.className);
-                        } catch (err) {}
-                    }, true);
-                });
-            } catch (e) { console.error('initHeaderControls failed', e); }
-        }
-
-        // Run initializer once DOM is ready (after other listeners are added)
-        if (document.readyState === 'complete' || document.readyState === 'interactive') {
-            setTimeout(initHeaderControls, 50);
-        } else {
-            document.addEventListener('DOMContentLoaded', function() { setTimeout(initHeaderControls, 50); });
-        }
-
-        // Capture-phase pointerdown to ensure toggles fire even when other code stops propagation
-        document.addEventListener('pointerdown', function(ev) {
-            try {
-                const t = ev.target;
-                if (!t) return;
-                const sb = t.closest && t.closest('#sidebarCollapseBtn, .sidebar-collapse-btn');
-                const nb = t.closest && t.closest('#notificationBell, .notification-bell');
-                const tt = t.closest && t.closest('#themeToggle, .theme-toggle-btn');
-                const pm = t.closest && t.closest('#profileMenu, .profile-access');
-                if (sb) { console.log('Sidebar toggle clicked (pointerdown)'); ev.stopPropagation(); petronToggleSidebar(ev); }
-                else if (nb) { console.log('Notification bell clicked (pointerdown)'); ev.stopPropagation(); petronToggleNotif(ev); }
-                else if (tt) { console.log('Theme toggle clicked (pointerdown)'); ev.stopPropagation(); petronToggleTheme(ev); }
-                else if (pm) { console.log('Profile menu clicked (pointerdown)'); ev.stopPropagation(); petronToggleProfile(ev); }
-            } catch (err) { console.error('pointerdown listener error', err); }
         }, true);
 
-        // Keyboard accessibility: Enter/Space activate controls
-        document.addEventListener('keydown', function(ev) {
-            try {
-                if (ev.key !== 'Enter' && ev.key !== ' ') return;
-                const t = ev.target;
-                if (!t) return;
-                if (t.id === 'sidebarCollapseBtn' || t.classList.contains('sidebar-collapse-btn')) { ev.preventDefault(); petronToggleSidebar(ev); }
-                if (t.id === 'notificationBell' || t.classList.contains('notification-bell')) { ev.preventDefault(); petronToggleNotif(ev); }
-                if (t.id === 'themeToggle' || t.classList.contains('theme-toggle-btn')) { ev.preventDefault(); petronToggleTheme(ev); }
-                if (t.id === 'profileMenu' || t.classList.contains('profile-access')) { ev.preventDefault(); petronToggleProfile(ev); }
-            } catch (err) {}
-        }, false);
+        // Sidebar badge auto-deduct/clear on click
+        document.addEventListener('click', function(e) {
+            const link = e.target.closest('a.nav-item, a.sidebar-sub-item');
+            if (!link) return;
+            const badge = link.querySelector('[data-badge], [data-sidebar-badge]');
+            if (badge) {
+                badge.style.display = 'none';
+                badge.textContent = '';
+            }
+            const badgeAttr = link.querySelector('[data-sidebar-badge]')?.getAttribute('data-sidebar-badge');
+            if (badgeAttr) {
+                const _searchBase = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
+                fetch(_searchBase + '/backend/api/notifications_api.php?action=mark_badge_seen&key=' + encodeURIComponent(badgeAttr), { credentials: 'same-origin' }).catch(()=>{});
+            }
+        });
 
         // Hash-based active sidebar link
         var hash = window.location.hash;
@@ -5411,137 +5515,8 @@ require_once __DIR__ . '/rbac_menu.php';
             });
         }
         
-        // Log success message
         console.log('Header navigation fully initialized and ready');
     });
-        // ---- CAPTURE-PHASE HEADER CLICK HANDLER (removed - conflicts with normal handlers) ----
-        (function() {
-            function headerCaptureHandler(e) { return; /* disabled */
-                var x = e.clientX, y = e.clientY;
-
-                // Get ALL elements at click position (includes ones under overlays)
-                var all = document.elementsFromPoint ? document.elementsFromPoint(x, y) : [];
-
-                // Helper: check if any element in the stack matches a selector/id
-                function inStack(id) {
-                    var el = document.getElementById(id);
-                    if (!el) return false;
-                    var r = el.getBoundingClientRect();
-                    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-                }
-
-                // Notification bell
-                if (inStack('notificationBell')) {
-                    console.log('Notification bell clicked'); // Debug log
-                    var nd = document.getElementById('notificationDropdown');
-                    var pd = document.getElementById('profileDropdown');
-                    if (pd) pd.classList.remove('show');
-                    if (nd) {
-                        nd.classList.toggle('show');
-                        if (nd.classList.contains('show')) {
-                            if (typeof window.loadStaffNotifications === 'function') window.loadStaffNotifications();
-                            else if (typeof window.saLoadNotifications === 'function') window.saLoadNotifications();
-                        }
-                    }
-                    e.stopPropagation();
-                    e.preventDefault();
-                    return;
-                }
-
-                // Profile menu
-                if (inStack('profileMenu') && !inStack('profileDropdown')) {
-                    console.log('Profile menu clicked'); // Debug log
-                    var nd2 = document.getElementById('notificationDropdown');
-                    var pd2 = document.getElementById('profileDropdown');
-                    if (nd2) nd2.classList.remove('show');
-                    if (pd2) pd2.classList.toggle('show');
-                    e.stopPropagation();
-                    e.preventDefault();
-                    return;
-                }
-
-                // Theme toggle
-                if (inStack('themeToggle')) {
-                    console.log('Theme toggle clicked'); // Debug log
-                    var goingDark = !document.body.classList.contains('dark-theme');
-                    if (goingDark) {
-                        document.body.classList.add('dark-theme');
-                        var ti = document.getElementById('themeIcon');
-                        if (ti) ti.className = 'fas fa-sun';
-                        localStorage.setItem('petronTheme', 'dark');
-                    } else {
-                        document.body.classList.remove('dark-theme');
-                        var ti2 = document.getElementById('themeIcon');
-                        if (ti2) ti2.className = 'fas fa-moon';
-                        localStorage.setItem('petronTheme', 'light');
-                    }
-                    e.stopPropagation();
-                    e.preventDefault();
-                    return;
-                }
-
-                // Sidebar badge auto-deduct/clear on click
-            document.addEventListener('click', function(e) {
-                const link = e.target.closest('a.nav-item, a.sidebar-sub-item');
-                if (!link) return;
-                const badge = link.querySelector('[data-badge], [data-sidebar-badge]');
-                if (badge) {
-                    badge.style.display = 'none';
-                    badge.textContent = '';
-                }
-                const badgeAttr = link.querySelector('[data-sidebar-badge]')?.getAttribute('data-sidebar-badge');
-                if (badgeAttr) {
-                    const _searchBase = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
-                    fetch(_searchBase + '/backend/api/notifications_api.php?action=mark_badge_seen&key=' + encodeURIComponent(badgeAttr), { credentials: 'same-origin' }).catch(()=>{});
-                }
-            });
-
-            // Sidebar badge auto-deduct/clear on click
-            document.addEventListener('click', function(e) {
-                const link = e.target.closest('a.nav-item, a.sidebar-sub-item');
-                if (!link) return;
-                const badge = link.querySelector('[data-badge], [data-sidebar-badge]');
-                if (badge) {
-                    badge.style.display = 'none';
-                    badge.textContent = '';
-                }
-                const badgeAttr = link.querySelector('[data-sidebar-badge]')?.getAttribute('data-sidebar-badge');
-                if (badgeAttr) {
-                    const _searchBase = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
-                    fetch(_searchBase + '/backend/api/notifications_api.php?action=mark_badge_seen&key=' + encodeURIComponent(badgeAttr), { credentials: 'same-origin' }).catch(()=>{});
-                }
-            });
-
-            // Sidebar collapse button
-                if (inStack('sidebarCollapseBtn')) {
-                    console.log('Sidebar collapse clicked'); // Debug log
-                    if (typeof toggleSidebar === 'function') toggleSidebar();
-                    e.stopPropagation();
-                    e.preventDefault();
-                    return;
-                }
-
-                // Close dropdowns on outside click
-                var nb = document.getElementById('notificationBell');
-                var pf = document.getElementById('profileMenu');
-                if (nb && nb.getBoundingClientRect && !inStack('notificationBell')) {
-                    var nd3 = document.getElementById('notificationDropdown');
-                    if (nd3 && !inStack('notificationDropdown')) nd3.classList.remove('show');
-                }
-                if (pf && pf.getBoundingClientRect && !inStack('profileMenu') && !inStack('profileDropdown')) {
-                    var pd3 = document.getElementById('profileDropdown');
-                    if (pd3) pd3.classList.remove('show');
-                }
-            }
-
-            document.addEventListener('click', headerCaptureHandler, true);
-        })();
-        // ---- END CAPTURE-PHASE HEADER CLICK HANDLER ----
-
-
-
-                
-                
         
         // ── Global Search Autocomplete ────────────────────────────────────────────────────────
         (function () {
@@ -5549,20 +5524,44 @@ require_once __DIR__ . '/rbac_menu.php';
             var searchSuggestions = document.getElementById('searchSuggestions');
             if (!searchInput || !searchSuggestions) return;
 
-            // Clear any browser autofill (e.g. email) on initialization and focus
+            // Clear any browser autofill (e.g. email) on initialization, focus, click, and change
+            function isEmailValue(val) {
+                if (!val) return false;
+                var str = String(val).trim().toLowerCase();
+                return str.indexOf('@') !== -1 || str.indexOf('.com') !== -1 || str.indexOf('.edu') !== -1 || str.indexOf('.ph') !== -1 || str.indexOf('.net') !== -1 || str.indexOf('.org') !== -1 || /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/.test(str);
+            }
+
             function cleanAutofill() {
-                if (searchInput.value && (searchInput.value.indexOf('@') !== -1 || searchInput.value.indexOf('.com') !== -1 || searchInput.value.indexOf('.edu') !== -1)) {
+                if (searchInput && isEmailValue(searchInput.value)) {
                     searchInput.value = '';
-                    searchSuggestions.style.display = 'none';
-                    searchSuggestions.innerHTML = '';
+                    if (searchSuggestions) {
+                        searchSuggestions.style.display = 'none';
+                        searchSuggestions.innerHTML = '';
+                    }
                 }
             }
             cleanAutofill();
-            setTimeout(cleanAutofill, 100);
+            setTimeout(cleanAutofill, 50);
+            setTimeout(cleanAutofill, 150);
+            setTimeout(cleanAutofill, 300);
             setTimeout(cleanAutofill, 500);
-            setTimeout(cleanAutofill, 1500);
+            setTimeout(cleanAutofill, 1000);
+            setTimeout(cleanAutofill, 2000);
             window.addEventListener('load', cleanAutofill);
-            searchInput.addEventListener('focus', cleanAutofill);
+            searchInput.addEventListener('focus', function() {
+                this.removeAttribute('readonly');
+                cleanAutofill();
+            });
+            searchInput.addEventListener('click', function() {
+                this.removeAttribute('readonly');
+                cleanAutofill();
+            });
+            searchInput.addEventListener('pointerdown', function() {
+                this.removeAttribute('readonly');
+            });
+            searchInput.addEventListener('change', cleanAutofill);
+            // Continuous watchdog for browser autofill injections
+            setInterval(cleanAutofill, 250);
 
             // Icon + colour per result type
             var TYPE_META = {
@@ -5715,7 +5714,7 @@ require_once __DIR__ . '/rbac_menu.php';
             searchInput.addEventListener('input', function() {
                 clearTimeout(debounceTimer);
                 var query = this.value.trim();
-                if (query.indexOf('@') !== -1 && (query.indexOf('.') !== -1 || query.indexOf('com') !== -1)) {
+                if (isEmailValue(query)) {
                     this.value = '';
                     searchSuggestions.style.display = 'none';
                     return;

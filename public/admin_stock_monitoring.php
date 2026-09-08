@@ -352,7 +352,7 @@ require_once __DIR__ . '/../partials/header.php';
                             <button class="txn-btn txn-btn-view" onclick='openDetails(<?= $json ?>)' title="View Details">
                                 <i class="fas fa-eye"></i> Details
                             </button>
-                            <a href="admin_inventory_history.php?product_id=<?= $r['id'] ?>" class="txn-btn txn-btn-hist" title="Stock History">
+                            <a href="admin_inventory_merchandise.php?tab=movement" class="txn-btn txn-btn-hist" title="Stock Movement">
                                 <i class="fas fa-history"></i> History
                             </a>
                             <a href="admin_inventory_merchandise.php?print_id=<?= $r['id'] ?>" target="_blank" class="txn-btn txn-btn-print" title="Print Stock Report">

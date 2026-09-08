@@ -319,6 +319,46 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_details') {
                 $audit_stmt->execute(['%' . $numeric_id . '%']);
                 $audit = $audit_stmt->fetchAll(PDO::FETCH_ASSOC);
             }
+        } elseif ($event_type === 'stock_alert' || strpos($event_id, 'admin_restock_') !== false || strpos($event_id, 'restock_') !== false) {
+            $stmt = $pdo->prepare("SELECT ip.*, 
+                                          COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
+                                          COALESCE(si.reorder_level, ip.min_stock, 10) AS minimum_stock,
+                                          COALESCE(si.unit, ip.size, 'pcs') AS unit,
+                                          st.name as station_name
+                FROM inventory_products ip
+                LEFT JOIN station_inventory si ON si.product_id = ip.id
+                LEFT JOIN stations st ON si.station_id = st.id
+                WHERE ip.id = ?");
+            $stmt->execute([$numeric_id]);
+            $details = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($details) {
+                $details['title'] = 'Low Stock Inventory Alert';
+                $details['description'] = '[LOW STOCK ALERT] ' . $details['product_name'] . ' — Only ' . (int)$details['current_stock'] . ' ' . $details['unit'] . ' remaining (Reorder threshold: ' . (int)$details['minimum_stock'] . ' ' . $details['unit'] . '). Critical restocking needed.';
+                $details['status'] = 'Critical Alert';
+                $details['date'] = date('Y-m-d');
+                $details['station_name'] = $details['station_name'] ?? 'Branch Station';
+                $details['staff_name'] = 'Branch Inventory Monitor';
+                
+                $audit_stmt = $pdo->prepare("SELECT action, details, created_at FROM activity_logs 
+                    WHERE (details LIKE ? OR action LIKE '%inventory%' OR action LIKE '%stock%') 
+                    ORDER BY created_at DESC LIMIT 5");
+                $audit_stmt->execute(['%' . ($details['product_name'] ?? '') . '%']);
+                $audit = $audit_stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+        } elseif ($event_type === 'report_schedule' || strpos($event_id, 'report_') !== false) {
+            $details = [
+                'title' => 'Branch Report & Reconciliation Schedule',
+                'description' => 'Daily & Monthly Fuel Sales & Merchandise Inventory Reconciliation Audit. Review transaction records and reconcile inventory logs.',
+                'status' => 'Pending Review',
+                'date' => date('Y-m-d'),
+                'station_name' => 'All Stations',
+                'staff_name' => 'System Automated Scheduler'
+            ];
+            $audit_stmt = $pdo->prepare("SELECT action, details, created_at FROM activity_logs 
+                WHERE action LIKE '%report%' OR action LIKE '%reconciliation%' 
+                ORDER BY created_at DESC LIMIT 5");
+            $audit_stmt->execute();
+            $audit = $audit_stmt->fetchAll(PDO::FETCH_ASSOC);
         } else {
             $stmt = $pdo->prepare("SELECT sce.*, et.type_name, CONCAT(u.first_name, ' ', u.last_name) AS staff_name, s.name as station_name
                 FROM staff_calendar_events sce
@@ -712,33 +752,36 @@ try {
         switch($type_key) {
             case 'job_order':
                 if ($role === 'admin') return 'admin_all_transactions.php?search=JO-' . $id_num;
-                if ($role === 'manager') return 'manager_transactions_hub.php?tab=job_orders';
-                return 'staff_transactions_hub.php?tab=job_orders';
+                if ($role === 'manager') return 'manager_job_orders.php';
+                return 'staff_job_orders.php';
             case 'merchandise_delivery':
             case 'fuel_delivery':
-                if ($role === 'admin') return 'admin_fuel_transactions_oversight.php';
-                if ($role === 'manager') return 'deliveries_oversight.php';
+                if ($role === 'admin') return 'admin_deliveries_oversight.php';
+                if ($role === 'manager') return 'manager_merchandise_deliveries.php';
                 return 'staff_transactions_hub.php?tab=deliveries';
             case 'validation_task':
             case 'validation_delivery':
             case 'manager_approval':
             case 'master_data_approval':
             case 'admin_approval':
-                if ($role === 'admin') return 'admin_user_management.php';
+                if ($role === 'admin') return 'admin_set_prices.php';
                 return 'manager_fuel_transaction_validation.php';
             case 'fuel_calibration':
-                if ($role === 'admin') return 'admin_calibration_review.php';
-                if ($role === 'manager') return 'manager_calibration_review.php';
+                if ($role === 'admin') return 'admin_fuel_adjustments_oversight.php';
+                if ($role === 'manager') return 'manager_fuel_adjustments.php';
                 return 'staff_fuel_adjustments.php';
             case 'stock_request':
             case 'restock_reminder':
             case 'stock_alert':
-                if ($role === 'admin') return 'admin_inventory_management.php';
-                return 'inventory_management.php';
+                if ($role === 'admin') return 'admin_inventory_merchandise.php?tab=alerts';
+                return 'manager_inventory_merchandise.php?tab=alerts';
             case 'report_schedule':
                 if ($role === 'admin') return 'admin_reports.php';
                 if ($role === 'manager') return 'manager_reports.php';
                 return 'staff_reports.php';
+            case 'staff_shift':
+                if ($role === 'admin') return 'users.php';
+                return 'staff_schedules.php';
             default:
                 return '#';
         }
@@ -1419,9 +1462,6 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                 </h1>
             </div>
             <div class="cal-header-right" style="display:flex; align-items:center; gap:10px;">
-                <button type="button" onclick="showEventModal(null)" style="padding:8px 16px; background:#1a73e8; color:#fff; border:none; border-radius:4px; font-weight:500; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; margin-right:8px;">
-                    <i class="fas fa-plus"></i> Create Event
-                </button>
                 <a href="admin_calendar.php?view=<?= $current_view ?>&month_offset=<?= $prev_offset ?><?= $filter_station > 0 ? '&station='.$filter_station : '' ?>" 
                    class="cal-icon-btn" title="Previous Month/Week/Day"
                    style="width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; border:1px solid #dadce0; border-radius:50%; color:#5f6368; text-decoration:none; transition:background 0.2s;">
@@ -1588,7 +1628,7 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                                  data-type="<?= htmlspecialchars($event['type_key'] ?? '') ?>"
                                  data-status="<?= htmlspecialchars(strtolower($event['status'] ?? 'pending')) ?>"
                                  style="background: <?= $event_color ?>22; border-left-color: <?= $event_color ?>;" 
-                                 onclick="clickEvent('<?= htmlspecialchars($event['id'] ?? '') ?>', '<?= htmlspecialchars($event['type_key'] ?? '') ?>')">
+                                 onclick="clickEvent('<?= htmlspecialchars($event['id'] ?? '') ?>', '<?= htmlspecialchars($event['type_key'] ?? '') ?>', '<?= htmlspecialchars($event['target_url'] ?? '#') ?>')">
                                 <?php if ($time_str): ?><span class="cal-event-time"><?= $time_str ?></span><?php endif; ?>
                                 <span class="cal-event-text"><?= htmlspecialchars($event['work_description'] ?? $event['type_name']) ?></span>
                             </div>
@@ -1630,7 +1670,7 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                              data-type="<?= htmlspecialchars($event['type_key'] ?? '') ?>"
                              data-status="<?= htmlspecialchars(strtolower($event['status'] ?? 'pending')) ?>"
                              style="border-left: 4px solid <?= $event_color ?>; background: <?= $event_color ?>11; padding: 16px; margin-bottom: 12px; border-radius: 4px; cursor: pointer; display: block;"
-                             onclick="clickEvent('<?= htmlspecialchars($event['id'] ?? '') ?>', '<?= htmlspecialchars($event['type_key'] ?? '') ?>')">
+                             onclick="clickEvent('<?= htmlspecialchars($event['id'] ?? '') ?>', '<?= htmlspecialchars($event['type_key'] ?? '') ?>', '<?= htmlspecialchars($event['target_url'] ?? '#') ?>')">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                                 <div style="font-weight: 600; color: #3c4043;"><?= htmlspecialchars($event['work_description'] ?? $event['type_name']) ?></div>
                                 <div style="color: #5f6368; font-size: 12px;"><?= $time_range ?></div>
@@ -1881,22 +1921,33 @@ function clickEvent(eventId, eventType, targetUrl) {
                 let actionsHTML = '';
                 if (eventType === 'merchandise_delivery' || eventId.toString().startsWith('del_')) {
                     actionsHTML = `
-                        <a href="../public/staff_deliveries_module.php?delivery_id=${numericId}" class="cal-view-btn" style="background: #1a73e8; color: #fff; border-color: #1a73e8; text-decoration: none; padding: 10px 20px; border-radius: 4px; display: inline-block;">
-                            <i class="fas fa-eye"></i> Go to Deliveries Module
+                        <a href="admin_deliveries_oversight.php?delivery_id=${numericId}" class="cal-view-btn" style="background: #002F70; color: #fff; border-color: #002F70; text-decoration: none; padding: 10px 20px; border-radius: 4px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600;">
+                            <i class="fas fa-truck"></i> Go to Deliveries Oversight
                         </a>
                     `;
                 } else if (eventType === 'job_order' || eventId.toString().startsWith('jo_')) {
                     actionsHTML = `
-                        <a href="../public/staff_job_orders.php?job_id=${numericId}" class="cal-view-btn" style="background: #1a73e8; color: #fff; border-color: #1a73e8; text-decoration: none; padding: 10px 20px; border-radius: 4px; display: inline-block;">
-                            <i class="fas fa-eye"></i> Go to Job Orders Module
+                        <a href="admin_all_transactions.php?search=JO-${numericId}" class="cal-view-btn" style="background: #002F70; color: #fff; border-color: #002F70; text-decoration: none; padding: 10px 20px; border-radius: 4px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600;">
+                            <i class="fas fa-eye"></i> Go to Transactions Oversight
                         </a>
                     `;
-                } else if (!eventId.toString().startsWith('shift_') && !eventId.toString().startsWith('high_value_') && !eventId.toString().startsWith('compliance_')) {
-                    // Manual events can be edited
+                } else if (eventType === 'stock_alert' || eventId.toString().startsWith('admin_restock_')) {
                     actionsHTML = `
-                        <button type="button" onclick="editManualEvent('${eventId}')" style="padding: 10px 24px; border: none; background: #1a73e8; color: #fff; border-radius: 4px; font-size: 14px; cursor: pointer; font-weight: 500;">
-                            Edit Event
-                        </button>
+                        <a href="admin_inventory_merchandise.php?tab=alerts" class="cal-view-btn" style="background: #dc2626; color: #fff; border-color: #dc2626; text-decoration: none; padding: 10px 20px; border-radius: 4px; display: inline-flex; align-items: center; gap: 8px; font-weight: 700;">
+                            <i class="fas fa-exclamation-triangle"></i> View Stock Alerts Catalog
+                        </a>
+                    `;
+                } else if (eventType === 'report_schedule' || eventId.toString().startsWith('admin_report_')) {
+                    actionsHTML = `
+                        <a href="admin_reports.php" class="cal-view-btn" style="background: #002F70; color: #fff; border-color: #002F70; text-decoration: none; padding: 10px 20px; border-radius: 4px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600;">
+                            <i class="fas fa-chart-line"></i> Go to Reports & Reconciliation
+                        </a>
+                    `;
+                } else if (targetUrl && targetUrl !== '#' && targetUrl !== '') {
+                    actionsHTML = `
+                        <a href="${targetUrl}" class="cal-view-btn" style="background: #002F70; color: #fff; border-color: #002F70; text-decoration: none; padding: 10px 20px; border-radius: 4px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600;">
+                            <i class="fas fa-external-link-alt"></i> Open Related Module
+                        </a>
                     `;
                 }
                 
@@ -1969,11 +2020,9 @@ function editManualEvent(eventId) {
         });
 }
 
-// Click on day
+// Click on day - automatic system tracking calendar (no manual create event)
 function clickDay(date) {
-    if (confirm('Create event on ' + date + '?')) {
-        showEventModal(date);
-    }
+    // Read-only automatic system tracker: no manual event creation
 }
 
 // Submit event form

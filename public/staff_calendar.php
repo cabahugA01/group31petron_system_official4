@@ -1540,11 +1540,9 @@ function closeDetailsModal() {
     document.getElementById('detailsModal').style.display = 'none';
 }
 
-// Click on day
+// Click on day - automatic system tracking calendar (no manual create event)
 function clickDay(date) {
-    if (confirm('Create event on ' + date + '?')) {
-        showEventModal(date);
-    }
+    // Read-only automatic system tracker: no manual event creation
 }
 
 // Submit event form

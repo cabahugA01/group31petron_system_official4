@@ -213,3 +213,21 @@ try {
 } catch (Exception $e) {
     error_log("fuel_sales_closing shift_period self-healing error: " . $e->getMessage());
 }
+
+// ── Self-healing phpMyAdmin Designer Layout & Coordinates Persistence ────────
+try {
+    static $pma_layout_checked = false;
+    if (!$pma_layout_checked) {
+        $pma_layout_checked = true;
+        $chk_pma = $pdo->query("SELECT COUNT(*) FROM phpmyadmin.pma__table_coords WHERE db_name = 'petron_pos_db_secure'");
+        if (!$chk_pma || (int)$chk_pma->fetchColumn() === 0) {
+            $backupFile = __DIR__ . '/../database/petron_designer_layout_backup.sql';
+            if (file_exists($backupFile)) {
+                $sqlCommands = file_get_contents($backupFile);
+                $pdo->exec($sqlCommands);
+            }
+        }
+    }
+} catch (Throwable $e) {
+    // Gracefully ignore if phpmyadmin DB is unavailable or restricted
+}

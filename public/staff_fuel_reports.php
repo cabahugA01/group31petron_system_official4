@@ -561,44 +561,38 @@ html, body {
 }
 
 .sfr-export-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    display: flex !important;
+    align-items: center !important;
+    gap: 7px !important;
+    flex-wrap: nowrap !important;
+    justify-content: flex-end !important;
 }
 
 .sfr-export-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    border-radius: 6px;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 7px 14px !important;
+    border-radius: 5px !important;
     font-size: 13px !important;
-    font-weight: 800 !important;
-    border: 1.5px solid #cbd5e1;
-    background: #ffffff;
-    color: #00264D;
-    text-decoration: none;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.2s;
+    font-weight: 700 !important;
+    border: 1px solid #cbd5e1 !important;
+    background: #ffffff !important;
+    text-decoration: none !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    transition: all 0.18s !important;
+    box-sizing: border-box !important;
 }
 
-.sfr-export-btn.excel,
-.sfr-export-btn.csv,
-.sfr-export-btn.pdf,
-.sfr-export-btn.print { color: #00264D; border-color: #cbd5e1; }
-
-.sfr-export-btn:hover,
-.sfr-export-btn.excel:hover,
-.sfr-export-btn.csv:hover,
-.sfr-export-btn.pdf:hover,
-.sfr-export-btn.print:hover {
-    background: #f8fafc;
-    border-color: #00264D;
-    color: #00264D;
-}
+.sfr-export-btn.print { color: #475569 !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.sfr-export-btn.print:hover { background: #f1f5f9 !important; }
+.sfr-export-btn.pdf   { color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
+.sfr-export-btn.pdf:hover { background: #fef2f2 !important; }
+.sfr-export-btn.excel { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+.sfr-export-btn.excel:hover { background: #f0fdf4 !important; }
+.sfr-export-btn.csv   { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+.sfr-export-btn.csv:hover { background: #f0fdf4 !important; }
 
 .sfr-print-area {
     min-width: 0;
@@ -883,24 +877,24 @@ html, body {
                     </div>
 
                     <div class="sfr-export-actions">
-                        <a href="staff_fuel_reports.php?<?= htmlspecialchars(sfr_export_query(['export' => 'excel'])) ?>" class="sfr-export-btn excel" title="Export to Excel">
-                            <i class="fas fa-file-excel"></i> Excel
-                        </a>
-                        <a href="staff_fuel_reports.php?<?= htmlspecialchars(sfr_export_query(['export' => 'csv'])) ?>" class="sfr-export-btn csv" title="Export to CSV">
-                            <i class="fas fa-file-csv"></i> CSV
-                        </a>
-                        <button type="button"
-                                onclick="exportPrintableAreaToPDF('#sfrPrintableArea', '<?= htmlspecialchars($sfr_report_title, ENT_QUOTES) ?>', '<?= htmlspecialchars($sfr_report_file, ENT_QUOTES) ?>', this)"
-                                class="sfr-export-btn pdf"
-                                title="Export PDF">
-                            <i class="fas fa-file-pdf"></i> Export PDF
-                        </button>
                         <button type="button"
                                 onclick="printReportArea('#sfrPrintableArea')"
                                 class="sfr-export-btn print"
                                 title="Print report">
                             <i class="fas fa-print"></i> Print
                         </button>
+                        <button type="button"
+                                onclick="exportPrintableAreaToPDF('#sfrPrintableArea', '<?= htmlspecialchars($sfr_report_title, ENT_QUOTES) ?>', '<?= htmlspecialchars($sfr_report_file, ENT_QUOTES) ?>', this)"
+                                class="sfr-export-btn pdf"
+                                title="Export PDF">
+                            <i class="fas fa-file-pdf"></i> PDF
+                        </button>
+                        <a href="staff_fuel_reports.php?<?= htmlspecialchars(sfr_export_query(['export' => 'excel'])) ?>" class="sfr-export-btn excel" title="Export to Excel">
+                            <i class="fas fa-file-excel"></i> Excel
+                        </a>
+                        <a href="staff_fuel_reports.php?<?= htmlspecialchars(sfr_export_query(['export' => 'csv'])) ?>" class="sfr-export-btn csv" title="Export to CSV">
+                            <i class="fas fa-file-csv"></i> CSV
+                        </a>
                     </div>
                 </div>
 

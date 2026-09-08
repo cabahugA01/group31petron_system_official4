@@ -3094,41 +3094,40 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         color: #ffffff !important;
     }
     
-    /* Export Buttons (Manager Design) */
+    /* Export Buttons (Admin & Manager Aligned Design) */
     .rpt-export-group {
         display: flex !important;
         align-items: center !important;
-        gap: 8px !important;
+        gap: 7px !important;
         margin-left: auto !important;
         white-space: nowrap !important;
     }
     
     .rpt-export-btn,
     .flt-btn {
-        height: 38px !important;
-        padding: 0 14px !important;
+        padding: 7px 14px !important;
         font-size: 13px !important;
-        font-weight: 800 !important;
-        border-radius: 7px !important;
+        font-weight: 700 !important;
+        border-radius: 5px !important;
         cursor: pointer !important;
         display: inline-flex !important;
         align-items: center !important;
         gap: 6px !important;
         background: #ffffff !important;
-        border: 1.5px solid !important;
+        border: 1px solid #cbd5e1 !important;
         transition: all 0.18s !important;
         text-decoration: none !important;
         box-sizing: border-box !important;
         white-space: nowrap !important;
     }
-    .rpt-btn-print  { color: #002F6C !important; border-color: #002F6C !important; background: #ffffff !important; }
-    .rpt-btn-print:hover  { background: #002F6C !important; color: #ffffff !important; }
+    .rpt-btn-print  { color: #475569 !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+    .rpt-btn-print:hover  { background: #f1f5f9 !important; }
     .rpt-btn-pdf   { color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
-    .rpt-btn-pdf:hover   { background: #dc2626 !important; color: #ffffff !important; }
+    .rpt-btn-pdf:hover   { background: #fef2f2 !important; }
     .rpt-btn-excel { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
-    .rpt-btn-excel:hover { background: #16a34a !important; color: #ffffff !important; }
-    .rpt-btn-csv   { color: #0284c7 !important; border-color: #0284c7 !important; background: #ffffff !important; }
-    .rpt-btn-csv:hover   { background: #0284c7 !important; color: #ffffff !important; }
+    .rpt-btn-excel:hover { background: #f0fdf4 !important; }
+    .rpt-btn-csv   { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+    .rpt-btn-csv:hover   { background: #f0fdf4 !important; }
     
     /* Sub-Tab Navigation */
     .rpt-subtab-nav {

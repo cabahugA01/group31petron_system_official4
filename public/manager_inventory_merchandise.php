@@ -1341,8 +1341,10 @@ body { overflow-x: hidden; }
 .table-wrap { overflow-x: hidden !important; width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; }
 
 .int-head { display: flex !important; align-items: center !important; justify-content: space-between !important; flex-wrap: wrap !important; gap: 15px !important; margin-top: 0 !important; margin-bottom: 25px !important; padding: 0 !important; border: none !important; width: 100% !important; }
-.int-head h1 { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important; font-size: 26px !important; font-weight: 800 !important; color: #002f70 !important; margin: 0 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; display: flex !important; align-items: center !important; gap: 10px !important; line-height: 1.2 !important; }
-.int-head .sub { font-size:14px; color:#64748b; margin-top:4px; }
+.int-head > div:first-child { flex: 1; min-width: 280px; max-width: 65%; }
+.int-head > div:last-child { flex-shrink: 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.int-head h1 { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important; font-size: 24px !important; font-weight: 700 !important; color: #002f70 !important; margin: 0 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; display: flex !important; align-items: center !important; gap: 10px !important; line-height: 1.2 !important; }
+.int-head .sub { font-size: 13px !important; color: #64748b !important; margin-top: 4px !important; line-height: 1.4 !important; }
 .ato-btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 18px; border-radius:7px; font-size:14px; font-weight:700; cursor:pointer; border:1px solid transparent; text-decoration:none; transition:all .15s; height:40px; white-space:nowrap; background:white !important; }
 .ato-btn-back { color:#4b5563 !important; border-color:#6b7280 !important; }
 .ato-btn-back:hover { background:#6b7280 !important; color:#fff !important; }
@@ -1550,6 +1552,106 @@ body { overflow-x: hidden; }
 .flt-btn-pdf:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
 .flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
+
+/* == Petron Clean KPI Summary Cards (Matches Master Data Requests Exactly) == */
+.txn-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+    width: 100%;
+    box-sizing: border-box;
+}
+@media (max-width: 1100px) {
+    .txn-kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+@media (max-width: 480px) {
+    .txn-kpi-grid {
+        grid-template-columns: 1fr;
+    }
+}
+.txn-kpi-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: none;
+    transition: transform .15s, box-shadow .15s;
+    box-sizing: border-box;
+}
+.txn-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,.09);
+}
+.txn-kpi-lbl {
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .5px !important;
+    color: #64748b !important;
+    margin-bottom: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    line-height: 1.3 !important;
+    white-space: nowrap !important;
+}
+.txn-kpi-val {
+    font-size: 26px !important;
+    font-weight: 800 !important;
+    color: #002F70 !important;
+    line-height: 1.1 !important;
+}
+.txn-kpi-card.blue   .txn-kpi-val { color: #0284c7 !important; }
+.txn-kpi-card.green  .txn-kpi-val { color: #16a34a !important; }
+.txn-kpi-card.danger .txn-kpi-val { color: #dc2626 !important; }
+.txn-kpi-card.dark-danger .txn-kpi-val { color: #991b1b !important; }
+.txn-kpi-card.orange .txn-kpi-val { color: #d97706 !important; }
+.txn-kpi-card.yellow .txn-kpi-val { color: #d97706 !important; }
+.txn-kpi-card.purple .txn-kpi-val { color: #7c3aed !important; }
+.txn-kpi-card.teal   .txn-kpi-val { color: #0d9488 !important; }
+/* ── Consistent Petron Filter Controls ── */
+.filter-select,
+.inv-filter-bar select {
+    height: 36px !important;
+    padding: 0 12px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 7px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #1e293b !important;
+    background: #ffffff !important;
+    outline: none !important;
+    transition: border-color 0.15s, box-shadow 0.15s !important;
+    cursor: pointer !important;
+    box-sizing: border-box !important;
+}
+.filter-select:focus,
+.inv-filter-bar select:focus {
+    border-color: #002F70 !important;
+    box-shadow: 0 0 0 3px rgba(0,47,112,.1) !important;
+}
+.filter-input,
+.inv-filter-bar input {
+    height: 36px !important;
+    padding: 0 12px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 7px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #1e293b !important;
+    background: #ffffff !important;
+    outline: none !important;
+    transition: border-color 0.15s, box-shadow 0.15s !important;
+    box-sizing: border-box !important;
+}
+.filter-input:focus,
+.inv-filter-bar input:focus {
+    border-color: #002F70 !important;
+    box-shadow: 0 0 0 3px rgba(0,47,112,.1) !important;
+}
 </style>
 
 <div class="mim-wrap">
@@ -1595,63 +1697,42 @@ body { overflow-x: hidden; }
 </div>
 <!-- TAB CONTENT 1: Inventory Stock Catalog -->
 <?php if ($active_tab === 'inventory'): ?>
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px;width:100%;box-sizing:border-box;">
     <!-- Total Products -->
-    <div onclick="filterMgrByCard('')" style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;cursor:pointer;" title="Click to show All Products">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Total Products</div>
-            <div style="font-size:24px;font-weight:800;color:#1e293b;margin-top:4px;"><?= number_format($summary_total) ?></div>
-        </div>
-        <div style="background:#f0f4ff;color:#002F70;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-boxes"></i></div>
+    <div onclick="filterMgrByCard('')" class="txn-kpi-card blue" style="cursor:pointer;" title="Click to show All Products">
+        <div class="txn-kpi-lbl"><i class="fas fa-boxes" style="color:#0284c7;margin-right:4px;"></i> Total Products</div>
+        <div class="txn-kpi-val"><?= number_format($summary_total) ?></div>
     </div>
     <!-- Current Inventory -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.3px;">Current Inventory</div>
-            <div style="font-size:24px;font-weight:800;color:#002F70;margin-top:4px;"><?= number_format(array_sum(array_column($merch_inventory, 'stock_level'))) ?></div>
-        </div>
-        <div style="background:#e0f2fe;color:#0284c7;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-cubes"></i></div>
+    <div class="txn-kpi-card blue">
+        <div class="txn-kpi-lbl"><i class="fas fa-cubes" style="color:#002F70;margin-right:4px;"></i> Current Inventory</div>
+        <div class="txn-kpi-val"><?= number_format(array_sum(array_column($merch_inventory, 'stock_level'))) ?></div>
     </div>
     <!-- Stock Added Today -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #bbf7d0;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.3px;">Stock Added Today</div>
-            <div style="font-size:24px;font-weight:800;color:#15803d;margin-top:4px;">+<?= number_format($stock_added_today) ?></div>
-        </div>
-        <div style="background:#dcfce7;color:#15803d;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-arrow-down"></i></div>
+    <div class="txn-kpi-card green">
+        <div class="txn-kpi-lbl"><i class="fas fa-arrow-down" style="color:#16a34a;margin-right:4px;"></i> Stock Added Today</div>
+        <div class="txn-kpi-val">+<?= number_format($stock_added_today) ?></div>
     </div>
     <!-- Stock Deducted Today -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fed7aa;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:.3px;">Stock Deducted Today</div>
-            <div style="font-size:24px;font-weight:800;color:#c2410c;margin-top:4px;">-<?= number_format($stock_deducted_today) ?></div>
-        </div>
-        <div style="background:#ffedd5;color:#c2410c;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-arrow-up"></i></div>
+    <div class="txn-kpi-card orange">
+        <div class="txn-kpi-lbl"><i class="fas fa-arrow-up" style="color:#c2410c;margin-right:4px;"></i> Stock Deducted Today</div>
+        <div class="txn-kpi-val">-<?= number_format($stock_deducted_today) ?></div>
     </div>
     <!-- Low Stock -->
-    <div onclick="filterMgrByCard('warning')" style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fed7aa;cursor:pointer;" title="Click to filter low stock items">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#ea580c;text-transform:uppercase;letter-spacing:.3px;">Low Stock</div>
-            <div style="font-size:24px;font-weight:800;color:#ea580c;margin-top:4px;"><?= number_format($summary_alert_low) ?></div>
-        </div>
-        <div style="background:#fff7ed;color:#ea580c;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-exclamation-triangle"></i></div>
+    <div onclick="filterMgrByCard('warning')" class="txn-kpi-card orange" style="cursor:pointer;" title="Click to filter low stock items">
+        <div class="txn-kpi-lbl"><i class="fas fa-exclamation-triangle" style="color:#d97706;margin-right:4px;"></i> Low Stock</div>
+        <div class="txn-kpi-val"><?= number_format($summary_alert_low) ?></div>
     </div>
 
     <!-- Out of Stock -->
-    <div onclick="filterMgrByCard('warning')" style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #fecaca;cursor:pointer;" title="Click to filter out of stock items">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock</div>
-            <div style="font-size:24px;font-weight:800;color:#991b1b;margin-top:4px;"><?= number_format($summary_out) ?></div>
-        </div>
-        <div style="background:#fef2f2;color:#991b1b;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-times-circle"></i></div>
+    <div onclick="filterMgrByCard('warning')" class="txn-kpi-card dark-danger" style="cursor:pointer;" title="Click to filter out of stock items">
+        <div class="txn-kpi-lbl"><i class="fas fa-times-circle" style="color:#991b1b;margin-right:4px;"></i> Out of Stock</div>
+        <div class="txn-kpi-val"><?= number_format($summary_out) ?></div>
     </div>
     <!-- Total Inventory Value -->
-    <div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:flex;align-items:center;justify-content:space-between;border:1px solid #bfdbfe;">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:.3px;">Total Inventory Value</div>
-            <div style="font-size:18px;font-weight:800;color:#1d4ed8;margin-top:4px;">₱<?= number_format($total_inventory_value, 2) ?></div>
-        </div>
-        <div style="background:#eff6ff;color:#1d4ed8;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;"><i class="fas fa-peso-sign"></i></div>
+    <div class="txn-kpi-card teal">
+        <div class="txn-kpi-lbl"><i class="fas fa-peso-sign" style="color:#0d9488;margin-right:4px;"></i> Total Inventory Value</div>
+        <div class="txn-kpi-val" style="font-size:22px !important;">₱<?= number_format($total_inventory_value, 2) ?></div>
     </div>
 </div>
 
@@ -1661,14 +1742,14 @@ body { overflow-x: hidden; }
             <i class="fas fa-box"></i> Merchandise Stock Catalog
         </div>
         <div class="inv-filter-bar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            <input type="text" id="invSearch" placeholder="Search Product or SKU..." oninput="filterInvTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;width:180px;">
-            <select id="invCatFilter" onchange="filterInvTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+            <input type="text" id="invSearch" placeholder="Search Product or SKU..." oninput="filterInvTable()" class="filter-input" style="width:180px;">
+            <select id="invCatFilter" onchange="filterInvTable()" class="filter-select">
                 <option value="">All Categories</option>
                 <?php foreach (array_keys($categories_list) as $cat): ?>
                 <option value="<?php echo strtolower(htmlspecialchars($cat)); ?>"><?php echo htmlspecialchars($cat); ?></option>
                 <?php endforeach; ?>
             </select>
-            <select id="invStockFilter" onchange="filterInvTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+            <select id="invStockFilter" onchange="filterInvTable()" class="filter-select">
                 <option value="">All Statuses</option>
                 <option value="available">Available</option>
                 <option value="low">Low Stock</option>
@@ -1902,8 +1983,8 @@ body { overflow-x: hidden; }
             <i class="fas fa-exchange-alt"></i> Stock Movement Logs
         </div>
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <input type="text" id="mgrMovSearchInput" placeholder="Search product, SKU, user..." oninput="filterMgrMovTable()" style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; width:220px;">
-            <select id="mgrMovTypeFilter" onchange="filterMgrMovTable()" style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#002F70;">
+            <input type="text" id="mgrMovSearchInput" placeholder="Search product, SKU, user..." oninput="filterMgrMovTable()" class="filter-input" style="width:220px;">
+            <select id="mgrMovTypeFilter" onchange="filterMgrMovTable()" class="filter-select" style="width:auto;min-width:180px;">
                 <option value="">All Movement Types</option>
                 <option value="stock_in">Stock In (Delivery)</option>
                 <option value="stock-in">Stock In</option>
@@ -1984,23 +2065,23 @@ body { overflow-x: hidden; }
 <!-- TAB CONTENT 2: Stock Alerts -->
 <?php if ($active_tab === 'alerts'): ?>
 
-<!-- Stock Alerts Summary Cards -->
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:20px;">
-    <div style="background:#fff;border-radius:8px;padding:18px 22px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1.5px solid #e2e8f0;">
-        <div style="font-size:13px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Low Stock Items</div>
-        <div style="font-size:28px;font-weight:900;color:#002F70;margin-top:4px;"><?= number_format($summary_alert_low) ?></div>
+<!-- Stock Alerts Summary Cards (Matches Master Data Requests Exactly) -->
+<div class="txn-kpi-grid">
+    <div class="txn-kpi-card orange">
+        <div class="txn-kpi-lbl"><i class="fas fa-exclamation-triangle" style="color:#d97706;margin-right:4px;"></i> Low Stock Items</div>
+        <div class="txn-kpi-val"><?= number_format($summary_alert_low) ?></div>
     </div>
-    <div style="background:#fff;border-radius:8px;padding:18px 22px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1.5px solid #e2e8f0;">
-        <div style="font-size:13px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Critical Stock Items</div>
-        <div style="font-size:28px;font-weight:900;color:#002F70;margin-top:4px;"><?= number_format($summary_alert_critical) ?></div>
+    <div class="txn-kpi-card danger">
+        <div class="txn-kpi-lbl"><i class="fas fa-exclamation-circle" style="color:#dc2626;margin-right:4px;"></i> Critical Stock Items</div>
+        <div class="txn-kpi-val"><?= number_format($summary_alert_critical) ?></div>
     </div>
-    <div style="background:#fff;border-radius:8px;padding:18px 22px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1.5px solid #e2e8f0;">
-        <div style="font-size:13px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Out of Stock Items</div>
-        <div style="font-size:28px;font-weight:900;color:#002F70;margin-top:4px;"><?= number_format($summary_out) ?></div>
+    <div class="txn-kpi-card dark-danger">
+        <div class="txn-kpi-lbl"><i class="fas fa-times-circle" style="color:#991b1b;margin-right:4px;"></i> Out of Stock Items</div>
+        <div class="txn-kpi-val"><?= number_format($summary_out) ?></div>
     </div>
-    <div style="background:#fff;border-radius:8px;padding:18px 22px;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1.5px solid #e2e8f0;">
-        <div style="font-size:13px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Variance Alerts</div>
-        <div style="font-size:28px;font-weight:900;color:#002F70;margin-top:4px;"><?= number_format($summary_variance) ?></div>
+    <div class="txn-kpi-card purple">
+        <div class="txn-kpi-lbl"><i class="fas fa-balance-scale" style="color:#7c3aed;margin-right:4px;"></i> Variance Alerts</div>
+        <div class="txn-kpi-val"><?= number_format($summary_variance) ?></div>
     </div>
 </div>
 <!-- Stock Alerts Table Card -->
@@ -2014,8 +2095,8 @@ body { overflow-x: hidden; }
             <?php endif; ?>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <input type="text" id="alertSearch" placeholder="Search Product or SKU..." oninput="filterAlertTable()" style="height:40px;padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:14px;font-weight:600;width:210px;">
-            <select id="alertCatFilter" onchange="filterAlertTable()" style="height:40px;padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:14px;font-weight:600;">
+            <input type="text" id="alertSearch" placeholder="Search Product or SKU..." oninput="filterAlertTable()" class="filter-input" style="width:210px;">
+            <select id="alertCatFilter" onchange="filterAlertTable()" class="filter-select">
                 <option value="">All Categories</option>
                 <?php foreach (array_keys($categories_list) as $cat): ?>
                 <option value="<?php echo strtolower(htmlspecialchars($cat)); ?>"><?php echo htmlspecialchars($cat); ?></option>

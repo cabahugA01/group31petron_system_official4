@@ -1188,45 +1188,57 @@ body .main,
 }
 .summary-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 20px;
-    margin-bottom: 28px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+    width: 100%;
+    box-sizing: border-box;
+}
+@media (max-width: 1100px) {
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+    .summary-grid { grid-template-columns: 1fr; }
 }
 .summary-card {
     background: #fff;
     border: 1px solid #e2e8f0;
-    border-radius: 14px;
-    padding: 22px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: none;
     display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    transition: transform 0.15s ease;
+    align-items: flex-start;
+    justify-content: flex-start;
+    flex-direction: column;
+    transition: transform .15s, box-shadow .15s;
+    box-sizing: border-box;
 }
 .summary-card:hover {
     transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,.09);
 }
 .summary-card-label {
-    font-size: 11px;
-    font-weight: 700;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: .7px;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    color: #64748b !important;
+    text-transform: uppercase !important;
+    letter-spacing: .5px !important;
+    margin-bottom: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    line-height: 1.3 !important;
+    white-space: nowrap !important;
 }
 .summary-card-value {
-    font-size: 32px;
-    font-weight: 800;
-    color: #002F6C;
-    margin-top: 6px;
+    font-size: 26px !important;
+    font-weight: 800 !important;
+    color: #002F70 !important;
+    line-height: 1.1 !important;
+    margin-top: 0 !important;
 }
 .summary-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    font-size: 20px;
+    display: none !important;
 }
 .bg-total { background: #eff6ff; color: #1d4ed8; }
 .bg-pending { background: #fffbeb; color: #d97706; }
@@ -1637,7 +1649,6 @@ body.sidebar-collapsed .modal-overlay {
             <h1 class="pr-title" style="margin: 0;">
                 <i class="fas fa-clipboard-list" style="color: #002F6C;"></i> Purchase Management
             </h1>
-            <p style="margin: 4px 0 0 0; font-size: 13px; color: #64748b;">Review staff stock requests or directly create new purchase orders for merchandise & fuel.</p>
         </div>
         <button type="button" onclick="openDirectPoModal()" class="btn-forward" style="background: #002F6C !important; color: #ffffff !important; border-radius: 8px !important; font-size: 13.5px !important; font-weight: 700 !important; padding: 11px 22px !important; box-shadow: 0 4px 10px rgba(0, 47, 108, 0.25) !important; cursor: pointer !important; display: inline-flex !important; align-items: center !important; gap: 8px !important; text-decoration: none;">
             <i class="fas fa-plus-circle" style="font-size: 15px;"></i> Create Purchase Order
@@ -1667,71 +1678,44 @@ body.sidebar-collapsed .modal-overlay {
     <!-- PR Summary Cards -->
     <div class="summary-grid" id="prSummaryCardsGrid">
         <a href="manager_stock_request_review.php" class="summary-card" style="text-decoration: none; color: inherit;">
-            <div>
-                <div class="summary-card-label">Pending Requests</div>
-                <div class="summary-card-value"><?= number_format($cnt_pending_pr) ?></div>
-            </div>
-            <div class="summary-icon bg-pending"><i class="fas fa-hourglass-half"></i></div>
+            <div class="summary-card-label"><i class="fas fa-hourglass-half" style="color:#d97706;margin-right:4px;"></i> Pending Requests</div>
+            <div class="summary-card-value"><?= number_format($cnt_pending_pr) ?></div>
         </a>
         <a href="manager_purchase_orders.php" class="summary-card" style="text-decoration: none; color: inherit;">
-            <div>
-                <div class="summary-card-label">POs Generated</div>
-                <div class="summary-card-value" style="color: #9333ea;"><?= number_format($cnt_po_generated) ?></div>
-            </div>
-            <div class="summary-icon bg-waiting"><i class="fas fa-file-invoice"></i></div>
+            <div class="summary-card-label"><i class="fas fa-file-invoice" style="color:#9333ea;margin-right:4px;"></i> POs Generated</div>
+            <div class="summary-card-value" style="color: #9333ea;"><?= number_format($cnt_po_generated) ?></div>
         </a>
         <a href="manager_merchandise_deliveries.php" class="summary-card" style="text-decoration: none; color: inherit;">
-            <div>
-                <div class="summary-card-label">Pending Deliveries</div>
-                <div class="summary-card-value" style="color: #1d4ed8;"><?= number_format($cnt_pending_delivery) ?></div>
-            </div>
-            <div class="summary-icon bg-total"><i class="fas fa-truck"></i></div>
+            <div class="summary-card-label"><i class="fas fa-truck" style="color:#1d4ed8;margin-right:4px;"></i> Pending Deliveries</div>
+            <div class="summary-card-value" style="color: #1d4ed8;"><?= number_format($cnt_pending_delivery) ?></div>
         </a>
-        <a href="admin_inventory_history.php" class="summary-card" style="text-decoration: none; color: inherit;">
-            <div>
-                <div class="summary-card-label">Completed</div>
-                <div class="summary-card-value" style="color: #16a34a;"><?= number_format($cnt_completed) ?></div>
-            </div>
-            <div class="summary-icon bg-completed"><i class="fas fa-check-circle"></i></div>
+        <a href="javascript:void(0)" onclick="switchPendingSubTab('history')" class="summary-card" style="text-decoration: none; color: inherit; cursor: pointer;">
+            <div class="summary-card-label"><i class="fas fa-check-circle" style="color:#16a34a;margin-right:4px;"></i> Completed</div>
+            <div class="summary-card-value" style="color: #16a34a;"><?= number_format($cnt_completed) ?></div>
         </a>
     </div>
 
     <!-- Purchase History Summary Cards -->
-    <div class="summary-grid" id="historySummaryCardsGrid" style="display: none; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+    <div class="summary-grid" id="historySummaryCardsGrid" style="display: none;">
         <div class="summary-card">
-            <div>
-                <div class="summary-card-label">Total Purchase Orders</div>
-                <div class="summary-card-value"><?= number_format($cnt_hist_total) ?></div>
-            </div>
-            <div class="summary-icon bg-total"><i class="fas fa-shopping-cart"></i></div>
+            <div class="summary-card-label"><i class="fas fa-shopping-cart" style="color:#1d4ed8;margin-right:4px;"></i> Total Purchase Orders</div>
+            <div class="summary-card-value"><?= number_format($cnt_hist_total) ?></div>
         </div>
         <div class="summary-card">
-            <div>
-                <div class="summary-card-label">Fuel Purchases</div>
-                <div class="summary-card-value" style="color: #1d4ed8;"><?= number_format($cnt_hist_fuel) ?></div>
-            </div>
-            <div class="summary-icon" style="background:#eff6ff; color:#1d4ed8;"><i class="fas fa-gas-pump"></i></div>
+            <div class="summary-card-label"><i class="fas fa-gas-pump" style="color:#1d4ed8;margin-right:4px;"></i> Fuel Purchases</div>
+            <div class="summary-card-value" style="color: #1d4ed8;"><?= number_format($cnt_hist_fuel) ?></div>
         </div>
         <div class="summary-card">
-            <div>
-                <div class="summary-card-label">Merchandise Purchases</div>
-                <div class="summary-card-value" style="color: #9333ea;"><?= number_format($cnt_hist_merch) ?></div>
-            </div>
-            <div class="summary-icon" style="background:#faf5ff; color:#9333ea;"><i class="fas fa-boxes"></i></div>
+            <div class="summary-card-label"><i class="fas fa-boxes" style="color:#9333ea;margin-right:4px;"></i> Merchandise Purchases</div>
+            <div class="summary-card-value" style="color: #9333ea;"><?= number_format($cnt_hist_merch) ?></div>
         </div>
         <div class="summary-card">
-            <div>
-                <div class="summary-card-label">Completed Purchases</div>
-                <div class="summary-card-value" style="color: #16a34a;"><?= number_format($cnt_hist_completed) ?></div>
-            </div>
-            <div class="summary-icon bg-completed"><i class="fas fa-check-circle"></i></div>
+            <div class="summary-card-label"><i class="fas fa-check-circle" style="color:#16a34a;margin-right:4px;"></i> Completed Purchases</div>
+            <div class="summary-card-value" style="color: #16a34a;"><?= number_format($cnt_hist_completed) ?></div>
         </div>
         <div class="summary-card">
-            <div>
-                <div class="summary-card-label">Cancelled Purchases</div>
-                <div class="summary-card-value" style="color: #dc2626;"><?= number_format($cnt_hist_cancelled) ?></div>
-            </div>
-            <div class="summary-icon" style="background:#fef2f2; color:#dc2626;"><i class="fas fa-times-circle"></i></div>
+            <div class="summary-card-label"><i class="fas fa-times-circle" style="color:#dc2626;margin-right:4px;"></i> Cancelled Purchases</div>
+            <div class="summary-card-value" style="color: #dc2626;"><?= number_format($cnt_hist_cancelled) ?></div>
         </div>
     </div>
 

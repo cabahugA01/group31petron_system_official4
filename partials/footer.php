@@ -727,11 +727,11 @@
         while (current && current !== root) {
             var prev = current.previousElementSibling;
             while (prev) {
-                if (prev.matches && prev.matches('.section-title,h1,h2,h3,h4')) {
+                if (prev.matches && prev.matches('.section-title,.rpt-section-heading,h1,h2,h3,h4')) {
                     var direct = reportPdfText(prev);
                     if (direct) return direct;
                 }
-                var nested = prev.querySelector ? prev.querySelector('.section-title,h1,h2,h3,h4') : null;
+                var nested = prev.querySelector ? prev.querySelector('.section-title,.rpt-section-heading,h1,h2,h3,h4') : null;
                 var nestedText = reportPdfText(nested);
                 if (nestedText) return nestedText;
                 prev = prev.previousElementSibling;
@@ -759,7 +759,7 @@
         });
 
         var rows = [];
-        var rowNodes = table.querySelectorAll('tbody tr');
+        var rowNodes = table.querySelectorAll('tbody tr, tfoot tr');
         if (!rowNodes.length) rowNodes = table.querySelectorAll('tr');
         Array.prototype.forEach.call(rowNodes, function(row, rowIndex) {
             if (!reportPdfRowExportable(row)) return;
@@ -767,10 +767,19 @@
             var cells = row.querySelectorAll('td,th');
             if (!cells.length) return;
             var data = [];
-            Array.prototype.forEach.call(cells, function(cell, idx) {
-                if (skip[idx]) return;
+            var colCursor = 0;
+            Array.prototype.forEach.call(cells, function(cell) {
+                var cSpan = parseInt(cell.getAttribute('colspan') || 1, 10);
                 var text = reportPdfText(cell);
-                if (text) data.push(text);
+                if (skip[colCursor]) {
+                    colCursor += cSpan;
+                    return;
+                }
+                data.push(text || '');
+                for (var s = 1; s < cSpan; s++) {
+                    data.push('');
+                }
+                colCursor += cSpan;
             });
             if (data.length) rows.push(data);
         });
@@ -841,14 +850,16 @@
             }
             return response.blob();
         }).then(function(blob) {
-            var url = URL.createObjectURL(blob);
+            var blobUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+            // Download PDF directly
             var link = document.createElement('a');
-            link.href = url;
+            link.href = blobUrl;
             link.download = reportPdfFilename(payload.filename);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+
+            setTimeout(function() { URL.revokeObjectURL(blobUrl); }, 120000);
         }).catch(function(error) {
             alert('Unable to export PDF. Please try again.\n' + (error && error.message ? error.message : ''));
         }).finally(function() {

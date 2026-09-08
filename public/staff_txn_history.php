@@ -5,39 +5,68 @@ require_login();
 
 /* Transaction History section — included by staff_transactions_hub.php */ ?>
 <style>
-.th-kpi-grid {
+/* Summary Cards (Matches Master Data Requests Exactly) */
+.th-kpi-grid, .txn-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-  margin: 16px 0 0;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 14px;
+  margin: 16px 0 18px;
+  width: 100%;
+  box-sizing: border-box;
 }
-.th-kpi {
+@media (max-width: 1200px) {
+  .th-kpi-grid, .txn-kpi-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 700px) {
+  .th-kpi-grid, .txn-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 480px) {
+  .th-kpi-grid, .txn-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.th-kpi, .txn-kpi-card {
   background: #fff;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 16px 18px;
   border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 6px rgba(0,0,0,.06);
-}
-.th-kpi-val {
-  font-size: 26px;
-  font-weight: 800;
-  line-height: 1.2;
-  margin-top: 4px;
-}
-.th-kpi-lbl {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: #475569;
-  text-transform: uppercase;
-  letter-spacing: .4px;
+  box-shadow: none;
+  transition: transform .15s, box-shadow .15s;
+  box-sizing: border-box;
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 86px;
+}
+.th-kpi:hover, .txn-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0,0,0,.09);
+}
+.th-kpi-val, .txn-kpi-val {
+  font-size: 26px !important;
+  font-weight: 800 !important;
+  line-height: 1.1 !important;
+  margin-top: 0 !important;
+}
+.th-kpi-lbl, .txn-kpi-lbl {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  color: #64748b !important;
+  text-transform: uppercase !important;
+  letter-spacing: .5px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  line-height: 1.3 !important;
+  margin-bottom: 6px !important;
+  white-space: nowrap !important;
 }
 .th-kpi-sub {
-  font-size: 12px;
-  color: #64748b;
-  margin-top: 3px;
+  display: none !important;
 }
 .th-filter-bar {
   background: #fff;
@@ -176,37 +205,31 @@ require_login();
   </div>
 </div>
 
-<!-- KPI Cards -->
-<div class="th-kpi-grid">
-  <div class="th-kpi">
-    <div class="th-kpi-lbl"><i class="fas fa-file-alt" style="color:#002F70;"></i> Total Transactions</div>
-    <div class="th-kpi-val" style="color:#002F70"><?= number_format($hist_kpi_total) ?></div>
-    <div class="th-kpi-sub">This period</div>
+<!-- KPI Cards (Matches Master Data Requests Design & Size) -->
+<div class="th-kpi-grid txn-kpi-grid">
+  <div class="th-kpi txn-kpi-card blue" title="This period">
+    <div class="th-kpi-lbl txn-kpi-lbl"><i class="fas fa-file-alt" style="color:#0284c7;margin-right:4px;"></i> Total Transactions</div>
+    <div class="th-kpi-val txn-kpi-val" style="color:#0284c7;"><?= number_format($hist_kpi_total) ?></div>
   </div>
-  <div class="th-kpi">
-    <div class="th-kpi-lbl"><i class="fas fa-shopping-cart" style="color:#15803d;"></i> Merchandise</div>
-    <div class="th-kpi-val" style="color:#15803d"><?= number_format($hist_kpi_merch) ?></div>
-    <div class="th-kpi-sub">Merchandise Only</div>
+  <div class="th-kpi txn-kpi-card green" title="Merchandise Only">
+    <div class="th-kpi-lbl txn-kpi-lbl"><i class="fas fa-shopping-cart" style="color:#16a34a;margin-right:4px;"></i> Merchandise</div>
+    <div class="th-kpi-val txn-kpi-val" style="color:#16a34a;"><?= number_format($hist_kpi_merch) ?></div>
   </div>
-  <div class="th-kpi">
-    <div class="th-kpi-lbl"><i class="fas fa-wrench" style="color:#b45309;"></i> Job Orders</div>
-    <div class="th-kpi-val" style="color:#b45309"><?= number_format($hist_kpi_jo) ?></div>
-    <div class="th-kpi-sub">JO + Combined</div>
+  <div class="th-kpi txn-kpi-card orange" title="JO + Combined">
+    <div class="th-kpi-lbl txn-kpi-lbl"><i class="fas fa-wrench" style="color:#d97706;margin-right:4px;"></i> Job Orders</div>
+    <div class="th-kpi-val txn-kpi-val" style="color:#d97706;"><?= number_format($hist_kpi_jo) ?></div>
   </div>
-  <div class="th-kpi">
-    <div class="th-kpi-lbl"><i class="fas fa-coins" style="color:#7c3aed;"></i> Total Sales</div>
-    <div class="th-kpi-val" style="color:#7c3aed">&#8369;<?= number_format($hist_kpi_sales, 2) ?></div>
-    <div class="th-kpi-sub">Gross encoded</div>
+  <div class="th-kpi txn-kpi-card purple" title="Gross encoded">
+    <div class="th-kpi-lbl txn-kpi-lbl"><i class="fas fa-coins" style="color:#7c3aed;margin-right:4px;"></i> Total Sales</div>
+    <div class="th-kpi-val txn-kpi-val" style="color:#7c3aed;">&#8369;<?= number_format($hist_kpi_sales, 2) ?></div>
   </div>
-  <div class="th-kpi">
-    <div class="th-kpi-lbl"><i class="fas fa-credit-card" style="color:#16a34a;"></i> Paid</div>
-    <div class="th-kpi-val" style="color:#16a34a"><?= number_format($hist_kpi_paid ?? 0) ?></div>
-    <div class="th-kpi-sub">Fully paid</div>
+  <div class="th-kpi txn-kpi-card teal" title="Fully paid">
+    <div class="th-kpi-lbl txn-kpi-lbl"><i class="fas fa-credit-card" style="color:#0d9488;margin-right:4px;"></i> Paid</div>
+    <div class="th-kpi-val txn-kpi-val" style="color:#0d9488;"><?= number_format($hist_kpi_paid ?? 0) ?></div>
   </div>
-  <div class="th-kpi">
-    <div class="th-kpi-lbl"><i class="fas fa-hourglass-half" style="color:#ea580c;"></i> Unpaid / Partial</div>
-    <div class="th-kpi-val" style="color:#ea580c"><?= number_format($hist_kpi_unpaid ?? 0) ?></div>
-    <div class="th-kpi-sub">Pending / Credit</div>
+  <div class="th-kpi txn-kpi-card danger" title="Pending / Credit">
+    <div class="th-kpi-lbl txn-kpi-lbl"><i class="fas fa-hourglass-half" style="color:#dc2626;margin-right:4px;"></i> Unpaid / Partial</div>
+    <div class="th-kpi-val txn-kpi-val" style="color:#dc2626;"><?= number_format($hist_kpi_unpaid ?? 0) ?></div>
   </div>
 </div>
 

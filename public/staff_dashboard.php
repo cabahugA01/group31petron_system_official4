@@ -925,24 +925,35 @@ require_once __DIR__ . '/../partials/header.php';
         box-sizing: border-box;
     }
 
-    /* Header (Manager Style Parity Spacing) */
+    /* Header (Transaction Module Aligned Design) */
     .stf-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         flex-wrap: wrap;
         gap: 12px;
-        margin-bottom: 12px;
+        margin-bottom: 16px;
     }
     .stf-header-left h1 {
-        font-family: inherit !important;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
         font-size: 24px !important;
-        font-weight: normal !important;
-        color: var(--petron-blue) !important;
+        font-weight: 700 !important;
+        color: #002F70 !important;
         margin: 0 !important;
         text-transform: uppercase !important;
-        letter-spacing: -0.5px !important;
+        letter-spacing: 0.5px !important;
         line-height: 1.2 !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+    }
+    .stf-header-left .sub {
+        font-size: 13px !important;
+        color: #64748b !important;
+        margin-top: 4px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+        letter-spacing: .3px !important;
     }
 .stf-filter-bar {
     display: flex;
@@ -1317,7 +1328,8 @@ require_once __DIR__ . '/../partials/header.php';
     <!-- Header & Date Range Filter -->
     <div class="stf-header">
         <div class="stf-header-left">
-            <h1>WELCOME, <?= stf_h($display_name) ?>!</h1>
+            <h1>Staff Dashboard</h1>
+            <div class="sub">Welcome, <?= stf_h($display_name) ?>!</div>
         </div>
         <form method="GET" action="staff_dashboard.php" class="stf-filter-bar">
             <div class="stf-filter-group">

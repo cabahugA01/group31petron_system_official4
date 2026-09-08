@@ -591,7 +591,6 @@ include __DIR__ . '/../partials/header.php';
     <div class="notif-header">
         <div class="notif-title-area">
             <h1><i class="fas fa-bell"></i> Notifications Hub</h1>
-            <p>View, filter, and manage your operational system alerts and activity records.</p>
         </div>
         <div>
             <form method="POST" style="display:inline;">

@@ -296,8 +296,10 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 
 /* Petron clean headers */
 .int-head { display: flex !important; align-items: center !important; justify-content: space-between !important; flex-wrap: wrap !important; gap: 15px !important; margin-top: 0 !important; margin-bottom: 25px !important; padding: 0 !important; border: none !important; width: 100% !important; }
-.int-head h1 { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important; font-size: 26px !important; font-weight: 800 !important; color: #002f70 !important; margin: 0 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; display: flex !important; align-items: center !important; gap: 10px !important; line-height: 1.2 !important; }
-.int-head .sub { font-size: 14px; color: #64748b; margin-top: 4px; line-height: 1.4; }
+.int-head > div:first-child { flex: 1; min-width: 280px; max-width: 65%; }
+.int-head > div:last-child { flex-shrink: 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.int-head h1 { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important; font-size: 24px !important; font-weight: 700 !important; color: #002f70 !important; margin: 0 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; display: flex !important; align-items: center !important; gap: 10px !important; line-height: 1.2 !important; }
+.int-head .sub { font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.4; }
 
 /* Modal close button overrides to prevent global button background override */
 .modal-header button {
@@ -329,17 +331,70 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .ato-btn-reset { color: #475569 !important; border-color: #cbd5e1 !important; }
 .ato-btn-reset:hover { background: #f1f5f9 !important; }
 
-/* Summary Cards */
-.afto-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
-.afto-card { background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 18px 22px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
-.afto-card-info { display: flex; flex-direction: column; }
-.afto-card-lbl { font-size: 13px !important; font-weight: 800 !important; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
-.afto-card-val { font-size: 26px !important; font-weight: 900 !important; color: #1e293b; }
-.afto-card-icon { font-size: 28px !important; opacity: 0.85; }
-.afto-card.blue .afto-card-icon { color: #0ea5e9; }
-.afto-card.green .afto-card-icon { color: #10b981; }
-.afto-card.yellow .afto-card-icon { color: #f59e0b; }
-.afto-card.purple .afto-card-icon { color: #8b5cf6; }
+/* Summary Cards (Matches Master Data Requests Exactly) */
+.txn-kpi-grid, .afto-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+    width: 100%;
+    box-sizing: border-box;
+}
+@media (max-width: 1100px) {
+    .txn-kpi-grid, .afto-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+@media (max-width: 480px) {
+    .txn-kpi-grid, .afto-cards {
+        grid-template-columns: 1fr;
+    }
+}
+.txn-kpi-card, .afto-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: none;
+    transition: transform .15s, box-shadow .15s;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 86px;
+}
+.txn-kpi-card:hover, .afto-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,.09);
+}
+.txn-kpi-lbl, .afto-card-lbl {
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .5px !important;
+    color: #64748b !important;
+    margin-bottom: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    line-height: 1.3 !important;
+    white-space: nowrap !important;
+}
+.txn-kpi-val, .afto-card-val {
+    font-size: 26px !important;
+    font-weight: 800 !important;
+    color: #002F70;
+    line-height: 1.1;
+}
+.txn-kpi-card.blue .txn-kpi-val,   .afto-card.blue .afto-card-val   { color: #0284c7 !important; }
+.txn-kpi-card.green .txn-kpi-val,  .afto-card.green .afto-card-val  { color: #16a34a !important; }
+.txn-kpi-card.yellow .txn-kpi-val, .afto-card.yellow .afto-card-val { color: #d97706 !important; }
+.txn-kpi-card.purple .txn-kpi-val, .afto-card.purple .afto-card-val { color: #7c3aed !important; }
+
+.txn-kpi-card.blue .txn-kpi-lbl i,   .afto-card.blue .afto-card-lbl i   { color: #0284c7 !important; }
+.txn-kpi-card.green .txn-kpi-lbl i,  .afto-card.green .afto-card-lbl i  { color: #16a34a !important; }
+.txn-kpi-card.yellow .txn-kpi-lbl i, .afto-card.yellow .afto-card-lbl i { color: #d97706 !important; }
+.txn-kpi-card.purple .txn-kpi-lbl i, .afto-card.purple .afto-card-lbl i { color: #7c3aed !important; }
 
 /* Filters */
 .afto-filter { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; background: #fff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; margin-bottom: 20px; box-sizing: border-box; }
@@ -394,27 +449,43 @@ table.afto-tbl.report-table.no-min-width.print-table {
     overflow: hidden !important; 
     box-sizing: border-box !important;
 }
+.afto-tbl thead th:last-child,
+.afto-tbl tbody td:last-child {
+    text-align: center !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    padding: 8px !important;
+}
 
 .row-btn { 
-    display: inline-flex; 
-    align-items: center; 
-    justify-content: center; 
-    gap: 4px; 
-    padding: 0 8px; 
-    border-radius: 5px; 
+    display: inline-flex !important; 
+    align-items: center !important; 
+    justify-content: center !important; 
+    gap: 6px !important; 
+    padding: 0 14px !important; 
+    border-radius: 6px !important; 
     font-size: 12.5px !important; 
     font-weight: 700 !important; 
-    border: 1.5px solid #002F70; 
-    cursor: pointer; 
+    border: 1.5px solid #002F70 !important; 
+    cursor: pointer !important; 
     height: 30px !important; 
-    background: #eff6ff !important; 
+    background: #ffffff !important; 
     color: #002F70 !important; 
-    text-decoration: none; 
-    width: 100% !important; 
-    max-width: 100% !important; 
+    text-decoration: none !important; 
+    white-space: nowrap !important;
+    width: auto !important; 
+    min-width: 72px !important; 
     box-sizing: border-box !important; 
+    transition: all 0.15s ease !important;
 }
-.row-btn:hover { background: #002F70 !important; color: #ffffff !important; }
+.row-btn:hover { 
+    background: #002F70 !important; 
+    color: #ffffff !important; 
+}
+.row-btn i {
+    font-size: 12px !important;
+    line-height: 1 !important;
+}
 
 /* Modal */
 .modal { display: none; position: fixed; inset: 0; z-index: 9999; background: rgba(15,23,42,0.55); backdrop-filter: blur(4px); align-items: center; justify-content: center; overflow-x: hidden !important; }
@@ -442,39 +513,27 @@ table.afto-tbl.report-table.no-min-width.print-table {
     <!-- Page Header -->
     <div class="int-head">
         <div>
-            <h1><i class="fas fa-sliders-h"></i> Fuel Transaction Adjustment History</h1>
+            <h1><i class="fas fa-check-double"></i> Fuel Transaction Validation</h1>
         </div>
     </div>
 
-    <!-- Summary Cards -->
-    <div class="afto-cards">
-        <div class="afto-card blue">
-            <div class="afto-card-info">
-                <span class="afto-card-lbl">Total Adjustments</span>
-                <span class="afto-card-val" id="fa_kpi_total"><?= number_format($total_count) ?></span>
-            </div>
-            <div class="afto-card-icon"><i class="fas fa-database"></i></div>
+    <!-- Summary Cards (Matches Master Data Requests Exactly) -->
+    <div class="txn-kpi-grid">
+        <div class="txn-kpi-card blue">
+            <div class="txn-kpi-lbl"><i class="fas fa-database" style="color:#0284c7;margin-right:4px;"></i> Total Adjustments</div>
+            <div class="txn-kpi-val" id="fa_kpi_total"><?= number_format($total_count) ?></div>
         </div>
-        <div class="afto-card green">
-            <div class="afto-card-info">
-                <span class="afto-card-lbl">Today's Adjustments</span>
-                <span class="afto-card-val" id="fa_kpi_today"><?= number_format($today_count) ?></span>
-            </div>
-            <div class="afto-card-icon"><i class="fas fa-calendar-day"></i></div>
+        <div class="txn-kpi-card green">
+            <div class="txn-kpi-lbl"><i class="fas fa-calendar-day" style="color:#16a34a;margin-right:4px;"></i> Today's Adjustments</div>
+            <div class="txn-kpi-val" id="fa_kpi_today"><?= number_format($today_count) ?></div>
         </div>
-        <div class="afto-card yellow">
-            <div class="afto-card-info">
-                <span class="afto-card-lbl">This Month's Adjustments</span>
-                <span class="afto-card-val" id="fa_kpi_month"><?= number_format($month_count) ?></span>
-            </div>
-            <div class="afto-card-icon"><i class="fas fa-calendar-alt"></i></div>
+        <div class="txn-kpi-card yellow">
+            <div class="txn-kpi-lbl"><i class="fas fa-calendar-alt" style="color:#d97706;margin-right:4px;"></i> This Month's Adjustments</div>
+            <div class="txn-kpi-val" id="fa_kpi_month"><?= number_format($month_count) ?></div>
         </div>
-        <div class="afto-card purple">
-            <div class="afto-card-info">
-                <span class="afto-card-lbl">Last Adjustment</span>
-                <span class="afto-card-val" id="fa_kpi_last" style="font-size:15px; font-weight:800;"><?= $last_adj_str ?></span>
-            </div>
-            <div class="afto-card-icon"><i class="fas fa-clock"></i></div>
+        <div class="txn-kpi-card purple">
+            <div class="txn-kpi-lbl"><i class="fas fa-clock" style="color:#7c3aed;margin-right:4px;"></i> Last Adjustment</div>
+            <div class="txn-kpi-val" id="fa_kpi_last" style="font-size:16px !important; font-weight:800; line-height:1.25;"><?= htmlspecialchars($last_adj_str) ?></div>
         </div>
     </div>
 
@@ -566,18 +625,18 @@ table.afto-tbl.report-table.no-min-width.print-table {
             <table class="afto-tbl report-table no-min-width print-table">
                 <?php if ($active_tab === 'transactions'): ?>
                     <colgroup>
-                        <col style="width: 7.0%;">
-                        <col style="width: 9.5%;">
-                        <col style="width: 8.5%;">
-                        <col style="width: 7.5%;">
-                        <col style="width: 7.0%;">
-                        <col style="width: 8.5%;">
-                        <col style="width: 8.0%;">
-                        <col style="width: 8.0%;">
-                        <col style="width: 13.0%;">
-                        <col style="width: 9.0%;">
-                        <col style="width: 8.0%;">
                         <col style="width: 6.0%;">
+                        <col style="width: 8.5%;">
+                        <col style="width: 8.5%;">
+                        <col style="width: 7.0%;">
+                        <col style="width: 7.5%;">
+                        <col style="width: 7.5%;">
+                        <col style="width: 7.5%;">
+                        <col style="width: 7.5%;">
+                        <col style="width: 12.0%;">
+                        <col style="width: 8.5%;">
+                        <col style="width: 10.5%;">
+                        <col style="width: 9.0%;">
                     </colgroup>
                     <thead>
                         <tr>
@@ -651,17 +710,17 @@ table.afto-tbl.report-table.no-min-width.print-table {
                     </tbody>
                 <?php else: ?>
                     <colgroup>
-                        <col style="width: 7.0%;">
-                        <col style="width: 9.5%;">
-                        <col style="width: 13.0%;">
-                        <col style="width: 7.5%;">
-                        <col style="width: 9.0%;">
-                        <col style="width: 9.0%;">
-                        <col style="width: 8.5%;">
-                        <col style="width: 13.0%;">
-                        <col style="width: 9.0%;">
-                        <col style="width: 8.5%;">
                         <col style="width: 6.0%;">
+                        <col style="width: 9.0%;">
+                        <col style="width: 12.0%;">
+                        <col style="width: 7.5%;">
+                        <col style="width: 8.5%;">
+                        <col style="width: 8.5%;">
+                        <col style="width: 8.5%;">
+                        <col style="width: 12.0%;">
+                        <col style="width: 8.5%;">
+                        <col style="width: 10.5%;">
+                        <col style="width: 9.0%;">
                     </colgroup>
                     <thead>
                         <tr>

@@ -958,12 +958,12 @@ if (typeof Chart === 'undefined') {
         --bg-light: #F8FAFC;
     }
 
-    /* Header & Filter Bar (Parity with Staff Dashboard) */
+    /* Header (Staff Dashboard & Transaction Aligned Design) */
     .mgr-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 12px;
+        margin-bottom: 16px;
         flex-wrap: wrap;
         gap: 12px;
         width: 100%;
@@ -971,14 +971,27 @@ if (typeof Chart === 'undefined') {
         box-sizing: border-box;
     }
     .mgr-header-left h1 {
-        font-family: inherit !important;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
         font-size: 24px !important;
-        font-weight: normal !important;
-        color: var(--petron-blue) !important;
+        font-weight: 700 !important;
+        color: #002F70 !important;
         margin: 0 !important;
         text-transform: uppercase !important;
-        letter-spacing: -0.5px !important;
+        letter-spacing: 0.5px !important;
         line-height: 1.2 !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+    }
+    .mgr-header-left .sub,
+    .mgr-header-left p {
+        font-size: 13px !important;
+        color: #64748b !important;
+        margin-top: 4px !important;
+        margin-bottom: 0 !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+        letter-spacing: .3px !important;
     }
     .mgr-filter-bar {
         display: flex;
@@ -1491,7 +1504,8 @@ if (typeof Chart === 'undefined') {
     <!-- Header & Date Range Filter -->
     <div class="mgr-header">
         <div class="mgr-header-left">
-            <h1>WELCOME, <?= mgr_h($display_name) ?>!</h1>
+            <h1>Manager Dashboard</h1>
+            <div class="sub">Welcome, <?= mgr_h($display_name) ?>!</div>
         </div>
         <form method="GET" action="manager_dashboard.php" class="mgr-filter-bar">
             <div class="mgr-filter-group">

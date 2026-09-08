@@ -639,19 +639,75 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 
 /* Petron style headers */
 .int-head { display: flex !important; align-items: center !important; justify-content: space-between !important; flex-wrap: wrap !important; gap: 15px !important; margin-top: 0 !important; margin-bottom: 25px !important; padding: 0 !important; border: none !important; width: 100% !important; }
-.int-head h1 { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important; font-size: 26px !important; font-weight: 800 !important; color: #002f70 !important; margin: 0 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; display: flex !important; align-items: center !important; gap: 10px !important; line-height: 1.2 !important; }
-.int-head .sub { font-size: 14px; color: #64748b; margin-top: 4px; line-height: 1.4; }
+.int-head > div:first-child { flex: 1; min-width: 280px; max-width: 65%; }
+.int-head > div:last-child { flex-shrink: 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.int-head h1 { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important; font-size: 24px !important; font-weight: 700 !important; color: #002f70 !important; margin: 0 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; display: flex !important; align-items: center !important; gap: 10px !important; line-height: 1.2 !important; }
+.int-head .sub { font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.4; }
 
-/* Summary Cards */
-.mcr-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
-.mcr-card { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
-.mcr-card-info { display: flex; flex-direction: column; }
-.mcr-card-lbl { font-size: 13px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
-.mcr-card-val { font-size: 26px; font-weight: 900; color: #1e293b; }
-.mcr-card-icon { font-size: 28px; opacity: 0.85; }
-.mcr-card.blue .mcr-card-icon { color: #0ea5e9; }
-.mcr-card.green .mcr-card-icon { color: #10b981; }
-.mcr-card.amber .mcr-card-icon { color: #f59e0b; }
+/* Summary Cards (Matches Master Data Requests Exactly) */
+.txn-kpi-grid, .mcr-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+    width: 100%;
+    box-sizing: border-box;
+}
+@media (max-width: 900px) {
+    .txn-kpi-grid, .mcr-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+@media (max-width: 480px) {
+    .txn-kpi-grid, .mcr-cards {
+        grid-template-columns: 1fr;
+    }
+}
+.txn-kpi-card, .mcr-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: none;
+    transition: transform .15s, box-shadow .15s;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 86px;
+}
+.txn-kpi-card:hover, .mcr-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,.09);
+}
+.txn-kpi-lbl, .mcr-card-lbl {
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .5px !important;
+    color: #64748b !important;
+    margin-bottom: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    line-height: 1.3 !important;
+    white-space: nowrap !important;
+}
+.txn-kpi-val, .mcr-card-val {
+    font-size: 26px !important;
+    font-weight: 800 !important;
+    color: #002F70;
+    line-height: 1.1;
+}
+.txn-kpi-card.blue .txn-kpi-val,   .mcr-card.blue .mcr-card-val   { color: #0284c7 !important; }
+.txn-kpi-card.green .txn-kpi-val,  .mcr-card.green .mcr-card-val  { color: #16a34a !important; }
+.txn-kpi-card.yellow .txn-kpi-val, .txn-kpi-card.amber .txn-kpi-val,
+.mcr-card.yellow .mcr-card-val,    .mcr-card.amber .mcr-card-val   { color: #d97706 !important; }
+
+.txn-kpi-card.blue .txn-kpi-lbl i,   .mcr-card.blue .mcr-card-lbl i   { color: #0284c7 !important; }
+.txn-kpi-card.green .txn-kpi-lbl i,  .mcr-card.green .mcr-card-lbl i  { color: #16a34a !important; }
+.txn-kpi-card.yellow .txn-kpi-lbl i, .txn-kpi-card.amber .txn-kpi-lbl i,
+.mcr-card.yellow .mcr-card-lbl i,    .mcr-card.amber .mcr-card-lbl i   { color: #d97706 !important; }
 
 /* Filter Bar */
 .mcr-filter { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; margin-bottom: 20px; }
@@ -739,32 +795,23 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
     <!-- Page Header -->
     <div class="int-head">
         <div>
-            <h1><i class="fas fa-balance-scale"></i> Calibration Review</h1>
+            <h1><i class="fas fa-check-double"></i> Fuel Transaction Validation</h1>
         </div>
     </div>
 
-    <!-- Summary Cards -->
-    <div class="mcr-cards">
-        <div class="mcr-card blue">
-            <div class="mcr-card-info">
-                <span class="mcr-card-lbl">Total Validated Liters</span>
-                <span class="mcr-card-val"><?= number_format($total_liters_validated, 2) ?> L</span>
-            </div>
-            <div class="mcr-card-icon"><i class="fas fa-gas-pump"></i></div>
+    <!-- Summary Cards (Matches Master Data Requests Design & Size) -->
+    <div class="txn-kpi-grid">
+        <div class="txn-kpi-card blue">
+            <div class="txn-kpi-lbl"><i class="fas fa-gas-pump" style="color:#0284c7;margin-right:4px;"></i> Total Validated Liters</div>
+            <div class="txn-kpi-val" id="cr_kpi_validated"><?= number_format($total_liters_validated, 2) ?> L</div>
         </div>
-        <div class="mcr-card green">
-            <div class="mcr-card-info">
-                <span class="mcr-card-lbl">Total Calibration Liters</span>
-                <span class="mcr-card-val"><?= number_format($total_calibration_liters, 2) ?> L</span>
-            </div>
-            <div class="mcr-card-icon"><i class="fas fa-tint"></i></div>
+        <div class="txn-kpi-card green">
+            <div class="txn-kpi-lbl"><i class="fas fa-tint" style="color:#16a34a;margin-right:4px;"></i> Total Calibration Liters</div>
+            <div class="txn-kpi-val" id="cr_kpi_calibration"><?= number_format($total_calibration_liters, 2) ?> L</div>
         </div>
-        <div class="mcr-card amber">
-            <div class="mcr-card-info">
-                <span class="mcr-card-lbl">Pending Review Rows</span>
-                <span class="mcr-card-val"><?= number_format($pending_reviews_count) ?></span>
-            </div>
-            <div class="mcr-card-icon"><i class="fas fa-clock"></i></div>
+        <div class="txn-kpi-card yellow">
+            <div class="txn-kpi-lbl"><i class="fas fa-clock" style="color:#d97706;margin-right:4px;"></i> Pending Review Rows</div>
+            <div class="txn-kpi-val" id="cr_kpi_pending"><?= number_format($pending_reviews_count) ?></div>
         </div>
     </div>
 

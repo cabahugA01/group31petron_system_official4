@@ -239,7 +239,9 @@ class SimpleReportPdf {
             $contentObj = $pageObj + 1;
             $kids[] = "{$pageObj} 0 R";
             $objects[$pageObj] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {$this->width} {$this->height}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents {$contentObj} 0 R >>";
-            $objects[$contentObj] = "<< /Length " . strlen($stream) . " >>\nstream\n{$stream}endstream";
+            $cleanStream = rtrim($stream, "\r\n");
+            $streamLen = strlen($cleanStream);
+            $objects[$contentObj] = "<< /Length {$streamLen} >>\nstream\n{$cleanStream}\nendstream";
         }
 
         $objects[2] = '<< /Type /Pages /Kids [' . implode(' ', $kids) . '] /Count ' . count($kids) . ' >>';

@@ -611,15 +611,91 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
 body, html { overflow-x:hidden !important; }
 
 /* Table */
-.aif-wrap { width:100%; overflow-x: hidden; -webkit-overflow-scrolling:touch; }
-.aif-tbl { width:100%; border-collapse:collapse; font-size:14.5px; }
-.aif-tbl thead tr { background:#002F70; }
-.aif-tbl thead th { padding:10px 8px; text-align:left; font-size:14px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.3px; border:none; }
-.aif-tbl tbody tr { border-bottom:1px solid #f1f5f9; transition:background .1s; }
-.aif-tbl tbody tr:hover { background:#f8fafc; }
-.aif-tbl tbody td { padding:10px 8px; color:#1e293b; vertical-align:middle; font-size:14.5px; }
-.aif-tbl tbody td.bold { font-weight:700; color:#002F70; }
-.status-pill { display:inline-block; padding:3px 10px; border-radius:20px; font-size:14px; font-weight:700; white-space:nowrap; }
+.table-wrap, .aif-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box !important;
+}
+#adminFuelInvTable, table.aif-tbl, table.table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: auto !important;
+    border-collapse: collapse !important;
+    font-size: 13.5px;
+}
+#adminFuelInvTable thead tr, .aif-tbl thead tr {
+    background: #002F6C !important;
+}
+#adminFuelInvTable thead th, .aif-tbl thead th {
+    padding: 10px 8px !important;
+    text-align: left;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    color: #fff !important;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+    border: none !important;
+    white-space: nowrap !important;
+}
+#adminFuelInvTable thead th:last-child {
+    text-align: center !important;
+    min-width: 135px !important;
+    width: 135px !important;
+    position: sticky !important;
+    right: 0 !important;
+    background: #002F6C !important;
+    z-index: 5 !important;
+    box-shadow: -2px 0 5px rgba(0,0,0,0.12) !important;
+}
+#adminFuelInvTable tbody tr, .aif-tbl tbody tr {
+    border-bottom: 1px solid #e9ecef !important;
+    transition: background .1s;
+}
+#adminFuelInvTable tbody tr:hover, .aif-tbl tbody tr:hover {
+    background: #f8fafc;
+}
+#adminFuelInvTable tbody td, .aif-tbl tbody td {
+    padding: 10px 8px !important;
+    color: #212529;
+    vertical-align: middle;
+    font-size: 13.5px !important;
+}
+#adminFuelInvTable tbody td.bold, .aif-tbl tbody td.bold {
+    font-weight: 700;
+    color: #002F70;
+}
+#adminFuelInvTable tbody td:last-child {
+    text-align: center !important;
+    min-width: 135px !important;
+    width: 135px !important;
+    position: sticky !important;
+    right: 0 !important;
+    background: #ffffff !important;
+    z-index: 4 !important;
+    box-shadow: -2px 0 5px rgba(0,0,0,0.06) !important;
+}
+#adminFuelInvTable tbody tr:hover td:last-child {
+    background: #f8fafc !important;
+}
+.inv-stock-badge {
+    display: inline-block !important;
+    padding: 3px 8px !important;
+    border-radius: 4px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    white-space: nowrap !important;
+}
+.status-pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+}
 
 /* Buttons */
 .flt-btn {
@@ -639,6 +715,10 @@ body, html { overflow-x:hidden !important; }
     background: white !important;
     border: 1px solid transparent;
 }
+.flt-btn-search { color: #002F70 !important; border-color: #002F70 !important; background: #ffffff !important; }
+.flt-btn-search:hover { background: #002F70 !important; color: #ffffff !important; }
+.flt-btn-reset  { color: #6b7280 !important; border-color: #6b7280 !important; background: #ffffff !important; }
+.flt-btn-reset:hover  { background: #6b7280 !important; color: #ffffff !important; }
 .flt-btn-excel { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
 .flt-btn-excel:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 .flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
@@ -784,94 +864,126 @@ body, html { overflow-x:hidden !important; }
 
 <!-- ══ TAB 1: FUEL INVENTORY OVERVIEW ══ -->
 <?php if ($active_tab === 'overview'): ?>
-<!-- Search & Filters -->
-<div class="inv-filter-bar" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:20px; background:#fff; padding:12px 16px; border:1px solid #e2e8f0; border-radius:8px;">
-  <div style="position:relative;">
-    <i class="fas fa-search" style="position:absolute; left:10px; top:11px; color:#94a3b8; font-size:14.5px;"></i>
-    <input type="text" id="sq" placeholder="Search UGT No. / Fuel Type..." oninput="filterFuelTable()" style="padding:7px 10px 7px 28px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; width:220px; outline:none;">
-  </div>
-  <select id="cf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; color:#334155; outline:none; background:#fff;">
-    <option value="">All Fuel Types</option>
-    <option value="diesel">Diesel</option>
-    <option value="kerosene">Kerosene</option>
-    <option value="turbo diesel">Turbo Diesel</option>
-    <option value="xcs">XCS</option>
-    <option value="xtra advance">Xtra Advance</option>
-  </select>
-  <select id="sf" onchange="filterFuelTable()" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; color:#334155; outline:none; background:#fff;">
-    <option value="">All Statuses</option>
-    <option value="normal">Normal</option>
-    <option value="low">Low</option>
-    
-    <option value="out of stock">Out of Stock</option>
-  </select>
-  <button type="button" class="flt-btn flt-btn-csv" onclick="filterFuelTable()"><i class="fas fa-search"></i> Filter</button>
-  <button type="button" class="flt-btn btn-cancel" onclick="resetAdminFuelFilters()"><i class="fas fa-rotate-left"></i> Reset</button>
-</div>
+<!-- Fuel Catalog Card - Aligned with Manager UI/UX -->
+<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #e9ecef;margin-bottom:20px;">
+    <div style="padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:1rem;font-weight:700;color:#002F70;display:flex;align-items:center;gap:8px;">
+            <i class="fas fa-gas-pump"></i> Fuel Tanks Catalog
+        </div>
+        <div class="inv-filter-bar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <input type="text" id="fuelSearch" placeholder="Search Fuel Type / UGT..." oninput="filterFuelTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;width:200px;">
+            
+            <select id="fuelTypeFilter" onchange="filterFuelTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;">
+                <option value="">All Fuel Types</option>
+                <option value="diesel">Diesel</option>
+                <option value="kerosene">Kerosene</option>
+                <option value="turbo diesel">Turbo Diesel</option>
+                <option value="xcs plus">XCS Plus</option>
+                <option value="xtra unl">XTRA UNL</option>
+            </select>
 
-<div style="background:#fff; border:1px solid #e2e8f0; border-radius:11px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.05); margin-bottom:20px;">
-  <div class="aif-wrap">
-    <table class="aif-tbl" id="adminFuelInvTable">
-      <thead>
-        <tr>
-          <th>UGT No.</th>
-          <th>Fuel Type</th>
-          <th style="text-align:right;">Capacity</th>
-          <th style="text-align:right;">Current Volume</th>
-          <th style="text-align:right;">Available Space</th>
-          <th style="text-align:right;">Reorder Level</th>
-          <th style="text-align:right;">Critical Level</th>
-          <th style="text-align:center;">Status</th>
-          <th>Last Updated</th>
-          <th style="text-align:center;">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-      <?php if (empty($rows)): ?>
-        <tr><td colspan="10" style="text-align:center; padding:32px; color:#6c757d;">No fuel inventory data available.</td></tr>
-      <?php else: ?>
-        <?php foreach ($rows as $r):
-            $ts_str  = ($r['timestamp'] && strtotime($r['timestamp']) > 0) ? date('M d, Y h:i A', strtotime($r['timestamp'])) : '&mdash;';
-            $ugt_no = 'UGT-' . str_pad($r['tanker_num'], 2, '0', STR_PAD_LEFT);
-            $rem_cap = max(0, $r['capacity'] - $r['current_level']);
-            $r_json = htmlspecialchars(json_encode(array_merge($r, ['ugt_no' => $ugt_no, 'available_space' => $rem_cap])), ENT_QUOTES);
-        ?>
-        <tr class="fuel-row"
-            data-tank-num="<?= htmlspecialchars(strtolower($r['tanker_num'])) ?>"
-            data-ugt-no="<?= htmlspecialchars(strtolower($ugt_no)) ?>"
-            data-fuel-type="<?= htmlspecialchars(strtolower(get_canonical_fuel_name($r['fuel_type']))) ?>"
-            data-status="<?= htmlspecialchars(strtolower($r['status'])) ?>">
-          <td><code style="font-weight:700;color:#002F70;font-size:14.5px;"><?= htmlspecialchars($ugt_no) ?></code></td>
-          <td style="font-weight:700;color:#0f172a;"><?= htmlspecialchars(get_canonical_fuel_name($r['fuel_type'])) ?></td>
-          <td style="text-align:right; font-weight:600; color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
-          <td style="text-align:right; font-weight:800; color:#002F70;"><?= number_format($r['current_level'], 2) ?> L</td>
-          <td style="text-align:right; font-weight:600; color:#16a34a;"><?= number_format($rem_cap, 2) ?> L</td>
-          <td style="text-align:right; font-weight:600; color:#eab308;"><?= number_format($r['reorder_level'], 0) ?> L</td>
-          <td style="text-align:right; font-weight:600; color:#dc2626;"><?= number_format($r['critical_level'], 0) ?> L</td>
-          <td style="text-align:center;"><span class="status-pill" style="background:<?= $r['status_color'] ?>18; color:<?= $r['status_color'] ?>; border:1px solid <?= $r['status_color'] ?>40;"><?= htmlspecialchars($r['status']) ?></span></td>
-          <td style="color:#64748b; font-size:14px;"><?= $ts_str ?></td>
-          <td style="text-align:center;">
-            <button type="button" class="int-btn-outline" 
-                    data-fuel="<?= $r_json ?>"
-                    data-ugt="<?= htmlspecialchars($ugt_no) ?>"
-                    data-fuel-type="<?= htmlspecialchars(get_canonical_fuel_name($r['fuel_type'])) ?>"
-                    data-capacity="<?= (float)$r['capacity'] ?>"
-                    data-current-level="<?= (float)$r['current_level'] ?>"
-                    data-available-space="<?= (float)$rem_cap ?>"
-                    data-reorder="<?= (float)$r['reorder_level'] ?>"
-                    data-critical="<?= (float)$r['critical_level'] ?>"
-                    data-status="<?= htmlspecialchars($r['status']) ?>"
-                    onclick="event.stopPropagation(); viewTankDetailsFromBtn(this)">
-              <i class="fas fa-eye"></i> View
-            </button>
-          </td>
-        </tr>
-        <?php endforeach; ?>
-      <?php endif; ?>
-      </tbody>
-    </table>
-  </div>
-  <div id="adminFuelInvPagination" style="padding:8px 16px;"></div>
+            <select id="fuelStatusFilter" onchange="filterFuelTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;">
+                <option value="">All Statuses</option>
+                <option value="normal">Normal</option>
+                <option value="low">Low</option>
+                <option value="out of stock">Out of Stock</option>
+            </select>
+            <button type="button" class="flt-btn flt-btn-search" onclick="filterFuelTable()"><i class="fas fa-search"></i> Filter</button>
+            <button type="button" class="flt-btn flt-btn-reset" onclick="resetFuelFilters()"><i class="fas fa-rotate-left"></i> Reset</button>
+        </div>
+    </div>
+
+    <div class="table-wrap aif-wrap" style="width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+        <table class="table aif-tbl" id="adminFuelInvTable">
+            <colgroup>
+                <col style="width: 8%; min-width: 75px;">
+                <col style="width: 12%; min-width: 95px;">
+                <col style="width: 13%; min-width: 110px;">
+                <col style="width: 9%; min-width: 80px;">
+                <col style="width: 11%; min-width: 95px;">
+                <col style="width: 10%; min-width: 90px;">
+                <col style="width: 10%; min-width: 85px;">
+                <col style="width: 9%; min-width: 85px;">
+                <col style="width: 10%; min-width: 110px;">
+                <col style="width: 13%; min-width: 135px;">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th style="white-space:nowrap;">UGT No.</th>
+                    <th style="white-space:nowrap;">Fuel Type</th>
+                    <th style="text-align:right;white-space:nowrap;">Current Volume</th>
+                    <th style="text-align:right;white-space:nowrap;">Capacity</th>
+                    <th style="text-align:right;white-space:nowrap;">Available Space</th>
+                    <th style="text-align:right;white-space:nowrap;">Reorder Level</th>
+                    <th style="text-align:right;white-space:nowrap;">Critical Level</th>
+                    <th style="text-align:center;white-space:nowrap;">Status</th>
+                    <th style="white-space:nowrap;">Last Updated</th>
+                    <th style="text-align:center;white-space:nowrap;min-width:135px;width:135px;">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="fuelTableBody">
+            <?php if (empty($rows)): ?>
+                <tr><td colspan="10" style="text-align:center; padding:32px; color:#6c757d;">No fuel inventory data available.</td></tr>
+            <?php else: ?>
+                <?php foreach ($rows as $r):
+                    $ts_str  = ($r['timestamp'] && strtotime($r['timestamp']) > 0) ? date('M d, Y h:i A', strtotime($r['timestamp'])) : '&mdash;';
+                    $ugt_no = 'UGT-' . str_pad($r['tanker_num'], 2, '0', STR_PAD_LEFT);
+                    $rem_cap = max(0, $r['capacity'] - $r['current_level']);
+                    $r_json = htmlspecialchars(json_encode(array_merge($r, ['ugt_no' => $ugt_no, 'available_space' => $rem_cap])), ENT_QUOTES);
+                ?>
+                <tr class="fuel-row"
+                    data-tank-num="<?= htmlspecialchars(strtolower($r['tanker_num'])) ?>"
+                    data-ugt-no="<?= htmlspecialchars(strtolower($ugt_no)) ?>"
+                    data-fuel-type="<?= htmlspecialchars(strtolower(get_canonical_fuel_name($r['fuel_type']))) ?>"
+                    data-status="<?= htmlspecialchars(strtolower($r['status'])) ?>">
+                    <td><code style="font-weight:700;color:#002F70;font-size:14.5px;"><?= htmlspecialchars($ugt_no) ?></code></td>
+                    <td><strong style="color:#0f172a;"><?= htmlspecialchars(get_canonical_fuel_name($r['fuel_type'])) ?></strong></td>
+                    <td style="text-align:right;font-weight:800;color:#002F70;"><?= number_format($r['current_level'], 2) ?> L</td>
+                    <td style="text-align:right;font-weight:600;color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
+                    <td style="text-align:right;font-weight:600;color:#16a34a;"><?= number_format($rem_cap, 2) ?> L</td>
+                    <td style="text-align:right;font-weight:600;color:#eab308;"><?= number_format($r['reorder_level'], 0) ?> L</td>
+                    <td style="text-align:right;font-weight:600;color:#dc3545;"><?= number_format($r['critical_level'], 0) ?> L</td>
+                    <td style="text-align:center;">
+                        <span class="inv-stock-badge" style="background:<?= $r['status_color'] ?>20;color:<?= $r['status_color'] ?>;border:1px solid <?= $r['status_color'] ?>40;padding:4px 8px;border-radius:4px;font-size:15.5px;font-weight:700;text-transform:uppercase;">
+                            <?= htmlspecialchars($r['status']) ?>
+                        </span>
+                    </td>
+                    <td style="font-size:14px;color:#64748b;"><?= $ts_str ?></td>
+                    <td style="text-align:center;white-space:nowrap;min-width:135px;width:135px;">
+                        <div style="display:flex;flex-direction:column;gap:4px;align-items:center;width:100%;min-width:120px;max-width:130px;margin:0 auto;">
+                            <button type="button" class="int-btn-outline" 
+                                    style="width:100%;font-size:12px;height:26px;padding:0 8px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:4px;"
+                                    data-fuel="<?= $r_json ?>"
+                                    data-ugt="<?= htmlspecialchars($ugt_no) ?>"
+                                    data-fuel-type="<?= htmlspecialchars(get_canonical_fuel_name($r['fuel_type'])) ?>"
+                                    data-capacity="<?= (float)$r['capacity'] ?>"
+                                    data-current-level="<?= (float)$r['current_level'] ?>"
+                                    data-available-space="<?= (float)$rem_cap ?>"
+                                    data-reorder="<?= (float)$r['reorder_level'] ?>"
+                                    data-critical="<?= (float)$r['critical_level'] ?>"
+                                    data-status="<?= htmlspecialchars($r['status']) ?>"
+                                    onclick="event.stopPropagation(); viewTankDetailsFromBtn(this)">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                            <button type="button" class="int-btn-outline" 
+                                    style="width:100%;font-size:12px;height:26px;padding:0 8px;cursor:pointer;border-color:#5b21b6;color:#5b21b6;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:4px;"
+                                    data-fuel="<?= $r_json ?>"
+                                    data-ugt="<?= htmlspecialchars($ugt_no) ?>"
+                                    data-fuel-type="<?= htmlspecialchars(get_canonical_fuel_name($r['fuel_type'])) ?>"
+                                    data-capacity="<?= (float)$r['capacity'] ?>"
+                                    data-current-level="<?= (float)$r['current_level'] ?>"
+                                    onclick="event.stopPropagation(); openAdminAdjustReadingModalFromBtn(this)">
+                                <i class="fas fa-balance-scale"></i> Adjust Reading
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <div id="adminFuelInvPagination" style="padding:10px 20px;"></div>
 </div>
 <?php endif; ?>
 
@@ -1213,12 +1325,316 @@ body, html { overflow-x:hidden !important; }
     </div>
 </div>
 
+<!-- ══ ADMIN DIRECT FUEL STOCK READING ADJUSTMENT MODAL (OWNER DIRECT UPDATE) ══ -->
+<div class="modal-overlay" id="adminAdjustReadingModal" style="z-index:10005; display:none; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
+    <div style="background:#fff; border-radius:14px; width:96%; max-width:580px; max-height:calc(100vh - 40px); display:flex; flex-direction:column; overflow:hidden; box-shadow:0 24px 40px rgba(0,0,0,.25); position:relative; z-index:10006; margin:auto;">
+
+        <!-- Header (Fixed) -->
+        <div style="padding:14px 20px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; flex-shrink:0;">
+            <div style="font-size:15px; font-weight:800; color:#002F70; text-transform:uppercase; letter-spacing:.4px; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-balance-scale" style="color:#5b21b6;"></i> Adjust Tank Reading (Admin / Owner)
+            </div>
+        </div>
+        
+        <!-- Body (Scrollable) -->
+        <div style="padding:20px; overflow-y:auto; flex:1;">
+
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div class="form-group">
+                    <label style="font-weight:700; font-size:14.5px; color:#334155;">Fuel Type *</label>
+                    <select id="adminAfrFuelTypeSelect" onchange="onAdminAfrFuelTypeChange(this.value)" style="width:100%; padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:700; color:#0f172a;">
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="font-weight:700; font-size:14.5px; color:#334155;">UGT Number</label>
+                    <input type="text" id="adminAfrUgtNo" readonly style="background:#f1f5f9; color:#002F70; font-weight:700; width:100%; padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; box-sizing:border-box;">
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:10px;">
+                <div class="form-group">
+                    <label style="font-weight:700; font-size:14.5px; color:#334155;">Current Volume (Auto)</label>
+                    <input type="text" id="adminAfrCurReading" readonly style="background:#f1f5f9; color:#002F70; font-weight:800; width:100%; padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; box-sizing:border-box;">
+                </div>
+                <div class="form-group">
+                    <label style="font-weight:700; font-size:14.5px; color:#334155;">Actual Tank Dip Volume (L) *</label>
+                    <input type="number" id="adminAfrNewReading" step="0.01" placeholder="Enter dip volume" oninput="calcAdminFuelVariance()" style="font-weight:700; border:1px solid #94a3b8; width:100%; padding:9px 11px; border-radius:6px; font-size:15.5px; box-sizing:border-box;">
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-top:10px; background:#f8fafc; padding:12px; border-radius:8px; border:1px solid #e2e8f0;">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label style="font-size:13px; font-weight:700; color:#64748b;">Variance (Auto)</label>
+                    <input type="text" id="adminAfrVariance" readonly style="background:#fff; color:#0f172a; font-weight:800; font-size:14.5px; border:1px solid #cbd5e1; width:100%; padding:7px 9px; border-radius:5px; box-sizing:border-box;">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label style="font-size:13px; font-weight:700; color:#64748b;">Direction</label>
+                    <input type="text" id="adminAfrDirection" readonly style="background:#fff; color:#0f172a; font-weight:800; font-size:14.5px; border:1px solid #cbd5e1; width:100%; padding:7px 9px; border-radius:5px; box-sizing:border-box;">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label style="font-size:13px; font-weight:700; color:#64748b;">Adjustment (L)</label>
+                    <input type="text" id="adminAfrAdjLiters" readonly style="background:#fff; color:#002F70; font-weight:800; font-size:14.5px; border:1px solid #cbd5e1; width:100%; padding:7px 9px; border-radius:5px; box-sizing:border-box;">
+                </div>
+            </div>
+            <div class="form-group" style="margin-top:12px;">
+                <label style="font-weight:700; font-size:14.5px; color:#334155;">Adjustment Type *</label>
+                <select id="adminAfrAdjType" style="width:100%; padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:600;">
+                    <option value="Physical Count / Tank Dip">Physical Count / Tank Dip</option>
+                    <option value="Spill">Spill</option>
+                    <option value="Leakage">Leakage</option>
+                    <option value="Evaporation">Evaporation</option>
+                    <option value="Wrong Fuel Delivery">Wrong Fuel Delivery</option>
+                    <option value="Encoding Error">Encoding Error</option>
+                    <option value="System Correction">System Correction</option>
+                    <option value="Calibration">Calibration</option>
+                    <option value="Others">Others</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-top:10px;">
+                <label style="font-weight:700; font-size:14.5px; color:#334155;">Reason <span style="color:#dc2626;">*</span></label>
+                <textarea id="adminAfrReason" rows="2" placeholder="State reason for direct stock adjustment..." style="width:100%; padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:14.5px; box-sizing:border-box; resize:vertical;"></textarea>
+            </div>
+            <div class="form-group" style="margin-top:10px;">
+                <label style="font-weight:700; font-size:14.5px; color:#334155;">Remarks <span style="color:#94a3b8; font-size:13.5px;">(Optional)</span></label>
+                <textarea id="adminAfrRemarks" rows="2" placeholder="Additional remarks..." style="width:100%; padding:9px 11px; border:1px solid #cbd5e1; border-radius:6px; font-size:14.5px; box-sizing:border-box; resize:vertical;"></textarea>
+            </div>
+            <div id="adminAfrError" style="color:#dc3545; font-size:14px; margin-top:8px; display:none; font-weight:600; padding:8px 12px; background:#fee2e2; border-radius:6px; border:1px solid #fca5a5;"></div>
+        </div>
+
+        <!-- Footer (Fixed) -->
+        <div style="padding:12px 20px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; align-items:center; gap:10px; flex-shrink:0;">
+            <button type="button" id="adminAfrSaveBtn" onclick="saveAdminDirectFuelAdjustment()" style="background:#ffffff !important; color:#002F70 !important; border:1px solid #cbd5e1 !important; border-radius:6px; padding:8px 20px; font-size:14.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:none !important;"><i class="fas fa-check-circle"></i> Save &amp; Apply Adjustment</button>
+            <button type="button" onclick="closeAdminAdjustReadingModal()" style="background:#ffffff !important; color:#475569 !important; border:1px solid #cbd5e1 !important; border-radius:6px; padding:8px 20px; font-size:14.5px; font-weight:600; cursor:pointer; box-shadow:none !important;">Cancel</button>
+        </div>
+    </div>
+</div>
+
 <script>
+window._adminAllFuelRows = <?= json_encode(array_values($rows)) ?>;
 var _adminCurrentFuel = null;
+var _adminCurrentFuelRow = null;
 
 function esc(str) {
     if (!str) return '';
     return str.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function openAdminAdjustReadingModalFromBtn(btn) {
+    var targetBtn = (btn && btn.closest) ? btn.closest('button') : btn;
+    if (!targetBtn) return;
+    var r = null;
+    try {
+        var raw = targetBtn.getAttribute('data-fuel');
+        if (raw) r = JSON.parse(raw);
+    } catch(e) {}
+    if (!r) {
+        r = {
+            ugt_no: targetBtn.getAttribute('data-ugt') || '',
+            fuel_type: targetBtn.getAttribute('data-fuel-type') || '',
+            capacity: Number(targetBtn.getAttribute('data-capacity') || 0),
+            current_level: Number(targetBtn.getAttribute('data-current-level') || 0)
+        };
+    }
+    openAdminAdjustReadingModal(r);
+}
+
+function openAdminAdjustReadingModal(r) {
+    if (typeof closeTankModal === 'function') closeTankModal();
+
+    var modal = document.getElementById('adminAdjustReadingModal');
+    if (!modal) return;
+    if (modal.parentNode !== document.body) {
+        document.body.appendChild(modal);
+    }
+
+    var sel = document.getElementById('adminAfrFuelTypeSelect');
+    if (sel && window._adminAllFuelRows && window._adminAllFuelRows.length > 0) {
+        sel.innerHTML = '';
+        window._adminAllFuelRows.forEach(function(item, idx) {
+            var opt = document.createElement('option');
+            opt.value = idx;
+            var ugtLabel = item.ugt_no || ('UGT-' + String(idx + 1).padStart(2, '0'));
+            opt.textContent = item.fuel_type + ' (' + ugtLabel + ')';
+            sel.appendChild(opt);
+        });
+    }
+
+    if (r) {
+        _adminCurrentFuelRow = r;
+        var matchIdx = -1;
+        if (window._adminAllFuelRows && window._adminAllFuelRows.length > 0) {
+            matchIdx = window._adminAllFuelRows.findIndex(function(item) {
+                return (item.ugt_no && r.ugt_no && item.ugt_no.toLowerCase() === r.ugt_no.toLowerCase()) ||
+                       (item.fuel_type && r.fuel_type && item.fuel_type.toLowerCase() === r.fuel_type.toLowerCase());
+            });
+        }
+        if (matchIdx >= 0) {
+            if (sel) sel.value = matchIdx;
+            onAdminAfrFuelTypeChange(matchIdx);
+        } else {
+            if (sel) sel.value = 0;
+            onAdminAfrFuelTypeChange(0);
+        }
+    } else {
+        if (sel) sel.value = 0;
+        onAdminAfrFuelTypeChange(0);
+    }
+
+    document.getElementById('adminAfrNewReading').value = '';
+    document.getElementById('adminAfrVariance').value = '0.00 L';
+    document.getElementById('adminAfrDirection').value = 'Balanced';
+    document.getElementById('adminAfrAdjLiters').value = '0.00 L';
+    document.getElementById('adminAfrAdjType').value = 'Physical Count / Tank Dip';
+    document.getElementById('adminAfrReason').value = '';
+    document.getElementById('adminAfrRemarks').value = '';
+    var errEl = document.getElementById('adminAfrError');
+    if (errEl) errEl.style.display = 'none';
+
+    modal.classList.add('open');
+    modal.style.display = 'flex';
+    modal.style.position = 'fixed';
+    modal.style.top = '0'; modal.style.left = '0'; modal.style.right = '0'; modal.style.bottom = '0';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.padding = '20px';
+    modal.style.boxSizing = 'border-box';
+    modal.style.zIndex = '10005';
+}
+
+function onAdminAfrFuelTypeChange(val) {
+    if (!window._adminAllFuelRows || window._adminAllFuelRows.length === 0) return;
+    var index = parseInt(val);
+    if (isNaN(index) || index < 0 || index >= window._adminAllFuelRows.length) {
+        index = 0;
+    }
+    var target = window._adminAllFuelRows[index];
+    if (target) {
+        _adminCurrentFuelRow = target;
+        var ugtName = target.ugt_no || ('UGT-' + String(target.tanker_num || (index + 1)).padStart(2, '0'));
+        var ugtEl = document.getElementById('adminAfrUgtNo');
+        if (ugtEl) ugtEl.value = ugtName;
+
+        var vol = parseFloat(target.current_level);
+        if (isNaN(vol) || vol <= 0) {
+            vol = parseFloat(target.ending_system) || parseFloat(target.current_volume) || 0;
+        }
+
+        var curEl = document.getElementById('adminAfrCurReading');
+        if (curEl) {
+            curEl.value = Number(vol || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' L';
+        }
+        calcAdminFuelVariance();
+    }
+}
+
+function closeAdminAdjustReadingModal() {
+    var modal = document.getElementById('adminAdjustReadingModal');
+    if (modal) {
+        modal.classList.remove('open');
+        modal.style.display = 'none';
+    }
+}
+
+function calcAdminFuelVariance() {
+    var curText = (document.getElementById('adminAfrCurReading').value || '0').replace(/[^0-9.-]/g, '');
+    var cur = parseFloat(curText) || 0;
+    var nwText = document.getElementById('adminAfrNewReading').value.trim();
+    if (!nwText || isNaN(nwText)) {
+        document.getElementById('adminAfrVariance').value = '0.00 L';
+        document.getElementById('adminAfrDirection').value = 'Balanced';
+        document.getElementById('adminAfrAdjLiters').value = '0.00 L';
+        return;
+    }
+    var nw = parseFloat(nwText);
+    var variance = nw - cur;
+    var absVar = Math.abs(variance);
+    
+    document.getElementById('adminAfrVariance').value = (variance >= 0 ? '+' : '') + variance.toFixed(2) + ' L';
+    document.getElementById('adminAfrDirection').value = variance > 0 ? 'Increase (+)' : (variance < 0 ? 'Decrease (-)' : 'Balanced');
+    document.getElementById('adminAfrAdjLiters').value = absVar.toFixed(2) + ' L';
+}
+
+function saveAdminDirectFuelAdjustment() {
+    var actualDip = document.getElementById('adminAfrNewReading').value.trim();
+    var sel = document.getElementById('adminAfrFuelTypeSelect');
+    var target = (window._adminAllFuelRows && sel) ? window._adminAllFuelRows[sel.value] : null;
+    var fuelType = target ? target.fuel_type : (sel && sel.selectedOptions[0] ? sel.selectedOptions[0].text : '');
+    var ugtNo = document.getElementById('adminAfrUgtNo').value.trim();
+    var adjType = document.getElementById('adminAfrAdjType').value;
+    var reason = document.getElementById('adminAfrReason').value.trim();
+    var remarks = document.getElementById('adminAfrRemarks').value.trim();
+    var errEl = document.getElementById('adminAfrError');
+
+    if (errEl) errEl.style.display = 'none';
+
+    if (!actualDip || isNaN(actualDip)) {
+        if (errEl) {
+            errEl.textContent = 'Actual Tank Dip Volume is required and must be a valid number.';
+            errEl.style.display = 'block';
+        }
+        return;
+    }
+    if (!reason) {
+        if (errEl) {
+            errEl.textContent = 'Reason for direct adjustment is required.';
+            errEl.style.display = 'block';
+        }
+        return;
+    }
+
+    var saveBtn = document.getElementById('adminAfrSaveBtn');
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Applying Adjustment...';
+    }
+
+    var fd = new FormData();
+    fd.append('action', 'direct_adjustment');
+    fd.append('fuel_type', fuelType);
+    fd.append('ugt_no', ugtNo);
+    fd.append('actual_dip_volume', actualDip);
+    fd.append('adjustment_type', adjType);
+    fd.append('reason', reason);
+    fd.append('remarks', remarks);
+
+    fetch('../backend/api/fuel_adjustments.php', { method: 'POST', body: fd })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="fas fa-check-circle"></i> Save &amp; Apply Adjustment';
+        }
+        if (!data.success) {
+            if (errEl) {
+                errEl.textContent = data.message || data.error || 'Failed to apply direct adjustment.';
+                errEl.style.display = 'block';
+            }
+            return;
+        }
+
+        closeAdminAdjustReadingModal();
+        if (typeof closeTankModal === 'function') closeTankModal();
+
+        var msg = data.message || ('Tank reading for ' + fuelType + ' (' + ugtNo + ') updated to ' + actualDip + ' L immediately.');
+        if (window.showPetronFlash) {
+            window.showPetronFlash(msg, 'success', 5000);
+        } else if (window.showToast) {
+            window.showToast(msg, 'success', 5000);
+        } else {
+            alert(msg);
+        }
+
+        setTimeout(function() { location.reload(); }, 1200);
+    })
+    .catch(function(err) {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="fas fa-check-circle"></i> Save &amp; Apply Adjustment';
+        }
+        if (errEl) {
+            errEl.textContent = 'Network error. Please try again.';
+            errEl.style.display = 'block';
+        }
+    });
 }
 
 function closeTankModal() {
@@ -1454,22 +1870,29 @@ function closeDelViewModal() {
     }
 }
 
+function resetFuelFilters() {
+    resetAdminFuelFilters();
+}
+
 function resetAdminFuelFilters() {
-    if (document.getElementById('sq')) document.getElementById('sq').value = '';
-    if (document.getElementById('cf')) document.getElementById('cf').value = '';
-    if (document.getElementById('sf')) document.getElementById('sf').value = '';
+    var sInput = document.getElementById('fuelSearch') || document.getElementById('sq');
+    var tSelect = document.getElementById('fuelTypeFilter') || document.getElementById('cf');
+    var stSelect = document.getElementById('fuelStatusFilter') || document.getElementById('sf');
+    if (sInput) sInput.value = '';
+    if (tSelect) tSelect.value = '';
+    if (stSelect) stSelect.value = '';
     filterFuelTable();
 }
 
 function filterFuelTable() {
-    var search = (document.getElementById('sq') || {}).value || '';
-    var fuelType = (document.getElementById('cf') || {}).value || '';
-    var status = (document.getElementById('sf') || {}).value || '';
-    search = search.toLowerCase().trim();
-    fuelType = fuelType.toLowerCase().trim();
-    status = status.toLowerCase().trim();
+    var sInput = document.getElementById('fuelSearch') || document.getElementById('sq');
+    var tSelect = document.getElementById('fuelTypeFilter') || document.getElementById('cf');
+    var stSelect = document.getElementById('fuelStatusFilter') || document.getElementById('sf');
+    var search = (sInput ? sInput.value : '').toLowerCase().trim();
+    var fuelType = (tSelect ? tSelect.value : '').toLowerCase().trim();
+    var status = (stSelect ? stSelect.value : '').toLowerCase().trim();
 
-    var rows = document.querySelectorAll('#adminFuelInvTable tbody tr');
+    var rows = document.querySelectorAll('#adminFuelInvTable tbody tr.fuel-row');
     rows.forEach(function(row) {
         if (row.querySelector('td[colspan]')) return;
         var match = true;
@@ -1483,7 +1906,6 @@ function filterFuelTable() {
         if (status) {
             if (status === 'normal' && rStatus !== 'normal') match = false;
             else if (status === 'low' && rStatus !== 'low') match = false;
-            
             else if (status === 'out of stock' && rStatus !== 'out of stock') match = false;
         }
 

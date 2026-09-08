@@ -1087,27 +1087,37 @@ include __DIR__ . '/../partials/header.php';
         max-width: 100%;
     }
 
+    /* Header (Staff Dashboard & Transaction Aligned Design) */
     .adm-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         flex-wrap: wrap;
-        gap: 16px;
-        margin-bottom: 24px;
+        gap: 12px;
+        margin-bottom: 16px;
     }
     .adm-header-left h1 {
-        font-size: 22px;
-        font-weight: 800;
-        color: var(--petron-blue);
-        margin: 0;
-        text-transform: uppercase;
-        letter-spacing: -0.5px;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+        font-size: 24px !important;
+        font-weight: 700 !important;
+        color: #002F70 !important;
+        margin: 0 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+        line-height: 1.2 !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 10px !important;
     }
+    .adm-header-left .sub,
     .adm-header-left p {
-        margin: 3px 0 0 0;
-        font-size: 11.5px;
-        color: var(--text-muted);
-        font-weight: 500;
+        font-size: 13px !important;
+        color: #64748b !important;
+        margin-top: 4px !important;
+        margin-bottom: 0 !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+        letter-spacing: .3px !important;
     }
 
     .adm-filter-bar {
@@ -1431,8 +1441,8 @@ include __DIR__ . '/../partials/header.php';
     <!-- Header & Date Filter -->
     <div class="adm-header">
         <div class="adm-header-left">
-            <h1><?= adm_h($display_name) ?></h1>
-            <p><i class="fas fa-location-dot" style="color:var(--petron-red);"></i> <?= adm_h($station_label) ?> &bull; Branch Management &amp; Operational Oversight</p>
+            <h1>Admin Dashboard</h1>
+            <div class="sub">Welcome, <?= adm_h($display_name) ?>!</div>
         </div>
         <form method="GET" action="admin_dashboard.php" class="adm-filter-bar">
             <div class="adm-filter-group">

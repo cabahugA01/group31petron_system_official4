@@ -61,6 +61,142 @@ try {
     switch ($action) {
 
         // ══════════════════════════════════════════════════════════════════════
+        // ADMIN / OWNER DIRECT FUEL STOCK ADJUSTMENT (INSTANT SYSTEM UPDATE)
+        // ══════════════════════════════════════════════════════════════════════
+        case 'direct_adjustment':
+            if ($method !== 'POST') respond(false, 'Method not allowed.');
+            if (!in_array($role, ['admin', 'superadmin', 'developer'])) {
+                respond(false, 'Admin access required for direct inventory adjustment.');
+            }
+
+            $fuel_type          = trim($_POST['fuel_type'] ?? '');
+            $ugt_no             = trim($_POST['ugt_no'] ?? '');
+            $actual_dip_volume  = (float)($_POST['actual_dip_volume'] ?? 0);
+            $adjustment_type    = trim($_POST['adjustment_type'] ?? 'Physical Count / Tank Dip');
+            $reason             = trim($_POST['reason'] ?? '');
+            $remarks            = trim($_POST['remarks'] ?? '');
+
+            if (empty($fuel_type)) respond(false, 'Fuel type is required.');
+            if (empty($reason))    respond(false, 'Reason for adjustment is required.');
+            if ($actual_dip_volume < 0) respond(false, 'Actual volume cannot be negative.');
+
+            // Smart match tank record in fuel_inventory
+            $inv = null;
+            if ($ugt_no) {
+                $clean_ugt = (int)preg_replace('/[^0-9]/', '', $ugt_no);
+                $stmt = $pdo->prepare("
+                    SELECT id, fuel_type, fuel_type_id, current_level, capacity, ugt_no
+                    FROM fuel_inventory
+                    WHERE station_id = ?
+                      AND (LOWER(TRIM(ugt_no)) = LOWER(TRIM(?)) OR ugt_no = ? OR id = ?)
+                    LIMIT 1
+                ");
+                $stmt->execute([$station_id, $ugt_no, $clean_ugt, $clean_ugt]);
+                $inv = $stmt->fetch(PDO::FETCH_ASSOC);
+            }
+            if (!$inv) {
+                $stmt = $pdo->prepare("
+                    SELECT id, fuel_type, fuel_type_id, current_level, capacity, ugt_no
+                    FROM fuel_inventory
+                    WHERE station_id = ?
+                      AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                    LIMIT 1
+                ");
+                $stmt->execute([$station_id, $fuel_type]);
+                $inv = $stmt->fetch(PDO::FETCH_ASSOC);
+            }
+            if (!$inv) {
+                $stmt = $pdo->prepare("
+                    SELECT id, fuel_type, fuel_type_id, current_level, capacity, ugt_no
+                    FROM fuel_inventory
+                    WHERE station_id = ?
+                      AND LOWER(TRIM(fuel_type)) LIKE LOWER(CONCAT('%', ?, '%'))
+                    LIMIT 1
+                ");
+                $stmt->execute([$station_id, explode(' ', $fuel_type)[0]]);
+                $inv = $stmt->fetch(PDO::FETCH_ASSOC);
+            }
+
+            if (!$inv) {
+                respond(false, 'Fuel inventory record not found for ' . htmlspecialchars($fuel_type));
+            }
+
+            $current_volume = (float)($inv['current_level'] ?? 0);
+            $variance       = round($actual_dip_volume - $current_volume, 2);
+            $direction      = ($variance >= 0) ? 'Increase' : 'Decrease';
+            $adj_liters     = abs($variance);
+            $ugt_display    = $ugt_no ?: ($inv['ugt_no'] ?? 'UGT-01');
+
+            if ($actual_dip_volume > (float)$inv['capacity']) {
+                respond(false, 'Adjusted volume (' . number_format($actual_dip_volume, 2) . ' L) exceeds tank capacity of ' . number_format((float)$inv['capacity'], 0) . ' L.');
+            }
+
+            $pdo->beginTransaction();
+
+            // 1. Directly update UGT volume in fuel_inventory
+            $pdo->prepare("
+                UPDATE fuel_inventory
+                SET current_level = ?, current_stock = ?, last_updated = NOW()
+                WHERE id = ? AND station_id = ?
+            ")->execute([$actual_dip_volume, $actual_dip_volume, $inv['id'], $station_id]);
+
+            // 2. Record in fuel_adjustments as Approved immediately (Owner direct calibration)
+            $ins = $pdo->prepare("
+                INSERT INTO fuel_adjustments
+                (station_id, adjustment_date, fuel_type, fuel_type_id, ugt_no,
+                 adjustment_type, liters, adjustment_direction, previous_value,
+                 new_value, variance, reason, notes, user_id, status, approved_by, approved_at, created_at)
+                VALUES (?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Approved', ?, NOW(), NOW())
+            ");
+            $ins->execute([
+                $station_id,
+                $inv['fuel_type'],
+                $inv['fuel_type_id'] ?? null,
+                $ugt_display,
+                $adjustment_type,
+                $adj_liters,
+                $direction,
+                $current_volume,
+                $actual_dip_volume,
+                $variance,
+                $reason,
+                $remarks,
+                $me['id'],
+                $me['id']
+            ]);
+
+            $adj_id = $pdo->lastInsertId();
+
+            // 3. Record in fuel_audit_trail
+            try {
+                $sign = ($variance >= 0) ? '+' : '';
+                $pdo->prepare("
+                    INSERT INTO fuel_audit_trail
+                    (reading_id, action, before_value, after_value, stock_before, stock_after, performed_by, performed_at, notes)
+                    VALUES (NULL, 'Admin Direct Tank Dip Adjustment', ?, ?, ?, ?, ?, NOW(), ?)
+                ")->execute([
+                    $current_volume,
+                    $actual_dip_volume,
+                    $current_volume,
+                    $actual_dip_volume,
+                    $me['id'],
+                    "Admin / Owner directly calibrated {$inv['fuel_type']} ({$ugt_display}) from {$current_volume}L to {$actual_dip_volume}L (Variance: {$sign}{$variance}L). Reason: {$reason}"
+                ]);
+            } catch (Exception $e) {}
+
+            $pdo->commit();
+
+            respond(true, 'Fuel reading adjusted successfully! Current volume updated to ' . number_format($actual_dip_volume, 2) . ' L.', [
+                'adjustment_id'   => $adj_id,
+                'fuel_type'       => $inv['fuel_type'],
+                'ugt_no'          => $ugt_display,
+                'previous_volume' => $current_volume,
+                'updated_volume'  => $actual_dip_volume,
+                'variance'        => $variance,
+                'status'          => 'Approved'
+            ]);
+
+        // ══════════════════════════════════════════════════════════════════════
         // STEP 5: MANAGER REQUESTS FUEL STOCK ADJUSTMENT
         // ══════════════════════════════════════════════════════════════════════
         case 'request_adjustment':
