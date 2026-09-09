@@ -56,7 +56,7 @@ try {
             WHERE jo.id = ? AND jo.station_id = ?
             LIMIT 1
         ");
-        $stmt->execute([$id, $station_id, $station_id]);
+        $stmt->execute([$id, $station_id]);
         $txn = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($txn) {
@@ -114,7 +114,7 @@ try {
             WHERE mt.id = ? AND mt.station_id = ?
             LIMIT 1
         ");
-        $stmt->execute([$id, $station_id, $station_id]);
+        $stmt->execute([$id, $station_id]);
         $txn = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($txn) {

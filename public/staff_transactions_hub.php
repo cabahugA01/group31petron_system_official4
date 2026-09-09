@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Staff Transactions Hub
  * Sidebar navigation for Fuel (internal) and Merchandise (customer-facing) transactions.
@@ -2536,15 +2536,14 @@ window.openTxnRequestModal = function(e, txnId, recordSource, requestType, custo
 /* ── Cart Wrapper — Flexbox Row Layout ──────────────────────────────── */
 .cart-wrapper {
     display: flex !important;
-    margin-bottom: 40px !important;
-    padding-bottom: 20px !important;
+    margin-bottom: 24px !important;
+    padding-bottom: 16px !important;
     flex-direction: row !important;
     gap: 14px !important;
     align-items: flex-start !important;
     width: 100% !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
-    overflow-x: hidden !important;
 }
 
 /* When viewing history, hide cart and expand left column to 100% full width */
@@ -2567,8 +2566,8 @@ window.openTxnRequestModal = function(e, txnId, recordSource, requestType, custo
     display: none !important;
 }
 
-/* Collapse to single column on tablet/mobile */
-@media (max-width: 1050px) {
+/* Collapse to single column only on smaller screens (below 900px) so 1024px displays keep 2-column cart */
+@media (max-width: 900px) {
     .cart-wrapper {
         flex-direction: column !important;
     }
@@ -2577,6 +2576,7 @@ window.openTxnRequestModal = function(e, txnId, recordSource, requestType, custo
         min-width: 100% !important;
         max-width: 100% !important;
         position: static !important;
+        max-height: none !important;
     }
 }
 
@@ -2732,33 +2732,56 @@ window.openTxnRequestModal = function(e, txnId, recordSource, requestType, custo
     width: 100%;
 }
 
-/* Match inventory page — no padding override needed */
+/* Stop main content strictly at the fixed footer (bottom: 40px) so footer never overlaps content or checkboxes */
 main.main {
-    padding: 8px 18px 90px 18px !important;
+    position: fixed !important;
+    top: 70px !important;
+    bottom: 40px !important;
+    left: 250px !important;
+    right: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    padding: 10px 18px 24px 18px !important;
+    overflow-y: auto !important;
     overflow-x: hidden !important;
+    box-sizing: border-box !important;
+    transition: left 0.3s ease !important;
 }
 
-/* ── Cart wrapper — using grid layout defined above to show cart on right ── */
+body.sidebar-collapsed main.main {
+    left: 70px !important;
+}
+
+@media (max-width: 991px) {
+    main.main {
+        left: 0 !important;
+        top: 60px !important;
+        bottom: 40px !important;
+    }
+}
+
+/* ── Cart wrapper — using flex layout to show cart on right ── */
 
 /* ── Right panel — cart fixed on right side ── */
 .cart-panel {
     display: flex !important;
     flex-direction: column !important;
-    flex: 0 0 340px !important;
-    width: 340px !important;
-    min-width: 340px !important;
+    flex: 0 0 330px !important;
+    width: 330px !important;
+    min-width: 300px !important;
     max-width: 340px !important;
     position: sticky !important;
-    top: 12px !important;
+    top: 10px !important;
     align-self: flex-start !important;
     background: #fff;
     border: 1.5px solid #cbd5e1;
     border-radius: 12px;
     box-shadow: 0 3px 12px rgba(0,0,0,.08);
-    max-height: calc(100vh - 80px) !important;
+    max-height: calc(100vh - 135px) !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
     box-sizing: border-box !important;
+    z-index: 25;
 }
 
 /* Customer & Payment — compact padding */
@@ -2799,12 +2822,20 @@ main.main {
     box-shadow: 0 -4px 10px rgba(0,0,0,0.06) !important;
 }
 
-/* ── Floating scroll button safe placement ── */
+/* ── Floating scroll button safe placement: keep clear of cart panel on desktop ── */
 #toggleScrollBtn,
 .toggle-scroll-btn {
-    right: 12px !important;
+    right: 360px !important;
     bottom: 48px !important;
     z-index: 995 !important;
+}
+
+@media (max-width: 900px) {
+    #toggleScrollBtn,
+    .toggle-scroll-btn {
+        right: 16px !important;
+        bottom: 48px !important;
+    }
 }
 .txn-section-header {
     display: flex;
@@ -2982,6 +3013,103 @@ textarea.txn-input {
     outline: none;
     border-color: var(--petron-blue);
     box-shadow: 0 0 0 3px rgba(0,47,108,.12);
+}
+
+/* ── Currency Input Group (Prevents Peso Sign Overlapping) ───── */
+.txn-currency-group {
+    display: flex !important;
+    align-items: center !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 7px !important;
+    overflow: hidden !important;
+    background: #ffffff !important;
+    transition: border-color .15s ease, box-shadow .15s ease !important;
+    height: 38px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.txn-currency-group:focus-within {
+    border-color: #002F70 !important;
+    box-shadow: 0 0 0 3px rgba(0, 47, 108, 0.12) !important;
+}
+
+.txn-currency-group .txn-currency-badge {
+    background: #f1f5f9 !important;
+    padding: 0 12px !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-weight: 800 !important;
+    color: #1e293b !important;
+    border-right: 1.5px solid #cbd5e1 !important;
+    font-size: 14px !important;
+    user-select: none !important;
+    flex-shrink: 0 !important;
+    box-sizing: border-box !important;
+}
+
+.txn-currency-group .txn-input {
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 7px 12px !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    outline: none !important;
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 0 !important;
+    background: transparent !important;
+    box-sizing: border-box !important;
+}
+
+.txn-currency-group .txn-input:focus {
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+/* ── Ensure inputs with right-side dropdown/clear icons have ample right padding ── */
+#productSearch {
+    padding-right: 64px !important;
+}
+
+#joServiceType,
+#joMechanic {
+    padding-right: 36px !important;
+}
+
+/* ── Ensure table action buttons never overflow and text stays cleanly inside ── */
+#joUnifiedTable td:last-child {
+    padding: 8px 8px !important;
+}
+
+#joUnifiedTable td:last-child .txn-btn,
+#joUnifiedTable td:last-child .void-btn,
+#mhHistoryTable td:last-child .txn-btn,
+#mhHistoryTable td:last-child .void-btn,
+#jomHistoryTable td:last-child .txn-btn,
+#jomHistoryTable td:last-child .void-btn {
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    padding: 5px 8px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    line-height: 1.3 !important;
+    border-radius: 5px !important;
+}
+
+#joUnifiedTable td:last-child form,
+#mhHistoryTable td:last-child form,
+#jomHistoryTable td:last-child form {
+    width: 100% !important;
+    margin: 0 !important;
 }
 
 /* ── Cart panel labels & inputs: Large & readable for elderly staff ── */
@@ -6250,7 +6378,7 @@ setTimeout(function() {
                                            class="txn-select" 
                                            placeholder="Type to search service..."
                                            autocomplete="off"
-                                           style="width:100%;padding-right:30px;"
+                                           style="width:100%;padding-right:36px !important;"
                                            oninput="filterServiceTypes()"
                                            onfocus="showServiceDropdown()"
                                            onclick="showServiceDropdown()">
@@ -6286,29 +6414,29 @@ setTimeout(function() {
                             </div>
                         </div>
 
-                        <!-- Service Price + Labor — separate editable fields -->
+                        <!-- Service Price + Labor — separate editable fields with dedicated currency badge -->
                         <div class="txn-form-grid" style="margin-bottom:14px;">
                             <div class="txn-field">
-                                <label>Service Price <span style="color:#dc2626;">*</span>
-                                    <span style="font-size:10px;font-weight:400;color:#64748b;">(Auto-filled, editable)</span>
+                                <label style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px;">
+                                    Service Price <span style="color:#dc2626;">*</span>
+                                    <span style="font-size:10px;font-weight:400;color:#64748b;text-transform:none;">(Auto-filled, editable)</span>
                                 </label>
-                                <div style="position:relative;">
-                                    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#374151;font-size:14px;">₱</span>
+                                <div class="txn-currency-group">
+                                    <span class="txn-currency-badge">₱</span>
                                     <input type="number" id="joServicePrice" class="txn-input"
                                            step="0.01" min="0" placeholder="0.00"
-                                           style="padding-left:26px;font-weight:700;"
                                            oninput="onJoServicePriceInput()">
                                 </div>
                             </div>
                             <div class="txn-field">
-                                <label>Labor Charge
-                                    <span style="font-size:10px;font-weight:400;color:#64748b;">(Optional, separate)</span>
+                                <label style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px;">
+                                    Labor Charge
+                                    <span style="font-size:10px;font-weight:400;color:#64748b;text-transform:none;">(Optional, separate)</span>
                                 </label>
-                                <div style="position:relative;">
-                                    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#374151;font-size:14px;">₱</span>
+                                <div class="txn-currency-group">
+                                    <span class="txn-currency-badge">₱</span>
                                     <input type="text" id="joLaborCharge" class="txn-input"
                                            inputmode="decimal" placeholder="0.00"
-                                           style="padding-left:26px;font-weight:700;"
                                            oninput="formatPesoInput(this); onJoLaborChargeInput()">
                                 </div>
                             </div>
@@ -6331,7 +6459,7 @@ setTimeout(function() {
                                            oninput="filterMechanicDropdown(this.value)"
                                            onfocus="showMechanicDropdown()"
                                            onblur="setTimeout(hideMechanicDropdown, 200)"
-                                           style="padding-right:30px;">
+                                           style="padding-right:36px !important;">
                                     <input type="hidden" id="joMechanicId"   value="">
                                     <input type="hidden" id="joMechanicName" value="">
                                     <i class="fas fa-chevron-down"
@@ -6548,7 +6676,7 @@ setTimeout(function() {
                                                    onpaste="setTimeout(function(){ filterProductDropdown(false); }, 50)"
                                                    onclick="openProductDropdown(); filterProductDropdown(false);"
                                                    autocomplete="off"
-                                                   style="padding-right:58px;">
+                                                   style="padding-right:64px !important;">
                                             <span id="productClearBtn"
                                                   onclick="clearProductSearch()"
                                                   style="display:none;position:absolute;right:28px;top:50%;transform:translateY(-50%);
@@ -6849,13 +6977,13 @@ setTimeout(function() {
 
                             <table class="txn-table report-table no-min-width print-table" id="mhHistoryTable" style="width:100% !important; max-width:100% !important; border-collapse:collapse !important; table-layout:fixed !important;">
                                 <colgroup>
-                                    <col style="width:13%;"><!-- OR NO. / TXN ID -->
-                                    <col style="width:16%;"><!-- CUSTOMER -->
-                                    <col style="width:23%;"><!-- PRODUCTS / ITEMS -->
-                                    <col style="width:12%;"><!-- TOTAL AMOUNT -->
-                                    <col style="width:11%;"><!-- PAYMENT -->
-                                    <col style="width:12%;"><!-- DATE ENCODED -->
-                                    <col style="width:13%;"><!-- ACTIONS -->
+                                    <col style="width:12%;"><!-- OR NO. / TXN ID -->
+                                    <col style="width:14%;"><!-- CUSTOMER -->
+                                    <col style="width:22%;"><!-- PRODUCTS / ITEMS -->
+                                    <col style="width:11%;"><!-- TOTAL AMOUNT -->
+                                    <col style="width:10%;"><!-- PAYMENT -->
+                                    <col style="width:13%;"><!-- DATE ENCODED -->
+                                    <col style="width:18%;"><!-- ACTIONS -->
                                 </colgroup>
                                 <thead style="background:#002F70;">
                                     <tr style="background:#002F70;">
@@ -6986,18 +7114,18 @@ setTimeout(function() {
                                             <button type="button"
                                                 onclick="window.viewMerchandiseDetails('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>', this); return false;"
                                                 class="txn-btn secondary"
-                                                style="display:inline-flex;align-items:center;justify-content:center;gap:5px;width:100%;padding:6px 10px;font-size:13px !important;font-weight:800 !important;border:1.5px solid #94a3b8 !important;background:#f1f5f9 !important;color:#002F70 !important;border-radius:5px;box-sizing:border-box;text-decoration:none;white-space:nowrap !important;cursor:pointer !important;"
+                                                style="display:inline-flex;align-items:center;justify-content:center;gap:5px;width:100%;padding:6px 10px;font-size:11px !important;font-weight:800 !important;border:1.5px solid #94a3b8 !important;background:#f1f5f9 !important;color:#002F70 !important;border-radius:5px;box-sizing:border-box;text-decoration:none;white-space:nowrap !important;cursor:pointer !important;"
                                                 onmouseover="this.style.background='#dbeafe';this.style.color='#002F70';this.style.borderColor='#3b82f6';"
                                                 onmouseout="this.style.background='#f1f5f9';this.style.color='#002F70';this.style.borderColor='#94a3b8';"
                                                 title="View Transaction Details">
-                                                <i class="fas fa-eye" style="font-size:12px !important;"></i> <span style="font-size:13px !important;font-weight:800 !important;color:#002F70 !important;white-space:nowrap !important;display:inline !important;">View</span>
+                                                <i class="fas fa-eye" style="font-size:11px !important;"></i> <span style="font-size:11px !important;font-weight:800 !important;color:#002F70 !important;white-space:nowrap !important;display:inline !important;">View</span>
                                             </button>
                                             <?php if ($mh_is_voided): ?>
                                                 <span style="font-size:10.5px;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;"><i class="fas fa-ban"></i> Voided</span>
                                             <?php else: ?>
-                                                <div style="display:flex;gap:4px;width:100%;">
+                                                <div style="display:flex;flex-direction:column;gap:3px;width:100%;">
                                                     <?php if ($mh_adj_req): ?>
-                                                        <span style="flex:1;font-size:10.5px;color:#d97706;background:#fef3c7;border:1px solid #fde68a;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Adjustment request pending"><i class="fas fa-clock"></i> Adj. Req</span>
+                                                        <span style="width:100%;font-size:10.5px;color:#d97706;background:#fef3c7;border:1px solid #fde68a;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Adjustment request pending"><i class="fas fa-clock"></i> Adj. Req</span>
                                                     <?php else: ?>
                                                         <button type="button"
                                                                 data-jo-id="<?= (int)$txn['mt_id'] ?>"
@@ -7010,16 +7138,16 @@ setTimeout(function() {
                                                                 data-jo-total="<?= (float)$total_amount ?>"
                                                                 onclick="return openRequestAdjustModal(event, this);"
                                                                 class="txn-btn secondary"
-                                                                style="flex:1;padding:6px 4px;font-size:13px !important;font-weight:800 !important;border:1.5px solid #94a3b8 !important;background:#f1f5f9 !important;color:#334155 !important;border-radius:5px;cursor:pointer !important;display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap !important;"
+                                                                style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;border:1.5px solid #94a3b8 !important;background:#f1f5f9 !important;color:#334155 !important;border-radius:5px;cursor:pointer !important;display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap !important;"
                                                                 onmouseover="this.style.background='#dbeafe';this.style.color='#002F70';this.style.borderColor='#3b82f6';"
                                                                 onmouseout="this.style.background='#f1f5f9';this.style.color='#334155';this.style.borderColor='#94a3b8';"
                                                                 title="Request Adjustment">
-                                                            <i class="fas fa-sliders-h" style="font-size:11px !important;"></i> <span style="font-size:13px !important;font-weight:800 !important;white-space:nowrap !important;display:inline !important;">Adjust</span>
+                                                            <i class="fas fa-sliders-h" style="font-size:11px !important;"></i> <span style="font-size:11px !important;font-weight:700 !important;white-space:nowrap !important;display:inline !important;">Req. Adjust</span>
                                                         </button>
                                                     <?php endif; ?>
 
                                                     <?php if ($mh_void_req): ?>
-                                                        <span style="flex:1;font-size:10.5px;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Void request pending"><i class="fas fa-clock"></i> Void Req</span>
+                                                        <span style="width:100%;font-size:10.5px;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Void request pending"><i class="fas fa-clock"></i> Void Req</span>
                                                     <?php else: ?>
                                                         <button type="button"
                                                                 data-jo-id="<?= (int)$txn['mt_id'] ?>"
@@ -7031,8 +7159,9 @@ setTimeout(function() {
                                                                 data-jo-total="<?= (float)$total_amount ?>"
                                                                 onclick="return openRequestVoidModal(event, this);"
                                                                 class="void-btn"
+                                                                style="width:100%;"
                                                                 title="Request Void">
-                                                            <i class="fas fa-ban"></i> <span>Void</span>
+                                                            <i class="fas fa-ban"></i> <span>Req. Void</span>
                                                         </button>
                                                     <?php endif; ?>
                                                 </div>
@@ -7254,18 +7383,18 @@ setTimeout(function() {
                                             <button type="button"
                                                     onclick="window.viewMerchandiseDetails('<?= addslashes($jom['transaction_id'] ?? $jom_id) ?>'); return false;"
                                                     class="txn-btn secondary"
-                                                    style="display:inline-flex;align-items:center;justify-content:center;gap:5px;width:100%;padding:6px 10px;font-size:13px !important;font-weight:800 !important;border:1.5px solid #94a3b8 !important;background:#f1f5f9 !important;color:#002F70 !important;border-radius:5px;box-sizing:border-box;text-decoration:none;white-space:nowrap !important;cursor:pointer !important;"
+                                                    style="display:inline-flex;align-items:center;justify-content:center;gap:5px;width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;border:1.5px solid #94a3b8 !important;background:#f1f5f9 !important;color:#002F70 !important;border-radius:5px;box-sizing:border-box;text-decoration:none;white-space:nowrap !important;cursor:pointer !important;"
                                                     onmouseover="this.style.background='#dbeafe';this.style.color='#002F70';this.style.borderColor='#3b82f6';"
                                                     onmouseout="this.style.background='#f1f5f9';this.style.color='#002F70';this.style.borderColor='#94a3b8';"
                                                     title="View Transaction Details">
-                                                <i class="fas fa-eye" style="font-size:12px !important;"></i> <span style="font-size:13px !important;font-weight:800 !important;color:#002F70 !important;white-space:nowrap !important;display:inline !important;">View</span>
+                                                <i class="fas fa-eye" style="font-size:11px !important;"></i> <span style="font-size:11px !important;font-weight:700 !important;color:#002F70 !important;white-space:nowrap !important;display:inline !important;">View</span>
                                             </button>
                                             <?php if ($jom_is_void): ?>
                                                 <span style="font-size:10.5px;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;"><i class="fas fa-ban"></i> Voided</span>
                                             <?php else: ?>
-                                                <div style="display:flex;gap:4px;width:100%;">
+                                                <div style="display:flex;flex-direction:column;gap:3px;width:100%;">
                                                     <?php if ($jom_adj_req): ?>
-                                                        <span style="flex:1;font-size:10.5px;color:#d97706;background:#fef3c7;border:1px solid #fde68a;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Adjustment request pending"><i class="fas fa-clock"></i> Adj. Req</span>
+                                                        <span style="width:100%;font-size:10.5px;color:#d97706;background:#fef3c7;border:1px solid #fde68a;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Adjustment request pending"><i class="fas fa-clock"></i> Adj. Req</span>
                                                     <?php else: ?>
                                                         <button type="button"
                                                                 data-jom-id="<?= $jom_id ?>"
@@ -7281,16 +7410,16 @@ setTimeout(function() {
                                                                 data-jom-merch="<?= $jom_merch_sum ?>"
                                                                 onclick="return openCombinedAdjustModal(event, this);"
                                                                 class="txn-btn secondary"
-                                                                style="flex:1;padding:6px 4px;font-size:13px !important;font-weight:800 !important;border:1.5px solid #94a3b8 !important;background:#f1f5f9 !important;color:#334155 !important;border-radius:5px;cursor:pointer !important;display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap !important;"
+                                                                style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;border:1.5px solid #94a3b8 !important;background:#f1f5f9 !important;color:#334155 !important;border-radius:5px;cursor:pointer !important;display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap !important;"
                                                                 onmouseover="this.style.background='#dbeafe';this.style.color='#002F70';this.style.borderColor='#3b82f6';"
                                                                 onmouseout="this.style.background='#f1f5f9';this.style.color='#334155';this.style.borderColor='#94a3b8';"
                                                                 title="Request Combined Adjustment">
-                                                            <i class="fas fa-sliders-h" style="font-size:11px !important;"></i> <span style="font-size:13px !important;font-weight:800 !important;white-space:nowrap !important;display:inline !important;">Adjust</span>
+                                                            <i class="fas fa-sliders-h" style="font-size:11px !important;"></i> <span style="font-size:11px !important;font-weight:700 !important;white-space:nowrap !important;display:inline !important;">Req. Adjust</span>
                                                         </button>
                                                     <?php endif; ?>
 
                                                     <?php if ($jom_void_req): ?>
-                                                        <span style="flex:1;font-size:11px;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Void request pending"><i class="fas fa-clock"></i> Void Req</span>
+                                                        <span style="width:100%;font-size:10.5px;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Void request pending"><i class="fas fa-clock"></i> Void Req</span>
                                                     <?php else: ?>
                                                         <button type="button"
                                                                 data-jom-id="<?= $jom_id ?>"
@@ -7305,8 +7434,9 @@ setTimeout(function() {
                                                                 data-jom-merch="<?= $jom_merch_sum ?>"
                                                                 onclick="return openCombinedVoidModal(event, this);"
                                                                 class="void-btn"
+                                                                style="width:100%;"
                                                                 title="Request Combined Void">
-                                                            <i class="fas fa-ban"></i> <span>Void</span>
+                                                            <i class="fas fa-ban"></i> <span>Req. Void</span>
                                                         </button>
                                                     <?php endif; ?>
                                                 </div>
@@ -11961,11 +12091,11 @@ setTimeout(function() {
             const btn = document.getElementById('checkoutBtn');
             if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing…'; }
 
-            if (cart.length === 0) {
-                showTxnAlert('Cart is empty.', 'warning');
-                _resetSubmitBtn();
-                return;
-            }
+            try {
+                if (cart.length === 0) {
+                    showTxnAlert('Cart is empty.', 'warning');
+                    return;
+                }
 
             const method = document.getElementById('paymentMethod')?.value || '';
             if (!method) {
@@ -12053,6 +12183,8 @@ setTimeout(function() {
 
             const isCard    = method === 'Credit Card' || method === 'Debit Card';
             const isEwallet = method === 'GCash' || method === 'Maya';
+            const isFleet   = method === 'Petron Fleet Card';
+            const isCredit  = method === 'Credit Account';
             const subtotal = cart.reduce((s, i) => s + i.quantity * i.unit_price, 0);
             const vat = subtotal * 0.12;
             // grand total is already declared as const grand = getGrandTotal() above
@@ -12109,8 +12241,7 @@ setTimeout(function() {
                 ...joData,
             };
 
-            try {
-                const res  = await fetch('../backend/api/merchandise_transactions.php', {
+            const res  = await fetch('../backend/api/merchandise_transactions.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
@@ -12421,14 +12552,14 @@ setTimeout(function() {
                 <div style="width:100%; overflow-x:hidden; border-radius:0 0 8px 8px;">
                 <table class="txn-table report-table no-min-width print-table" id="joUnifiedTable" style="width:100%; border-collapse:collapse; table-layout:fixed;">
                     <colgroup>
-                        <col style="width:11%;"><!-- JO # / OR NO. -->
-                        <col style="width:20%;"><!-- CUSTOMER & VEHICLE -->
-                        <col style="width:17%;"><!-- SERVICE & MECHANIC -->
-                        <col style="width:9%;"><!-- FEES BREAKDOWN -->
-                        <col style="width:9%;"><!-- PAYMENT -->
-                        <col style="width:15%;"><!-- SCHEDULE & DATE -->
-                        <col style="width:9%;"><!-- STATUS -->
-                        <col style="width:10%;"><!-- ACTIONS -->
+                        <col style="width:10%;"><!-- JO # / OR NO. -->
+                        <col style="width:16%;"><!-- CUSTOMER & VEHICLE -->
+                        <col style="width:16%;"><!-- SERVICE & MECHANIC -->
+                        <col style="width:8%;"><!-- FEES BREAKDOWN -->
+                        <col style="width:7%;"><!-- PAYMENT -->
+                        <col style="width:12%;"><!-- SCHEDULE & DATE -->
+                        <col style="width:13%;"><!-- STATUS -->
+                        <col style="width:18%;"><!-- ACTIONS -->
                     </colgroup>
                     <thead style="background:#002F70;">
                         <tr style="background:#002F70;">
@@ -12682,7 +12813,7 @@ setTimeout(function() {
 
                         <!-- 7. STATUS -->
                         <td style="padding:11px 4px;vertical-align:middle;text-align:center;white-space:nowrap;overflow:visible;box-sizing:border-box;">
-                            <span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 8px;border-radius:12px;font-size:11.5px;font-weight:700;white-space:nowrap;background:<?= $wf_bg ?>;color:<?= $wf_color ?>;border:1px solid <?= $wf_color ?>40;"
+                            <span style="display:inline-flex;align-items:center;justify-content:center;gap:3px;padding:3px 5px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;background:<?= $wf_bg ?>;color:<?= $wf_color ?>;border:1px solid <?= $wf_color ?>40;"
                                   title="<?= htmlspecialchars($wf_label) ?>">
                                 <i class="fas <?= $wf_status === 'Completed' || $val_status === 'Completed' ? 'fa-check-circle' : ($wf_status === 'In Progress' ? 'fa-spinner fa-spin' : ($wf_status === 'Rejected' || str_contains($wf_label, 'Void') ? 'fa-ban' : 'fa-clock')) ?>"></i>
                                 <?= htmlspecialchars($wf_label) ?>
@@ -12744,7 +12875,7 @@ setTimeout(function() {
                                 <button type="button"
                                         onclick='viewJobOrderDetails(<?= htmlspecialchars($jo_data, ENT_QUOTES) ?>)'
                                         class="txn-btn secondary" 
-                                        style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;background:#f1f5f9 !important;color:#002F70 !important;border:1.5px solid #94a3b8 !important;white-space:nowrap !important;"
+                                        style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;background:#f1f5f9 !important;color:#002F70 !important;border:1.5px solid #94a3b8 !important;white-space:nowrap !important;"
                                         onmouseover="this.style.background='#dbeafe';this.style.borderColor='#3b82f6';"
                                         onmouseout="this.style.background='#f1f5f9';this.style.borderColor='#94a3b8';">
                                     <i class="fas fa-eye" style="font-size:12px !important;"></i> <span style="font-size:13px !important;font-weight:800 !important;white-space:nowrap !important;display:inline !important;">View</span>
@@ -12758,27 +12889,27 @@ setTimeout(function() {
                                 <?php elseif ($wf_label === 'Void Requested' || ($pending_req && ($pending_req['request_type'] ?? '') === 'Void')): ?>
                                     <button type="button"
                                             onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
-                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-print"></i> Reprint
                                     </button>
-                                    <span style="font-size:12px;color:#dc2626;font-weight:800;text-align:center;padding:2px 0;">
+                                    <span style="font-size:10px;color:#dc2626;font-weight:800;text-align:center;padding:2px 0;white-space:nowrap;display:block;">
                                         <i class="fas fa-clock"></i> Void Requested
                                     </span>
 
                                 <?php elseif ($wf_label === 'Adjustment Requested' || ($pending_req && ($pending_req['request_type'] ?? '') === 'Adjustment')): ?>
                                     <button type="button"
                                             onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
-                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-print"></i> Reprint
                                     </button>
-                                    <span style="font-size:12px;color:#d97706;font-weight:800;text-align:center;padding:2px 0;">
-                                        <i class="fas fa-clock"></i> Adjustment Requested
+                                    <span style="font-size:10px;color:#d97706;font-weight:800;text-align:center;padding:2px 0;white-space:nowrap;display:block;">
+                                        <i class="fas fa-clock"></i> Adj. Requested
                                     </span>
 
                                 <?php elseif ($wf_label === 'Adjusted'): ?>
                                     <button type="button"
                                             onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
-                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-print"></i> Reprint
                                     </button>
                                     <span style="font-size:12px;color:#4338ca;font-weight:800;text-align:center;padding:2px 0;">
@@ -12801,7 +12932,7 @@ setTimeout(function() {
                                                 data-jo-vtype="<?= htmlspecialchars($job['vehicle_type'] ?? '') ?>"
                                                 data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
                                                 onclick="return openRequestAdjustModal(event, this);"
-                                                class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                                class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
                                             <i class="fas fa-sliders-h"></i> Request Adjust
                                         </button>
                                         <button type="button"
@@ -12820,21 +12951,21 @@ setTimeout(function() {
                                 <?php elseif ($wf_status === 'Released'): ?>
                                     <button type="button"
                                             onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
-                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-print"></i> Reprint
                                     </button>
 
                                 <?php elseif ($wf_status === 'Completed'): ?>
                                     <button type="button"
                                             onclick="printJobOrderReceipt(<?= (int)$job['id'] ?>,'<?= addslashes($job['job_order_id'] ?? ('#'.$job['id'])) ?>')"
-                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                         <i class="fas fa-print"></i> Reprint
                                     </button>
 
                                     <?php if ($pay_status !== 'Paid'): ?>
                                         <button type="button"
                                                 onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',false,'tracker')"
-                                                class="txn-btn success" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
+                                                class="txn-btn success" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                             <i class="fas fa-money-bill-wave"></i>
                                             <?= in_array($pay_status, ['Partially Paid','Partial Payment','Partial']) ? 'Settle Balance' : 'Mark Paid' ?>
                                         </button>
@@ -12846,7 +12977,7 @@ setTimeout(function() {
                                         <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
                                         <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                         <button type="submit" 
-                                                class="txn-btn primary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;background:#002F70;color:#fff;border:none;">
+                                                class="txn-btn primary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;background:#002F70;color:#fff;border:none;">
                                             <i class="fas fa-car-side"></i> Release Vehicle
                                         </button>
                                     </form>
@@ -12867,7 +12998,7 @@ setTimeout(function() {
                                             data-jo-vtype="<?= htmlspecialchars($job['vehicle_type'] ?? '') ?>"
                                             data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
                                             onclick="return openRequestAdjustModal(event, this);"
-                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
                                         <i class="fas fa-sliders-h"></i> Request Adjust
                                     </button>
                                     <button type="button"
@@ -12889,14 +13020,14 @@ setTimeout(function() {
                                             <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
                                             <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                             <button type="submit" 
-                                                    class="txn-btn success" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
+                                                    class="txn-btn success" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                                 <i class="fas fa-check"></i> Mark Complete
                                             </button>
                                         </form>
                                     <?php else: ?>
                                         <button type="button"
                                                 onclick="openPaymentModal(<?= (int)$job['id'] ?>,'<?= addslashes($job['_source'] ?? 'job_orders') ?>',<?= $jo_total ?>,<?= $jo_paid ?>,<?= $jo_balance ?>,'<?= addslashes($job['customer_name'] ?? '') ?>',true,'tracker')"
-                                                class="txn-btn success" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
+                                                class="txn-btn success" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                             <i class="fas fa-check"></i> Complete & Settle
                                         </button>
                                     <?php endif; ?>
@@ -12917,7 +13048,7 @@ setTimeout(function() {
                                             data-jo-vtype="<?= htmlspecialchars($job['vehicle_type'] ?? '') ?>"
                                             data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
                                             onclick="return openRequestAdjustModal(event, this);"
-                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
                                         <i class="fas fa-sliders-h"></i> Request Adjust
                                     </button>
                                     <button type="button"
@@ -12939,7 +13070,7 @@ setTimeout(function() {
                                             <input type="hidden" name="jo_id" value="<?= (int)$job['id'] ?>">
                                             <input type="hidden" name="jo_source" value="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>">
                                             <button type="submit" 
-                                                    class="txn-btn primary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;">
+                                                    class="txn-btn primary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;">
                                                 <i class="fas fa-play"></i> Start In Progress
                                             </button>
                                         </form>
@@ -12961,7 +13092,7 @@ setTimeout(function() {
                                             data-jo-vtype="<?= htmlspecialchars($job['vehicle_type'] ?? '') ?>"
                                             data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
                                             onclick="return openRequestAdjustModal(event, this);"
-                                            class="txn-btn secondary" style="width:100%;padding:6px 8px;font-size:13px !important;font-weight:800 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
+                                            class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
                                         <i class="fas fa-sliders-h"></i> Request Adjust
                                     </button>
                                     <button type="button"

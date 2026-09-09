@@ -724,8 +724,6 @@ input:checked + .ss-slider:before {
                         <select id="ss_system_status" class="ss-form-control" onchange="onSystemStatusChange(this.value)">
                             <option value="Online" style="color:#16a34a; font-weight:700;">Online</option>
                             <option value="Maintenance" style="color:#d97706; font-weight:700;">Maintenance</option>
-                            <option value="Degraded" style="color:#dc2626; font-weight:700;">Degraded</option>
-                            <option value="Offline" style="color:#64748b; font-weight:700;">Offline</option>
                         </select>
                     </div>
                     <div class="ss-form-group">
@@ -977,9 +975,11 @@ function populateFormFields(s) {
         document.getElementById('ss_maintenance_end_time').value = s.maintenance_end_time ? s.maintenance_end_time.replace(' ', 'T').substring(0, 16) : '';
         updateMaintenanceTimerPreview();
     }
-    // Sync system_status select
+    // Sync system_status select (Online or Maintenance only)
     const statusSel = document.getElementById('ss_system_status');
-    if (statusSel) statusSel.value = s.system_status || 'Online';
+    if (statusSel) {
+        statusSel.value = (s.system_status === 'Maintenance' || s.maintenance_mode == '1') ? 'Maintenance' : 'Online';
+    }
     document.getElementById('ss_last_system_update').value = s.last_system_update || '2026-08-06 22:30:00';
 
     // Update logo preview — show preview & remove button only if custom logo is set
@@ -1207,21 +1207,20 @@ setInterval(updateMaintenanceTimerPreview, 1000);
 function onMaintenanceModeChange(isChecked) {
     const statusSel = document.getElementById('ss_system_status');
     if (!statusSel) return;
-    if (isChecked) {
-        statusSel.value = 'Maintenance';
-    } else {
-        // Only revert to Online if currently on Maintenance
-        if (statusSel.value === 'Maintenance') {
-            statusSel.value = 'Online';
-        }
+    statusSel.value = isChecked ? 'Maintenance' : 'Online';
+    if (!isChecked && typeof clearMaintenanceTimer === 'function') {
+        clearMaintenanceTimer();
     }
 }
 
 function onSystemStatusChange(val) {
     const maintToggle = document.getElementById('ss_maintenance_mode');
     if (!maintToggle) return;
-    // Auto-check maintenance mode when status set to Maintenance
+    // Auto-sync maintenance toggle with status
     maintToggle.checked = (val === 'Maintenance');
+    if (val !== 'Maintenance' && typeof clearMaintenanceTimer === 'function') {
+        clearMaintenanceTimer();
+    }
 }
 
 async function saveAllSystemSettings() {
@@ -1285,7 +1284,7 @@ async function saveAllSystemSettings() {
             system_status: document.getElementById('ss_system_status').value,
             last_system_update: nowStr,
             maintenance_message: document.getElementById('ss_maintenance_message') ? document.getElementById('ss_maintenance_message').value.trim() : '',
-            maintenance_end_time: document.getElementById('ss_maintenance_end_time') && document.getElementById('ss_maintenance_end_time').value ? document.getElementById('ss_maintenance_end_time').value.replace('T', ' ') + ':00' : '',
+            maintenance_end_time: document.getElementById('ss_maintenance_mode').checked && document.getElementById('ss_maintenance_end_time') && document.getElementById('ss_maintenance_end_time').value ? document.getElementById('ss_maintenance_end_time').value.replace('T', ' ') + ':00' : '',
         }
     };
 

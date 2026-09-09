@@ -101,7 +101,7 @@ try {
     // ── Handle direct Job Order adjustment ─────────────────────────────────────
     if ($source === 'job_orders') {
         $stmt_jo = $pdo->prepare("SELECT * FROM job_orders WHERE id = ? AND station_id = ? LIMIT 1");
-        $stmt_jo->execute([$row_id, $station_id, $station_id]);
+        $stmt_jo->execute([$row_id, $station_id]);
         $jo = $stmt_jo->fetch(PDO::FETCH_ASSOC);
 
         if ($jo) {
@@ -183,7 +183,7 @@ try {
 
     // ── Load the transaction ──────────────────────────────────────────────────
     $stmt = $pdo->prepare("SELECT * FROM merchandise_transactions WHERE id = ? AND station_id = ? LIMIT 1");
-    $stmt->execute([$row_id, $station_id, $station_id]);
+    $stmt->execute([$row_id, $station_id]);
     $txn = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$txn) {
         echo json_encode(['success' => false, 'error' => 'Transaction not found']); exit;

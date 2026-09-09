@@ -73,6 +73,12 @@ try {
     }
 } catch (Exception $e) {}
 
+// If maintenance is OFF, but user landed with ?maintenance=..., cleanly redirect to remove query param
+if (!$is_maintenance && isset($_GET['maintenance'])) {
+    header("Location: login.php");
+    exit;
+}
+
 // Configuration variables
 $system_name = "Petron Station & Service Center Management System";
 $current_year = date("Y");
@@ -1798,7 +1804,7 @@ $_asset_base = $_login_base . '/assets';
 
                 
                 <!-- Maintenance Mode Banner with Live Countdown Timer -->
-                <?php if (!empty($is_maintenance) || isset($_GET['maintenance'])): ?>
+                <?php if (!empty($is_maintenance)): ?>
                 <div class="maint-banner-card" role="alert" style="background: linear-gradient(135deg, rgba(245,158,11,0.22) 0%, rgba(180,83,9,0.35) 100%); border: 1.5px solid #f59e0b; border-radius: 16px; padding: 18px 20px; margin: 18px 0; color: #ffffff; box-shadow: 0 6px 24px rgba(245,158,11,0.25);">
                     <div style="display:flex; align-items:flex-start; gap:14px;">
                         <div style="background:#f59e0b; color:#ffffff; width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; box-shadow:0 0 16px rgba(245,158,11,0.6);">
@@ -2415,6 +2421,42 @@ document.addEventListener('DOMContentLoaded', function() {
 
     update();
     setInterval(update, 1000);
+})();
+
+// ── Real-Time Maintenance Status Watcher & URL Cleaner ──
+(function initLoginMaintenanceWatcher() {
+    // If URL contains ?maintenance=..., clean it from browser history and URL bar
+    if (window.location.search.includes('maintenance=')) {
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('maintenance');
+            const cleanUrl = url.pathname + (url.searchParams.toString() ? '?' + url.searchParams.toString() : '');
+            window.history.replaceState({}, document.title, cleanUrl);
+        } catch (e) {}
+    }
+
+    // Check maintenance status dynamically
+    const statusApiUrl = '../backend/api/maintenance_status.php';
+    function checkMaintStatus() {
+        fetch(statusApiUrl, { cache: 'no-store' })
+            .then(res => res.json())
+            .then(data => {
+                const banner = document.querySelector('.maint-banner-card');
+                if (data && !data.maintenance_mode) {
+                    if (banner) {
+                        banner.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+                        banner.style.opacity = '0';
+                        banner.style.transform = 'translateY(-10px)';
+                        setTimeout(() => { if (banner.parentNode) banner.remove(); }, 400);
+                    }
+                } else if (data && data.maintenance_mode && !banner) {
+                    // Maintenance mode re-enabled while viewing login
+                    window.location.reload();
+                }
+            })
+            .catch(() => {});
+    }
+    setInterval(checkMaintStatus, 5000);
 })();
 </script>
 

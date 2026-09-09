@@ -258,7 +258,7 @@ function getPendingTransactions($station_id) {
     ";
     
     $stmt = $pdo->prepare($query);
-    $stmt->execute([$station_id, $station_id]);
+    $stmt->execute([$station_id]);
     $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     $summary = [

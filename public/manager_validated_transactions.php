@@ -1314,15 +1314,15 @@ try {
     <div class="vt-table-wrapper">
     <table class="vt-table report-table no-min-width print-table">
         <colgroup>
-            <col style="width:11.5%;"><!-- OR NO. / TXN ID -->
-            <col style="width:12.5%;"><!-- CUSTOMER & VEHICLE -->
-            <col style="width:9.0%;"><!-- TYPE & SHIFT -->
-            <col style="width:18.5%;"><!-- PRODUCTS / SERVICES -->
-            <col style="width:10.5%;"><!-- FEES BREAKDOWN -->
-            <col style="width:11.5%;"><!-- TOTAL & PAYMENT -->
-            <col style="width:10.0%;"><!-- STAFF & DATE -->
-            <col style="width:7.5%;"><!-- STATUS -->
-            <col style="width:9.0%;"><!-- ACTIONS -->
+            <col style="width:11%;"><!-- OR NO. / TXN ID -->
+            <col style="width:12%;"><!-- CUSTOMER & VEHICLE -->
+            <col style="width:11%;"><!-- TYPE & SHIFT -->
+            <col style="width:17%;"><!-- PRODUCTS / SERVICES -->
+            <col style="width:9%;"><!-- FEES BREAKDOWN -->
+            <col style="width:11%;"><!-- TOTAL & PAYMENT -->
+            <col style="width:10%;"><!-- STAFF & DATE -->
+            <col style="width:10%;"><!-- STATUS -->
+            <col style="width:9%;"><!-- ACTIONS -->
         </colgroup>
         <thead>
             <tr>
@@ -1481,8 +1481,8 @@ try {
                     </td>
 
                     <!-- 3. Type & Shift -->
-                    <td style="vertical-align:middle;padding:10px 6px;box-sizing:border-box;overflow:hidden;">
-                        <div><span class="badge <?php echo $tBadge; ?>" style="font-size:10.5px;font-weight:700;padding:3px 7px;display:inline-flex;align-items:center;line-height:1.2;border-radius:6px;max-width:100%;box-sizing:border-box;"><i class="fas <?php echo $tIcon; ?>" style="margin-right:3px;font-size:10px;"></i> <?php echo htmlspecialchars($tLabel); ?></span></div>
+                    <td style="vertical-align:middle;padding:10px 4px;box-sizing:border-box;text-align:center;">
+                        <div><span class="badge <?php echo $tBadge; ?>" style="font-size:10px;font-weight:700;padding:3px 5px;display:inline-flex;align-items:center;line-height:1.2;border-radius:6px;white-space:nowrap;box-sizing:border-box;"><i class="fas <?php echo $tIcon; ?>" style="margin-right:3px;font-size:9px;"></i> <?php echo htmlspecialchars($tLabel); ?></span></div>
                         <?php 
                         $s_raw = trim($r['shift'] ?? '');
                         $s_val = strtolower($s_raw);
@@ -1558,7 +1558,7 @@ try {
                     </td>
 
                     <!-- 8. Status -->
-                    <td style="vertical-align:middle;text-align:center;padding:10px 4px;box-sizing:border-box;overflow:hidden;">
+                    <td style="vertical-align:middle;text-align:center;padding:10px 3px;box-sizing:border-box;">
                         <?php
                         $src_key = $r['_source'] . '_' . $r['row_id'];
                         $txn_key = $r['_source'] . '_' . $r['txn_id'];
@@ -1571,19 +1571,19 @@ try {
                         $has_void_req = ($pending_req && ($pending_req['request_type'] ?? '') === 'Void' && $vst !== 'voided');
                         
                         if ($vst === 'voided' || $vst === 'void' || $vst === 'cancelled') {
-                            echo '<span class="badge badge-red" style="font-size:11.5px;font-weight:800;padding:3.5px 6px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;max-width:100%;box-sizing:border-box;"><i class="fas fa-ban" style="margin-right:3px;"></i> Voided</span>';
+                            echo '<span class="badge badge-red" style="font-size:10px;font-weight:800;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;box-sizing:border-box;"><i class="fas fa-ban" style="margin-right:3px;"></i> Voided</span>';
                         } elseif ($vst === 'adjusted') {
-                            echo '<span class="badge badge-amber" style="font-size:11.5px;font-weight:800;padding:3.5px 6px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;max-width:100%;box-sizing:border-box;"><i class="fas fa-sliders-h" style="margin-right:3px;"></i> Adjusted</span>';
+                            echo '<span class="badge badge-amber" style="font-size:10px;font-weight:800;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;box-sizing:border-box;"><i class="fas fa-sliders-h" style="margin-right:3px;"></i> Adjusted</span>';
                         } elseif ($has_void_req) {
-                            echo '<span class="badge badge-red" style="font-size:11.5px;font-weight:800;padding:3.5px 6px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;max-width:100%;box-sizing:border-box;" title="Void Requested"><i class="fas fa-clock" style="margin-right:3px;"></i> Void Req.</span>';
+                            echo '<span class="badge badge-red" style="font-size:10px;font-weight:800;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;box-sizing:border-box;" title="Void Requested"><i class="fas fa-clock" style="margin-right:3px;"></i> Void Req.</span>';
                         } elseif ($has_adj_req) {
-                            echo '<span class="badge badge-orange" style="font-size:11.5px;font-weight:800;padding:3.5px 6px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;max-width:100%;box-sizing:border-box;" title="Adjustment Requested"><i class="fas fa-clock" style="margin-right:3px;"></i> Adj. Req.</span>';
+                            echo '<span class="badge badge-orange" style="font-size:10px;font-weight:800;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;box-sizing:border-box;" title="Adjustment Requested"><i class="fas fa-clock" style="margin-right:3px;"></i> Adj. Req.</span>';
                         } elseif ($wst === 'in_progress' || $wst === 'in progress') {
-                            echo '<span class="badge badge-blue" style="font-size:11.5px;font-weight:800;padding:3.5px 6px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;max-width:100%;box-sizing:border-box;"><i class="fas fa-spinner fa-spin" style="margin-right:3px;"></i> In Progress</span>';
+                            echo '<span class="badge badge-blue" style="font-size:10px;font-weight:800;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;box-sizing:border-box;"><i class="fas fa-spinner fa-spin" style="margin-right:3px;"></i> In Progress</span>';
                         } elseif ($wst === 'released' || $vst === 'released') {
-                            echo '<span class="badge badge-green" style="font-size:11.5px;font-weight:800;padding:3.5px 6px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;max-width:100%;box-sizing:border-box;"><i class="fas fa-check" style="margin-right:3px;"></i> Released</span>';
+                            echo '<span class="badge badge-green" style="font-size:10px;font-weight:800;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;box-sizing:border-box;"><i class="fas fa-check" style="margin-right:3px;"></i> Released</span>';
                         } else {
-                            echo '<span class="badge badge-green" style="font-size:11.5px;font-weight:800;padding:3.5px 6px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;max-width:100%;box-sizing:border-box;"><i class="fas fa-check-circle" style="margin-right:3px;"></i> Completed</span>';
+                            echo '<span class="badge badge-green" style="font-size:10px;font-weight:800;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;box-sizing:border-box;"><i class="fas fa-check-circle" style="margin-right:3px;"></i> Completed</span>';
                         }
                         ?>
                     </td>
@@ -2457,8 +2457,6 @@ function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, 
                 }
             }
 
-            const initialReason = (adjReq && adjReq.request_reason) ? adjReq.request_reason : 'Price / Quantity Correction';
-
             const activePayMethod = (function(pm) {
                 if (!pm) return 'Cash';
                 pm = String(pm).trim();
@@ -2568,11 +2566,11 @@ function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, 
             </div>
             <div style="margin-bottom:12px;">
               <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Adjustment Reason <span style="color:#dc2626">*</span></label>
-              <textarea id="adjReason" rows="2" placeholder="Why is this adjustment being made?" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;">${esc(initialReason)}</textarea>
+              <textarea id="adjReason" rows="2" placeholder="Enter reason for adjustment..." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
             </div>
             <div>
               <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:4px">Manager Remarks <span style="color:#dc2626">*</span></label>
-              <textarea id="adjManagerRemarks" rows="2" placeholder="Manager's notes on this adjustment..." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;">Adjusted and approved by Manager</textarea>
+              <textarea id="adjManagerRemarks" rows="2" placeholder="Enter manager remarks..." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
             </div>`;
 
             document.getElementById('adjustModalBody').innerHTML = html;
@@ -2624,8 +2622,8 @@ function closeAdjustModal() {
 }
 
 function submitAdjustment() {
-    const reason  = document.getElementById('adjReason')?.value.trim() || 'Price / Quantity Correction';
-    const remarks = document.getElementById('adjManagerRemarks')?.value.trim() || 'Adjusted and confirmed by Manager';
+    const reason  = document.getElementById('adjReason')?.value.trim() || '';
+    const remarks = document.getElementById('adjManagerRemarks')?.value.trim() || '';
     if (!reason)  { showToast('Please enter the Adjustment Reason.', 'error'); document.getElementById('adjReason')?.focus(); return; }
     if (!remarks) { showToast('Please enter Manager Remarks.', 'error'); document.getElementById('adjManagerRemarks')?.focus(); return; }
 
@@ -2644,6 +2642,7 @@ function submitAdjustment() {
         headers: { 'Content-Type': 'application/json' },
         body   : JSON.stringify({
             row_id            : _adjRowId,
+            source            : _adjSource || 'merchandise_transactions',
             payment_method    : document.getElementById('adjPayMethod')?.value  || '',
             payment_status    : document.getElementById('adjPayStatus')?.value  || '',
             adjustment_reason : reason,

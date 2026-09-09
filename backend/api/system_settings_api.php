@@ -163,6 +163,9 @@ try {
             foreach ($settings as $key => $value) {
                 $category = $categoryMap[$key] ?? 'general';
                 $valStr   = is_bool($value) ? ($value ? '1' : '0') : (string)$value;
+                if ($key === 'system_status' && $valStr !== 'Maintenance') {
+                    $valStr = 'Online';
+                }
                 upsertSetting($pdo, $key, $valStr, $category, $station_id, $me['id']);
             }
 
