@@ -804,319 +804,16 @@ $seen_events = []; // Prevents duplicate events per date
         $month_events[$date][] = $event;
     };
 
-    // 1. Manual Calendar Events (Branch-Wide or Filtered Station)
-    try {
-        if ($filter_station > 0) {
-            $stmt = $pdo->prepare("
-                SELECT sce.*, et.type_name, et.type_key, et.icon_class, su.name AS staff_name,
-                       sce.staff_encoder_id, s.name AS station_name
-                FROM staff_calendar_events sce
-                JOIN staff_event_types et ON sce.event_type_id = et.id
-                JOIN users su ON sce.staff_encoder_id = su.id
-                LEFT JOIN stations s ON sce.station_id = s.id
-                WHERE sce.station_id = ? AND sce.event_date BETWEEN ? AND ?
-                ORDER BY sce.event_date, sce.start_time
-            ");
-            $stmt->execute([$filter_station, $view_start, $view_end]);
-        } else {
-            $stmt = $pdo->prepare("
-                SELECT sce.*, et.type_name, et.type_key, et.icon_class, su.name AS staff_name,
-                       sce.staff_encoder_id, s.name AS station_name
-                FROM staff_calendar_events sce
-                JOIN staff_event_types et ON sce.event_type_id = et.id
-                JOIN users su ON sce.staff_encoder_id = su.id
-                LEFT JOIN stations s ON sce.station_id = s.id
-                WHERE sce.event_date BETWEEN ? AND ?
-                ORDER BY sce.event_date, sce.start_time
-            ");
-            $stmt->execute([$view_start, $view_end]);
+    // Comprehensive operational events loading using centralized helper
+    // (Job Orders, Merchandise Sales, Fuel Transactions, Closings, Void/Adj Requests, Deliveries, Calibrations, Labor, Alerts)
+    $fetched_events = calendar_fetch_all_station_events($pdo, (int)$filter_station, $view_start, $view_end, (int)$user_id, 'admin');
+    foreach ($fetched_events as $date => $evts) {
+        foreach ($evts as $evt) {
+            $add_admin_unique_event($date, $evt);
         }
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $row['color'] = $staff_list[$row['staff_encoder_id']]['color'] ?? '#039be5';
-            $add_admin_unique_event($row['event_date'], $row);
-        }
-    } catch (Exception $e) {}
+    }
 
-    // 2. Staff Schedules / Shifts & Turnover (Shift 1 & Shift 2 Color Coded)
-    try {
-        if ($filter_station > 0) {
-            $sh = $pdo->prepare("
-                SELECT ss.id, ss.user_id, ss.shift, ss.scheduled_date, ss.status, u.name AS staff_name,
-                       s.start_time, s.end_time, st.name AS station_name
-                FROM staff_schedules ss
-                JOIN users u ON ss.user_id = u.id
-                JOIN stations st ON u.station_id = st.id
-                LEFT JOIN shifts s ON ss.shift = s.name
-                WHERE u.station_id = ? AND ss.scheduled_date BETWEEN ? AND ?
-            ");
-            $sh->execute([$filter_station, $view_start, $view_end]);
-        } else {
-            $sh = $pdo->prepare("
-                SELECT ss.id, ss.user_id, ss.shift, ss.scheduled_date, ss.status, u.name AS staff_name,
-                       s.start_time, s.end_time, st.name AS station_name
-                FROM staff_schedules ss
-                JOIN users u ON ss.user_id = u.id
-                JOIN stations st ON u.station_id = st.id
-                LEFT JOIN shifts s ON ss.shift = s.name
-                WHERE ss.scheduled_date BETWEEN ? AND ?
-            ");
-            $sh->execute([$view_start, $view_end]);
-        }
-        foreach ($sh->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $shift_txt = strtolower($r['shift'] ?? '');
-            // Shift 1 = Royal Blue (#2563eb), Shift 2 = Deep Purple (#9333ea)
-            $shift_color = (strpos($shift_txt, '1') !== false || strpos($shift_txt, 'morn') !== false) ? '#2563eb' : ((strpos($shift_txt, '2') !== false || strpos($shift_txt, 'after') !== false || strpos($shift_txt, 'night') !== false) ? '#9333ea' : '#0284c7');
-
-            $add_admin_unique_event($r['scheduled_date'], [
-                'id' => 'shift_'.$r['id'],
-                'type_name' => 'Shift (' . $r['shift'] . ')',
-                'type_key' => 'staff_shift',
-                'icon_class' => 'fas fa-clock',
-                'staff_name' => $r['staff_name'],
-                'staff_encoder_id' => $r['user_id'],
-                'work_description' => $r['staff_name'] . ' — ' . $r['shift'] . ' Shift @ ' . ($r['station_name'] ?? 'Station'),
-                'status' => strtolower($r['status'] ?? 'active'),
-                'color' => $shift_color,
-                'auto_synced' => true
-            ]);
-        }
-    } catch (Exception $e) {}
-
-    // 3. Job Orders (Branch-wide scheduled, active, & completed Job Orders)
-    try {
-        $jo_query = "
-            SELECT jo.id, jo.created_by, DATE(jo.created_at) AS event_date, jo.due_date,
-                   jo.service_type, jo.status, u.name AS staff_name, jo.customer_name,
-                   st.name AS station_name
-            FROM job_orders jo
-            JOIN users u ON jo.created_by = u.id
-            JOIN stations st ON jo.station_id = st.id
-            WHERE (DATE(jo.created_at) BETWEEN ? AND ? OR jo.due_date BETWEEN ? AND ?)
-        ";
-        $jo_params = [$view_start, $view_end, $view_start, $view_end];
-        if ($filter_station > 0) {
-            $jo_query .= " AND jo.station_id = ?";
-            $jo_params[] = $filter_station;
-        }
-        $jo = $pdo->prepare($jo_query);
-        $jo->execute($jo_params);
-        foreach ($jo->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $edate = $r['due_date'] ?: $r['event_date'];
-            $st_label = strtolower($r['status'] ?? 'pending');
-            $color = ($st_label === 'completed' || $st_label === 'verified') ? '#10b981' : (($st_label === 'in progress' || $st_label === 'in_progress') ? '#3b82f6' : '#f59e0b');
-            $add_admin_unique_event($edate, [
-                'id' => 'jo_'.$r['id'],
-                'type_name' => 'Job Order',
-                'type_key' => 'job_order',
-                'icon_class' => 'fas fa-wrench',
-                'staff_name' => $r['staff_name'],
-                'staff_encoder_id' => $r['created_by'],
-                'work_description' => 'JO #' . $r['id'] . ' (' . ucfirst($st_label) . '): ' . $r['service_type'] . ' @ ' . $r['station_name'],
-                'status' => $st_label,
-                'color' => $color,
-                'auto_synced' => true
-            ]);
-        }
-    } catch (Exception $e) {}
-
-    // 4. Deliveries Oversight & Expected Merchandise Deliveries
-    try {
-        $dl_query = "
-            SELECT d.id, d.encoded_by, DATE(d.delivery_date) AS event_date, u.name AS staff_name,
-                   d.status, d.supplier, d.product, st.name AS station_name
-            FROM deliveries_oversight d
-            JOIN users u ON d.encoded_by = u.id
-            JOIN stations st ON d.station_id = st.id
-            WHERE DATE(d.delivery_date) BETWEEN ? AND ?
-        ";
-        $dl_params = [$view_start, $view_end];
-        if ($filter_station > 0) {
-            $dl_query .= " AND d.station_id = ?";
-            $dl_params[] = $filter_station;
-        }
-        $dl = $pdo->prepare($dl_query);
-        $dl->execute($dl_params);
-        foreach ($dl->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $add_admin_unique_event($r['event_date'], [
-                'id' => 'del_'.$r['id'],
-                'type_name' => 'Merchandise Delivery',
-                'type_key' => 'merchandise_delivery',
-                'icon_class' => 'fas fa-box',
-                'staff_name' => $r['staff_name'],
-                'staff_encoder_id' => $r['encoded_by'],
-                'work_description' => 'Delivery: ' . $r['supplier'] . ' - ' . $r['product'] . ' @ ' . $r['station_name'],
-                'status' => strtolower($r['status'] ?? 'pending'),
-                'color' => '#06b6d4',
-                'auto_synced' => true
-            ]);
-        }
-    } catch (Exception $e) {}
-
-    // 5. Fuel Deliveries
-    try {
-        $fd_query = "
-            SELECT fd.id, DATE(fd.created_at) AS event_date, fd.fuel_type, fd.liters, fd.status,
-                   fd.supplier, st.name AS station_name
-            FROM fuel_deliveries fd
-            JOIN stations st ON fd.station_id = st.id
-            WHERE DATE(fd.created_at) BETWEEN ? AND ?
-        ";
-        $fd_params = [$view_start, $view_end];
-        if ($filter_station > 0) {
-            $fd_query .= " AND fd.station_id = ?";
-            $fd_params[] = $filter_station;
-        }
-        $fd = $pdo->prepare($fd_query);
-        $fd->execute($fd_params);
-        foreach ($fd->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $add_admin_unique_event($r['event_date'], [
-                'id' => 'fuel_del_'.$r['id'],
-                'type_name' => 'Fuel Delivery',
-                'type_key' => 'fuel_delivery',
-                'icon_class' => 'fas fa-gas-pump',
-                'staff_name' => $r['supplier'] ?: 'Fuel Supplier',
-                'staff_encoder_id' => $user_id,
-                'work_description' => 'Fuel Delivery: ' . ($r['fuel_type'] ?: 'Fuel') . ' (' . number_format((float)($r['liters'] ?? 0), 2) . ' L) @ ' . $r['station_name'],
-                'status' => strtolower($r['status'] ?? 'pending'),
-                'color' => '#ef4444',
-                'auto_synced' => true
-            ]);
-        }
-    } catch (Exception $e) {}
-
-    // 6. Purchase Orders
-    try {
-        $po_query = "
-            SELECT po.id, DATE(po.order_date) AS event_date, po.supplier_name, po.status,
-                   st.name AS station_name
-            FROM purchase_orders po
-            JOIN stations st ON po.station_id = st.id
-            WHERE DATE(po.order_date) BETWEEN ? AND ?
-        ";
-        $po_params = [$view_start, $view_end];
-        if ($filter_station > 0) {
-            $po_query .= " AND po.station_id = ?";
-            $po_params[] = $filter_station;
-        }
-        $po = $pdo->prepare($po_query);
-        $po->execute($po_params);
-        foreach ($po->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $add_admin_unique_event($r['event_date'], [
-                'id' => 'po_'.$r['id'],
-                'type_name' => 'Purchase Order',
-                'type_key' => 'purchase_order',
-                'icon_class' => 'fas fa-file-invoice',
-                'staff_name' => $r['supplier_name'],
-                'staff_encoder_id' => $user_id,
-                'work_description' => 'PO #' . $r['id'] . ': ' . $r['supplier_name'] . ' @ ' . $r['station_name'],
-                'status' => strtolower($r['status'] ?? 'pending'),
-                'color' => '#8b5cf6',
-                'auto_synced' => true
-            ]);
-        }
-    } catch (Exception $e) {}
-
-    // 7. Fuel Calibration & Meter Readings
-    try {
-        $fc_query = "
-            SELECT fc.id, DATE(fc.calibration_date) AS event_date, fc.fuel_type, fc.status,
-                   fc.technician_name, st.name AS station_name
-            FROM fuel_calibration_records fc
-            JOIN stations st ON fc.station_id = st.id
-            WHERE DATE(fc.calibration_date) BETWEEN ? AND ?
-        ";
-        $fc_params = [$view_start, $view_end];
-        if ($filter_station > 0) {
-            $fc_query .= " AND fc.station_id = ?";
-            $fc_params[] = $filter_station;
-        }
-        $fc = $pdo->prepare($fc_query);
-        $fc->execute($fc_params);
-        foreach ($fc->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $add_admin_unique_event($r['event_date'], [
-                'id' => 'calib_'.$r['id'],
-                'type_name' => 'Fuel Reading / Calibration',
-                'type_key' => 'fuel_calibration',
-                'icon_class' => 'fas fa-tachometer-alt',
-                'staff_name' => $r['technician_name'] ?: 'Technician',
-                'staff_encoder_id' => $user_id,
-                'work_description' => 'Meter Reading: ' . ($r['fuel_type'] ?: 'Pump') . ' @ ' . $r['station_name'],
-                'status' => strtolower($r['status'] ?? 'pending'),
-                'color' => '#64748b',
-                'auto_synced' => true
-            ]);
-        }
-    } catch (Exception $e) {}
-
-    // 8. ADMIN APPROVALS: Price Change Approvals & Master Data Requests
-    try {
-        $md_query = "
-            SELECT m.id, DATE(m.created_at) AS event_date, m.request_type, m.entity_type,
-                   u.name AS staff_name, st.name AS station_name
-            FROM master_data_requests m
-            JOIN users u ON m.requested_by = u.id
-            JOIN stations st ON m.station_id = st.id
-            WHERE m.status = 'Pending' AND DATE(m.created_at) BETWEEN ? AND ?
-        ";
-        $md_params = [$view_start, $view_end];
-        if ($filter_station > 0) {
-            $md_query .= " AND m.station_id = ?";
-            $md_params[] = $filter_station;
-        }
-        $md = $pdo->prepare($md_query);
-        $md->execute($md_params);
-        foreach ($md->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $add_admin_unique_event($r['event_date'], [
-                'id' => 'admin_md_'.$r['id'],
-                'type_name' => 'Master Data / Price Approval',
-                'type_key' => 'admin_approval',
-                'icon_class' => 'fas fa-gavel',
-                'staff_name' => $r['staff_name'],
-                'staff_encoder_id' => $user_id,
-                'work_description' => '[ADMIN ACTION REQUIRED] ' . ucfirst($r['request_type']) . ' ' . $r['entity_type'] . ' @ ' . $r['station_name'],
-                'status' => 'pending',
-                'color' => '#dc2626',
-                'priority' => 'urgent',
-                'auto_synced' => true
-            ]);
-        }
-    } catch (Exception $e) {}
-
-    // 9. Low & Critical Stock Alerts
-    try {
-        $low_stock_query = "
-            SELECT ip.id, ip.product_name, 
-                   COALESCE(si.stock_level, ip.stock, 0) AS current_stock,
-                   COALESCE(si.reorder_level, ip.min_stock, 10) AS minimum_stock,
-                   COALESCE(si.unit, ip.size, 'pcs') AS unit,
-                   st.name AS station_name
-            FROM inventory_products ip
-            LEFT JOIN station_inventory si ON si.product_id = ip.id
-            LEFT JOIN stations st ON si.station_id = st.id
-            WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
-              AND ip.status = 'Active'
-              AND COALESCE(si.stock_level, ip.stock, 0) <= COALESCE(si.reorder_level, ip.min_stock, 10)
-            LIMIT 10
-        ";
-        $low_stock = $pdo->prepare($low_stock_query);
-        $low_stock->execute();
-        foreach ($low_stock->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $add_admin_unique_event($today_str, [
-                'id' => 'admin_restock_'.$r['id'],
-                'type_name' => 'Low Stock Alert',
-                'type_key' => 'stock_alert',
-                'icon_class' => 'fas fa-exclamation-triangle',
-                'staff_name' => 'Branch Alert',
-                'staff_encoder_id' => $user_id,
-                'work_description' => '[LOW STOCK] ' . $r['product_name'] . ' (' . (int)$r['current_stock'] . ' ' . $r['unit'] . ' remaining) @ ' . ($r['station_name'] ?? 'Branch'),
-                'status' => 'pending',
-                'color' => '#ef4444',
-                'auto_synced' => true
-            ]);
-        }
-    } catch (Exception $e) {}
-
-    // 10. Reports & Reconciliation Deadlines
+    // 10. Admin: Branch Reports & Reconciliation Deadlines (daily reminder)
     $add_admin_unique_event($today_str, [
         'id' => 'admin_report_fuel_sales',
         'type_name' => 'Branch Report Schedule',
@@ -1274,7 +971,6 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                     <option value="">All Event Types</option>
                     <option value="job_order"><i class="fas fa-circle text-success"></i> Job Orders</option>
                     <option value="customer_appointment"><i class="fas fa-circle text-primary"></i> Customer Appointments</option>
-                    <option value="staff_shift"><i class="fas fa-circle" style="color:#8b5cf6;"></i> Staff Shifts</option>
                     <option value="merchandise_delivery"><i class="fas fa-circle text-warning"></i> Merchandise Deliveries</option>
                     <option value="fuel_delivery"><i class="fas fa-circle" style="color:#b45309;"></i> Fuel Deliveries</option>
                     <option value="purchase_order"><i class="fas fa-circle text-dark"></i> Purchase Orders</option>
@@ -1295,16 +991,8 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
 
         <!-- ── EVENT TYPE LEGEND ────────────────────────────── -->
         <div style="padding:12px; border-bottom:1px solid #dadce0;">
-            <div style="font-size:12px; font-weight:600; color:#3c4043; margin-bottom:8px;"><i class="fas fa-palette" style="color:#1a73e8;"></i> EVENTS & SHIFT COLOR CODES</div>
+            <div style="font-size:12px; font-weight:600; color:#3c4043; margin-bottom:8px;"><i class="fas fa-palette" style="color:#1a73e8;"></i> EVENT TYPES & COLOR CODES</div>
             <div style="display:flex; flex-direction:column; gap:5px; font-size:11px; color:#3c4043;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <div style="width:12px; height:12px; background:#2563eb; border-radius:3px;"></div>
-                    <span style="font-weight:600;">Shift 1 Staff</span> <span style="font-size:10px; color:#64748b;">(06:00 - 14:00)</span>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <div style="width:12px; height:12px; background:#9333ea; border-radius:3px;"></div>
-                    <span style="font-weight:600;">Shift 2 Staff</span> <span style="font-size:10px; color:#64748b;">(14:00 - 22:00)</span>
-                </div>
                 <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCategory('job_order')">
                     <span><i class="fas fa-circle text-success"></i></span><span>Job Orders</span>
                     <div class="cal-calendar-checkbox checked" id="cb_cat_job_order" style="background:#33b679; border-color:#33b679; margin-left:auto; width:16px; height:16px;"></div>
@@ -1380,28 +1068,10 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
             <?php endif; ?>
         </div>
 
-        <!-- Staff Shifts -->
-        <div style="padding:12px; border-bottom:1px solid #dadce0;">
-            <div style="font-size:12px; font-weight:600; color:#5f6368; margin-bottom:6px;"><i class="fas fa-user-clock"></i> STAFF SHIFTS (next 3 days)</div>
-            <?php if (empty($summary_stats['upcoming_shifts'])): ?>
-                <div style="font-size:11px; color:#5f6368;">No shifts scheduled</div>
-            <?php else: ?>
-                <div style="max-height:110px; overflow-y:auto;">
-                    <?php foreach($summary_stats['upcoming_shifts'] as $sh): ?>
-                    <div style="font-size:11px; border-bottom:1px solid #e0e0e0; padding:4px 0;">
-                        <div style="font-weight:600; color:#5f6368;"><?= htmlspecialchars($sh['staff_name'] ?? '') ?></div>
-                        <div style="color:#70757a; font-size:10px;"><?= $sh['scheduled_date'] ?> · <?= htmlspecialchars($sh['shift_name'] ?? 'Regular') ?> · <em><?= htmlspecialchars($sh['station_name'] ?? '') ?></em></div>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
-        </div>
-
         <!-- ── TODAY'S STATS ─────────────────────────────────── -->
         <div style="padding:12px; border-bottom:1px solid #dadce0;">
             <div style="font-size:12px; font-weight:600; color:#1a73e8; margin-bottom:8px;"><i class="fas fa-calendar-day"></i> TODAY'S EVENTS</div>
-            <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px; text-align:center;">
-                <div><div style="font-size:20px; font-weight:700; color:#1a73e8;"><?= $summary_stats['today_shifts'] ?></div><div style="font-size:10px; color:#5f6368;">Shifts</div></div>
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; text-align:center;">
                 <div><div style="font-size:20px; font-weight:700; color:#33b679;"><?= $summary_stats['today_job_orders'] ?></div><div style="font-size:10px; color:#5f6368;">Job Orders</div></div>
                 <div><div style="font-size:20px; font-weight:700; color:#b06000;"><?= $summary_stats['today_deliveries'] ?></div><div style="font-size:10px; color:#5f6368;">Deliveries</div></div>
                 <div><div style="font-size:20px; font-weight:700; color:#5f6368;"><?= $summary_stats['today_events'] ?></div><div style="font-size:10px; color:#5f6368;">Other</div></div>
@@ -1430,25 +1100,6 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
             <button onclick="showConflicts()" style="margin-top:8px; padding:6px 12px; background:#d93025; color:#fff; border:none; border-radius:4px; font-size:11px; cursor:pointer; width:100%;">Review Conflicts</button>
         </div>
         <?php endif; ?>
-
-
-
-        <!-- ── SHIFT COLOR CODES ──────────────────────────── -->
-        <div class="cal-calendars" style="padding:12px; border-top:1px solid #dadce0;">
-            <div class="cal-calendars-title" style="font-size:12px; font-weight:600; color:#3c4043; margin-bottom:8px;">
-                <i class="fas fa-users"></i> SHIFT COLOR CODES
-            </div>
-            <div style="display:flex; flex-direction:column; gap:6px; font-size:11px; color:#3c4043;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <div style="width:12px; height:12px; background:#2563eb; border-radius:3px;"></div>
-                    <span style="font-weight:600;">Shift 1 Staff</span> <span style="font-size:10px; color:#64748b;">(06:00 - 14:00)</span>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <div style="width:12px; height:12px; background:#9333ea; border-radius:3px;"></div>
-                    <span style="font-weight:600;">Shift 2 Staff</span> <span style="font-size:10px; color:#64748b;">(14:00 - 22:00)</span>
-                </div>
-            </div>
-        </div>
 
     </div>
 
@@ -1725,6 +1376,9 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
 </div>
 
 <script>
+// Global events dictionary for lookup
+const allCalendarEvents = <?= json_encode($month_events) ?>;
+
 // Toggle view dropdown
 function toggleViewDropdown(event) {
     event.stopPropagation();
@@ -1886,26 +1540,87 @@ function closeModal() {
     document.getElementById('eventModal').style.display = 'none';
 }
 
-// Click on event
+// Click on event — shows comprehensive details modal with direct action link
 function clickEvent(eventId, eventType, targetUrl) {
+    const match = eventId ? eventId.toString().match(/\d+$/) : null;
+    const numericId = match ? match[0] : eventId;
+    
+    // Check if event is in allCalendarEvents cache
+    let foundEvent = null;
+    for (const date in allCalendarEvents) {
+        const evts = allCalendarEvents[date];
+        const matchEvt = evts.find(e => e.id.toString() === eventId.toString());
+        if (matchEvt) {
+            foundEvent = JSON.parse(JSON.stringify(matchEvt));
+            break;
+        }
+    }
+
+    if (foundEvent) {
+        document.getElementById('detailsTitle').innerText = foundEvent.type_name || 'Event Details';
+        
+        let status = (foundEvent.status || 'Active').toUpperCase();
+        let badgeBg = getStatusBg(foundEvent.status);
+        let badgeColor = getStatusColor(foundEvent.status);
+
+        let detailsHTML = `
+            <div style="margin-bottom: 12px;"><strong>Event Type:</strong> <span style="background: #e8f0fe; color: #1a73e8; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600;">${(foundEvent.type_name || eventType).toUpperCase()}</span></div>
+            <div style="margin-bottom: 8px;"><strong>Date:</strong> ${foundEvent.event_date || 'N/A'}${foundEvent.start_time && foundEvent.start_time !== '00:00:00' ? ' at ' + foundEvent.start_time.substring(0, 5) : ''}</div>
+            <div style="margin-bottom: 8px;"><strong>Station / Branch:</strong> ${foundEvent.station_name || 'All Stations'}</div>
+            <div style="margin-bottom: 8px;"><strong>Assigned / Staff:</strong> ${foundEvent.staff_name || 'System Auto-Generated'}</div>
+            <div style="margin-bottom: 8px;"><strong>Status:</strong> <span class="sla-badge" style="background: ${badgeBg}; color: ${badgeColor}; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;">${status}</span></div>
+            <div style="margin-top: 16px; padding: 12px; background: #f1f3f4; border-radius: 6px;">
+                <strong>Description:</strong><br>
+                <div style="margin-top:4px; font-size:13px;">${foundEvent.work_description || 'No description provided.'}</div>
+            </div>
+        `;
+
+        if (foundEvent.customer_name || foundEvent.total_amount || foundEvent.vehicle_plate || foundEvent.service_type || foundEvent.fuel_type || foundEvent.shift || foundEvent.request_reason) {
+            detailsHTML += `<div style="margin-top:14px; padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; font-size:12px; display:flex; flex-direction:column; gap:6px;">`;
+            if (foundEvent.service_type) detailsHTML += `<div><strong>Service:</strong> ${foundEvent.service_type}</div>`;
+            if (foundEvent.customer_name) detailsHTML += `<div><strong>Customer:</strong> ${foundEvent.customer_name}</div>`;
+            if (foundEvent.vehicle_plate) detailsHTML += `<div><strong>Plate No:</strong> <span style="font-family:monospace; font-weight:700;">${foundEvent.vehicle_plate}</span></div>`;
+            if (foundEvent.total_amount) detailsHTML += `<div><strong>Total Amount:</strong> <span style="font-weight:700; color:#15803d;">₱${parseFloat(foundEvent.total_amount).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span></div>`;
+            if (foundEvent.fuel_type) detailsHTML += `<div><strong>Fuel Type:</strong> ${foundEvent.fuel_type}</div>`;
+            if (foundEvent.liters) detailsHTML += `<div><strong>Liters:</strong> ${parseFloat(foundEvent.liters).toFixed(2)} L</div>`;
+            if (foundEvent.shift) detailsHTML += `<div><strong>Shift:</strong> ${foundEvent.shift}</div>`;
+            if (foundEvent.gross_sales) detailsHTML += `<div><strong>Gross Sales:</strong> ₱${parseFloat(foundEvent.gross_sales).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</div>`;
+            if (foundEvent.request_reason) detailsHTML += `<div><strong>Request Reason:</strong> ${foundEvent.request_reason}</div>`;
+            if (foundEvent.remarks) detailsHTML += `<div><strong>Remarks:</strong> ${foundEvent.remarks}</div>`;
+            detailsHTML += `</div>`;
+        }
+
+        let linkUrl = targetUrl || foundEvent.target_url || '#';
+        let actionsHTML = '';
+        if (linkUrl && linkUrl !== '#') {
+            actionsHTML = `
+                <a href="${linkUrl}" class="cal-view-btn" style="background: #002F70; color: #fff; border-color: #002F70; text-decoration: none; padding: 10px 20px; border-radius: 4px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600;">
+                    <i class="fas fa-external-link-alt"></i> Open Source Record
+                </a>
+            `;
+        }
+
+        document.getElementById('detailsContent').innerHTML = detailsHTML;
+        const btnContainer = document.getElementById('detailsActionsContainer');
+        if (btnContainer) btnContainer.innerHTML = actionsHTML;
+        document.getElementById('detailsAuditTrail').innerHTML = `Direct operational record loaded. Station: ${foundEvent.station_name || 'Station'}`;
+        document.getElementById('detailsModal').style.display = 'flex';
+        return;
+    }
+
     if (targetUrl && targetUrl !== '#') {
         window.location.href = targetUrl;
         return;
     }
-    const match = eventId.toString().match(/\d+$/);
-    const numericId = match ? match[0] : eventId;
-    
-    // Fetch details
+
+    // Fetch details fallback
     fetch('admin_calendar.php?action=get_details&event_id=' + eventId + '&event_type=' + eventType)
         .then(r => r.json())
         .then(res => {
             if (res.success) {
                 const det = res.details;
                 const audit = res.audit;
-                
-                // Show modal
                 document.getElementById('detailsTitle').innerText = det.title || 'Event Details';
-                
                 let detailsHTML = `
                     <div style="margin-bottom: 12px;"><strong>Event Type:</strong> <span style="background: #e8f0fe; color: #1a73e8; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600;">${eventType.toUpperCase()}</span></div>
                     <div style="margin-bottom: 8px;"><strong>Date:</strong> ${det.date || det.event_date || 'N/A'}</div>
@@ -1916,69 +1631,8 @@ function clickEvent(eventId, eventType, targetUrl) {
                         "${det.description || det.work_description || 'No description provided.'}"
                     </div>
                 `;
-                
-                // Add link buttons based on type
-                let actionsHTML = '';
-                if (eventType === 'merchandise_delivery' || eventId.toString().startsWith('del_')) {
-                    actionsHTML = `
-                        <a href="admin_deliveries_oversight.php?delivery_id=${numericId}" class="cal-view-btn" style="background: #002F70; color: #fff; border-color: #002F70; text-decoration: none; padding: 10px 20px; border-radius: 4px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600;">
-                            <i class="fas fa-truck"></i> Go to Deliveries Oversight
-                        </a>
-                    `;
-                } else if (eventType === 'job_order' || eventId.toString().startsWith('jo_')) {
-                    actionsHTML = `
-                        <a href="admin_all_transactions.php?search=JO-${numericId}" class="cal-view-btn" style="background: #002F70; color: #fff; border-color: #002F70; text-decoration: none; padding: 10px 20px; border-radius: 4px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600;">
-                            <i class="fas fa-eye"></i> Go to Transactions Oversight
-                        </a>
-                    `;
-                } else if (eventType === 'stock_alert' || eventId.toString().startsWith('admin_restock_')) {
-                    actionsHTML = `
-                        <a href="admin_inventory_merchandise.php?tab=alerts" class="cal-view-btn" style="background: #dc2626; color: #fff; border-color: #dc2626; text-decoration: none; padding: 10px 20px; border-radius: 4px; display: inline-flex; align-items: center; gap: 8px; font-weight: 700;">
-                            <i class="fas fa-exclamation-triangle"></i> View Stock Alerts Catalog
-                        </a>
-                    `;
-                } else if (eventType === 'report_schedule' || eventId.toString().startsWith('admin_report_')) {
-                    actionsHTML = `
-                        <a href="admin_reports.php" class="cal-view-btn" style="background: #002F70; color: #fff; border-color: #002F70; text-decoration: none; padding: 10px 20px; border-radius: 4px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600;">
-                            <i class="fas fa-chart-line"></i> Go to Reports & Reconciliation
-                        </a>
-                    `;
-                } else if (targetUrl && targetUrl !== '#' && targetUrl !== '') {
-                    actionsHTML = `
-                        <a href="${targetUrl}" class="cal-view-btn" style="background: #002F70; color: #fff; border-color: #002F70; text-decoration: none; padding: 10px 20px; border-radius: 4px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600;">
-                            <i class="fas fa-external-link-alt"></i> Open Related Module
-                        </a>
-                    `;
-                }
-                
                 document.getElementById('detailsContent').innerHTML = detailsHTML;
-                
-                // Add actions button if any
-                const btnContainer = document.getElementById('detailsActionsContainer');
-                if (btnContainer) {
-                    btnContainer.innerHTML = actionsHTML;
-                }
-                
-                // Render audit trail
-                let auditHTML = '';
-                if (audit && audit.length > 0) {
-                    audit.forEach(log => {
-                        auditHTML += `
-                            <div style="border-bottom: 1px solid #eaeaea; padding: 6px 0;">
-                                <span style="color: #1a73e8;">[${log.created_at}]</span> 
-                                <strong>${log.action}:</strong> ${log.details}
-                            </div>
-                        `;
-                    });
-                } else {
-                    auditHTML = 'No recent compliance audit trail logs found for this context.';
-                }
-                document.getElementById('detailsAuditTrail').innerHTML = auditHTML;
-                
-                // Show modal
                 document.getElementById('detailsModal').style.display = 'flex';
-            } else {
-                alert('Error fetching event details: ' + res.message);
             }
         })
         .catch(err => {
@@ -1989,17 +1643,17 @@ function clickEvent(eventId, eventType, targetUrl) {
 
 function getStatusBg(status) {
     status = (status || '').toLowerCase();
-    if (status === 'approved' || status === 'verified' || status === 'completed' || status === 'active') return 'rgba(24, 128, 56, 0.15)';
+    if (status === 'approved' || status === 'verified' || status === 'completed' || status === 'active' || status === 'official') return 'rgba(24, 128, 56, 0.15)';
     if (status === 'pending') return 'rgba(234, 134, 0, 0.15)';
-    if (status === 'rejected' || status === 'cancelled') return 'rgba(217, 48, 37, 0.15)';
+    if (status === 'rejected' || status === 'cancelled' || status === 'voided') return 'rgba(217, 48, 37, 0.15)';
     return 'rgba(95, 99, 104, 0.15)';
 }
 
 function getStatusColor(status) {
     status = (status || '').toLowerCase();
-    if (status === 'approved' || status === 'verified' || status === 'completed' || status === 'active') return '#188038';
+    if (status === 'approved' || status === 'verified' || status === 'completed' || status === 'active' || status === 'official') return '#188038';
     if (status === 'pending') return '#b06000';
-    if (status === 'rejected' || status === 'cancelled') return '#c5221f';
+    if (status === 'rejected' || status === 'cancelled' || status === 'voided') return '#c5221f';
     return '#5f6368';
 }
 
@@ -2020,9 +1674,91 @@ function editManualEvent(eventId) {
         });
 }
 
-// Click on day - automatic system tracking calendar (no manual create event)
+// Click on day — Always shows Day Overview modal with all events
 function clickDay(date) {
-    // Read-only automatic system tracker: no manual event creation
+    const dayEvts = (allCalendarEvents && allCalendarEvents[date]) ? allCalendarEvents[date] : [];
+    showDayOverviewModal(date, dayEvts);
+}
+
+function showDayOverviewModal(date, events) {
+    const modal = document.getElementById('dayOverviewModal');
+    if (!modal) return;
+    const dObj = new Date(date + 'T00:00:00');
+    const dateFormatted = dObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    
+    document.getElementById('dayOverviewTitle').textContent = dateFormatted;
+    document.getElementById('dayOverviewSubtitle').textContent = events.length > 0 
+        ? (events.length + ' scheduled event(s) & operational activity(ies)')
+        : 'No scheduled events or activities on this date';
+    
+    const listEl = document.getElementById('dayOverviewList');
+    if (events.length === 0) {
+        listEl.innerHTML = `
+            <div style="text-align:center; padding:32px 16px; color:#64748b;">
+                <div style="width:56px; height:56px; background:#f1f5f9; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; margin-bottom:12px;">
+                    <i class="far fa-calendar-check" style="font-size:26px; color:#0284c7;"></i>
+                </div>
+                <div style="font-weight:700; font-size:14px; color:#1e293b; margin-bottom:4px;">No activities recorded on this date</div>
+                <div style="font-size:12px; color:#64748b; margin-bottom:18px;">There are no transactions, job orders, or scheduled events on this day.</div>
+                <button type="button" onclick="closeDayOverviewModal(); showEventModal('${date}');" style="padding:8px 16px; background:#002F70; color:#fff; border:none; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                    <i class="fas fa-plus"></i> Schedule Event on this Day
+                </button>
+            </div>
+        `;
+    } else {
+        listEl.innerHTML = events.map(evt => {
+            const color = evt.color || '#0284c7';
+            const st = (evt.status || 'pending').toUpperCase();
+            let badgeBg = '#fef3c7', badgeColor = '#b45309';
+            if (st === 'COMPLETED' || st === 'VERIFIED' || st === 'APPROVED' || st === 'OFFICIAL' || st === 'ACTIVE') { badgeBg = '#dcfce7'; badgeColor = '#15803d'; }
+            else if (st === 'CANCELLED' || st === 'REJECTED' || st === 'VOIDED') { badgeBg = '#fee2e2'; badgeColor = '#b91c1c'; }
+            else if (st === 'ADJUSTED') { badgeBg = '#e0e7ff'; badgeColor = '#4338ca'; }
+            
+            let timeStr = '';
+            if (evt.start_time && evt.start_time !== '00:00:00') {
+                timeStr = evt.start_time.substring(0, 5) + (evt.end_time && evt.end_time !== '00:00:00' ? ' - ' + evt.end_time.substring(0, 5) : '');
+            }
+
+            const iconClass = evt.icon_class || 'fas fa-calendar-alt';
+
+            return `
+                <div style="background:#fff; border:1px solid #e2e8f0; border-left:4px solid ${color}; border-radius:8px; padding:12px 14px; box-shadow:0 1px 3px rgba(0,0,0,0.04); display:flex; justify-content:space-between; align-items:center; gap:12px; cursor:pointer; transition:background 0.15s ease;" onclick="closeDayOverviewModal(); clickEvent('${evt.id}', '${evt.type_key || ''}', '${evt.target_url || '#'}');">
+                    <div style="flex:1; min-width:0;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
+                            <i class="${iconClass}" style="color:${color}; font-size:13px;"></i>
+                            <span style="font-weight:700; font-size:13px; color:#0f172a;">${evt.work_description || evt.type_name}</span>
+                            <span style="background:${badgeBg}; color:${badgeColor}; font-size:10px; font-weight:700; padding:2px 7px; border-radius:4px;">${st}</span>
+                        </div>
+                        <div style="font-size:11.5px; color:#64748b; display:flex; gap:14px; flex-wrap:wrap;">
+                            ${timeStr ? `<span><i class="far fa-clock" style="color:#0284c7;"></i> ${timeStr}</span>` : ''}
+                            <span><i class="far fa-user" style="color:#64748b;"></i> ${evt.staff_name || 'Staff'}</span>
+                            <span><i class="fas fa-tag" style="color:#64748b;"></i> ${evt.type_name || 'Event'}</span>
+                            ${evt.station_name ? `<span><i class="fas fa-gas-pump" style="color:#64748b;"></i> ${evt.station_name}</span>` : ''}
+                        </div>
+                    </div>
+                    <button type="button" onclick="event.stopPropagation(); closeDayOverviewModal(); clickEvent('${evt.id}', '${evt.type_key || ''}', '${evt.target_url || '#'}');" style="padding:7px 12px; background:#002F70; color:#fff; border:none; border-radius:6px; font-size:11.5px; font-weight:600; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:5px;">
+                        <i class="fas fa-eye"></i> Details
+                    </button>
+                </div>
+            `;
+        }).join('');
+    }
+
+    const addBtn = document.getElementById('dayOverviewAddBtn');
+    if (addBtn) {
+        addBtn.style.display = 'flex';
+        addBtn.onclick = function() {
+            closeDayOverviewModal();
+            showEventModal(date);
+        };
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeDayOverviewModal() {
+    const modal = document.getElementById('dayOverviewModal');
+    if (modal) modal.style.display = 'none';
 }
 
 // Submit event form
@@ -2326,27 +2062,6 @@ function handleEventTypeChange() {
     let fieldsHTML = '';
     
     switch(eventType) {
-        case 'staff_shift':
-            fieldsHTML = `
-                <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 8px; font-size: 14px; color: #3c4043; font-weight: 500;">Shift Type</label>
-                    <select name="shift_type" style="width: 100%; padding: 10px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;">
-                        <option value="Morning">Morning Shift</option>
-                        <option value="Afternoon">Afternoon Shift</option>
-                        <option value="Night">Night Shift</option>
-                        <option value="Graveyard">Graveyard Shift</option>
-                    </select>
-                </div>
-                <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 8px; font-size: 14px; color: #3c4043; font-weight: 500;">Shift Status</label>
-                    <select name="shift_status" style="width: 100%; padding: 10px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;">
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                    </select>
-                </div>
-            `;
-            break;
-            
         case 'job_order':
             fieldsHTML = `
                 <div style="margin-bottom: 20px;">
@@ -2461,6 +2176,30 @@ function handleEventTypeChange() {
 }
 </script>
 
+<!-- Day Overview Modal -->
+<div id="dayOverviewModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: #fff; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); width: 92%; max-width: 540px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden;">
+        <div style="padding: 18px 22px; border-bottom: 1px solid #dadce0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc;">
+            <div>
+                <h2 id="dayOverviewTitle" style="margin: 0; font-size: 18px; color: #002F70; font-weight: 700;">Day Schedule</h2>
+                <div id="dayOverviewSubtitle" style="font-size: 12px; color: #64748b; margin-top: 2px;"></div>
+            </div>
+            <button onclick="closeDayOverviewModal()" style="background: none; border: none; font-size: 24px; color: #64748b; cursor: pointer; line-height: 1;">&times;</button>
+        </div>
+        <div id="dayOverviewList" style="padding: 20px 22px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px;">
+            <!-- Filled dynamically -->
+        </div>
+        <div style="padding: 14px 22px; border-top: 1px solid #dadce0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc;">
+            <button type="button" id="dayOverviewAddBtn" style="padding: 9px 16px; border: none; background: #002F70; color: #fff; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-plus"></i> Add Event on this Day
+            </button>
+            <button type="button" onclick="closeDayOverviewModal()" style="padding: 9px 16px; border: 1px solid #cbd5e1; background: #fff; color: #334155; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                Close
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Read-Only Details Modal -->
 <div id="detailsModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1001; align-items: center; justify-content: center;">
     <div style="background: #fff; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); width: 90%; max-width: 550px; max-height: 90vh; overflow-y: auto;">
@@ -2510,7 +2249,6 @@ function handleEventTypeChange() {
                 <select id="eventType" name="event_type" required onchange="handleEventTypeChange()" style="width: 100%; padding: 10px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;">
                     <option value="">Select type...</option>
                     <optgroup label="Work Assignments">
-                        <option value="staff_shift">Staff Shift</option>
                         <option value="job_order">Job Order</option>
                         <option value="fuel_calibration">Fuel Calibration</option>
                         <option value="meter_reading">Meter Reading</option>

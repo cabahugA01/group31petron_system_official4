@@ -7120,6 +7120,17 @@ setTimeout(function() {
                                                 title="View Transaction Details">
                                                 <i class="fas fa-eye" style="font-size:11px !important;"></i> <span style="font-size:11px !important;font-weight:800 !important;color:#002F70 !important;white-space:nowrap !important;display:inline !important;">View</span>
                                             </button>
+                                            <?php if ($mh_is_adjusted || strtolower(trim($txn['validation_status'] ?? '')) === 'adjusted'): ?>
+                                                <button type="button"
+                                                        onclick="event.stopPropagation(); printMerchandiseReceipt('<?= addslashes($txn['transaction_id'] ?? $txn['mt_id']) ?>'); return false;"
+                                                        class="txn-btn secondary"
+                                                        style="display:inline-flex;align-items:center;justify-content:center;gap:5px;width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;border:1.5px solid #0284c7 !important;background:#f0f9ff !important;color:#0369a1 !important;border-radius:5px;box-sizing:border-box;text-decoration:none;white-space:nowrap !important;cursor:pointer !important;"
+                                                        onmouseover="this.style.background='#e0f2fe';this.style.borderColor='#0284c7';"
+                                                        onmouseout="this.style.background='#f0f9ff';this.style.borderColor='#0284c7';"
+                                                        title="Reprint Receipt">
+                                                    <i class="fas fa-print" style="font-size:11px !important;"></i> <span style="font-size:11px !important;font-weight:700 !important;color:#0369a1 !important;white-space:nowrap !important;display:inline !important;">Reprint</span>
+                                                </button>
+                                            <?php endif; ?>
                                             <?php if ($mh_is_voided): ?>
                                                 <span style="font-size:10.5px;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;"><i class="fas fa-ban"></i> Voided</span>
                                             <?php else: ?>
@@ -7268,14 +7279,14 @@ setTimeout(function() {
                             </style>
                             <table id="jomHistoryTable" class="report-table no-min-width print-table" style="width:100% !important; max-width:100% !important; border-collapse:collapse !important; table-layout:fixed !important;">
                                 <colgroup>
-                                    <col style="width:11%;"><!-- TXN ID -->
-                                    <col style="width:15%;"><!-- CUSTOMER -->
-                                    <col style="width:15%;"><!-- JOB ORDER -->
-                                    <col style="width:18%;"><!-- MERCHANDISE -->
+                                    <col style="width:10%;"><!-- TXN ID -->
+                                    <col style="width:14%;"><!-- CUSTOMER -->
+                                    <col style="width:14%;"><!-- JOB ORDER -->
+                                    <col style="width:17%;"><!-- MERCHANDISE -->
                                     <col style="width:9%;"><!-- TOTAL -->
-                                    <col style="width:10%;"><!-- PAYMENT STATUS -->
-                                    <col style="width:9%;"><!-- STATUS -->
-                                    <col style="width:13%;"><!-- ACTIONS -->
+                                    <col style="width:9%;"><!-- PAYMENT STATUS -->
+                                    <col style="width:10%;"><!-- STATUS -->
+                                    <col style="width:17%;"><!-- ACTIONS -->
                                 </colgroup>
                                 <thead style="background:#002F70;">
                                     <tr style="background:#002F70;">
@@ -7389,6 +7400,17 @@ setTimeout(function() {
                                                     title="View Transaction Details">
                                                 <i class="fas fa-eye" style="font-size:11px !important;"></i> <span style="font-size:11px !important;font-weight:700 !important;color:#002F70 !important;white-space:nowrap !important;display:inline !important;">View</span>
                                             </button>
+                                            <?php if ($jom_vstatus === 'adjusted' || ($jom['validation_status'] ?? '') === 'Adjusted'): ?>
+                                                <button type="button"
+                                                        onclick="event.stopPropagation(); printMerchandiseReceipt('<?= addslashes($jom['transaction_id'] ?? $jom_id) ?>'); return false;"
+                                                        class="txn-btn secondary"
+                                                        style="display:inline-flex;align-items:center;justify-content:center;gap:5px;width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;border:1.5px solid #0284c7 !important;background:#f0f9ff !important;color:#0369a1 !important;border-radius:5px;box-sizing:border-box;text-decoration:none;white-space:nowrap !important;cursor:pointer !important;"
+                                                        onmouseover="this.style.background='#e0f2fe';this.style.borderColor='#0284c7';"
+                                                        onmouseout="this.style.background='#f0f9ff';this.style.borderColor='#0284c7';"
+                                                        title="Reprint Receipt">
+                                                    <i class="fas fa-print" style="font-size:11px !important;"></i> <span style="font-size:11px !important;font-weight:700 !important;color:#0369a1 !important;white-space:nowrap !important;display:inline !important;">Reprint</span>
+                                                </button>
+                                            <?php endif; ?>
                                             <?php if ($jom_is_void): ?>
                                                 <span style="font-size:10.5px;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;"><i class="fas fa-ban"></i> Voided</span>
                                             <?php else: ?>
@@ -14048,6 +14070,7 @@ setTimeout(function() {
             var url = 'receipt.php?id=' + encodeURIComponent(txnId) + '&type=merchandise';
             window.open(url, '_blank');
         }
+        window.printMerchandiseReceipt = printMerchandiseReceipt;
         
         // View Merchandise Transaction Details
         function viewMerchandiseDetails(txnId) {

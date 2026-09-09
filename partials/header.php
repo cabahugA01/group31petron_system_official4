@@ -1908,9 +1908,9 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
     .nav-item.active { background-color: var(--petron-red) !important; color: #ffffff !important; font-size: 15px !important; font-weight: 600 !important; }
     .nav-item span { font-size: 15px !important; font-weight: 600 !important; white-space: normal !important; word-break: normal !important; text-overflow: clip !important; }
     .nav-item.active span { font-size: 15px !important; font-weight: 600 !important; white-space: normal !important; }
-    .sidebar-sub-item { font-size: 13.5px !important; font-weight: 600 !important; color: #e2e8f0 !important; text-decoration: none !important; padding: 7px 14px 7px 40px !important; height: auto !important; min-height: 36px !important; }
-    .sidebar-sub-item span { font-size: 13.5px !important; font-weight: 600 !important; white-space: normal !important; word-break: normal !important; text-overflow: clip !important; }
-    .sidebar-sub-item span:not(.ico) { font-size: 13.5px !important; font-weight: 600 !important; white-space: normal !important; word-break: normal !important; overflow-wrap: break-word !important; overflow: visible !important; text-overflow: clip !important; color: #e2e8f0 !important; text-decoration: none !important; line-height: 1.35 !important; }
+    .sidebar-sub-item { font-size: 15px !important; font-weight: 600 !important; color: #e2e8f0 !important; text-decoration: none !important; padding: 7px 14px 7px 40px !important; height: auto !important; min-height: 36px !important; }
+    .sidebar-sub-item span { font-size: 15px !important; font-weight: 600 !important; white-space: normal !important; word-break: normal !important; text-overflow: clip !important; }
+    .sidebar-sub-item span:not(.ico) { font-size: 15px !important; font-weight: 600 !important; white-space: normal !important; word-break: normal !important; overflow-wrap: break-word !important; overflow: visible !important; text-overflow: clip !important; color: #e2e8f0 !important; text-decoration: none !important; line-height: 1.35 !important; }
     .sidebar-sub-item:hover { background-color: rgba(255,255,255,0.12) !important; color: #ffffff !important; text-decoration: none !important; }
     .sidebar-sub-item:hover span:not(.ico) { color: #ffffff !important; }
     .sidebar-sub-item.active { background-color: transparent !important; color: #ffffff !important; border-left: 3px solid var(--petron-red) !important; text-decoration: none !important; }
@@ -3152,7 +3152,7 @@ html, body {
     text-overflow: clip !important;
 }
 .sidebar-sub-item, .sidebar-sub-item span, .sidebar-sub-item span:not(.ico) {
-    font-size: 13.5px !important;
+    font-size: 15px !important;
     font-weight: 600 !important;
     white-space: normal !important;
     word-break: normal !important;
@@ -4125,7 +4125,7 @@ require_once __DIR__ . '/rbac_menu.php';
             echo '<a class="nav-item sidebar-sub-item '.$sub_active.'" href="'.htmlspecialchars($sub['href']).'" style="padding:7px 15px 7px 42px;min-height:auto;" data-tooltip="'.htmlspecialchars($sub['label'] ?? '').'">';
             echo '<span class="ico" style="margin-right:8px;width:14px;text-align:center;flex-shrink:0;"><i class="fas fa-circle" style="font-size:5px;opacity:.65;"></i></span>';
             echo '<span style="flex-grow:1;line-height:1.35;">';
-            echo '<span style="display:block;font-size:13.5px;font-weight:600;">'.htmlspecialchars($sub['label'] ?? '').'</span>';
+            echo '<span style="display:block;font-size:15px;font-weight:600;">'.htmlspecialchars($sub['label'] ?? '').'</span>';
             echo '</span>';
             echo '</a>';
         }

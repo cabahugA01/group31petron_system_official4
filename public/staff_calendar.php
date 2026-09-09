@@ -562,190 +562,15 @@ $seen_events = []; // Keeps track of unique [date][type_id] to prevent duplicate
         $month_events[$date][] = $event;
     };
 
-    // 1. Manual Staff Calendar Events (Filtered by station & staff)
-    try {
-        $stmt = $pdo->prepare("
-            SELECT sce.*, et.type_name, et.type_key, et.icon_class, su.name AS staff_name,
-                   sce.staff_encoder_id, m.name AS manager_name
-            FROM staff_calendar_events sce
-            JOIN staff_event_types et ON sce.event_type_id = et.id
-            JOIN users su ON sce.staff_encoder_id = su.id
-            LEFT JOIN users m ON sce.manager_assigned_id = m.id
-            WHERE sce.station_id = ? 
-              AND (sce.staff_encoder_id = ? OR sce.manager_assigned_id = ?)
-              AND sce.event_date BETWEEN ? AND ?
-            ORDER BY sce.event_date, sce.start_time
-        ");
-        $stmt->execute([$station_id, $user_id, $user_id, $view_start, $view_end]);
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $row['color'] = $staff_list[$row['staff_encoder_id']]['color'] ?? '#039be5';
-            $row['manager_name'] = $row['manager_name'] ?? 'Not Assigned';
-            $add_unique_event($row['event_date'], $row);
+    // Comprehensive operational events loading using centralized helper
+    $fetched_events = calendar_fetch_all_station_events($pdo, (int)$station_id, $view_start, $view_end, (int)$user_id, 'staff');
+    foreach ($fetched_events as $date => $evts) {
+        foreach ($evts as $evt) {
+            $add_unique_event($date, $evt);
         }
-    } catch (Exception $e) {}
+    }
 
-    // 2. Job Orders (Assigned to, created by, or relevant to this staff)
-    try {
-        $jo = $pdo->prepare("
-            SELECT jo.id, jo.created_by, DATE(jo.created_at) AS event_date, jo.service_type,
-                   jo.status, u.name AS staff_name, jo.customer_name, m.name AS manager_name
-            FROM job_orders jo
-            JOIN users u ON jo.created_by = u.id
-            LEFT JOIN users m ON jo.validated_by = m.id
-            WHERE jo.station_id = ? 
-              AND (jo.created_by = ? OR jo.assigned_mechanic_id = ? OR jo.user_id = ?)
-              AND DATE(jo.created_at) BETWEEN ? AND ?
-        ");
-        $jo->execute([$station_id, $user_id, $user_id, $user_id, $view_start, $view_end]);
-        foreach ($jo->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $add_unique_event($r['event_date'], [
-                'id' => 'jo_'.$r['id'],
-                'type_name' => 'Job Order',
-                'type_key' => 'job_order',
-                'icon_class' => 'fas fa-wrench',
-                'staff_name' => $r['staff_name'],
-                'staff_encoder_id' => $r['created_by'],
-                'work_description' => 'JO #' . $r['id'] . ': ' . $r['service_type'] . ' (' . ($r['customer_name'] ?: 'Customer') . ')',
-                'status' => strtolower($r['status'] ?? 'pending'),
-                'color' => '#f59e0b',
-                'manager_name' => $r['manager_name'] ?? 'Assigned',
-                'auto_synced' => true
-            ]);
-        }
-    } catch (Exception $e) {}
 
-    // 3. Deliveries & Stock-In (Station-scoped merchandise & fuel deliveries)
-    try {
-        $dl = $pdo->prepare("
-            SELECT d.id, d.encoded_by, DATE(d.delivery_date) AS event_date, u.name AS staff_name,
-                   d.status, d.supplier, d.product, m.name AS manager_name
-            FROM deliveries_oversight d
-            JOIN users u ON d.encoded_by = u.id
-            LEFT JOIN users m ON d.manager_id = m.id
-            WHERE d.station_id = ? AND DATE(d.delivery_date) BETWEEN ? AND ?
-        ");
-        $dl->execute([$station_id, $view_start, $view_end]);
-        foreach ($dl->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $add_unique_event($r['event_date'], [
-                'id' => 'del_'.$r['id'],
-                'type_name' => 'Delivery / Stock-In',
-                'type_key' => 'merchandise_delivery',
-                'icon_class' => 'fas fa-box',
-                'staff_name' => $r['staff_name'],
-                'staff_encoder_id' => $r['encoded_by'],
-                'work_description' => 'Delivery: ' . $r['supplier'] . ' - ' . $r['product'],
-                'status' => strtolower($r['status'] ?? 'pending'),
-                'color' => '#06b6d4',
-                'manager_name' => $r['manager_name'] ?? 'Station Delivery',
-                'auto_synced' => true
-            ]);
-        }
-    } catch (Exception $e) {}
-
-    // 4. Fuel Deliveries (Station-scoped fuel delivery schedule)
-    try {
-        $fd = $pdo->prepare("
-            SELECT id, DATE(created_at) AS event_date, fuel_type, liters, status, supplier
-            FROM fuel_deliveries
-            WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
-        ");
-        $fd->execute([$station_id, $view_start, $view_end]);
-        foreach ($fd->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $add_unique_event($r['event_date'], [
-                'id' => 'fuel_del_'.$r['id'],
-                'type_name' => 'Fuel Delivery',
-                'type_key' => 'fuel_delivery',
-                'icon_class' => 'fas fa-gas-pump',
-                'staff_name' => 'Station Delivery',
-                'staff_encoder_id' => $user_id,
-                'work_description' => 'Fuel Delivery: ' . ($r['fuel_type'] ?: 'Fuel') . ' (' . number_format((float)($r['liters'] ?? 0), 2) . ' L)',
-                'status' => strtolower($r['status'] ?? 'pending'),
-                'color' => '#ef4444',
-                'auto_synced' => true
-            ]);
-        }
-    } catch (Exception $e) {}
-
-    // 5. Fuel Calibration & Reading Reminders
-    try {
-        $fc = $pdo->prepare("
-            SELECT id, DATE(calibration_date) AS event_date, fuel_type, status, technician_name
-            FROM fuel_calibration_records
-            WHERE station_id = ? AND DATE(calibration_date) BETWEEN ? AND ?
-        ");
-        $fc->execute([$station_id, $view_start, $view_end]);
-        foreach ($fc->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $add_unique_event($r['event_date'], [
-                'id' => 'calib_'.$r['id'],
-                'type_name' => 'Fuel Reading / Calibration',
-                'type_key' => 'fuel_calibration',
-                'icon_class' => 'fas fa-tachometer-alt',
-                'staff_name' => $r['technician_name'] ?: 'Technician',
-                'staff_encoder_id' => $user_id,
-                'work_description' => 'Meter Reading / Calibration: ' . ($r['fuel_type'] ?: 'Fuel Pump'),
-                'status' => strtolower($r['status'] ?? 'pending'),
-                'color' => '#6b7280',
-                'auto_synced' => true
-            ]);
-        }
-    } catch (Exception $e) {}
-
-    // 6. Stock Requests (Station Stock Requests)
-    try {
-        $sr = $pdo->prepare("
-            SELECT id, DATE(created_at) AS event_date, product_name, quantity, status
-            FROM stock_requests
-            WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
-        ");
-        $sr->execute([$station_id, $view_start, $view_end]);
-        foreach ($sr->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $add_unique_event($r['event_date'], [
-                'id' => 'stock_req_'.$r['id'],
-                'type_name' => 'Stock Request',
-                'type_key' => 'stock_request',
-                'icon_class' => 'fas fa-boxes',
-                'staff_name' => 'Station Request',
-                'staff_encoder_id' => $user_id,
-                'work_description' => 'Stock Request: ' . ($r['product_name'] ?: 'Item') . ' (Qty: ' . $r['quantity'] . ')',
-                'status' => strtolower($r['status'] ?? 'pending'),
-                'color' => '#8b5cf6',
-                'auto_synced' => true
-            ]);
-        }
-    } catch (Exception $e) {}
-
-    // 7. Staff Schedules / Shifts (Shift 1 Blue & Shift 2 Purple)
-    try {
-        $sh = $pdo->prepare("
-            SELECT ss.id, ss.user_id, ss.shift, ss.scheduled_date, ss.status, u.name AS staff_name,
-                   s.start_time, s.end_time
-            FROM staff_schedules ss
-            JOIN users u ON ss.user_id = u.id
-            LEFT JOIN shifts s ON ss.shift = s.name
-            WHERE ss.user_id = ? AND ss.scheduled_date BETWEEN ? AND ?
-        ");
-        $sh->execute([$user_id, $view_start, $view_end]);
-        foreach ($sh->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $shift_txt = strtolower($r['shift'] ?? '');
-            // Shift 1 = Royal Blue (#2563eb), Shift 2 = Deep Purple (#9333ea)
-            $shift_color = (strpos($shift_txt, '1') !== false || strpos($shift_txt, 'morn') !== false) ? '#2563eb' : ((strpos($shift_txt, '2') !== false || strpos($shift_txt, 'after') !== false || strpos($shift_txt, 'night') !== false) ? '#9333ea' : '#0284c7');
-
-            $add_unique_event($r['scheduled_date'], [
-                'id' => 'shift_'.$r['id'],
-                'type_name' => 'Shift Schedule (' . $r['shift'] . ')',
-                'type_key' => 'staff_shift',
-                'icon_class' => 'fas fa-clock',
-                'staff_name' => $r['staff_name'],
-                'staff_encoder_id' => $r['user_id'],
-                'work_description' => $r['staff_name'] . ' — ' . $r['shift'] . ' Shift (' . ($r['start_time'] ?? '06:00') . ' - ' . ($r['end_time'] ?? '14:00') . ')',
-                'status' => strtolower($r['status'] ?? 'active'),
-                'color' => $shift_color,
-                'start_time' => $r['start_time'] ?? '06:00',
-                'end_time' => $r['end_time'] ?? '14:00',
-                'auto_synced' => true
-            ]);
-        }
-    } catch (Exception $e) {}
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -901,11 +726,7 @@ i.fas, i.far, i.fab, i.fa, i[class*="fa-"] {
             <!-- Today's Events -->
             <div style="background: #e8f0fe; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
                 <div style="font-size: 12px; color: #1a73e8; font-weight: 600; margin-bottom: 8px;">TODAY'S EVENTS</div>
-                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
-                    <div style="text-align: center;">
-                        <div style="font-size: 20px; font-weight: 600; color: #1a73e8;"><?= $summary_stats['today_shifts'] ?></div>
-                        <div style="font-size: 10px; color: #5f6368;">Shifts</div>
-                    </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
                     <div style="text-align: center;">
                         <div style="font-size: 20px; font-weight: 600; color: #1a73e8;"><?= $summary_stats['today_job_orders'] ?></div>
                         <div style="font-size: 10px; color: #5f6368;">Job Orders</div>
@@ -1461,6 +1282,11 @@ function showDetailsModal(evt) {
                     <span style="font-weight:600; font-size:12px; color:#70757a;">Product:</span>
                     <span>${evt.product || 'N/A'}</span>
                 </div>
+                ${evt.liters ? `
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Liters:</span>
+                    <span>${parseFloat(evt.liters).toFixed(2)} L</span>
+                </div>` : ''}
             </div>
         `;
     } else if (evt.type_key === 'job_order') {
@@ -1474,6 +1300,63 @@ function showDetailsModal(evt) {
                     <span style="font-weight:600; font-size:12px; color:#70757a;">Service Type:</span>
                     <span>${evt.service_type || 'N/A'}</span>
                 </div>
+                ${evt.vehicle_plate ? `
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Vehicle Plate:</span>
+                    <span style="font-family:monospace; font-weight:700;">${evt.vehicle_plate}</span>
+                </div>` : ''}
+                ${evt.total_amount ? `
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Total Amount:</span>
+                    <span style="font-weight:700; color:#15803d;">₱${parseFloat(evt.total_amount).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                </div>` : ''}
+            </div>
+        `;
+    } else if (evt.type_key === 'merchandise_sale') {
+        html += `
+            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Customer:</span>
+                    <span>${evt.customer_name || 'Walk-in'}</span>
+                </div>
+                ${evt.total_amount ? `
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Total Amount:</span>
+                    <span style="font-weight:700; color:#15803d;">₱${parseFloat(evt.total_amount).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                </div>` : ''}
+            </div>
+        `;
+    } else if (evt.type_key === 'fuel_sale') {
+        html += `
+            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Fuel Type:</span>
+                    <span>${evt.fuel_type || 'Fuel'}</span>
+                </div>
+                ${evt.liters ? `
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Liters:</span>
+                    <span>${parseFloat(evt.liters).toFixed(2)} L</span>
+                </div>` : ''}
+                ${evt.total_amount ? `
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Total Amount:</span>
+                    <span style="font-weight:700; color:#15803d;">₱${parseFloat(evt.total_amount).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                </div>` : ''}
+            </div>
+        `;
+    } else if (evt.type_key === 'sales_closing') {
+        html += `
+            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Shift:</span>
+                    <span>${evt.shift || 'Closing'}</span>
+                </div>
+                ${evt.gross_sales ? `
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-weight:600; font-size:12px; color:#70757a;">Gross Sales:</span>
+                    <span style="font-weight:700; color:#15803d;">₱${parseFloat(evt.gross_sales).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                </div>` : ''}
             </div>
         `;
     } else if (evt.type_key === 'staff_shift') {
@@ -1512,6 +1395,14 @@ function showDetailsModal(evt) {
         `;
     }
 
+    if (evt.target_url && evt.target_url !== '#' && evt.target_url !== '') {
+        actionButtons += `
+            <a href="${evt.target_url}" target="_blank" style="text-decoration:none; padding: 10px 20px; border: none; background: #002F70; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 600; text-align:center; display:inline-flex; align-items:center; gap:6px;">
+                <i class="fas fa-external-link-alt"></i> View Module
+            </a>
+        `;
+    }
+
     // Flag conflict action
     actionButtons += `
         <button type="button" onclick="flagConflict('${evt.id}', '${evt.event_date || evt.scheduled_date}')" style="padding: 10px 20px; border: none; background: #d93025; color: #fff; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: 500;">
@@ -1532,7 +1423,7 @@ function flagConflict(eventId, eventDate) {
     }
     
     // Save conflict notification / flag in system
-    alert("<i class="fas fa-check"></i> Conflict has been flagged and reported to your Manager.");
+    alert("<i class=\"fas fa-check\"></i> Conflict has been flagged and reported to your Manager.");
     closeDetailsModal();
 }
 
@@ -1540,9 +1431,78 @@ function closeDetailsModal() {
     document.getElementById('detailsModal').style.display = 'none';
 }
 
-// Click on day - automatic system tracking calendar (no manual create event)
+// Click on day — Always shows Day Overview modal with all events
 function clickDay(date) {
-    // Read-only automatic system tracker: no manual event creation
+    const dayEvts = (allCalendarEvents && allCalendarEvents[date]) ? allCalendarEvents[date] : [];
+    showDayOverviewModal(date, dayEvts);
+}
+
+function showDayOverviewModal(date, events) {
+    const modal = document.getElementById('dayOverviewModal');
+    if (!modal) return;
+    const dObj = new Date(date + 'T00:00:00');
+    const dateFormatted = dObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    
+    document.getElementById('dayOverviewTitle').textContent = dateFormatted;
+    document.getElementById('dayOverviewSubtitle').textContent = events.length > 0 
+        ? (events.length + ' scheduled event(s) & operational activity(ies)')
+        : 'No scheduled events or activities on this date';
+    
+    const listEl = document.getElementById('dayOverviewList');
+    if (events.length === 0) {
+        listEl.innerHTML = `
+            <div style="text-align:center; padding:32px 16px; color:#64748b;">
+                <div style="width:56px; height:56px; background:#f1f5f9; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; margin-bottom:12px;">
+                    <i class="far fa-calendar-check" style="font-size:26px; color:#0284c7;"></i>
+                </div>
+                <div style="font-weight:700; font-size:14px; color:#1e293b; margin-bottom:4px;">No activities recorded on this date</div>
+                <div style="font-size:12px; color:#64748b;">There are no transactions, job orders, or scheduled events on this day.</div>
+            </div>
+        `;
+    } else {
+        listEl.innerHTML = events.map(evt => {
+            const color = evt.color || '#0284c7';
+            const st = (evt.status || 'pending').toUpperCase();
+            let badgeBg = '#fef3c7', badgeColor = '#b45309';
+            if (st === 'COMPLETED' || st === 'VERIFIED' || st === 'APPROVED' || st === 'OFFICIAL' || st === 'ACTIVE') { badgeBg = '#dcfce7'; badgeColor = '#15803d'; }
+            else if (st === 'CANCELLED' || st === 'REJECTED' || st === 'VOIDED') { badgeBg = '#fee2e2'; badgeColor = '#b91c1c'; }
+            else if (st === 'ADJUSTED') { badgeBg = '#e0e7ff'; badgeColor = '#4338ca'; }
+            
+            let timeStr = '';
+            if (evt.start_time && evt.start_time !== '00:00:00') {
+                timeStr = evt.start_time.substring(0, 5) + (evt.end_time && evt.end_time !== '00:00:00' ? ' - ' + evt.end_time.substring(0, 5) : '');
+            }
+
+            const iconClass = evt.icon_class || 'fas fa-calendar-alt';
+
+            return `
+                <div style="background:#fff; border:1px solid #e2e8f0; border-left:4px solid ${color}; border-radius:8px; padding:12px 14px; box-shadow:0 1px 3px rgba(0,0,0,0.04); display:flex; justify-content:space-between; align-items:center; gap:12px; cursor:pointer; transition:background 0.15s ease;" onclick="closeDayOverviewModal(); clickEvent('${evt.id}', '${evt.type_key || ''}', '${evt.target_url || '#'}');">
+                    <div style="flex:1; min-width:0;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
+                            <i class="${iconClass}" style="color:${color}; font-size:13px;"></i>
+                            <span style="font-weight:700; font-size:13px; color:#0f172a;">${evt.work_description || evt.type_name}</span>
+                            <span style="background:${badgeBg}; color:${badgeColor}; font-size:10px; font-weight:700; padding:2px 7px; border-radius:4px;">${st}</span>
+                        </div>
+                        <div style="font-size:11.5px; color:#64748b; display:flex; gap:14px; flex-wrap:wrap;">
+                            ${timeStr ? `<span><i class="far fa-clock" style="color:#0284c7;"></i> ${timeStr}</span>` : ''}
+                            <span><i class="far fa-user" style="color:#64748b;"></i> ${evt.staff_name || 'Staff'}</span>
+                            <span><i class="fas fa-tag" style="color:#64748b;"></i> ${evt.type_name || 'Event'}</span>
+                        </div>
+                    </div>
+                    <button type="button" onclick="event.stopPropagation(); closeDayOverviewModal(); clickEvent('${evt.id}', '${evt.type_key || ''}', '${evt.target_url || '#'}');" style="padding:7px 12px; background:#002F70; color:#fff; border:none; border-radius:6px; font-size:11.5px; font-weight:600; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:5px;">
+                        <i class="fas fa-eye"></i> Details
+                    </button>
+                </div>
+            `;
+        }).join('');
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeDayOverviewModal() {
+    const modal = document.getElementById('dayOverviewModal');
+    if (modal) modal.style.display = 'none';
 }
 
 // Submit event form
@@ -1686,27 +1646,6 @@ function handleEventTypeChange() {
     let fieldsHTML = '';
     
     switch(eventType) {
-        case 'staff_shift':
-            fieldsHTML = `
-                <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 8px; font-size: 14px; color: #3c4043; font-weight: 500;">Shift Type</label>
-                    <select name="shift_type" style="width: 100%; padding: 10px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;">
-                        <option value="Morning">Morning Shift</option>
-                        <option value="Afternoon">Afternoon Shift</option>
-                        <option value="Night">Night Shift</option>
-                        <option value="Graveyard">Graveyard Shift</option>
-                    </select>
-                </div>
-                <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 8px; font-size: 14px; color: #3c4043; font-weight: 500;">Shift Status</label>
-                    <select name="shift_status" style="width: 100%; padding: 10px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;">
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                    </select>
-                </div>
-            `;
-            break;
-            
         case 'job_order':
             fieldsHTML = `
                 <div style="margin-bottom: 20px;">
@@ -1821,6 +1760,27 @@ function handleEventTypeChange() {
 }
 </script>
 
+<!-- Day Overview Modal -->
+<div id="dayOverviewModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: #fff; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); width: 92%; max-width: 540px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden;">
+        <div style="padding: 18px 22px; border-bottom: 1px solid #dadce0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc;">
+            <div>
+                <h2 id="dayOverviewTitle" style="margin: 0; font-size: 18px; color: #002F70; font-weight: 700;">Day Schedule</h2>
+                <div id="dayOverviewSubtitle" style="font-size: 12px; color: #64748b; margin-top: 2px;"></div>
+            </div>
+            <button onclick="closeDayOverviewModal()" style="background: none; border: none; font-size: 24px; color: #64748b; cursor: pointer; line-height: 1;">&times;</button>
+        </div>
+        <div id="dayOverviewList" style="padding: 20px 22px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px;">
+            <!-- Filled dynamically -->
+        </div>
+        <div style="padding: 14px 22px; border-top: 1px solid #dadce0; display: flex; justify-content: flex-end; align-items: center; background: #f8fafc;">
+            <button type="button" onclick="closeDayOverviewModal()" style="padding: 9px 16px; border: 1px solid #cbd5e1; background: #fff; color: #334155; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                Close
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Details Modal -->
 <div id="detailsModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
     <div style="background: #fff; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto;">
@@ -1859,7 +1819,6 @@ function handleEventTypeChange() {
                 <select id="eventType" name="event_type" required onchange="handleEventTypeChange()" style="width: 100%; padding: 10px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;">
                     <option value="">Select type...</option>
                     <optgroup label="Work Assignments">
-                        <option value="staff_shift">Staff Shift</option>
                         <option value="job_order">Job Order</option>
                         <option value="fuel_calibration">Fuel Calibration</option>
                         <option value="meter_reading">Meter Reading</option>
