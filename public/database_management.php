@@ -420,7 +420,8 @@ include __DIR__ . '/../partials/header.php';
 ?>
 <style>
 /* ═══════════════════════════════════════════════════════
-   DATABASE MANAGEMENT — Enterprise Stylesheet
+   DATABASE MANAGEMENT — Elder-Friendly Enterprise Stylesheet
+   Matching Admin Management typography standards
 ════════════════════════════════════════════════════════ */
 :root {
   --db-blue:     #002F6C;
@@ -431,100 +432,240 @@ include __DIR__ . '/../partials/header.php';
   --db-gray:     #64748b;
   --db-surface:  #f8fafc;
   --db-border:   #e2e8f0;
-  --db-radius:   12px;
+  --db-radius:   14px;
+}
+
+/* Zero horizontal scrolling */
+html, body {
+  overflow-x: hidden !important;
+  max-width: 100vw !important;
+  box-sizing: border-box !important;
+}
+*, *:before, *:after {
+  box-sizing: border-box !important;
 }
 
 /* Page wrapper */
-.db-page { padding: 0 !important; width:100%; max-width:100%; box-sizing:border-box; }
-.db-page-title { display:flex; align-items:center; gap:10px; margin-bottom:25px !important; margin-top:0 !important; padding:0 !important; border:none !important; width:100%; }
-.db-page-title h1 { margin:0 !important; color:#002f70 !important; font-size:24px !important; font-weight:700 !important; text-transform:uppercase !important; letter-spacing:0.5px !important; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important; display:flex !important; align-items:center !important; gap:10px !important; line-height:1.2 !important; }
-.db-page-title i  { font-size:24px !important; color:#002f70 !important; }
-.db-subtitle      { color:#64748b; font-size:13px; margin:0 0 24px; }
+.db-page {
+  padding: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+}
 
-/* Stat cards */
-.db-stat-row { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:28px; }
+/* Header Row & Title */
+.db-header-row {
+  margin-bottom: 25px !important;
+}
+.db-page-title {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  margin-bottom: 0 !important;
+  margin-top: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  width: 100% !important;
+}
+.db-page-title h1 {
+  margin: 0 !important;
+  color: #002f70 !important;
+  font-size: 24px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  line-height: 1.2 !important;
+}
+.db-page-title i {
+  font-size: 24px !important;
+  color: #002f70 !important;
+}
+.db-subtitle {
+  color: #666 !important;
+  font-size: 15px !important;
+  margin: 6px 0 24px !important;
+}
+
+/* Stat cards - Elder Friendly 32px values & 15px labels */
+.db-stat-row {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
+  gap: 14px !important;
+  margin-bottom: 24px !important;
+}
 .db-stat-card {
-  background:#fff; border:1px solid var(--db-border); border-radius:var(--db-radius);
-  padding:18px 20px; display:flex; align-items:center; gap:14px;
-  box-shadow:0 1px 4px rgba(0,0,0,.06);
+  background: #fff !important;
+  border: 1px solid #eaeaea !important;
+  border-radius: 14px !important;
+  padding: 20px 22px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,.04) !important;
 }
 .db-stat-icon {
-  width:44px; height:44px; border-radius:10px; display:flex;
-  align-items:center; justify-content:center; font-size:18px; flex-shrink:0;
+  width: 50px !important;
+  height: 50px !important;
+  border-radius: 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 22px !important;
+  flex-shrink: 0 !important;
 }
-.db-stat-icon.blue   { background:#eff6ff; color:var(--db-blue); }
-.db-stat-icon.green  { background:#f0fdf4; color:var(--db-green); }
-.db-stat-icon.yellow { background:#fffbeb; color:var(--db-yellow); }
-.db-stat-icon.red    { background:#fff1f2; color:var(--db-red); }
-.db-stat-label { font-size:11px; color:#94a3b8; font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
-.db-stat-val   { font-size:22px; font-weight:800; color:#0f172a; line-height:1.2; }
-.db-stat-sub   { font-size:11px; color:#94a3b8; margin-top:1px; }
+.db-stat-icon.blue   { background: rgba(0,38,77,.1) !important; color: var(--petron-blue, #00264D) !important; }
+.db-stat-icon.green  { background: rgba(40,167,69,.1) !important; color: #28a745 !important; }
+.db-stat-icon.yellow { background: rgba(255,193,7,.15) !important; color: #b8860b !important; }
+.db-stat-icon.red    { background: rgba(204,0,0,.1) !important; color: #cc0000 !important; }
+.db-stat-label {
+  font-size: 15px !important;
+  color: #666 !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: .3px !important;
+  margin-bottom: 4px !important;
+  line-height: 1.2 !important;
+}
+.db-stat-val {
+  font-size: 32px !important;
+  font-weight: 800 !important;
+  color: var(--petron-blue, #002F6C) !important;
+  line-height: 1.1 !important;
+}
+.db-stat-sub {
+  font-size: 13.5px !important;
+  color: #666 !important;
+  margin-top: 4px !important;
+  font-weight: 500 !important;
+}
 
-/* Tabs - Reports-style boxed design */
+/* Tabs - Elder Friendly Boxed Design */
 .db-tab-bar {
-    display: flex !important; flex-wrap: wrap !important;
-    margin-bottom: 22px !important;
-    border: 1px solid #d1d9e6 !important; border-radius: 0 !important;
-    overflow: hidden !important; border-bottom: 3px solid #00264D !important;
-    gap: 0 !important; background: transparent !important;
-    padding: 0 !important; width: 100% !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  margin-bottom: 24px !important;
+  border: 1px solid #d1d9e6 !important;
+  border-radius: 0 !important;
+  overflow: hidden !important;
+  border-bottom: 3px solid #00264D !important;
+  gap: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  width: 100% !important;
 }
 .db-tab-btn {
-    flex: 1 !important; min-width: 140px !important;
-    padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important;
-    color: #334155 !important; background: #ffffff !important;
-    border: none !important; border-right: 1px solid #d1d9e6 !important;
-    border-radius: 0 !important; text-decoration: none !important;
-    transition: all 0.15s ease !important;
-    display: inline-flex !important; align-items: center !important;
-    justify-content: center !important; gap: 7px !important;
-    text-transform: uppercase !important; letter-spacing: 0.3px !important;
-    text-align: center !important; cursor: pointer !important;
-    margin-bottom: 0 !important; box-shadow: none !important; white-space: nowrap;
+  flex: 1 !important;
+  min-width: 140px !important;
+  padding: 14px 20px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #334155 !important;
+  background: #ffffff !important;
+  border: none !important;
+  border-right: 1px solid #d1d9e6 !important;
+  border-radius: 0 !important;
+  text-decoration: none !important;
+  transition: all 0.15s ease !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.3px !important;
+  text-align: center !important;
+  cursor: pointer !important;
+  margin-bottom: 0 !important;
+  box-shadow: none !important;
+  white-space: nowrap !important;
 }
 .db-tab-btn:last-child { border-right: none !important; }
-.db-tab-btn i { font-size:13px; color:inherit; }
+.db-tab-btn i { font-size: 15px !important; color: inherit !important; }
 .db-tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
 .db-tab-btn.active {
-    background: #00264D !important; color: #ffffff !important;
-    font-weight: 800 !important; box-shadow: none !important;
+  background: #00264D !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  box-shadow: none !important;
 }
-.db-tab-pane       { display:none; }
-.db-tab-pane.active { display:block; }
+.db-tab-pane { display: none; }
+.db-tab-pane.active { display: block; }
 
 /* Section cards */
 .db-card {
-  background:#fff; border:1px solid var(--db-border); border-radius:var(--db-radius);
-  margin-bottom:20px; box-shadow:0 1px 4px rgba(0,0,0,.05);
+  background: #fff !important;
+  border: 1px solid #eaeaea !important;
+  border-radius: 14px !important;
+  margin-bottom: 24px !important;
+  box-shadow: 0 2px 12px rgba(0,0,0,.05) !important;
+  overflow: hidden !important;
 }
 .db-card-header {
-  display:flex; align-items:center; justify-content:space-between;
-  padding:16px 20px; border-bottom:1px solid #f1f5f9;
-  background:linear-gradient(90deg,#f8fafc,#fff);
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 18px 24px !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  background: linear-gradient(90deg,#f8fafc,#fff) !important;
 }
 .db-card-title {
-  font-size:14px; font-weight:700; color:var(--db-blue);
-  display:flex; align-items:center; gap:8px; margin:0;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  color: #002f70 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.3px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  margin: 0 !important;
 }
-.db-card-body { padding:20px; }
+.db-card-title i { font-size: 18px !important; }
+.db-card-body { padding: 24px !important; }
 
-/* Form rows */
-.db-form-grid   { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-.db-form-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
-.db-form-group  { display:flex; flex-direction:column; gap:6px; }
-.db-label       { font-size:12px; font-weight:700; color:#374151; text-transform:uppercase; letter-spacing:.4px; }
+/* Form Elements - Elder Friendly 14px Labels & 15px Inputs */
+.db-form-grid   { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.db-form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+.db-form-group  { display: flex; flex-direction: column; gap: 6px; }
+.db-label {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #444 !important;
+  text-transform: uppercase !important;
+  letter-spacing: .3px !important;
+  margin-bottom: 4px !important;
+}
 .db-input, .db-select {
-  padding:10px 13px; border:1.5px solid #dde2e8; border-radius:8px; font-size:13px;
-  background:#fff; color:#0f172a; outline:none; transition:border-color .2s, box-shadow .2s;
-  font-family:inherit;
+  padding: 12px 14px !important;
+  border: 1.5px solid #ddd !important;
+  border-radius: 10px !important;
+  font-size: 15px !important;
+  background: #fff !important;
+  color: #1a1a1a !important;
+  outline: none !important;
+  transition: border-color .2s, box-shadow .2s !important;
+  font-family: inherit !important;
 }
 .db-input:focus, .db-select:focus {
-  border-color:var(--db-blue); box-shadow:0 0 0 3px rgba(0,47,108,.08);
+  border-color: var(--db-blue, #002F6C) !important;
+  box-shadow: 0 0 0 3px rgba(0,47,108,.1) !important;
 }
-.db-input[readonly] { background:#f1f5f9; color:#64748b; cursor:default; }
-.db-hint { font-size:11px; color:#94a3b8; margin-top:2px; }
+.db-input[readonly] {
+  background: #f8fafc !important;
+  color: #475569 !important;
+  font-weight: 500 !important;
+  cursor: default !important;
+}
+.db-hint {
+  font-size: 13px !important;
+  color: #666 !important;
+  margin-top: 4px !important;
+}
 
-/* Buttons - Enforce Crisp White Text & White Icons */
+/* Buttons - Elder Friendly 15px Font & Clear Touch Targets */
 .db-btn,
 button.db-btn,
 a.db-btn,
@@ -534,32 +675,30 @@ a.db-btn,
   color: #ffffff !important;
   fill: #ffffff !important;
 }
-
 .db-btn {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  gap: 7px !important;
-  padding: 9px 18px !important;
-  border-radius: 8px !important;
-  font-size: 13px !important;
+  gap: 8px !important;
+  padding: 11px 22px !important;
+  border-radius: 6px !important;
+  font-size: 15px !important;
   font-weight: 700 !important;
   cursor: pointer !important;
   border: 1.5px solid transparent !important;
   transition: all .2s ease !important;
   text-decoration: none !important;
   box-shadow: 0 1px 3px rgba(0,0,0,0.12) !important;
+  line-height: 1.3 !important;
 }
-
 .db-btn-primary {
-  background: var(--db-blue) !important; /* Petron Navy #002F6C */
-  border-color: var(--db-blue) !important;
+  background: var(--db-blue, #002F6C) !important;
+  border-color: var(--db-blue, #002F6C) !important;
 }
 .db-btn-primary:hover {
   background: #001d45 !important;
   border-color: #001d45 !important;
 }
-
 .db-btn-success {
   background: #16a34a !important;
   border-color: #16a34a !important;
@@ -568,7 +707,6 @@ a.db-btn,
   background: #15803d !important;
   border-color: #15803d !important;
 }
-
 .db-btn-danger {
   background: #dc2626 !important;
   border-color: #dc2626 !important;
@@ -577,7 +715,6 @@ a.db-btn,
   background: #b91c1c !important;
   border-color: #b91c1c !important;
 }
-
 .db-btn-warning {
   background: #d97706 !important;
   border-color: #d97706 !important;
@@ -586,18 +723,16 @@ a.db-btn,
   background: #b45309 !important;
   border-color: #b45309 !important;
 }
-
 .db-btn-outline {
-  background: var(--db-blue) !important;
-  border-color: var(--db-blue) !important;
+  background: var(--db-blue, #002F6C) !important;
+  border-color: var(--db-blue, #002F6C) !important;
 }
 .db-btn-outline:hover {
   background: #001d45 !important;
   border-color: #001d45 !important;
 }
-
 .db-btn-ghost, .db-btn-gray, .db-btn-archive {
-  background: #6b7280 !important; /* Solid Gray */
+  background: #6b7280 !important;
   border-color: #6b7280 !important;
   color: #ffffff !important;
 }
@@ -606,22 +741,21 @@ a.db-btn,
   border-color: #4b5563 !important;
   color: #ffffff !important;
 }
-
 .db-btn-sm {
-  padding: 6px 14px !important;
-  font-size: 12px !important;
-  border-radius: 6px !important;
+  padding: 7px 15px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  border-radius: 5px !important;
 }
-
 .db-btn-icon {
-  width: 34px !important;
-  height: 34px !important;
+  width: 36px !important;
+  height: 36px !important;
   padding: 0 !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  border-radius: 8px !important;
-  font-size: 14px !important;
+  border-radius: 6px !important;
+  font-size: 15px !important;
   box-shadow: 0 1px 3px rgba(0,0,0,0.12) !important;
 }
 .db-btn-icon i {
@@ -630,55 +764,93 @@ a.db-btn,
 }
 
 /* Progress bar */
-.db-progress-wrap  { background:#f1f5f9; border-radius:999px; height:12px; overflow:hidden; margin:8px 0; }
-.db-progress-bar   { height:100%; border-radius:999px; transition:width .4s; background:linear-gradient(90deg,var(--db-blue2),#3b82f6); }
-
-/* Tables */
-.db-table-wrap { overflow-x:auto; border-radius:var(--db-radius); border:1px solid var(--db-border); }
-.db-table      { width:100%; border-collapse:collapse; font-size:13px; }
-.db-table thead tr { background:linear-gradient(90deg,var(--db-blue),var(--db-blue2)); }
-.db-table thead th { color:#fff; padding:11px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap; text-align:left; }
-.db-table tbody tr { border-bottom:1px solid #f1f5f9; transition:background .15s; }
-.db-table tbody tr:hover { background:#f8faff; }
-.db-table tbody td { padding:10px 14px; color:#374151; vertical-align:middle; }
-.db-table tbody tr:last-child { border-bottom:none; }
-
-/* Badges */
-.db-badge {
-  display:inline-flex; align-items:center; gap:4px;
-  padding:3px 9px; border-radius:20px; font-size:11px; font-weight:700;
+.db-progress-wrap {
+  background: #f1f5f9;
+  border-radius: 999px;
+  height: 14px;
+  overflow: hidden;
+  margin: 10px 0;
 }
-.db-badge-green  { background:#dcfce7; color:#166534; }
-.db-badge-blue   { background:#dbeafe; color:#1d4ed8; }
-.db-badge-yellow { background:#fef9c3; color:#854d0e; }
-.db-badge-red    { background:#fee2e2; color:#991b1b; }
-.db-badge-gray   { background:#f1f5f9; color:#475569; }
+.db-progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  transition: width .4s;
+  background: linear-gradient(90deg, var(--db-blue2), #3b82f6);
+}
 
-/* ══════════════════════════════════════════════════════════════
-   PROFESSIONAL NOTIFICATION BANNER SYSTEM
-   - Fixed top-right below navigation bar (top: 76px, right: 28px)
-   - Left-accent border design (enterprise style)
-   - Generous padding, clean readable typography (no underlines)
-   - Color-coded by type with smooth slide-in from right
-══════════════════════════════════════════════════════════════ */
+/* Tables - Elder Friendly 14px Body & 13px Header */
+.db-table-wrap {
+  overflow-x: auto !important;
+  border-radius: 14px !important;
+  border: 1px solid #eaeaea !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,.04) !important;
+}
+.db-table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  font-size: 14px !important;
+}
+.db-table thead tr {
+  background: #002F70 !important;
+}
+.db-table thead th {
+  color: #ffffff !important;
+  background: #002F70 !important;
+  padding: 12px 14px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: .3px !important;
+  white-space: nowrap !important;
+  text-align: left !important;
+}
+.db-table tbody tr {
+  border-bottom: 1px solid #f0f0f0 !important;
+  transition: background .15s !important;
+}
+.db-table tbody tr:hover {
+  background: #f8faff !important;
+}
+.db-table tbody td {
+  padding: 11px 14px !important;
+  color: #1a1a1a !important;
+  font-size: 14px !important;
+  vertical-align: middle !important;
+}
+.db-table tbody tr:last-child {
+  border-bottom: none !important;
+}
+
+/* Badges - Elder Friendly 12.5px */
+.db-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: 4px 10px !important;
+  border-radius: 12px !important;
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+}
+.db-badge-green  { background: #dcfce7 !important; color: #166534 !important; }
+.db-badge-blue   { background: #dbeafe !important; color: #1d4ed8 !important; }
+.db-badge-yellow { background: #fef9c3 !important; color: #854d0e !important; }
+.db-badge-red    { background: #fee2e2 !important; color: #991b1b !important; }
+.db-badge-gray   { background: #f1f5f9 !important; color: #475569 !important; }
+
+/* Notification Banners */
 #db-notif-container {
   position: fixed;
-  top: 76px;               /* clears the fixed top nav bar (~60px) */
+  top: 76px;
   right: 28px;
   z-index: 999999;
   display: flex;
-  flex-direction: column;  /* newest stacks below previous */
+  flex-direction: column;
   gap: 12px;
   width: 380px;
   max-width: calc(100vw - 32px);
   pointer-events: none;
 }
-
-/* ── Base toast card ── */
-.db-toast,
-.db-toast * {
-  text-decoration: none !important;    /* never underline any element */
-}
+.db-toast, .db-toast * { text-decoration: none !important; }
 .db-toast {
   pointer-events: all;
   position: relative;
@@ -698,155 +870,29 @@ a.db-btn,
   animation: dbToastOut .28s cubic-bezier(.55,0,1,.45) forwards;
   pointer-events: none;
 }
+@keyframes dbToastIn { from { opacity:0; transform:translateX(110%) scale(.96); } to { opacity:1; transform:translateX(0) scale(1); } }
+@keyframes dbToastOut { from { opacity:1; transform:translateX(0) scale(1); max-height:160px; margin-bottom:0; } to { opacity:0; transform:translateX(110%) scale(.96); max-height:0; margin-bottom:-12px; padding-top:0; padding-bottom:0; } }
+.db-toast-body { display: flex; align-items: flex-start; gap: 13px; padding: 15px 18px 14px 16px; }
+.db-toast-icon { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; margin-top: 1px; }
+.db-toast-content { flex: 1; min-width: 0; padding-top: 1px; text-decoration: none !important; }
+.db-toast-label { font-size: 12px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; opacity: .7; margin: 0 0 3px; line-height: 1; }
+.db-toast-title { font-size: 15px; font-weight: 700; line-height: 1.35; margin: 0 0 3px; color: #0f172a; word-break: break-word; }
+.db-toast-sub { font-size: 13px; font-weight: 500; line-height: 1.45; margin: 0; color: #64748b; }
+.db-toast-close { display: none !important; }
+.db-toast-progress { display: none !important; }
+.db-toast.success .db-toast-icon { background: #dcfce7; color: #16a34a; }
+.db-toast.error   .db-toast-icon { background: #fee2e2; color: #dc2626; }
+.db-toast.warning .db-toast-icon { background: #fef9c3; color: #d97706; }
+.db-toast.info    .db-toast-icon { background: #dbeafe; color: #2563eb; }
 
-@keyframes dbToastIn {
-  from {
-    opacity: 0;
-    transform: translateX(110%) scale(.96);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
-}
-@keyframes dbToastOut {
-  from {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-    max-height: 160px;
-    margin-bottom: 0;
-  }
-  to {
-    opacity: 0;
-    transform: translateX(110%) scale(.96);
-    max-height: 0;
-    margin-bottom: -12px;
-    padding-top: 0;
-    padding-bottom: 0;
-  }
-}
-
-/* ── Toast inner body ── */
-.db-toast-body {
-  display: flex;
-  align-items: flex-start;
-  gap: 13px;
-  padding: 15px 18px 14px 16px;
-}
-
-/* ── Icon bubble ── */
-.db-toast-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 17px;
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-/* ── Text area ── */
-.db-toast-content {
-  flex: 1;
-  min-width: 0;
-  padding-top: 1px;
-  text-decoration: none !important;
-}
-.db-toast-label {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .8px;
-  text-transform: uppercase;
-  opacity: .7;
-  margin: 0 0 3px;
-  line-height: 1;
-  text-decoration: none !important;
-}
-.db-toast-title {
-  font-size: 13.5px;
-  font-weight: 700;
-  line-height: 1.35;
-  margin: 0 0 3px;
-  color: #0f172a;
-  word-break: break-word;
-  text-decoration: none !important;
-}
-.db-toast-sub {
-  font-size: 11.5px;
-  font-weight: 500;
-  line-height: 1.45;
-  margin: 0;
-  color: #64748b;
-  text-decoration: none !important;
-}
-
-/* ── Close button (Removed for clean look) ── */
-.db-toast-close {
-  display: none !important;
-}
-
-/* ── Progress bar strip hidden for clean look ── */
-.db-toast-progress {
-  display: none !important;
-}
-
-/* ══ TYPE THEMES ══════════════════════════════════════════════ */
-
-/* SUCCESS — Green */
-.db-toast.success .db-toast-icon {
-  background: #dcfce7;
-  color: #16a34a;
-}
-.db-toast.success .db-toast-label { color: #16a34a; }
-.db-toast.success .db-toast-title { color: #14532d; }
-
-/* WARNING — Amber */
-.db-toast.warning .db-toast-icon {
-  background: #fef3c7;
-  color: #d97706;
-}
-.db-toast.warning .db-toast-label { color: #d97706; }
-.db-toast.warning .db-toast-title { color: #78350f; }
-
-/* ERROR — Red */
-.db-toast.error .db-toast-icon {
-  background: #fee2e2;
-  color: #dc2626;
-}
-.db-toast.error .db-toast-label { color: #dc2626; }
-.db-toast.error .db-toast-title { color: #7f1d1d; }
-
-/* INFO — Blue */
-.db-toast.info .db-toast-icon {
-  background: #dbeafe;
-  color: #2563eb;
-}
-.db-toast.info .db-toast-label { color: #2563eb; }
-.db-toast.info .db-toast-title { color: #1e3a8a; }
-.db-toast.info .db-toast-progress-bar { background: #3b82f6; }
-
-/* Legacy db-flash hidden (no longer used) */
-.db-flash-wrapper { display: none !important; }
-.db-flash         { display: none !important; }
-
-/* Backup actions inline */
-.db-action-row { display:flex; gap:6px; flex-wrap:wrap; }
-
-/* Password Visibility Toggle */
-.db-pass-toggle-btn,
-button.db-pass-toggle-btn {
+/* Modal overlay & styles */
+.db-pass-toggle-btn {
   position: absolute !important;
   right: 12px !important;
   top: 50% !important;
   transform: translateY(-50%) !important;
   background: transparent !important;
-  background-color: transparent !important;
   border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
-  color: #64748b !important;
   cursor: pointer !important;
   padding: 0 !important;
   margin: 0 !important;
@@ -858,70 +904,91 @@ button.db-pass-toggle-btn {
   z-index: 10 !important;
   border-radius: 0 !important;
 }
-.db-pass-toggle-btn i {
-  color: #64748b !important;
-  font-size: 15px !important;
-  transition: color 0.15s ease !important;
-}
-.db-pass-toggle-btn:hover i {
-  color: #002F6C !important;
-}
+.db-pass-toggle-btn i { color: #64748b !important; font-size: 15px !important; transition: color 0.15s ease !important; }
+.db-pass-toggle-btn:hover i { color: #002F6C !important; }
 
-/* Modal overlay */
 .db-modal-overlay {
-  display:none; position:fixed; inset:0; background:rgba(0,0,0,.5);
-  z-index:9999; align-items:center; justify-content:center;
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5);
+  z-index: 9999; align-items: center; justify-content: center;
 }
-.db-modal-overlay.open { display:flex; }
+.db-modal-overlay.open { display: flex; }
 .db-modal {
-  background:#fff; border-radius:16px; width:min(520px,95vw);
-  box-shadow:0 20px 60px rgba(0,0,0,.25); overflow:hidden;
-  animation:dbModalIn .25s ease;
+  background: #fff !important;
+  border-radius: 20px !important;
+  width: min(560px, 95vw) !important;
+  box-shadow: 0 20px 60px rgba(0,0,0,.25) !important;
+  overflow: hidden !important;
+  animation: dbModalIn .25s ease;
 }
-@keyframes dbModalIn { from{opacity:0;transform:translateY(-20px)} to{opacity:1;transform:none} }
+@keyframes dbModalIn { from { opacity:0; transform:translateY(-20px) } to { opacity:1; transform:none } }
 .db-modal-header {
-  display:flex; align-items:center; justify-content:space-between;
-  padding:20px 24px 16px; border-bottom:1px solid #f1f5f9;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 20px 24px 16px !important;
+  border-bottom: 1px solid #f1f5f9 !important;
 }
-.db-modal-title { font-size:16px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px; }
-.db-modal-close { background:none; border:none; font-size:20px; color:#94a3b8; cursor:pointer; line-height:1; }
-.db-modal-body  { padding:20px 24px; }
-.db-modal-footer { padding:16px 24px; border-top:1px solid #f1f5f9; display:flex; justify-content:flex-end; gap:10px; }
+.db-modal-title {
+  font-size: 19px !important;
+  font-weight: 700 !important;
+  color: #002F6C !important;
+  text-transform: uppercase !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+.db-modal-close { background: none; border: none; font-size: 22px; color: #94a3b8; cursor: pointer; line-height: 1; }
+.db-modal-body  { padding: 24px !important; }
+.db-modal-footer {
+  padding: 18px 24px !important;
+  border-top: 1px solid #f1f5f9 !important;
+  display: flex !important;
+  justify-content: flex-end !important;
+  gap: 12px !important;
+}
 
 /* Warning box */
 .db-warn-box {
-  background:#fff7ed; border:1.5px solid #fed7aa; border-radius:10px;
-  padding:16px; margin-bottom:16px;
+  background: #fff7ed;
+  border: 1.5px solid #fed7aa;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
 }
-.db-warn-box .db-warn-title { font-size:14px; font-weight:800; color:#c2410c; margin:0 0 8px; display:flex; align-items:center; gap:6px; }
-.db-warn-box ul { margin:0; padding-left:18px; color:#7c2d12; font-size:13px; line-height:1.8; }
+.db-warn-box .db-warn-title { font-size: 15px; font-weight: 800; color: #c2410c; margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
+.db-warn-box ul { margin: 0; padding-left: 18px; color: #7c2d12; font-size: 14px; line-height: 1.8; }
 
 /* Filter bar */
-.db-filter-bar { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px; }
-.db-filter-bar .db-form-group { flex:1; min-width:160px; }
+.db-filter-bar { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 18px; }
+.db-filter-bar .db-form-group { flex: 1; min-width: 160px; }
 
 /* Empty state */
-.db-empty { text-align:center; padding:48px 20px; color:#94a3b8; }
-.db-empty i { font-size:40px; margin-bottom:10px; display:block; }
-.db-empty p { margin:0; font-size:14px; }
+.db-empty { text-align: center; padding: 48px 20px; color: #94a3b8; }
+.db-empty i { font-size: 42px; margin-bottom: 12px; display: block; }
+.db-empty p { margin: 0; font-size: 15px; }
 
 /* Verified icon */
-.db-verified { color:var(--db-green); }
-.db-unverified { color:#e5e7eb; }
+.db-verified { color: var(--db-green); }
+.db-unverified { color: #e5e7eb; }
 
 /* Restore table */
-.db-restore-note { font-size:12px; color:#94a3b8; margin-top:8px; font-style:italic; }
+.db-restore-note { font-size: 13.5px; color: #64748b; margin-top: 8px; font-style: italic; }
 
-/* Schema tab */
+/* Schema tab version box */
 .db-version-box {
-  display:inline-flex; align-items:center; gap:12px;
-  background:linear-gradient(135deg,var(--db-blue),var(--db-blue2));
-  color:#fff; border-radius:12px; padding:16px 24px; margin-bottom:20px;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 16px !important;
+  background: linear-gradient(135deg, var(--db-blue), var(--db-blue2)) !important;
+  color: #fff !important;
+  border-radius: 14px !important;
+  padding: 18px 26px !important;
+  margin-bottom: 24px !important;
 }
-.db-version-box .lbl { font-size:11px; opacity:.75; text-transform:uppercase; letter-spacing:.5px; }
-.db-version-box .ver { font-size:24px; font-weight:800; font-family:monospace; }
+.db-version-box .lbl { font-size: 13px !important; opacity: .85 !important; text-transform: uppercase !important; letter-spacing: .5px !important; font-weight: 600 !important; }
+.db-version-box .ver { font-size: 26px !important; font-weight: 800 !important; font-family: monospace !important; }
 
-/* ── Media Print Styles ─────────────────────────────────────────────── */
+/* Print Styles */
 @media print {
   @page { size: A4 portrait; margin: 10mm 12mm; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -1002,7 +1069,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
       <div class="db-stat-icon blue"><i class="fas fa-calendar-alt"></i></div>
       <div>
         <div class="db-stat-label">Last Backup</div>
-        <div class="db-stat-val" id="stat_last_backup_date" style="font-size:14px;">
+        <div class="db-stat-val" id="stat_last_backup_date" style="font-size:20px !important; font-weight:800 !important; line-height:1.2;">
           <?= !empty($backup_history) ? date('M d', strtotime($backup_history[0]['created_at'])) : '—' ?>
         </div>
         <div class="db-stat-sub" id="stat_last_backup_time">
@@ -1109,7 +1176,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
         <h3 class="db-card-title"><i class="fas fa-play-circle"></i> Run Manual Backup</h3>
       </div>
       <div class="db-card-body">
-        <p style="color:#64748b; font-size:13px; margin:0 0 16px;">
+        <p style="color:#555; font-size:14.5px; margin:0 0 16px; line-height:1.5;">
           Triggers an immediate backup using the current configuration.
           Current type: <strong><?= htmlspecialchars($cfg_backup_type) ?></strong> |
           Compression: <strong><?= htmlspecialchars($cfg_compression) ?></strong>
@@ -1118,13 +1185,13 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
         <!-- Progress bar (animated on click) -->
         <div id="backupProgressWrap" style="display:none; margin-bottom:16px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-            <span style="font-size:13px; font-weight:700; color:var(--db-blue);" id="backupProgressLabel">Initializing backup…</span>
-            <span style="font-size:13px; font-weight:800; color:var(--db-blue);" id="backupProgressPct">0%</span>
+            <span style="font-size:14.5px; font-weight:700; color:var(--db-blue);" id="backupProgressLabel">Initializing backup…</span>
+            <span style="font-size:14.5px; font-weight:800; color:var(--db-blue);" id="backupProgressPct">0%</span>
           </div>
           <div class="db-progress-wrap">
             <div class="db-progress-bar" id="backupProgressBar" style="width:0%;"></div>
           </div>
-          <div id="backupProgressStatus" style="font-size:12px; color:#64748b; margin-top:4px;"></div>
+          <div id="backupProgressStatus" style="font-size:13.5px; color:#64748b; margin-top:4px;"></div>
         </div>
 
         <form method="POST" id="manualBackupForm" onsubmit="triggerBackupProgress(event)" style="display:flex; justify-content:flex-end;">
@@ -1135,7 +1202,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
           </button>
         </form>
 
-        <div id="backupCompletedMsg" style="display:none; margin-top:12px; padding:12px 16px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; color:#166534; font-size:13px; font-weight:600;">
+        <div id="backupCompletedMsg" style="display:none; margin-top:12px; padding:14px 18px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; color:#166534; font-size:14.5px; font-weight:600;">
           <i class="fas fa-check-circle" style="margin-right:6px;"></i>
           Backup Completed Successfully — page will refresh shortly.
         </div>
@@ -1146,7 +1213,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
     <div class="db-card">
       <div class="db-card-header">
         <h3 class="db-card-title"><i class="fas fa-history"></i> Backup History</h3>
-        <span style="font-size:12px; color:#94a3b8;"><?= count($backup_history) ?> records</span>
+        <span style="font-size:13.5px; color:#666; font-weight:600;"><?= count($backup_history) ?> records</span>
       </div>
       <div class="db-card-body" style="padding:0;">
         <?php if (empty($backup_history)): ?>
@@ -1172,11 +1239,11 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
             <tbody>
               <?php foreach($backup_history as $i => $bk): ?>
               <tr>
-                <td style="color:#94a3b8; font-size:12px;"><?= $i+1 ?></td>
+                <td style="color:#666; font-size:13.5px;"><?= $i+1 ?></td>
                 <td>
-                  <div style="font-weight:600; font-size:12px; font-family:monospace; color:#0f172a;"><?= htmlspecialchars($bk['backup_name'] ?? '') ?></div>
+                  <div style="font-weight:600; font-size:14px; font-family:monospace; color:#0f172a;"><?= htmlspecialchars($bk['backup_name'] ?? '') ?></div>
                   <?php if (!empty($bk['verified'])): ?>
-                  <div style="font-size:11px; color:var(--db-green); margin-top:2px;"><i class="fas fa-shield-alt"></i> Verified</div>
+                  <div style="font-size:12.5px; color:var(--db-green); margin-top:2px; font-weight:600;"><i class="fas fa-shield-alt"></i> Verified</div>
                   <?php endif; ?>
                 </td>
                 <td>
@@ -1184,7 +1251,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
                     <?= htmlspecialchars($bk['backup_type'] ?? 'Full Backup') ?>
                   </span>
                 </td>
-                <td style="font-size:12px;">
+                <td style="font-size:14px;">
                   <?php
                     $sz = (int)($bk['backup_size'] ?? 0);
                     echo $sz >= 1048576 ? round($sz/1048576,2).' MB' : ($sz >= 1024 ? round($sz/1024,1).' KB' : $sz.' B');
@@ -1200,10 +1267,10 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
                     <?= ucfirst($st) ?>
                   </span>
                 </td>
-                <td style="font-size:12px; color:#64748b;">
+                <td style="font-size:13.5px; color:#555;">
                   <?= !empty($bk['created_at']) ? date('M d, Y h:i A', strtotime($bk['created_at'])) : '—' ?>
                 </td>
-                <td style="font-size:12px; color:#374151;">
+                <td style="font-size:14px; color:#1a1a1a;">
                   <?= !empty($bk['first_name']) ? htmlspecialchars($bk['first_name'].' '.($bk['last_name']??'')) : '—' ?>
                 </td>
                 <td>
@@ -1297,13 +1364,13 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
             <tbody>
               <?php foreach($backup_history as $i => $bk): ?>
               <tr>
-                <td style="color:#94a3b8; font-size:12px;"><?= $i+1 ?></td>
-                <td style="font-weight:600; font-size:12px; font-family:monospace;"><?= htmlspecialchars($bk['backup_name'] ?? '') ?></td>
+                <td style="color:#666; font-size:13.5px;"><?= $i+1 ?></td>
+                <td style="font-weight:600; font-size:14px; font-family:monospace;"><?= htmlspecialchars($bk['backup_name'] ?? '') ?></td>
                 <td><span class="db-badge db-badge-blue"><?= htmlspecialchars($bk['backup_type'] ?? 'Full Backup') ?></span></td>
-                <td style="font-size:12px;">
+                <td style="font-size:14px;">
                   <?php $sz=(int)($bk['backup_size']??0); echo $sz>=1048576?round($sz/1048576,2).' MB':($sz>=1024?round($sz/1024,1).' KB':$sz.' B'); ?>
                 </td>
-                <td style="font-size:12px; color:#64748b;"><?= !empty($bk['created_at'])?date('M d, Y h:i A',strtotime($bk['created_at'])):'—' ?></td>
+                <td style="font-size:13.5px; color:#555;"><?= !empty($bk['created_at'])?date('M d, Y h:i A',strtotime($bk['created_at'])):'—' ?></td>
                 <td>
                   <span class="db-badge <?= !empty($bk['verified'])?'db-badge-green':'db-badge-gray' ?>">
                     <?= !empty($bk['verified'])?'Verified':'Unverified' ?>
@@ -1344,7 +1411,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
         <?php endif; ?>
 
         <!-- Restore History -->
-        <h4 style="font-size:14px; font-weight:700; color:var(--db-blue); margin-bottom:10px;">
+        <h4 style="font-size:17px; font-weight:700; color:var(--db-blue); margin-bottom:12px;">
           <i class="fas fa-history" style="margin-right:6px;"></i>Restore Log History
         </h4>
         <?php if (empty($restore_history)): ?>
@@ -1359,9 +1426,9 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
               <?php foreach($restore_history as $ri => $rh): ?>
               <tr>
                 <td style="color:#94a3b8;font-size:12px;"><?= $ri+1 ?></td>
-                <td style="font-size:12px;font-family:monospace;"><?= htmlspecialchars($rh['backup_name'] ?? '') ?></td>
-                <td style="font-size:12px;color:#64748b;"><?= !empty($rh['restored_at'])?date('M d, Y h:i A',strtotime($rh['restored_at'])):'—' ?></td>
-                <td style="font-size:12px;"><?= htmlspecialchars(($rh['first_name']??'').($rh['last_name']?' '.$rh['last_name']:'') ?: '—') ?></td>
+                <td style="font-size:14px;font-family:monospace;"><?= htmlspecialchars($rh['backup_name'] ?? '') ?></td>
+                <td style="font-size:13.5px;color:#555;"><?= !empty($rh['restored_at'])?date('M d, Y h:i A',strtotime($rh['restored_at'])):'—' ?></td>
+                <td style="font-size:14px;"><?= htmlspecialchars(($rh['first_name']??'').($rh['last_name']?' '.$rh['last_name']:'') ?: '—') ?></td>
                 <td>
                   <?php $rs=strtolower($rh['status']??''); ?>
                   <span class="db-badge <?= $rs==='success'?'db-badge-green':($rs==='attempted'?'db-badge-yellow':'db-badge-red') ?>">
@@ -1387,7 +1454,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
         <h3 class="db-card-title"><i class="fas fa-file-export"></i> Export Database</h3>
       </div>
       <div class="db-card-body">
-        <p style="color:#64748b; font-size:13px; margin:0 0 20px;">
+        <p style="color:#555; font-size:14.5px; margin:0 0 20px; line-height:1.5;">
           Export the database in your preferred format. The system will generate the export file for download.
         </p>
         <div class="db-form-grid" style="margin-bottom:20px;">
@@ -1416,11 +1483,11 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
         <!-- Preview area -->
         <div id="exportPreviewWrap" style="display:none; margin-bottom:16px;">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-            <span style="font-size:12px; font-weight:700; color:var(--db-blue);">PREVIEW <span id="exportPreviewLabel"></span></span>
+            <span style="font-size:14.5px; font-weight:700; color:var(--db-blue);">PREVIEW <span id="exportPreviewLabel"></span></span>
             <button type="button" onclick="document.getElementById('exportPreviewWrap').style.display='none'" class="db-btn db-btn-ghost db-btn-sm"><i class="fas fa-times"></i> Close Preview</button>
           </div>
           <pre id="exportPreviewCode"
-            style="background:#0f172a; color:#e2e8f0; border-radius:10px; padding:16px; font-size:11px; font-family:monospace; max-height:280px; overflow:auto; white-space:pre-wrap; margin:0;"></pre>
+            style="background:#0f172a; color:#e2e8f0; border-radius:10px; padding:16px; font-size:13px; font-family:monospace; max-height:280px; overflow:auto; white-space:pre-wrap; margin:0;"></pre>
         </div>
 
         <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
@@ -1432,7 +1499,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
           </button>
         </div>
 
-        <div id="exportSpinner" style="display:none; margin-top:12px; color:#64748b; font-size:13px;">
+        <div id="exportSpinner" style="display:none; margin-top:12px; color:#64748b; font-size:14.5px;">
           <i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i> Generating export…
         </div>
       </div>
@@ -1449,14 +1516,14 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
         <div class="lbl">Current Version</div>
         <div class="ver"><?= $current_version ? htmlspecialchars($current_version['version']) : 'v1.0.0' ?></div>
         <?php if ($current_version): ?>
-        <div style="font-size:11px; opacity:.7; margin-top:2px;">Applied: <?= date('M d, Y', strtotime($current_version['applied_at'])) ?></div>
+        <div style="font-size:13px; opacity:.85; margin-top:2px; font-weight:500;">Applied: <?= date('M d, Y', strtotime($current_version['applied_at'])) ?></div>
         <?php endif; ?>
       </div>
       <div style="width:1px;background:rgba(255,255,255,.2);height:50px;margin:0 12px;"></div>
       <div>
         <div class="lbl">Latest Version</div>
         <div class="ver"><?= $current_version ? htmlspecialchars($current_version['version']) : 'v1.0.0' ?></div>
-        <div style="font-size:11px; opacity:.7; margin-top:2px; color:#86efac;"><i class="fas fa-check"></i> Up to date</div>
+        <div style="font-size:13px; opacity:.95; margin-top:2px; color:#86efac; font-weight:600;"><i class="fas fa-check"></i> Up to date</div>
       </div>
     </div>
 
@@ -1518,7 +1585,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
     <div class="db-card">
       <div class="db-card-header">
         <h3 class="db-card-title"><i class="fas fa-history"></i> Migration History</h3>
-        <span style="font-size:12px;color:#94a3b8;"><?= count($migration_history) ?> migrations</span>
+        <span style="font-size:13.5px;color:#666;font-weight:600;"><?= count($migration_history) ?> migrations</span>
       </div>
       <div class="db-card-body" style="padding:0;">
         <?php if (empty($migration_history)): ?>
@@ -1533,7 +1600,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
               <?php foreach($migration_history as $mi => $mh): ?>
               <tr>
                 <td style="color:#94a3b8;font-size:12px;"><?= $mi+1 ?></td>
-                <td style="font-size:11px;font-family:monospace;color:#374151;max-width:200px;word-break:break-all;"><?= htmlspecialchars($mh['migration_name']??'') ?></td>
+                <td style="font-size:13px;font-family:monospace;color:#374151;max-width:200px;word-break:break-all;"><?= htmlspecialchars($mh['migration_name']??'') ?></td>
                 <td><span class="db-badge db-badge-blue"><?= htmlspecialchars($mh['table_name']??'') ?></span></td>
                 <td>
                   <?php $mac=strtolower($mh['action']??''); ?>
@@ -1541,9 +1608,9 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
                     <?= htmlspecialchars($mh['action']??'') ?>
                   </span>
                 </td>
-                <td style="font-size:12px;color:#64748b;max-width:220px;"><?= htmlspecialchars($mh['description']??'') ?></td>
-                <td style="font-size:12px;color:#64748b;"><?= !empty($mh['executed_at'])?date('M d, Y h:i A',strtotime($mh['executed_at'])):'—' ?></td>
-                <td style="font-size:12px;"><?= htmlspecialchars(($mh['first_name']??'').($mh['last_name']?' '.$mh['last_name']:'')?: '—') ?></td>
+                <td style="font-size:13.5px;color:#555;max-width:220px;"><?= htmlspecialchars($mh['description']??'') ?></td>
+                <td style="font-size:13.5px;color:#555;"><?= !empty($mh['executed_at'])?date('M d, Y h:i A',strtotime($mh['executed_at'])):'—' ?></td>
+                <td style="font-size:14px;"><?= htmlspecialchars(($mh['first_name']??'').($mh['last_name']?' '.$mh['last_name']:'')?: '—') ?></td>
               </tr>
               <?php endforeach; ?>
             </tbody>
@@ -1637,19 +1704,19 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
                 $status_ok = !str_contains($det,'fail') && !str_contains($det,'error');
               ?>
               <tr>
-                <td style="color:#94a3b8;font-size:12px;"><?= $si+1 ?></td>
-                <td style="font-size:12px;color:#64748b;white-space:nowrap;">
+                <td style="color:#666;font-size:13.5px;"><?= $si+1 ?></td>
+                <td style="font-size:13.5px;color:#555;white-space:nowrap;">
                   <?= !empty($sl['created_at'])?date('M d, Y',strtotime($sl['created_at'])):'—' ?><br>
-                  <span style="color:#94a3b8;"><?= !empty($sl['created_at'])?date('h:i A',strtotime($sl['created_at'])):'' ?></span>
+                  <span style="color:#777;font-size:13px;"><?= !empty($sl['created_at'])?date('h:i A',strtotime($sl['created_at'])):'' ?></span>
                 </td>
                 <td>
                   <span class="db-badge <?= $bc ?>"><i class="fas <?= $ico ?>"></i> <?= $tag ?></span>
                   <?php if (!empty($sl['details'])): ?>
-                  <div style="font-size:11px;color:#94a3b8;margin-top:3px;max-width:260px;"><?= htmlspecialchars(substr($sl['details'],0,80)) ?><?= strlen($sl['details'])>80?'…':'' ?></div>
+                  <div style="font-size:12.5px;color:#666;margin-top:3px;max-width:260px;"><?= htmlspecialchars(substr($sl['details'],0,80)) ?><?= strlen($sl['details'])>80?'…':'' ?></div>
                   <?php endif; ?>
                 </td>
-                <td style="font-size:12px;"><?= htmlspecialchars(($sl['first_name']??'').($sl['last_name']?' '.$sl['last_name']:'')?: 'System') ?></td>
-                <td style="font-size:12px;font-family:monospace;color:#374151;"><?= htmlspecialchars($sl['ip_address'] ?? '—') ?></td>
+                <td style="font-size:14px;"><?= htmlspecialchars(($sl['first_name']??'').($sl['last_name']?' '.$sl['last_name']:'')?: 'System') ?></td>
+                <td style="font-size:13.5px;font-family:monospace;color:#374151;"><?= htmlspecialchars($sl['ip_address'] ?? '—') ?></td>
                 <td>
                   <span class="db-badge <?= $status_ok?'db-badge-green':'db-badge-red' ?>">
                     <i class="fas <?= $status_ok?'fa-check-circle':'fa-times-circle' ?>"></i>
@@ -1689,7 +1756,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
           <input type="text" class="db-input" id="restore_backup_display" readonly>
         </div>
         <div class="db-form-group" style="margin-bottom:14px;">
-          <label class="db-label">Type <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:13px;font-weight:700;color:#dc2626;">RESTORE</code> to confirm</label>
+          <label class="db-label">Type <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:14px;font-weight:700;color:#dc2626;">RESTORE</code> to confirm</label>
           <input type="text" name="confirm_text" id="restore_confirm_text" class="db-input" placeholder="Type RESTORE here"
             autocomplete="off" style="font-family:monospace;font-size:15px;letter-spacing:2px;">
           <span class="db-hint">Exact match required (case-sensitive).</span>

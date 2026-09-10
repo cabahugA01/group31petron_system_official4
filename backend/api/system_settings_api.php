@@ -137,6 +137,11 @@ try {
                 'currency_symbol'              => 'regional',
                 'theme'                        => 'appearance',
                 'system_accent_color'          => 'appearance',
+                'sidebar_color'                => 'appearance',
+                'color_sidebar'                => 'appearance',
+                'nav_active_color'             => 'appearance',
+                'color_primary'                => 'appearance',
+                'color_button'                 => 'appearance',
                 'sidebar_mode'                 => 'appearance',
                 'dashboard_auto_refresh'       => 'appearance',
                 'session_timeout'              => 'security',
@@ -172,6 +177,17 @@ try {
             // Sync company_logo → 'logo' key (read by partials/header.php for sidebar brand logo)
             if (isset($settings['company_logo']) && $settings['company_logo'] !== '') {
                 upsertSetting($pdo, 'logo', $settings['company_logo'], 'general', $station_id, $me['id']);
+            }
+
+            // Sync sidebar_color → 'color_sidebar' (read by partials/header.php for sidebar background)
+            if (isset($settings['sidebar_color']) && $settings['sidebar_color'] !== '') {
+                upsertSetting($pdo, 'color_sidebar', $settings['sidebar_color'], 'appearance', $station_id, $me['id']);
+            }
+
+            // Sync system_accent_color → 'color_primary' & 'color_button'
+            if (isset($settings['system_accent_color']) && $settings['system_accent_color'] !== '') {
+                upsertSetting($pdo, 'color_primary', $settings['system_accent_color'], 'appearance', $station_id, $me['id']);
+                upsertSetting($pdo, 'color_button', $settings['system_accent_color'], 'appearance', $station_id, $me['id']);
             }
 
             echo json_encode(['success' => true, 'message' => 'System settings saved successfully']);
@@ -212,6 +228,9 @@ try {
                 'currency_symbol'              => 'PHP (₱)',
                 'theme'                        => 'Light',
                 'system_accent_color'          => '#002F6C',
+                'sidebar_color'                => '#00264D',
+                'color_sidebar'                => '#00264D',
+                'nav_active_color'             => '#E30613',
                 'sidebar_mode'                 => 'Expanded',
                 'dashboard_auto_refresh'       => '10',
                 'session_timeout'              => '30',

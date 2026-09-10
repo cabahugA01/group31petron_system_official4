@@ -503,95 +503,127 @@ if (isset($_GET['ajax_srt']) && $_GET['ajax_srt'] == '1') {
 }
 
 include __DIR__ . '/../partials/header.php';
+// ── LOAD DYNAMIC REPORT SETTINGS FROM SYSTEM SETTINGS ──
+$rpt_paper_size   = $station_settings['default_paper_size'] ?? 'A4';
+$rpt_orientation  = strtolower($station_settings['default_orientation'] ?? 'portrait');
+$rpt_show_logo    = (isset($station_settings['show_company_logo_reports']) && ($station_settings['show_company_logo_reports'] === '0' || $station_settings['show_company_logo_reports'] === 0)) ? false : true;
+$rpt_show_footer  = (isset($station_settings['show_report_footer']) && ($station_settings['show_report_footer'] === '0' || $station_settings['show_report_footer'] === 0)) ? false : true;
+$rpt_logo_url     = $station_settings['company_logo'] ?? $station_settings['logo'] ?? '../assets/img/Petron Logo.png';
+if ($rpt_logo_url === 'none' || empty($rpt_logo_url)) {
+    $rpt_show_logo = false;
+}
+
 ?>
 
 <style>
+/* Zero Horizontal Scrolling & Elder Friendly Global Base */
+html, body {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+    box-sizing: border-box !important;
+}
+*, *:before, *:after {
+    box-sizing: border-box !important;
+}
+
 /* Combined Filter & Export Bar */
 .rpt-filter-bar {
     display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
-    gap: 12px !important;
+    gap: 14px !important;
     background: #ffffff !important;
-    padding: 12px 18px !important;
-    border-radius: 8px !important;
-    border: 1px solid #cbd5e1 !important;
-    margin-bottom: 20px !important;
+    padding: 16px 20px !important;
+    border-radius: 12px !important;
+    border: 1.5px solid #d1d9e6 !important;
+    margin-bottom: 24px !important;
     flex-wrap: wrap !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04) !important;
 }
 
 .rpt-filter-inputs {
     display: flex !important;
     align-items: center !important;
-    gap: 10px !important;
+    gap: 12px !important;
     flex-wrap: wrap !important;
 }
 
 .rpt-filter-bar label {
-    font-size: 11px !important;
-    font-weight: 800 !important;
-    color: #00264D !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    color: #444 !important;
     text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
     margin: 0 !important;
     display: flex !important;
     align-items: center !important;
-    gap: 4px !important;
+    gap: 6px !important;
 }
 
 .rpt-filter-bar input[type="date"],
 .rpt-filter-bar input[type="text"],
 .rpt-filter-bar select {
-    padding: 6px 10px !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 4px !important;
-    font-size: 12px !important;
-    color: #334155 !important;
+    padding: 10px 14px !important;
+    border: 1.5px solid #ddd !important;
+    border-radius: 8px !important;
+    font-size: 14.5px !important;
+    color: #1a1a1a !important;
     background: #ffffff !important;
+    outline: none !important;
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+    font-family: inherit !important;
+}
+.rpt-filter-bar input[type="date"]:focus,
+.rpt-filter-bar input[type="text"]:focus,
+.rpt-filter-bar select:focus {
+    border-color: #002F6C !important;
+    box-shadow: 0 0 0 3px rgba(0, 47, 108, 0.1) !important;
 }
 
 .rpt-btn-apply {
-    padding: 7px 18px !important;
+    padding: 10px 22px !important;
     background: #00264D !important;
     color: #ffffff !important;
     border: none !important;
-    border-radius: 4px !important;
-    font-size: 12px !important;
+    border-radius: 6px !important;
+    font-size: 14.5px !important;
     font-weight: 700 !important;
     cursor: pointer !important;
     display: inline-flex !important;
     align-items: center !important;
-    gap: 6px !important;
+    gap: 8px !important;
+    transition: background 0.2s ease !important;
 }
 
 .rpt-btn-apply:hover {
     background: #001a35 !important;
 }
 
-/* Export Group - Exact match with Audit Trail */
+/* Export Group */
 .rpt-export-group {
     display: flex !important;
     align-items: center !important;
-    gap: 6px !important;
+    gap: 8px !important;
     margin-left: auto !important;
     white-space: nowrap !important;
 }
 
 .rpt-export-btn {
-    padding: 7px 13px !important;
-    font-size: 11px !important;
+    padding: 9px 18px !important;
+    font-size: 13.5px !important;
     font-weight: 700 !important;
-    border-radius: 4px !important;
+    border-radius: 6px !important;
     cursor: pointer !important;
     display: inline-flex !important;
     align-items: center !important;
-    gap: 5px !important;
+    gap: 6px !important;
     background: #ffffff !important;
-    border: 1px solid !important;
+    border: 1.5px solid !important;
     transition: all 0.18s !important;
     text-decoration: none !important;
 }
 
-.rpt-btn-print  { color: #475569 !important; border-color: transparent !important; background: transparent !important; }
+.rpt-btn-print  { color: #475569 !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
 .rpt-btn-print:hover  { background: #f1f5f9 !important; }
 .rpt-btn-pdf   { color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
 .rpt-btn-pdf:hover   { background: #fef2f2 !important; }
@@ -600,7 +632,7 @@ include __DIR__ . '/../partials/header.php';
 .rpt-btn-csv   { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
 .rpt-btn-csv:hover   { background: #f0fdf4 !important; }
 
-/* Table Action Buttons (Force crystal-clear high contrast pill buttons) */
+/* Table Action Buttons */
 .rpt-action-btn,
 button.rpt-action-btn,
 a.rpt-action-btn,
@@ -611,13 +643,13 @@ a.rpt-action-btn,
     border: 1px solid #bfdbfe !important;
     color: #0057b8 !important;
     font-weight: 700 !important;
-    font-size: 11.5px !important;
+    font-size: 13px !important;
     cursor: pointer !important;
     display: inline-flex !important;
     align-items: center !important;
-    gap: 5px !important;
+    gap: 6px !important;
     text-decoration: none !important;
-    padding: 5px 12px !important;
+    padding: 7px 14px !important;
     box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
     border-radius: 6px !important;
     white-space: nowrap !important;
@@ -634,12 +666,12 @@ a.rpt-action-btn:hover,
     border-color: #0057b8 !important;
 }
 
-/* Sub-Tab Navigation Bar */
+/* Sub-Tab Navigation Bar - Elder Friendly */
 .rpt-subtab-nav {
     display: flex !important;
     flex-wrap: wrap !important;
     margin-bottom: 24px !important;
-    border: 1px solid #cbd5e1 !important;
+    border: 1px solid #d1d9e6 !important;
     border-radius: 0 !important;
     overflow: hidden !important;
     border-bottom: 3px solid #00264D !important;
@@ -649,19 +681,19 @@ a.rpt-action-btn:hover,
 .rpt-subtab-btn {
     flex: 1 !important;
     min-width: 140px !important;
-    padding: 12px 16px !important;
-    font-size: 12px !important;
+    padding: 14px 20px !important;
+    font-size: 14px !important;
     font-weight: 700 !important;
     color: #00264D !important;
     background: #ffffff !important;
     border: none !important;
-    border-right: 1px solid #cbd5e1 !important;
+    border-right: 1px solid #d1d9e6 !important;
     text-decoration: none !important;
     transition: all 0.15s ease !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 7px !important;
+    gap: 8px !important;
     text-transform: uppercase !important;
     letter-spacing: 0.3px !important;
     text-align: center !important;
@@ -695,30 +727,30 @@ a.rpt-action-btn:hover,
 }
 
 .rpt-centered-header h2 {
-    font-size: 24px !important;
-    font-weight: 900 !important;
+    font-size: 22px !important;
+    font-weight: 800 !important;
     color: #00264D !important;
     text-transform: uppercase !important;
-    margin: 0 0 4px 0 !important;
-    letter-spacing: 0.8px !important;
+    margin: 0 0 6px 0 !important;
+    letter-spacing: 0.5px !important;
 }
 
 .rpt-centered-header .rpt-address {
-    font-size: 13px !important;
-    color: #64748b !important;
-    margin: 0 0 3px 0 !important;
+    font-size: 14.5px !important;
+    color: #555 !important;
+    margin: 0 0 4px 0 !important;
     font-weight: 500 !important;
 }
 
 .rpt-centered-header .rpt-date-range {
-    font-size: 13px !important;
-    color: #475569 !important;
-    font-weight: 700 !important;
+    font-size: 14.5px !important;
+    color: #333 !important;
+    font-weight: 600 !important;
     margin: 0 !important;
 }
 
 @media print {
-    @page { size: A4 portrait; margin: 10mm 12mm; }
+    @page { size: <?= htmlspecialchars($rpt_paper_size) ?> <?= htmlspecialchars($rpt_orientation) ?>; margin: 10mm 12mm; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-shadow: none !important; text-shadow: none !important; background-image: none !important; }
     html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; height: auto !important; font-size: 10px !important; }
 
@@ -788,61 +820,61 @@ a.rpt-action-btn:hover,
         </h1>
     </div>
 
-    <!-- Summary Cards Grid (4 Top Metric Cards) -->
-    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 24px;">
+    <!-- Summary Cards Grid (4 Top Metric Cards - Elder Friendly) -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px;">
         
         <!-- System Uptime -->
-        <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 18px 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 16px;">
-            <div style="background: #eff6ff; width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid #bfdbfe;">
-                <i class="fas fa-desktop" style="font-size: 22px; color: #0057b8;"></i>
+        <div style="background: #ffffff; border: 1px solid #eaeaea; border-radius: 14px; padding: 20px 22px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 14px;">
+            <div style="background: rgba(0,38,77,.1); width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <i class="fas fa-desktop" style="font-size: 22px; color: var(--petron-blue, #00264D);"></i>
             </div>
             <div>
-                <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">System Uptime</div>
-                <div id="sr_uptime" style="font-size: 22px; font-weight: 800; color: #00264D; margin: 2px 0;"><?php echo htmlspecialchars($uptimeVal); ?></div>
-                <div style="font-size: 11px; color: #16a34a; font-weight: 600;"><i class="fas fa-check-circle"></i> Operational</div>
+                <div style="font-size: 15px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px;">System Uptime</div>
+                <div id="sr_uptime" style="font-size: 32px; font-weight: 800; color: #00264D; line-height: 1.1; margin: 2px 0;"><?php echo htmlspecialchars($uptimeVal); ?></div>
+                <div style="font-size: 13.5px; color: #16a34a; font-weight: 600; margin-top: 4px;"><i class="fas fa-check-circle"></i> Operational</div>
             </div>
         </div>
 
         <!-- Database Size -->
-        <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 18px 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 16px;">
-            <div style="background: #f0fdf4; width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid #bbf7d0;">
-                <i class="fas fa-database" style="font-size: 22px; color: #16a34a;"></i>
+        <div style="background: #ffffff; border: 1px solid #eaeaea; border-radius: 14px; padding: 20px 22px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 14px;">
+            <div style="background: rgba(40,167,69,.1); width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <i class="fas fa-database" style="font-size: 22px; color: #28a745;"></i>
             </div>
             <div>
-                <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Database Size</div>
-                <div id="sr_db_size" style="font-size: 22px; font-weight: 800; color: #00264D; margin: 2px 0;"><?php echo htmlspecialchars($dbSizeFormatted); ?></div>
-                <div id="sr_db_sub" style="font-size: 11px; color: #475569; font-weight: 500;"><?php echo $totalTablesCount; ?> Tables &bull; <?php echo number_format($totalRecordsCount); ?> Records</div>
+                <div style="font-size: 15px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px;">Database Size</div>
+                <div id="sr_db_size" style="font-size: 32px; font-weight: 800; color: #00264D; line-height: 1.1; margin: 2px 0;"><?php echo htmlspecialchars($dbSizeFormatted); ?></div>
+                <div id="sr_db_sub" style="font-size: 13.5px; color: #666; font-weight: 500; margin-top: 4px;"><?php echo $totalTablesCount; ?> Tables &bull; <?php echo number_format($totalRecordsCount); ?> Records</div>
             </div>
         </div>
 
         <!-- System Errors -->
-        <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 18px 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 16px;">
-            <div style="background: #fff7ed; width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid #fed7aa;">
-                <i class="fas fa-exclamation-triangle" style="font-size: 22px; color: #d97706;"></i>
+        <div style="background: #ffffff; border: 1px solid #eaeaea; border-radius: 14px; padding: 20px 22px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 14px;">
+            <div style="background: rgba(255,193,7,.15); width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <i class="fas fa-exclamation-triangle" style="font-size: 22px; color: #b8860b;"></i>
             </div>
             <div>
-                <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">System Errors</div>
-                <div id="sr_errors" style="font-size: 22px; font-weight: 800; color: #00264D; margin: 2px 0;"><?php echo $activeErrorsCount; ?> Active Errors</div>
-                <div style="font-size: 11px; color: #d97706; font-weight: 600;"><i class="fas fa-info-circle"></i> Tracking unresolved logs</div>
+                <div style="font-size: 15px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px;">System Errors</div>
+                <div id="sr_errors" style="font-size: 32px; font-weight: 800; color: #00264D; line-height: 1.1; margin: 2px 0;"><?php echo $activeErrorsCount; ?> Active Errors</div>
+                <div style="font-size: 13.5px; color: #b8860b; font-weight: 600; margin-top: 4px;"><i class="fas fa-info-circle"></i> Tracking unresolved logs</div>
             </div>
         </div>
 
         <!-- Latest Backup -->
-        <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 18px 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 16px;">
-            <div style="background: #faf5ff; width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid #e9d5ff;">
-                <i class="fas fa-hdd" style="font-size: 22px; color: #9333ea;"></i>
+        <div style="background: #ffffff; border: 1px solid #eaeaea; border-radius: 14px; padding: 20px 22px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 14px;">
+            <div style="background: rgba(0,38,77,.1); width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <i class="fas fa-hdd" style="font-size: 22px; color: var(--petron-blue, #00264D);"></i>
             </div>
             <div>
-                <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Latest Backup</div>
-                <div id="sr_latest_backup" style="font-size: 13px; font-weight: 800; color: #00264D; margin: 4px 0;"><?php echo htmlspecialchars($latestBackupDate); ?></div>
-                <div style="font-size: 11px; color: #9333ea; font-weight: 600;"><i class="fas fa-shield-alt"></i> Verified Backup</div>
+                <div style="font-size: 15px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px;">Latest Backup</div>
+                <div id="sr_latest_backup" style="font-size: 20px; font-weight: 800; color: #00264D; line-height: 1.2; margin: 4px 0;"><?php echo htmlspecialchars($latestBackupDate); ?></div>
+                <div style="font-size: 13.5px; color: #666; font-weight: 600; margin-top: 4px;"><i class="fas fa-shield-alt"></i> Verified Backup</div>
             </div>
         </div>
 
     </div>
 
     <!-- Main Reports Outer Container -->
-    <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); padding: 24px;">
+    <div style="background: #ffffff; border: 1px solid #eaeaea; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.05); padding: 24px;">
         
         <!-- Filter & Export Single Top Row (Exact Match with Audit Trail Layout) -->
         <form method="GET" action="" class="rpt-filter-bar no-print">
@@ -1009,10 +1041,10 @@ a.rpt-action-btn:hover,
         <!-- TAB 1: SYSTEM HEALTH REPORT TABLE                              -->
         <!-- ============================================================== -->
         <?php if ($active_tab === 'health'): ?>
-        <div style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;">
-            <table class="report-table" id="reportTable" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+        <div style="border: 1px solid #eaeaea; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+            <table class="report-table" id="reportTable" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px;">
                 <thead>
-                    <tr style="background: #00264D; color: #ffffff;">
+                    <tr style="background: #00264D; color: #ffffff; font-size: 13px;">
                         <th style="padding: 12px 14px; font-weight: 700;">Date</th>
                         <th style="padding: 12px 14px; font-weight: 700;">Server Status</th>
                         <th style="padding: 12px 14px; font-weight: 700;">Database Status</th>
@@ -1031,13 +1063,13 @@ a.rpt-action-btn:hover,
                     <?php foreach ($health_rows as $row): ?>
                     <tr style="border-bottom: 1px solid #f1f5f9;">
                         <td style="padding: 12px 14px; font-weight: 600; color: #1e293b;"><?php echo date('M d, Y', strtotime($row['recorded_date'])); ?></td>
-                        <td style="padding: 12px 14px;"><span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;"><?php echo htmlspecialchars($row['server_status']); ?></span></td>
-                        <td style="padding: 12px 14px;"><span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;"><?php echo htmlspecialchars($row['database_status']); ?></span></td>
+                        <td style="padding: 12px 14px;"><span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 12px; font-size: 12.5px; font-weight: 700;"><?php echo htmlspecialchars($row['server_status']); ?></span></td>
+                        <td style="padding: 12px 14px;"><span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 12px; font-size: 12.5px; font-weight: 700;"><?php echo htmlspecialchars($row['database_status']); ?></span></td>
                         <td style="padding: 12px 14px; font-weight: 700; color: #00264D;"><?php echo number_format($row['system_uptime'], 2); ?>%</td>
                         <td style="padding: 12px 14px;"><?php echo $row['cpu_usage']; ?>%</td>
                         <td style="padding: 12px 14px;"><?php echo $row['memory_usage']; ?>%</td>
                         <td style="padding: 12px 14px;"><?php echo $row['disk_usage']; ?>%</td>
-                        <td style="padding: 12px 14px;"><span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;"><?php echo htmlspecialchars($row['overall_status']); ?></span></td>
+                        <td style="padding: 12px 14px;"><span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 12px; font-size: 12.5px; font-weight: 700;"><?php echo htmlspecialchars($row['overall_status']); ?></span></td>
 
                     </tr>
                     <?php endforeach; ?>
@@ -1051,10 +1083,10 @@ a.rpt-action-btn:hover,
         <!-- TAB 2: DATABASE REPORT TABLE                                   -->
         <!-- ============================================================== -->
         <?php if ($active_tab === 'database'): ?>
-        <div style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;">
-            <table class="report-table" id="reportTable" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+        <div style="border: 1px solid #eaeaea; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+            <table class="report-table" id="reportTable" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px;">
                 <thead>
-                    <tr style="background: #00264D; color: #ffffff;">
+                    <tr style="background: #00264D; color: #ffffff; font-size: 13px;">
                         <th style="padding: 12px 14px; font-weight: 700;">Database Name</th>
                         <th style="padding: 12px 14px; font-weight: 700;">Total Tables</th>
                         <th style="padding: 12px 14px; font-weight: 700;">Total Records</th>
@@ -1072,7 +1104,7 @@ a.rpt-action-btn:hover,
                         <td style="padding: 12px 14px; font-weight: 600;"><?php echo $row['records']; ?></td>
                         <td style="padding: 12px 14px; font-weight: 700; color: #16a34a;"><?php echo $row['size']; ?></td>
                         <td style="padding: 12px 14px; color: #475569;"><?php echo $row['last_opt']; ?></td>
-                        <td style="padding: 12px 14px;"><span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;"><?php echo htmlspecialchars($row['status']); ?></span></td>
+                        <td style="padding: 12px 14px;"><span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 12px; font-size: 12.5px; font-weight: 700;"><?php echo htmlspecialchars($row['status']); ?></span></td>
 
                     </tr>
                     <?php endforeach; ?>
@@ -1085,10 +1117,10 @@ a.rpt-action-btn:hover,
         <!-- TAB 3: BACKUP REPORT TABLE                                     -->
         <!-- ============================================================== -->
         <?php if ($active_tab === 'backup'): ?>
-        <div style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;">
-            <table class="report-table" id="reportTable" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+        <div style="border: 1px solid #eaeaea; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+            <table class="report-table" id="reportTable" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px;">
                 <thead>
-                    <tr style="background: #00264D; color: #ffffff;">
+                    <tr style="background: #00264D; color: #ffffff; font-size: 13px;">
                         <th style="padding: 12px 14px; font-weight: 700;">Backup Name</th>
                         <th style="padding: 12px 14px; font-weight: 700;">Backup Type</th>
                         <th style="padding: 12px 14px; font-weight: 700;">Backup Date</th>
@@ -1110,7 +1142,7 @@ a.rpt-action-btn:hover,
                         <td style="padding: 12px 14px; font-weight: 600; color: #9333ea;"><?php echo $row['backup_size'] > 0 ? number_format($row['backup_size']/1024, 1).' KB' : '125 MB'; ?></td>
                         <td style="padding: 12px 14px; color: #374151;"><?php echo $row['created_by'] == 1 ? 'Developer' : 'Super Admin'; ?></td>
                         <td style="padding: 12px 14px;">
-                            <span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;">
+                            <span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 12px; font-size: 12.5px; font-weight: 700;">
                                 <?php echo htmlspecialchars($row['status'] === 'Completed' || $row['status'] === 'completed' ? 'Successful' : $row['status']); ?>
                             </span>
                         </td>
@@ -1127,10 +1159,10 @@ a.rpt-action-btn:hover,
         <!-- TAB 4: ERROR REPORT TABLE                                      -->
         <!-- ============================================================== -->
         <?php if ($active_tab === 'error'): ?>
-        <div style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;">
-            <table class="report-table" id="reportTable" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+        <div style="border: 1px solid #eaeaea; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+            <table class="report-table" id="reportTable" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px;">
                 <thead>
-                    <tr style="background: #00264D; color: #ffffff;">
+                    <tr style="background: #00264D; color: #ffffff; font-size: 13px;">
                         <th style="padding: 12px 14px; font-weight: 700;">Date &amp; Time</th>
                         <th style="padding: 12px 14px; font-weight: 700;">Module</th>
                         <th style="padding: 12px 14px; font-weight: 700;">Error Type</th>
@@ -1153,10 +1185,10 @@ a.rpt-action-btn:hover,
                     <tr style="border-bottom: 1px solid #f1f5f9;">
                         <td style="padding: 12px 14px; font-weight: 600; color: #1e293b;"><?php echo date('M d, Y h:i A', strtotime($row['created_at'])); ?></td>
                         <td style="padding: 12px 14px; font-weight: 700; color: #00264D;"><?php echo htmlspecialchars($row['module_name']); ?></td>
-                        <td style="padding: 12px 14px;"><span style="<?php echo $badgeStyle; ?> padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;"><?php echo htmlspecialchars($row['severity']); ?></span></td>
+                        <td style="padding: 12px 14px;"><span style="<?php echo $badgeStyle; ?> padding: 4px 10px; border-radius: 12px; font-size: 12.5px; font-weight: 700;"><?php echo htmlspecialchars($row['severity']); ?></span></td>
                         <td style="padding: 12px 14px; color: #374151; max-width: 320px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;"><?php echo htmlspecialchars($row['error_message']); ?></td>
                         <td style="padding: 12px 14px;">
-                            <span style="background: <?php echo $row['status']==='Resolved'?'#dcfce7':'#fef3c7'; ?>; color: <?php echo $row['status']==='Resolved'?'#15803d':'#b45309'; ?>; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;">
+                            <span style="background: <?php echo $row['status']==='Resolved'?'#dcfce7':'#fef3c7'; ?>; color: <?php echo $row['status']==='Resolved'?'#15803d':'#b45309'; ?>; padding: 4px 10px; border-radius: 12px; font-size: 12.5px; font-weight: 700;">
                                 <?php echo htmlspecialchars($row['status']); ?>
                             </span>
                         </td>
@@ -1173,10 +1205,10 @@ a.rpt-action-btn:hover,
         <!-- TAB 5: SECURITY REPORT TABLE                                   -->
         <!-- ============================================================== -->
         <?php if ($active_tab === 'security'): ?>
-        <div style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;">
-            <table class="report-table" id="reportTable" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+        <div style="border: 1px solid #eaeaea; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+            <table class="report-table" id="reportTable" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px;">
                 <thead>
-                    <tr style="background: #00264D; color: #ffffff;">
+                    <tr style="background: #00264D; color: #ffffff; font-size: 13px;">
                         <th style="padding: 12px 14px; font-weight: 700;">Date &amp; Time</th>
                         <th style="padding: 12px 14px; font-weight: 700;">User</th>
                         <th style="padding: 12px 14px; font-weight: 700;">Activity</th>
@@ -1195,7 +1227,7 @@ a.rpt-action-btn:hover,
                         <td style="padding: 12px 14px; font-weight: 700; color: #00264D;"><?php echo htmlspecialchars($row['username'] ?: 'developer'); ?></td>
                         <td style="padding: 12px 14px; color: #374151; font-weight: 600;"><?php echo htmlspecialchars($row['action']); ?></td>
                         <td style="padding: 12px 14px; font-family: monospace; color: #64748b;"><?php echo htmlspecialchars($row['ip_address'] ?: '192.168.1.10'); ?></td>
-                        <td style="padding: 12px 14px;"><span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;">Success</span></td>
+                        <td style="padding: 12px 14px;"><span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 12px; font-size: 12.5px; font-weight: 700;">Success</span></td>
 
                     </tr>
                     <?php endforeach; ?>
@@ -1206,6 +1238,7 @@ a.rpt-action-btn:hover,
         <?php endif; ?>
 
         <!-- SYSTEM DEVELOPED BY SIGNATURE (Print Only — hidden on web view, visible on print) -->
+        <?php if ($rpt_show_footer): ?>
         <table class="print-only-sig" style="width:100%; margin-top:35px; page-break-inside:avoid; border:none; border-collapse:collapse;">
             <tr>
                 <td style="border:none;"></td>
@@ -1218,6 +1251,7 @@ a.rpt-action-btn:hover,
                 </td>
             </tr>
         </table>
+        <?php endif; ?>
         </div><!-- End print-area -->
 </div>
 

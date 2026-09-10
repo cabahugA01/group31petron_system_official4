@@ -61,27 +61,47 @@ if ($date_from !== $date_to) {
     $report_period_label .= ' – ' . date('F d, Y', strtotime($date_to));
 }
 
+// Format Device / User Agent Helper for Elder Friendly Display
+function format_device_label(?string $ua): string {
+    if (empty($ua)) return 'Unknown';
+    $os = 'Desktop';
+    if (stripos($ua, 'Windows NT 10.0') !== false) $os = 'Windows 10/11';
+    elseif (stripos($ua, 'Windows') !== false) $os = 'Windows PC';
+    elseif (stripos($ua, 'Android') !== false) $os = 'Android';
+    elseif (stripos($ua, 'iPhone') !== false || stripos($ua, 'iPad') !== false) $os = 'iOS';
+    elseif (stripos($ua, 'Macintosh') !== false) $os = 'MacOS';
+    elseif (stripos($ua, 'Linux') !== false) $os = 'Linux';
+    
+    $browser = '';
+    if (stripos($ua, 'Edg/') !== false) $browser = 'Edge';
+    elseif (stripos($ua, 'Chrome/') !== false) $browser = 'Chrome';
+    elseif (stripos($ua, 'Firefox/') !== false) $browser = 'Firefox';
+    elseif (stripos($ua, 'Safari/') !== false) $browser = 'Safari';
+
+    return $browser ? "$os ($browser)" : $os;
+}
+
 // Status & Severity Badge Helpers
 function render_audit_status_badge(string $status): string {
     $st = strtolower(trim($status));
     if (in_array($st, ['success','ok','completed','active','resolved','enabled','passed'], true)) {
-        return '<span class="badge bg-success" style="font-weight:600; padding:4px 8px;">' . htmlspecialchars(ucfirst($status)) . '</span>';
+        return '<span class="badge bg-success" style="font-size:12.5px !important; font-weight:700 !important; padding:5px 12px !important; border-radius:12px !important; display:inline-block !important; white-space:nowrap !important;">' . htmlspecialchars(ucfirst($status)) . '</span>';
     }
     if (in_array($st, ['pending','in_progress','processing','warning','acknowledged'], true)) {
-        return '<span class="badge bg-warning text-dark" style="font-weight:600; padding:4px 8px;">' . htmlspecialchars(ucfirst($status)) . '</span>';
+        return '<span class="badge bg-warning text-dark" style="font-size:12.5px !important; font-weight:700 !important; padding:5px 12px !important; border-radius:12px !important; display:inline-block !important; white-space:nowrap !important;">' . htmlspecialchars(ucfirst($status)) . '</span>';
     }
-    return '<span class="badge bg-danger" style="font-weight:600; padding:4px 8px;">' . htmlspecialchars(ucfirst($status ?: 'Failed')) . '</span>';
+    return '<span class="badge bg-danger" style="font-size:12.5px !important; font-weight:700 !important; padding:5px 12px !important; border-radius:12px !important; display:inline-block !important; white-space:nowrap !important;">' . htmlspecialchars(ucfirst($status ?: 'Failed')) . '</span>';
 }
 
 function render_severity_badge(string $severity): string {
     $sev = strtolower(trim($severity));
     if ($sev === 'critical' || $sev === 'error') {
-        return '<span class="badge bg-danger" style="font-weight:700; padding:4px 8px;">' . strtoupper($severity) . '</span>';
+        return '<span class="badge bg-danger" style="font-size:12.5px !important; font-weight:700 !important; padding:5px 12px !important; border-radius:12px !important; display:inline-block !important; white-space:nowrap !important;">' . strtoupper($severity) . '</span>';
     }
     if ($sev === 'warning') {
-        return '<span class="badge bg-warning text-dark" style="font-weight:700; padding:4px 8px;">' . strtoupper($severity) . '</span>';
+        return '<span class="badge bg-warning text-dark" style="font-size:12.5px !important; font-weight:700 !important; padding:5px 12px !important; border-radius:12px !important; display:inline-block !important; white-space:nowrap !important;">' . strtoupper($severity) . '</span>';
     }
-    return '<span class="badge bg-info text-dark" style="font-weight:600; padding:4px 8px;">' . strtoupper($severity ?: 'INFO') . '</span>';
+    return '<span class="badge bg-info text-dark" style="font-size:12.5px !important; font-weight:700 !important; padding:5px 12px !important; border-radius:12px !important; display:inline-block !important; white-space:nowrap !important;">' . strtoupper($severity ?: 'INFO') . '</span>';
 }
 
 // ── 2. DATA FETCHING PER SUB-TAB ──────────────────────────────────────────────
@@ -678,144 +698,239 @@ if (isset($_GET['ajax_sat']) && $_GET['ajax_sat'] == '1') {
 }
 
 include __DIR__ . '/../partials/header.php';
+// ── LOAD DYNAMIC REPORT SETTINGS FROM SYSTEM SETTINGS ──
+$rpt_paper_size   = $station_settings['default_paper_size'] ?? 'A4';
+$rpt_orientation  = strtolower($station_settings['default_orientation'] ?? 'portrait');
+$rpt_show_logo    = (isset($station_settings['show_company_logo_reports']) && ($station_settings['show_company_logo_reports'] === '0' || $station_settings['show_company_logo_reports'] === 0)) ? false : true;
+$rpt_show_footer  = (isset($station_settings['show_report_footer']) && ($station_settings['show_report_footer'] === '0' || $station_settings['show_report_footer'] === 0)) ? false : true;
+$rpt_logo_url     = $station_settings['company_logo'] ?? $station_settings['logo'] ?? '../assets/img/Petron Logo.png';
+if ($rpt_logo_url === 'none' || empty($rpt_logo_url)) {
+    $rpt_show_logo = false;
+}
+
 ?>
 
 <style>
-/* Controls Bar — exact match to Sales Reports */
+/* Zero Horizontal Scrolling & Elder Friendly Global Base */
+html, body {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+    box-sizing: border-box !important;
+}
+*, *:before, *:after {
+    box-sizing: border-box !important;
+}
+
+.stock-page {
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+}
+
+/* Controls Bar — Elder Friendly */
 .controls-bar-sales {
-    background: transparent;
-    padding: 10px 0;
-    margin-bottom: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
+    background: #ffffff !important;
+    padding: 16px 20px !important;
+    border-radius: 12px !important;
+    border: 1.5px solid #d1d9e6 !important;
+    margin-bottom: 22px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 14px !important;
+    flex-wrap: wrap !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04) !important;
 }
 
 .controls-filter-group {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    flex-wrap: wrap !important;
 }
 
 .controls-filter-group label {
-    font-weight: 700;
-    color: #002F6C;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: .4px;
-    margin: 0;
+    font-weight: 600 !important;
+    color: #444 !important;
+    font-size: 14px !important;
+    text-transform: uppercase !important;
+    letter-spacing: .3px !important;
+    margin: 0 !important;
 }
 
 .controls-input {
-    padding: 5px 10px;
-    border: 1px solid #e2e8f0;
-    border-radius: 4px;
-    font-size: 12px;
-    background: #ffffff;
-    color: #1e293b;
+    padding: 10px 14px !important;
+    border: 1.5px solid #ddd !important;
+    border-radius: 8px !important;
+    font-size: 14.5px !important;
+    background: #ffffff !important;
+    color: #1a1a1a !important;
+    outline: none !important;
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+    font-family: inherit !important;
+}
+.controls-input:focus {
+    border-color: #002F6C !important;
+    box-shadow: 0 0 0 3px rgba(0, 47, 108, 0.1) !important;
 }
 
-/* Export Group — exact copy from staff_fuel_sales_summary.php */
-    .rpt-export-group {
-        display: flex !important;
-        align-items: center !important;
-        gap: 6px !important;
-        margin-left: auto !important;
-        white-space: nowrap !important;
-    }
+/* Export Group */
+.rpt-export-group {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin-left: auto !important;
+    white-space: nowrap !important;
+}
 
-    .rpt-export-btn {
-        padding: 7px 13px !important;
-        font-size: 11px !important;
-        font-weight: 700 !important;
-        border-radius: 4px !important;
-        cursor: pointer !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        gap: 5px !important;
-        background: #ffffff !important;
-        border: 1px solid !important;
-        transition: all 0.18s !important;
-        text-decoration: none !important;
-    }
+.rpt-export-btn {
+    padding: 9px 18px !important;
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    background: #ffffff !important;
+    border: 1.5px solid !important;
+    transition: all 0.18s !important;
+    text-decoration: none !important;
+}
 
-    .rpt-btn-print  { color: #475569 !important; border-color: transparent !important; background: transparent !important; }
-    .rpt-btn-print:hover  { background: #f1f5f9 !important; }
-    .rpt-btn-pdf   { color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
-    .rpt-btn-pdf:hover   { background: #fef2f2 !important; }
-    .rpt-btn-excel { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
-    .rpt-btn-excel:hover { background: #f0fdf4 !important; }
-    .rpt-btn-csv   { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
-    .rpt-btn-csv:hover   { background: #f0fdf4 !important; }
+.rpt-btn-print  { color: #475569 !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.rpt-btn-print:hover  { background: #f1f5f9 !important; }
+.rpt-btn-pdf   { color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
+.rpt-btn-pdf:hover   { background: #fef2f2 !important; }
+.rpt-btn-excel { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+.rpt-btn-excel:hover { background: #f0fdf4 !important; }
+.rpt-btn-csv   { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+.rpt-btn-csv:hover   { background: #f0fdf4 !important; }
 
-    /* Sub-Tab Nav — exact copy from staff_fuel_sales_summary.php */
-    .rpt-subtab-nav {
-        display: flex !important;
-        flex-wrap: wrap !important;
-        margin-bottom: 22px !important;
-        border: 1px solid #d1d9e6 !important;
-        border-radius: 0 !important;
-        overflow: hidden !important;
-        border-bottom: 3px solid #00264D !important;
-    }
+/* Sub-Tab Navigation Bar */
+.rpt-subtab-nav {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    margin-bottom: 24px !important;
+    border: 1px solid #d1d9e6 !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+    border-bottom: 3px solid #00264D !important;
+    background: #ffffff !important;
+}
 
-    .rpt-subtab-btn {
-        flex: 1 !important;
-        min-width: 140px !important;
-        padding: 12px 16px !important;
-        font-size: 11.5px !important;
-        font-weight: 700 !important;
-        color: #334155 !important;
-        background: #ffffff !important;
-        border: none !important;
-        border-right: 1px solid #d1d9e6 !important;
-        text-decoration: none !important;
-        transition: all 0.15s ease !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        gap: 7px !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.3px !important;
-        text-align: center !important;
-        cursor: pointer !important;
-    }
+.rpt-subtab-btn {
+    flex: 1 !important;
+    min-width: 140px !important;
+    padding: 13px 16px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    color: #334155 !important;
+    background: #ffffff !important;
+    border: none !important;
+    border-right: 1px solid #d1d9e6 !important;
+    text-decoration: none !important;
+    transition: all 0.15s ease !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 7px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    text-align: center !important;
+    cursor: pointer !important;
+}
 
-    .rpt-subtab-btn:last-child {
-        border-right: none !important;
-    }
+.rpt-subtab-btn:last-child {
+    border-right: none !important;
+}
 
-    .rpt-subtab-btn:hover {
-        background: #f1f5f9 !important;
-        color: #00264D !important;
-        text-decoration: none !important;
-    }
-    .rpt-subtab-btn.active {
-        background: #00264D !important;
-        color: #ffffff !important;
-        font-weight: 800 !important;
-    }
+.rpt-subtab-btn:hover {
+    background: #f1f5f9 !important;
+    color: #00264D !important;
+    text-decoration: none !important;
+}
+.rpt-subtab-btn.active {
+    background: #00264D !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+}
+.rpt-subtab-btn i {
+    font-size: 14px !important;
+}
 
-    .rpt-subtab-btn i {
-        font-size: 13px !important;
-    }
+/* Printable Area Card */
+#auditPrintableArea {
+    border-radius: 14px !important;
+    border: 1px solid #eaeaea !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.05) !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+}
+
+/* Table Responsive - Enforce 100% Zero Horizontal Scroll */
+.table-responsive {
+    overflow-x: hidden !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 12px !important;
+    border: 1px solid #cbd5e1 !important;
+    box-sizing: border-box !important;
+}
+
+.table-responsive table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 0 !important;
+}
+
+.table-responsive th {
+    padding: 12px 10px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    background: #00264D !important;
+    color: #ffffff !important;
+    border: 1px solid #001a36 !important;
+    vertical-align: middle !important;
+}
+
+.table-responsive td {
+    padding: 10px 10px !important;
+    font-size: 13.5px !important;
+    vertical-align: middle !important;
+    border: 1px solid #e2e8f0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    word-break: break-word !important;
+}
+
+.table-responsive .badge {
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
+    padding: 5px 10px !important;
+    border-radius: 6px !important;
+    letter-spacing: 0.3px !important;
+}
 
 /* Print CSS */
 @media print {
-    @page { size: A4 portrait; margin: 10mm 12mm; }
+    @page { size: <?= htmlspecialchars($rpt_paper_size) ?> <?= htmlspecialchars($rpt_orientation) ?>; margin: 10mm 12mm; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-shadow: none !important; text-shadow: none !important; }
     html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; height: auto !important; font-size: 10px !important; }
 
-    /* Hide all page chrome — keep only sfss-print-only */
     body > *:not(.sfss-print-only) { display: none !important; }
     .stock-page .controls-bar-sales, .rpt-subtab-nav, nav, header, footer, aside,
     .sidebar, .main-sidebar, .main-header, .navbar, .topbar,
     #toggleScrollBtn, .toggle-scroll-btn, .toast, .toast-container { display: none !important; }
 
-    /* Print container */
     .sfss-print-only {
         display: block !important;
         position: static !important;
@@ -830,12 +945,10 @@ include __DIR__ . '/../partials/header.php';
     .sfss-print-only *, .sfss-print-only *::before, .sfss-print-only *::after {
         box-shadow: none !important; text-shadow: none !important;
     }
-    /* Hide icons inside print container */
     .sfss-print-only i, .sfss-print-only svg,
     .sfss-print-only .fas, .sfss-print-only .far, .sfss-print-only .fab, .sfss-print-only .fa,
     .sfss-print-only [class*="fa-"] { display: none !important; width: 0 !important; height: 0 !important; font-size: 0 !important; margin: 0 !important; padding: 0 !important; }
 
-    /* Tables */
     .sfss-print-only table { width: 100% !important; border-collapse: collapse !important; font-size: 9px !important; }
     .sfss-print-only thead { display: table-header-group !important; }
     .sfss-print-only tbody { display: table-row-group !important; }
@@ -843,7 +956,6 @@ include __DIR__ . '/../partials/header.php';
     .sfss-print-only th { font-size: 9px !important; padding: 5px 7px !important; border: 1px solid #000 !important; background: #00264D !important; color: #fff !important; font-weight: 700 !important; }
     .sfss-print-only td { font-size: 9px !important; padding: 4px 7px !important; border: 1px solid #ddd !important; vertical-align: top !important; }
 
-    /* Reset heights */
     .sfss-print-only, .sfss-print-only * { min-height: 0 !important; height: auto !important; }
     .sfss-print-only .card { border: 1px solid #ddd !important; border-radius: 0 !important; margin-bottom: 8px !important; page-break-inside: avoid !important; }
     .sfss-print-only .card-body { padding: 8px !important; }
@@ -855,7 +967,6 @@ include __DIR__ . '/../partials/header.php';
     .sfss-print-only .text-success { color: #15803d !important; }
     .sfss-print-only .text-danger  { color: #b91c1c !important; }
     .sfss-print-only .text-warning { color: #a16207 !important; }
-    /* Print-Only Signature Table — display in print container, remove cell borders */
     .sfss-print-only .print-only-sig {
         display: table !important;
         width: 100% !important;
@@ -882,7 +993,7 @@ include __DIR__ . '/../partials/header.php';
 }
 </style>
 
-<div class="stock-page" style="padding:20px;">
+<div class="stock-page" style="padding:0 !important; width:100% !important; max-width:100% !important; overflow-x:hidden !important; box-sizing:border-box !important;">
 
     <!-- TOP CONTROLS & EXPORT BAR -->
     <div class="controls-bar-sales no-print" style="background:#fff; border-top:1px solid #cbd5e1; border-bottom:2px solid #002F6C; padding:10px 16px; margin-bottom:14px;">
@@ -904,10 +1015,10 @@ include __DIR__ . '/../partials/header.php';
             <label>SEARCH</label>
             <input type="text" name="filter_search" value="<?= htmlspecialchars($filter_search) ?>" placeholder="Search keyword..." class="controls-input" style="width:140px;">
 
-            <button type="submit" class="btn btn-sm btn-primary fw-bold" style="background:#002F6C; border-color:#002F6C; font-size:11px; padding:5px 14px;">
+            <button type="submit" class="btn btn-primary fw-bold" style="background:#002F6C; border-color:#002F6C; font-size:14.5px; padding:9px 20px; border-radius:6px;">
                 <i class="fas fa-filter me-1"></i> Apply
             </button>
-            <a href="?tab=<?= urlencode($active_tab) ?>" style="font-size:11px; padding:5px 12px; font-weight:700; background:#ffffff; color:#475569; border:1px solid #cbd5e1; border-radius:4px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+            <a href="?tab=<?= urlencode($active_tab) ?>" style="font-size:13.5px; padding:9px 16px; font-weight:700; background:#ffffff; color:#475569; border:1.5px solid #cbd5e1; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
                 <i class="fas fa-times"></i> Reset
             </a>
         </form>
@@ -946,20 +1057,97 @@ include __DIR__ . '/../partials/header.php';
             
             <!-- CENTERED REPORT HEADER (Matching Sales Reports 1-to-1) -->
             <div class="header" style="text-align:center; margin-bottom:16px; border-bottom:2px solid #002F6C; padding-bottom:10px;">
-                <h1 style="font-size:20px; font-weight:800; color:#002F6C; margin:0 0 4px 0; letter-spacing:0.5px; font-family:'Segoe UI', sans-serif;">
+                <h1 style="font-size:24px; font-weight:800; color:#002F6C; margin:0 0 6px 0; letter-spacing:0.5px; font-family:'Segoe UI', sans-serif; text-transform:uppercase;">
                     DEVELOPER AUDIT TRAIL — <?= strtoupper(htmlspecialchars($valid_tabs[$active_tab])) ?>
                 </h1>
-                <div class="rpt-address" style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:4px;">
+                <div class="rpt-address" style="font-size:14.5px; font-weight:600; color:#555; margin-bottom:4px;">
                     Vamenta Blvd., Carmen, City Of Cagayan De Oro, Misamis Oriental
                 </div>
-                <div class="rpt-date-range" style="font-size:11px; color:#334155; font-weight:600;">
+                <div class="rpt-date-range" style="font-size:14.5px; color:#333; font-weight:600;">
                     Date Range: <?= htmlspecialchars($report_period_label) ?> &nbsp;|&nbsp; Log Category: <?= htmlspecialchars($valid_tabs[$active_tab]) ?>
                 </div>
             </div>
 
             <!-- AUDIT DATA TABLE -->
             <div class="table-responsive">
-                <table class="table table-bordered table-striped align-middle mb-0" style="font-size:12px; width:100%; border-collapse:collapse;">
+                <table class="table table-bordered table-striped align-middle mb-0" style="font-size:13.5px; width:100% !important; max-width:100% !important; table-layout:fixed !important; border-collapse:collapse; margin:0 !important;">
+                    <?php if ($active_tab === 'system_activity'): ?>
+                        <colgroup>
+                            <col style="width: 14%;">
+                            <col style="width: 13%;">
+                            <col style="width: 8%;">
+                            <col style="width: 9%;">
+                            <col style="width: 25%;">
+                            <col style="width: 8%;">
+                            <col style="width: 13%;">
+                            <col style="width: 10%;">
+                        </colgroup>
+                    <?php elseif ($active_tab === 'database'): ?>
+                        <colgroup>
+                            <col style="width: 18%;">
+                            <col style="width: 18%;">
+                            <col style="width: 14%;">
+                            <col style="width: 22%;">
+                            <col style="width: 14%;">
+                            <col style="width: 14%;">
+                        </colgroup>
+                    <?php elseif ($active_tab === 'security'): ?>
+                        <colgroup>
+                            <col style="width: 16%;">
+                            <col style="width: 22%;">
+                            <col style="width: 14%;">
+                            <col style="width: 34%;">
+                            <col style="width: 14%;">
+                        </colgroup>
+                    <?php elseif ($active_tab === 'module_config'): ?>
+                        <colgroup>
+                            <col style="width: 18%;">
+                            <col style="width: 20%;">
+                            <col style="width: 22%;">
+                            <col style="width: 22%;">
+                            <col style="width: 18%;">
+                        </colgroup>
+                    <?php elseif ($active_tab === 'backup_restore'): ?>
+                        <colgroup>
+                            <col style="width: 18%;">
+                            <col style="width: 16%;">
+                            <col style="width: 34%;">
+                            <col style="width: 16%;">
+                            <col style="width: 16%;">
+                        </colgroup>
+                    <?php elseif ($active_tab === 'maintenance'): ?>
+                        <colgroup>
+                            <col style="width: 18%;">
+                            <col style="width: 28%;">
+                            <col style="width: 20%;">
+                            <col style="width: 20%;">
+                            <col style="width: 14%;">
+                        </colgroup>
+                    <?php elseif ($active_tab === 'error_exception'): ?>
+                        <colgroup>
+                            <col style="width: 16%;">
+                            <col style="width: 16%;">
+                            <col style="width: 16%;">
+                            <col style="width: 38%;">
+                            <col style="width: 14%;">
+                        </colgroup>
+                    <?php elseif ($active_tab === 'scheduled_tasks'): ?>
+                        <colgroup>
+                            <col style="width: 22%;">
+                            <col style="width: 44%;">
+                            <col style="width: 18%;">
+                            <col style="width: 16%;">
+                        </colgroup>
+                    <?php elseif ($active_tab === 'archived_logs'): ?>
+                        <colgroup>
+                            <col style="width: 16%;">
+                            <col style="width: 20%;">
+                            <col style="width: 18%;">
+                            <col style="width: 18%;">
+                            <col style="width: 14%;">
+                            <col style="width: 14%;">
+                        </colgroup>
+                    <?php endif; ?>
                     <thead style="background:#002F6C; color:#fff;">
                         <tr style="background:#002F6C; color:#fff;">
                             <?php if ($active_tab === 'system_activity'): ?>
@@ -1042,8 +1230,10 @@ include __DIR__ . '/../partials/header.php';
                                         <td style="padding:7px 10px; border:1px solid #ddd;" class="fw-bold text-primary"><?= htmlspecialchars($r['action_name']) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd;"><?= htmlspecialchars($r['description']) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd;" class="font-monospace text-muted"><?= htmlspecialchars($r['ip_address']) ?></td>
-                                        <td style="padding:7px 10px; border:1px solid #ddd; font-size:11px;" class="text-truncate" style="max-width:180px;" title="<?= htmlspecialchars($r['user_agent']) ?>"><?= htmlspecialchars($r['user_agent']) ?></td>
-                                        <td style="padding:7px 10px; border:1px solid #ddd; text-align:center;"><?= render_audit_status_badge($r['status']) ?></td>
+                                        <td style="padding:10px 10px; border:1px solid #e2e8f0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="<?= htmlspecialchars($r['user_agent']) ?>">
+                                            <span style="font-weight:600; color:#1e293b; font-size:13.5px;"><?= htmlspecialchars(format_device_label($r['user_agent'])) ?></span>
+                                        </td>
+                                        <td style="padding:10px 10px; border:1px solid #e2e8f0; text-align:center; white-space:nowrap;"><?= render_audit_status_badge($r['status']) ?></td>
 
                                     <?php elseif ($active_tab === 'database'): ?>
                                         <td style="padding:7px 10px; border:1px solid #ddd;" class="text-muted font-monospace"><?= htmlspecialchars($r['date_time']) ?></td>
@@ -1057,8 +1247,10 @@ include __DIR__ . '/../partials/header.php';
                                         <td style="padding:7px 10px; border:1px solid #ddd;" class="text-muted font-monospace"><?= htmlspecialchars($r['date_time']) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd;" class="fw-bold text-danger"><?= htmlspecialchars($r['event_name']) ?></td>
                                         <td style="padding:7px 10px; border:1px solid #ddd;" class="font-monospace"><?= htmlspecialchars($r['ip_address']) ?></td>
-                                        <td style="padding:7px 10px; border:1px solid #ddd; font-size:11px;" class="text-truncate" style="max-width:240px;" title="<?= htmlspecialchars($r['browser_info']) ?>"><?= htmlspecialchars($r['browser_info']) ?></td>
-                                        <td style="padding:7px 10px; border:1px solid #ddd; text-align:center;"><?= render_audit_status_badge($r['status']) ?></td>
+                                        <td style="padding:10px 10px; border:1px solid #e2e8f0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="<?= htmlspecialchars($r['browser_info']) ?>">
+                                            <span style="font-weight:600; color:#1e293b; font-size:13.5px;"><?= htmlspecialchars(format_device_label($r['browser_info'])) ?></span>
+                                        </td>
+                                        <td style="padding:10px 10px; border:1px solid #e2e8f0; text-align:center; white-space:nowrap;"><?= render_audit_status_badge($r['status']) ?></td>
 
                                     <?php elseif ($active_tab === 'module_config'): ?>
                                         <td style="padding:7px 10px; border:1px solid #ddd;" class="text-muted font-monospace"><?= htmlspecialchars($r['date_time']) ?></td>
@@ -1116,6 +1308,7 @@ include __DIR__ . '/../partials/header.php';
             </div>
 
             <!-- SYSTEM DEVELOPED BY SIGNATURE (Print Only — hidden on web view, visible on print) -->
+            <?php if ($rpt_show_footer): ?>
             <table class="print-only-sig" style="width:100%; margin-top:35px; page-break-inside:avoid; border:none; border-collapse:collapse;">
                 <tr>
                     <td style="border:none;"></td>
@@ -1128,6 +1321,7 @@ include __DIR__ . '/../partials/header.php';
                     </td>
                 </tr>
             </table>
+            <?php endif; ?>
 
         </div>
     </div>

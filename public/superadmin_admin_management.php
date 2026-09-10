@@ -101,69 +101,91 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 ?>
 
 <style>
-/* ── SuperAdmin Admin Management: Zero Horizontal Scrollbar & 100% Screen Fit ── */
-.am-page, .am-table-wrap {
+/* ── SuperAdmin Admin Management: 100% Screen Fit & ZERO Horizontal Scrolling ── */
+.am-page {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+}
+
+.am-table-wrap {
     overflow-x: hidden !important;
     max-width: 100% !important;
     width: 100% !important;
+    border: 1px solid #eaeaea !important;
+    border-radius: 14px !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,.05) !important;
+    background: #ffffff !important;
+    box-sizing: border-box !important;
 }
 
 .am-table {
     table-layout: fixed !important;
     width: 100% !important;
     max-width: 100% !important;
-    min-width: 0 !important;
+    min-width: 100% !important;
     border-collapse: collapse !important;
+    box-sizing: border-box !important;
 }
 
 .am-table thead th {
     background: #002F70 !important;
     color: #ffffff !important;
-    padding: 8px 6px !important;
-    font-size: 11px !important;
+    padding: 10px 5px !important;
+    font-size: 13px !important;
     font-weight: 700 !important;
     text-transform: uppercase !important;
     letter-spacing: 0.3px !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
+    box-sizing: border-box !important;
 }
 
 .am-table tbody td {
-    padding: 7px 6px !important;
-    font-size: 11.5px !important;
+    padding: 8px 5px !important;
+    font-size: 14px !important;
     vertical-align: middle !important;
     border-bottom: 1px solid #f0f0f0 !important;
+    box-sizing: border-box !important;
     overflow: hidden !important;
 }
 
 /* Specific Column Styling */
-.am-table td:nth-child(1) { text-align: center; color: #888; font-size: 11px; }
-.am-table td:nth-child(2), .am-table td:nth-child(3) {
+.am-table td:nth-child(1) { text-align: center; color: #777; font-size: 13px; }
+.am-table td:nth-child(2) {
     font-weight: 600;
     color: #1a1a1a;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal !important;
+    word-break: break-word !important;
+    line-height: 1.25;
+}
+.am-table td:nth-child(3) {
+    font-weight: 600;
+    color: #1a1a1a;
+    white-space: normal !important;
+    word-break: break-word !important;
+    line-height: 1.25;
 }
 .am-table td:nth-child(4) {
-    font-size: 11.5px;
-    color: #555;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 13px;
+    color: #444;
+    word-break: break-all !important;
+    line-height: 1.25;
 }
 .am-table td:nth-child(5) {
     white-space: normal !important;
     word-break: break-word !important;
     line-height: 1.25;
+    font-size: 13px;
 }
 .am-table td:nth-child(6) { text-align: center; }
 .am-table td:nth-child(7) {
-    font-size: 11px;
-    color: #666;
-    line-height: 1.3;
-    white-space: nowrap;
+    font-size: 12px;
+    color: #444;
+    line-height: 1.25;
+    text-align: center;
 }
 .am-table td:nth-child(8) { text-align: center; }
 
@@ -172,9 +194,9 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     background: rgba(40,167,69,.12) !important;
     color: #1a7a35 !important;
     border: 1px solid rgba(40,167,69,.25) !important;
-    padding: 2px 7px !important;
+    padding: 3px 8px !important;
     border-radius: 12px !important;
-    font-size: 10px !important;
+    font-size: 12px !important;
     font-weight: 700 !important;
     white-space: nowrap !important;
     display: inline-block !important;
@@ -183,9 +205,9 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     background: rgba(204,0,0,.1) !important;
     color: #cc0000 !important;
     border: 1px solid rgba(204,0,0,.2) !important;
-    padding: 2px 7px !important;
+    padding: 3px 8px !important;
     border-radius: 12px !important;
-    font-size: 10px !important;
+    font-size: 12px !important;
     font-weight: 700 !important;
     white-space: nowrap !important;
     display: inline-block !important;
@@ -205,13 +227,13 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 4px !important;
-    padding: 0 4px !important;
-    height: 22px !important;
-    width: 78px !important;
-    min-width: 78px !important;
+    gap: 3px !important;
+    padding: 2px 4px !important;
+    height: 25px !important;
+    width: 80px !important;
+    min-width: 80px !important;
     border-radius: 4px !important;
-    font-size: 10.5px !important;
+    font-size: 11.5px !important;
     font-weight: 700 !important;
     cursor: pointer !important;
     text-decoration: none !important;
@@ -252,47 +274,38 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 
 
 <style>
-/* â”€â”€ Admin Management Page Styles - Updated v2.1 - June 15, 2026 â”€â”€ */
+/* ── Admin Management Page Styles - Updated v2.2 - Elder Friendly ── */
 .am-page { padding: 0 !important; }
 .am-page-head { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-top: 0 !important; margin-bottom: 25px !important; padding: 0 !important; border: none !important; width: 100%; }
 .am-page-head h1 { margin: 0 !important; color: #002f70 !important; font-size: 24px !important; font-weight: 700 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important; display: flex !important; align-items: center !important; gap: 10px !important; line-height: 1.2 !important; }
-.am-page-head .sub { font-size: 13px; color: #666; margin-top: 4px; text-transform: none !important; }
+.am-page-head .sub { font-size: 15px; color: #666; margin-top: 4px; text-transform: none !important; }
 
 /* Stats row */
 .am-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 24px; }
-.am-stat-card { background: #fff; border: 1px solid #eaeaea; border-radius: 14px; padding: 18px 20px; display: flex; align-items: center; gap: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
-.am-stat-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.am-stat-card { background: #fff; border: 1px solid #eaeaea; border-radius: 14px; padding: 20px 22px; display: flex; align-items: center; gap: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+.am-stat-icon { width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
 .am-stat-icon.blue  { background: rgba(0,38,77,.1);  color: var(--petron-blue); }
 .am-stat-icon.green { background: rgba(40,167,69,.1); color: #28a745; }
 .am-stat-icon.red   { background: rgba(204,0,0,.1);   color: #cc0000; }
 .am-stat-icon.amber { background: rgba(255,193,7,.15); color: #b8860b; }
-.am-stat-val  { font-size: 26px; font-weight: 800; color: var(--petron-blue); line-height: 1; }
-.am-stat-lbl  { font-size: 12px; color: #666; margin-top: 2px; }
+.am-stat-val  { font-size: 32px; font-weight: 800; color: var(--petron-blue); line-height: 1; }
+.am-stat-lbl  { font-size: 15px; color: #666; margin-top: 4px; }
 
 /* Toolbar */
 .am-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
-.am-toolbar input, .am-toolbar select { padding: 9px 13px; border: 1px solid #ddd; border-radius: 10px; font-size: 13px; background: #fff; outline: none; }
+.am-toolbar input, .am-toolbar select { padding: 10px 14px; border: 1px solid #ddd; border-radius: 10px; font-size: 15px; background: #fff; outline: none; }
 .am-toolbar input:focus, .am-toolbar select:focus { border-color: var(--petron-blue); box-shadow: 0 0 0 3px rgba(0,38,77,.08); }
-.am-toolbar input { width: 240px; }
+.am-toolbar input { width: 260px; }
 .am-toolbar-right { margin-left: auto; }
 
 /* Table */
-.am-table-wrap { background: #fff; border: 1px solid #eaeaea; border-radius: 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; box-shadow: 0 2px 12px rgba(0,0,0,.05); }
-.am-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.am-table thead th { background: var(--petron-blue); color: #fff; padding: 13px 16px; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
+.am-table-wrap { background: #fff; border: 1px solid #eaeaea; border-radius: 14px; overflow-x: hidden !important; box-shadow: 0 2px 12px rgba(0,0,0,.05); }
 .am-table tbody tr { border-bottom: 1px solid #f0f0f0; transition: background .15s; }
 .am-table tbody tr:last-child { border-bottom: none; }
 .am-table tbody tr:hover { background: #f8fafc; }
-.am-table td { padding: 13px 16px; vertical-align: middle; }
-.am-table td .name { font-weight: 600; color: #1a1a1a; }
-.am-table td .email { font-size: 12px; color: #666; margin-top: 2px; }
-
-/* Badges */
-.badge-active   { background: rgba(40,167,69,.12); color: #1a7a35; border: 1px solid rgba(40,167,69,.25); padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-.badge-inactive { background: rgba(204,0,0,.1);    color: #cc0000; border: 1px solid rgba(204,0,0,.2);    padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
 
 /* Action buttons */
-.am-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: all .2s; text-decoration: none; }
+.am-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: all .2s; text-decoration: none; }
 .am-btn-primary { background: white !important; color: #00264D !important; border: 1px solid #00264D !important; }
 .am-btn-primary:hover { background: #00264D !important; color: white !important; }
 .am-btn-secondary { background: white !important; color: #00264D !important; border: 1px solid #00264D !important; }
@@ -307,14 +320,14 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 /* Modal */
 .am-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9000; align-items: center; justify-content: center; padding: 20px; }
 .am-modal-overlay.open { display: flex; }
-.am-modal { background: #fff; border-radius: 20px; width: min(560px, 95vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.2); animation: amSlideIn .25s ease; position: relative; }
+.am-modal { background: #fff; border-radius: 20px; width: min(580px, 95vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.2); animation: amSlideIn .25s ease; position: relative; }
 @keyframes amSlideIn { from { opacity:0; transform:translateY(-20px); } to { opacity:1; transform:translateY(0); } }
-.am-modal-header { padding: 20px 24px 16px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: #fff; z-index: 20; }
-.am-modal-header h2 { font-size: 17px !important; font-weight: 700 !important; color: var(--petron-blue) !important; margin: 0 !important; text-transform: uppercase !important; }
+.am-modal-header { padding: 22px 26px 18px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: #fff; z-index: 20; }
+.am-modal-header h2 { font-size: 19px !important; font-weight: 700 !important; color: var(--petron-blue) !important; margin: 0 !important; text-transform: uppercase !important; }
 .am-modal-close { display: none !important; }
-.am-modal-body { padding: 22px 24px 12px; }
+.am-modal-body { padding: 24px 26px 14px; }
 .am-modal .am-combo-dropdown { position: relative !important; top: 6px !important; left: 0 !important; right: 0 !important; width: 100% !important; max-height: 220px !important; margin-bottom: 12px !important; z-index: 5 !important; }
-.am-modal-footer { padding: 16px 24px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; position: sticky; bottom: 0; background: #fff; z-index: 20; box-shadow: 0 -4px 12px rgba(0,0,0,0.03); }
+.am-modal-footer { padding: 18px 26px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; position: sticky; bottom: 0; background: #fff; z-index: 20; box-shadow: 0 -4px 12px rgba(0,0,0,0.03); }
 
 /* Cancel & Primary Button Styling - High Contrast Visibility */
 .am-btn-cancel,
@@ -324,9 +337,9 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     color: #00264D !important;
     -webkit-text-fill-color: #00264D !important;
     border: 1.5px solid #00264D !important;
-    font-size: 13px !important;
+    font-size: 15px !important;
     font-weight: 700 !important;
-    padding: 8px 22px !important;
+    padding: 10px 24px !important;
     border-radius: 6px !important;
     cursor: pointer !important;
     display: inline-flex !important;
@@ -353,9 +366,9 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     color: #ffffff !important;
     -webkit-text-fill-color: #ffffff !important;
     border: 1.5px solid #00264D !important;
-    font-size: 13px !important;
+    font-size: 15px !important;
     font-weight: 700 !important;
-    padding: 8px 22px !important;
+    padding: 10px 24px !important;
     border-radius: 6px !important;
     cursor: pointer !important;
     display: inline-flex !important;
@@ -373,23 +386,23 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 }
 
 /* Form */
-.am-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.am-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 .am-form-row.full { grid-template-columns: 1fr; }
-.am-form-group { display: flex; flex-direction: column; gap: 5px; }
-.am-form-group label { font-size: 12px; font-weight: 600; color: #444; text-transform: uppercase; letter-spacing: .3px; }
-.am-form-group input, .am-form-group select { padding: 10px 13px; border: 1px solid #ddd; border-radius: 10px; font-size: 13px; outline: none; transition: border-color .2s; }
+.am-form-group { display: flex; flex-direction: column; gap: 6px; }
+.am-form-group label { font-size: 14px; font-weight: 600; color: #444; text-transform: uppercase; letter-spacing: .3px; }
+.am-form-group input, .am-form-group select { padding: 12px 14px; border: 1px solid #ddd; border-radius: 10px; font-size: 15px; outline: none; transition: border-color .2s; }
 .am-form-group input:focus, .am-form-group select:focus { border-color: var(--petron-blue); box-shadow: 0 0 0 3px rgba(0,38,77,.08); }
-.am-form-hint { font-size: 11px; color: #888; margin-top: 2px; }
+.am-form-hint { font-size: 13px; color: #888; margin-top: 2px; }
 
 /* Toolbar combo variant — matches toolbar height */
-.am-combo-toolbar .am-combo-input { padding-top: 9px; padding-bottom: 9px; font-size: 13px; }
+.am-combo-toolbar .am-combo-input { padding-top: 10px; padding-bottom: 10px; font-size: 15px; }
 .am-combo { position: relative; }
 .am-combo-input {
     width: 100% !important;
-    padding: 10px 65px 10px 13px !important;
+    padding: 11px 65px 11px 14px !important;
     border: 1px solid #ddd;
     border-radius: 10px;
-    font-size: 13px;
+    font-size: 15px;
     outline: none;
     transition: border-color .2s;
     background: #fff;
@@ -401,7 +414,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
 }
 .am-combo-input:focus { border-color: var(--petron-blue); box-shadow: 0 0 0 3px rgba(0,38,77,.08); }
 .am-combo-input.has-value { border-color: var(--petron-blue); }
-.am-combo-arrow { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 12px; pointer-events: none; transition: transform .2s; z-index: 2; }
+.am-combo-arrow { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 14px; pointer-events: none; transition: transform .2s; z-index: 2; }
 .am-combo.open .am-combo-arrow { transform: translateY(-50%) rotate(180deg); }
 .am-combo-clear,
 button.am-combo-clear {
@@ -410,7 +423,7 @@ button.am-combo-clear {
     top: 50% !important;
     transform: translateY(-50%) !important;
     color: #94a3b8 !important;
-    font-size: 13px !important;
+    font-size: 15px !important;
     cursor: pointer !important;
     display: none;
     background: transparent !important;
@@ -429,7 +442,7 @@ button.am-combo-clear {
 .am-combo-clear i,
 button.am-combo-clear i {
     color: #94a3b8 !important;
-    font-size: 13px !important;
+    font-size: 15px !important;
     transition: color 0.15s ease !important;
 }
 .am-combo-clear:hover i,
@@ -438,32 +451,32 @@ button.am-combo-clear:hover i {
 }
 .am-combo-dropdown { display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #fff; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 9999; max-height: 220px; overflow: hidden; flex-direction: column; }
 .am-combo.open .am-combo-dropdown { display: flex; }
-.am-combo-search { padding: 9px 12px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.am-combo-search i { color: #bbb; font-size: 13px; }
-.am-combo-search input { border: none; outline: none; font-size: 13px; flex: 1; background: transparent; }
+.am-combo-search { padding: 10px 13px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.am-combo-search i { color: #bbb; font-size: 15px; }
+.am-combo-search input { border: none; outline: none; font-size: 15px; flex: 1; background: transparent; }
 .am-combo-list { overflow-y: auto; flex: 1; }
-.am-combo-option { padding: 10px 14px; font-size: 13px; cursor: pointer; transition: background .12s; display: flex; align-items: flex-start; gap: 8px; }
+.am-combo-option { padding: 12px 16px; font-size: 15px; cursor: pointer; transition: background .12s; display: flex; align-items: flex-start; gap: 8px; }
 .am-combo-option:hover, .am-combo-option.focused { background: #f0f5ff; color: var(--petron-blue); }
 .am-combo-option.selected { background: rgba(0,38,77,.08); font-weight: 600; color: var(--petron-blue); }
-.am-combo-option .opt-icon { color: #bbb; font-size: 11px; flex-shrink: 0; }
+.am-combo-option .opt-icon { color: #bbb; font-size: 13px; flex-shrink: 0; }
 .am-combo-option.selected .opt-icon { color: var(--petron-blue); }
-.am-combo-empty { padding: 18px 14px; font-size: 13px; color: #bbb; text-align: center; }
+.am-combo-empty { padding: 20px 16px; font-size: 15px; color: #bbb; text-align: center; }
 .am-combo-hidden { display: none !important; }
 
 /* Flash */
-.am-flash { padding: 12px 16px; border-radius: 10px; margin-bottom: 18px; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 10px; }
+.am-flash { padding: 14px 18px; border-radius: 10px; margin-bottom: 18px; font-size: 15px; font-weight: 500; display: flex; align-items: center; gap: 10px; }
 .am-flash.success { background: rgba(40,167,69,.1); border: 1px solid rgba(40,167,69,.3); color: #1a7a35; }
 .am-flash.error   { background: rgba(204,0,0,.08);  border: 1px solid rgba(204,0,0,.25);  color: #cc0000; }
 
 /* Empty state */
 .am-empty { text-align: center; padding: 60px 20px; color: #999; }
-.am-empty i { font-size: 40px; margin-bottom: 12px; opacity: .4; display: block; }
+.am-empty i { font-size: 48px; margin-bottom: 14px; opacity: .4; display: block; }
 
 /* Confirm modal */
-.am-confirm-body { padding: 28px 24px; text-align: center; }
-.am-confirm-body i { font-size: 44px; margin-bottom: 14px; display: block; }
-.am-confirm-body p { font-size: 15px; color: #333; margin: 0 0 6px; }
-.am-confirm-body .sub { font-size: 13px; color: #888; }
+.am-confirm-body { padding: 30px 26px; text-align: center; }
+.am-confirm-body i { font-size: 50px; margin-bottom: 16px; display: block; }
+.am-confirm-body p { font-size: 17px; color: #333; margin: 0 0 6px; }
+.am-confirm-body .sub { font-size: 15px; color: #888; }
 
 @media (max-width: 640px) {
     .am-form-row { grid-template-columns: 1fr; }
@@ -559,7 +572,7 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
         </div>
     </div>
     <div class="am-toolbar-right">
-        <span id="rowCount" style="font-size:12px;color:#888;"></span>
+        <span id="rowCount" style="font-size:14px;color:#555;font-weight:600;"></span>
     </div>
 </div>
 
@@ -567,14 +580,14 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
 <div class="am-table-wrap">
         <table class="am-table" id="adminTable">
         <colgroup>
-            <col style="width: 4%;">
-            <col style="width: 13%;">
+            <col style="width: 3.5%;">
+            <col style="width: 13.5%;">
             <col style="width: 12%;">
-            <col style="width: 19%;">
-            <col style="width: 24%;">
-            <col style="width: 8%;">
-            <col style="width: 10%;">
-            <col style="width: 10%;">
+            <col style="width: 18%;">
+            <col style="width: 21.5%;">
+            <col style="width: 8.5%;">
+            <col style="width: 11%;">
+            <col style="width: 12%;">
         </colgroup>
         <thead>
             <tr>
@@ -583,8 +596,8 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
                 <th>Last Name</th>
                 <th>Email</th>
                 <th>Station</th>
-                <th>Status</th>
-                <th>Last Login</th>
+                <th style="text-align:center;">Status</th>
+                <th style="text-align:center;">Last Login</th>
                 <th style="text-align:center;">Actions</th>
             </tr>
         </thead>
@@ -612,39 +625,40 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
             data-station="<?php echo htmlspecialchars($adm['station_name'] ?? ''); ?>"
             data-region="<?php echo strtolower(htmlspecialchars($adm['region'] ?? '')); ?>"
             data-status="<?php echo strtolower($adm['status']); ?>">
-            <td style="color:#999;font-size:12px;"><?php echo $i + 1; ?></td>
-            <td style="font-weight:600;color:#1a1a1a;"><?php echo htmlspecialchars($first_name); ?></td>
-            <td style="font-weight:600;color:#1a1a1a;"><?php echo htmlspecialchars($last_name); ?></td>
-            <td style="font-size:13px;color:#666;"><?php echo htmlspecialchars($adm['email'] ?? '—'); ?></td>
+            <td style="color:#666;font-size:14px;"><?php echo $i + 1; ?></td>
+            <td style="font-weight:600;color:#1a1a1a;font-size:15px;"><?php echo htmlspecialchars($first_name); ?></td>
+            <td style="font-weight:600;color:#1a1a1a;font-size:15px;"><?php echo htmlspecialchars($last_name); ?></td>
+            <td style="font-size:14px;color:#444;"><?php echo htmlspecialchars($adm['email'] ?? '—'); ?></td>
             <td>
                 <?php if ($adm['station_name']): ?>
-                <div style="font-size:13px;">
-                    <div style="font-weight:600;"><i class="fas fa-building" style="color:#999;font-size:11px;margin-right:4px;"></i><?php echo htmlspecialchars($adm['station_name']); ?></div>
+                <div style="font-size:14.5px;">
+                    <div style="font-weight:600;color:#1a1a1a;"><i class="fas fa-building" style="color:#777;font-size:13px;margin-right:5px;"></i><?php echo htmlspecialchars($adm['station_name']); ?></div>
                     <?php if (!empty($adm['region'])): ?>
-                    <div style="font-size:11px;color:#888;margin-top:2px;margin-left:15px;"><i class="fas fa-globe-asia" style="font-size:10px;margin-right:3px;"></i><?php echo htmlspecialchars($adm['region']); ?></div>
+                    <div style="font-size:13px;color:#666;margin-top:3px;margin-left:18px;"><i class="fas fa-globe-asia" style="font-size:12px;margin-right:4px;"></i><?php echo htmlspecialchars($adm['region']); ?></div>
                     <?php endif; ?>
                 </div>
                 <?php else: ?>
-                <span style="color:#bbb;font-size:12px;">Unassigned</span>
+                <span style="color:#999;font-size:14px;">Unassigned</span>
                 <?php endif; ?>
             </td>
             <td>
                 <?php if (strtolower($adm['status']) === 'active'): ?>
-                <span class="badge-active"><i class="fas fa-circle" style="font-size:7px;"></i> Active</span>
+                <span class="badge-active"><i class="fas fa-circle" style="font-size:9px;"></i> Active</span>
                 <?php else: ?>
-                <span class="badge-inactive"><i class="fas fa-circle" style="font-size:7px;"></i> Inactive</span>
+                <span class="badge-inactive"><i class="fas fa-circle" style="font-size:9px;"></i> Inactive</span>
                 <?php endif; ?>
             </td>
-            <td style="font-size:12px;color:#666;line-height:1.4;">
+            <td style="font-size:13.5px;color:#444;line-height:1.35;text-align:center;">
                 <?php if ($adm['last_login']): ?>
-                    <div><?php echo date('M d, Y g:i A', strtotime($adm['last_login'])); ?></div>
+                    <div style="font-weight:600;white-space:nowrap;"><?php echo date('M d, Y', strtotime($adm['last_login'])); ?></div>
+                    <div style="font-size:12px;color:#666;white-space:nowrap;"><?php echo date('g:i A', strtotime($adm['last_login'])); ?></div>
                     <?php if (!empty($adm['last_login_ip'])): ?>
-                        <div style="font-size:11px;color:#999;font-family:monospace;">
-                            <i class="fas fa-desktop" style="font-size:10px;margin-right:3px;"></i><?php echo htmlspecialchars($adm['last_login_ip']); ?>
+                        <div style="font-size:11.5px;color:#888;font-family:monospace;margin-top:2px;white-space:nowrap;">
+                            <i class="fas fa-desktop" style="font-size:10px;margin-right:2px;"></i><?php echo htmlspecialchars($adm['last_login_ip']); ?>
                         </div>
                     <?php endif; ?>
                 <?php else: ?>
-                    <span style="color:#bbb;">Never</span>
+                    <span style="color:#999;">Never</span>
                 <?php endif; ?>
             </td>
             <td style="text-align:center;">
@@ -725,20 +739,20 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
                   <div class="am-combo-option" data-value="" data-label="— Select Station —" style="color:#bbb;">— Select Station —</div>
                   <?php foreach ($stations as $st): ?>
                   <div class="am-combo-option" data-value="<?php echo (int)$st['id']; ?>" data-label="<?php echo htmlspecialchars($st['name']); ?>">
-                    <i class="fas fa-building opt-icon" style="margin-top:2px;"></i>
-                    <div style="display:flex;flex-direction:column;gap:2px;">
-                      <div style="font-weight:600;color:#1a1a1a;"><?php echo htmlspecialchars($st['name']); ?> <span style="font-weight:normal;color:#888;font-size:11px;">(ID: <?php echo (int)$st['id']; ?>)</span></div>
-                      <div style="font-size:11px;color:#777;line-height:1.3;">
+                    <i class="fas fa-building opt-icon" style="margin-top:3px;font-size:14px;"></i>
+                    <div style="display:flex;flex-direction:column;gap:3px;">
+                      <div style="font-weight:600;color:#1a1a1a;font-size:15px;"><?php echo htmlspecialchars($st['name']); ?> <span style="font-weight:normal;color:#777;font-size:13px;">(ID: <?php echo (int)$st['id']; ?>)</span></div>
+                      <div style="font-size:13px;color:#666;line-height:1.4;">
                         <?php if(!empty($st['address'])): ?>
-                          <i class="fas fa-map-marker-alt" style="font-size:9px;margin-right:2px;"></i><?php echo htmlspecialchars($st['address']); ?>
+                          <i class="fas fa-map-marker-alt" style="font-size:11px;margin-right:3px;"></i><?php echo htmlspecialchars($st['address']); ?>
                         <?php elseif(!empty($st['location'])): ?>
-                          <i class="fas fa-map-marker-alt" style="font-size:9px;margin-right:2px;"></i><?php echo htmlspecialchars($st['location']); ?>
+                          <i class="fas fa-map-marker-alt" style="font-size:11px;margin-right:3px;"></i><?php echo htmlspecialchars($st['location']); ?>
                         <?php endif; ?>
                         <?php if(!empty($st['region'])): ?>
                           &nbsp;|&nbsp; Region: <?php echo htmlspecialchars($st['region']); ?>
                         <?php endif; ?>
                         <?php if(!empty($st['contact_number'])): ?>
-                          &nbsp;|&nbsp; <i class="fas fa-phone" style="font-size:9px;margin-right:2px;"></i><?php echo htmlspecialchars($st['contact_number']); ?>
+                          &nbsp;|&nbsp; <i class="fas fa-phone" style="font-size:11px;margin-right:3px;"></i><?php echo htmlspecialchars($st['contact_number']); ?>
                         <?php endif; ?>
                       </div>
                     </div>
@@ -810,20 +824,20 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
                   <div class="am-combo-option" data-value="" data-label="— Select Station —" style="color:#bbb;">— Select Station —</div>
                   <?php foreach ($stations as $st): ?>
                   <div class="am-combo-option" data-value="<?php echo (int)$st['id']; ?>" data-label="<?php echo htmlspecialchars($st['name']); ?>">
-                    <i class="fas fa-building opt-icon" style="margin-top:2px;"></i>
-                    <div style="display:flex;flex-direction:column;gap:2px;">
-                      <div style="font-weight:600;color:#1a1a1a;"><?php echo htmlspecialchars($st['name']); ?> <span style="font-weight:normal;color:#888;font-size:11px;">(ID: <?php echo (int)$st['id']; ?>)</span></div>
-                      <div style="font-size:11px;color:#777;line-height:1.3;">
+                    <i class="fas fa-building opt-icon" style="margin-top:3px;font-size:14px;"></i>
+                    <div style="display:flex;flex-direction:column;gap:3px;">
+                      <div style="font-weight:600;color:#1a1a1a;font-size:15px;"><?php echo htmlspecialchars($st['name']); ?> <span style="font-weight:normal;color:#777;font-size:13px;">(ID: <?php echo (int)$st['id']; ?>)</span></div>
+                      <div style="font-size:13px;color:#666;line-height:1.4;">
                         <?php if(!empty($st['address'])): ?>
-                          <i class="fas fa-map-marker-alt" style="font-size:9px;margin-right:2px;"></i><?php echo htmlspecialchars($st['address']); ?>
+                          <i class="fas fa-map-marker-alt" style="font-size:11px;margin-right:3px;"></i><?php echo htmlspecialchars($st['address']); ?>
                         <?php elseif(!empty($st['location'])): ?>
-                          <i class="fas fa-map-marker-alt" style="font-size:9px;margin-right:2px;"></i><?php echo htmlspecialchars($st['location']); ?>
+                          <i class="fas fa-map-marker-alt" style="font-size:11px;margin-right:3px;"></i><?php echo htmlspecialchars($st['location']); ?>
                         <?php endif; ?>
                         <?php if(!empty($st['region'])): ?>
                           &nbsp;|&nbsp; Region: <?php echo htmlspecialchars($st['region']); ?>
                         <?php endif; ?>
                         <?php if(!empty($st['contact_number'])): ?>
-                          &nbsp;|&nbsp; <i class="fas fa-phone" style="font-size:9px;margin-right:2px;"></i><?php echo htmlspecialchars($st['contact_number']); ?>
+                          &nbsp;|&nbsp; <i class="fas fa-phone" style="font-size:11px;margin-right:3px;"></i><?php echo htmlspecialchars($st['contact_number']); ?>
                         <?php endif; ?>
                       </div>
                     </div>
@@ -902,7 +916,7 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
             <textarea name="location" id="station_location" rows="3"
               placeholder="e.g. Commonwealth Ave., Quezon City, Metro Manila"
               required
-              style="padding:10px 13px;border:1px solid #ddd;border-radius:10px;font-size:13px;outline:none;resize:vertical;font-family:inherit;transition:border-color .2s;"
+              style="padding:12px 14px;border:1px solid #ddd;border-radius:10px;font-size:15px;outline:none;resize:vertical;font-family:inherit;transition:border-color .2s;"
               onfocus="this.style.borderColor='var(--petron-blue)'"
               onblur="this.style.borderColor='#ddd'"></textarea>
           </div>
@@ -912,7 +926,7 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
           <div class="am-form-group">
             <label>Region <span style="color:#cc0000;">*</span></label>
             <select name="region" id="station_region" required
-              style="padding:10px 13px;border:1px solid #ddd;border-radius:10px;font-size:13px;outline:none;background:#fff;transition:border-color .2s;"
+              style="padding:12px 14px;border:1px solid #ddd;border-radius:10px;font-size:15px;outline:none;background:#fff;transition:border-color .2s;"
               onfocus="this.style.borderColor='var(--petron-blue)'"
               onblur="this.style.borderColor='#ddd'">
               <option value="">— Select Region —</option>
@@ -938,7 +952,7 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
           <div class="am-form-group">
             <label>Outlet Type</label>
             <select name="outlet_type" id="station_outlet_type"
-              style="padding:10px 13px;border:1px solid #ddd;border-radius:10px;font-size:13px;outline:none;background:#fff;transition:border-color .2s;"
+              style="padding:12px 14px;border:1px solid #ddd;border-radius:10px;font-size:15px;outline:none;background:#fff;transition:border-color .2s;"
               onfocus="this.style.borderColor='var(--petron-blue)'"
               onblur="this.style.borderColor='#ddd'">
               <option value="SERVICE STATION">Service Station</option>
@@ -955,7 +969,7 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
           </div>
         </div>
 
-        <div style="background:#f0f9f0;border:1px solid #c6e6c6;border-radius:10px;padding:14px 16px;margin-top:6px;font-size:12px;color:#1a5c1a;">
+        <div style="background:#f0f9f0;border:1px solid #c6e6c6;border-radius:10px;padding:14px 16px;margin-top:6px;font-size:14px;color:#1a5c1a;">
           <i class="fas fa-check-circle" style="color:#16a34a;margin-right:6px;"></i>
           The new station will appear in the station dropdown <strong>immediately</strong> after creation and will be available for admin assignment.
         </div>
@@ -1287,10 +1301,10 @@ function filterTable() {
         if (!noMatchRow) {
             noMatchRow = document.createElement('tr');
             noMatchRow.id = 'amNoMatchRow';
-            noMatchRow.innerHTML = `<td colspan="8" style="text-align:center;padding:36px 20px;color:#888;">
-                <i class="fas fa-search" style="font-size:28px;color:#ccc;margin-bottom:10px;display:block;"></i>
-                <strong style="color:#555;font-size:14px;">No admin accounts matching your filter</strong>
-                <div style="font-size:12px;margin-top:4px;">Try checking for spelling errors or clearing some filters.</div>
+            noMatchRow.innerHTML = `<td colspan="8" style="text-align:center;padding:40px 20px;color:#888;">
+                <i class="fas fa-search" style="font-size:32px;color:#ccc;margin-bottom:12px;display:block;"></i>
+                <strong style="color:#333;font-size:16px;">No admin accounts matching your filter</strong>
+                <div style="font-size:14px;color:#666;margin-top:6px;">Try checking for spelling errors or clearing some filters.</div>
             </td>`;
             if (tbody) tbody.appendChild(noMatchRow);
         } else {
@@ -1565,12 +1579,12 @@ function showPageFlash(type, msg, persist = false) {
         const toast = document.createElement('div');
         const isSuccess = type === 'success';
         toast.className = 'petron-toast toast-' + type;
-        toast.style.cssText = 'position:relative;width:100%;padding:14px 18px;border-radius:10px;border:1px solid ' + (isSuccess ? '#bbf7d0' : '#fecaca') + ';background:' + (isSuccess ? '#ffffff' : '#ffffff') + ';color:#0f172a;font:600 13px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 12px 28px rgba(15,23,42,.14);pointer-events:auto;display:flex;align-items:flex-start;gap:12px;border-left:4px solid ' + (isSuccess ? '#16a34a' : '#dc2626') + ';animation:slideInRight .3s ease;';
+        toast.style.cssText = 'position:relative;width:100%;padding:16px 20px;border-radius:10px;border:1px solid ' + (isSuccess ? '#bbf7d0' : '#fecaca') + ';background:' + (isSuccess ? '#ffffff' : '#ffffff') + ';color:#0f172a;font:600 15px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 12px 28px rgba(15,23,42,.14);pointer-events:auto;display:flex;align-items:flex-start;gap:14px;border-left:4px solid ' + (isSuccess ? '#16a34a' : '#dc2626') + ';animation:slideInRight .3s ease;';
         toast.innerHTML = `
-            <i class="fas fa-${isSuccess ? 'check-circle' : 'exclamation-circle'}" style="color:${isSuccess ? '#16a34a' : '#dc2626'};font-size:18px;margin-top:2px;"></i>
+            <i class="fas fa-${isSuccess ? 'check-circle' : 'exclamation-circle'}" style="color:${isSuccess ? '#16a34a' : '#dc2626'};font-size:20px;margin-top:2px;"></i>
             <div style="flex:1;">
-                <strong style="display:block;font-size:13px;color:#0f172a;margin-bottom:2px;">${isSuccess ? 'Success' : 'Notice'}</strong>
-                <span style="font-size:12px;color:#475569;font-weight:400;">${msg}</span>
+                <strong style="display:block;font-size:15px;color:#0f172a;margin-bottom:2px;">${isSuccess ? 'Success' : 'Notice'}</strong>
+                <span style="font-size:14px;color:#475569;font-weight:500;">${msg}</span>
             </div>
         `;
         container.appendChild(toast);

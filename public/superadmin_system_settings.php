@@ -85,11 +85,21 @@ include __DIR__ . '/../partials/header.php';
     --text-primary: #1f2937;
     --text-secondary: #6b7280;
     --border-color: #e5e7eb;
-    --radius-card: 10px;
-    --shadow-card: 0 4px 16px rgba(0,0,0,0.06);
+    --radius-card: 14px;
+    --shadow-card: 0 2px 12px rgba(0,0,0,0.05);
 }
 
-/* ── Logo button overrides — defeat global theme CSS ── */
+/* Zero horizontal scrolling */
+html, body {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+    box-sizing: border-box !important;
+}
+*, *:before, *:after {
+    box-sizing: border-box !important;
+}
+
+/* ── Logo button overrides — Elder Friendly ── */
 #btn_upload_logo,
 #btn_upload_logo:link,
 #btn_upload_logo:visited {
@@ -97,14 +107,14 @@ include __DIR__ . '/../partials/header.php';
     background-color: transparent !important;
     color: #002F6C !important;
     border: 2px solid #002F6C !important;
-    padding: 7px 16px !important;
-    border-radius: 7px !important;
-    font-size: 13px !important;
+    padding: 10px 20px !important;
+    border-radius: 8px !important;
+    font-size: 14.5px !important;
     font-weight: 700 !important;
     cursor: pointer !important;
     display: inline-flex !important;
     align-items: center !important;
-    gap: 6px !important;
+    gap: 8px !important;
     white-space: nowrap !important;
     flex-shrink: 0 !important;
     box-shadow: none !important;
@@ -121,14 +131,14 @@ include __DIR__ . '/../partials/header.php';
     background-color: transparent !important;
     color: #dc2626 !important;
     border: 2px solid #dc2626 !important;
-    padding: 5px 12px !important;
-    border-radius: 6px !important;
-    font-size: 12px !important;
+    padding: 8px 16px !important;
+    border-radius: 8px !important;
+    font-size: 13.5px !important;
     font-weight: 700 !important;
     cursor: pointer !important;
     display: inline-flex !important;
     align-items: center !important;
-    gap: 5px !important;
+    gap: 6px !important;
     box-shadow: none !important;
     text-decoration: none !important;
 }
@@ -140,11 +150,18 @@ include __DIR__ . '/../partials/header.php';
     display: block;
     min-height: calc(100vh - 120px);
     background: var(--page-bg);
-    width: 100%;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
 }
 
 .ss-content {
     padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
 }
 
 .ss-panel-header {
@@ -174,37 +191,37 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .ss-panel-header p {
-    color: var(--text-secondary);
-    font-size: 13px;
-    margin: 0;
+    color: #666 !important;
+    font-size: 15px !important;
+    margin: 4px 0 0 !important;
 }
 
 .ss-card {
-    background: var(--surface);
-    border-radius: var(--radius-card);
-    box-shadow: var(--shadow-card);
-    padding: 20px 24px;
-    margin-bottom: 20px;
-    border: 1px solid var(--border-color);
+    background: #ffffff !important;
+    border-radius: 14px !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.05) !important;
+    padding: 24px 28px !important;
+    margin-bottom: 24px !important;
+    border: 1px solid #eaeaea !important;
 }
 
 .ss-card-title {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--primary-color);
-    margin: 0 0 16px;
-    padding-bottom: 10px;
-    border-bottom: 2px solid #f1f5f9;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    font-size: 18px !important;
+    font-weight: 700 !important;
+    color: #002f70 !important;
+    margin: 0 0 20px !important;
+    padding-bottom: 12px !important;
+    border-bottom: 2px solid #f1f5f9 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
 }
 
 .ss-card-title i {
-    color: #3b82f6;
-    font-size: 16px;
+    color: #002f70 !important;
+    font-size: 18px !important;
 }
 
 .ss-grid-2 {
@@ -226,58 +243,59 @@ include __DIR__ . '/../partials/header.php';
 }
 
 .ss-form-group {
-    margin-bottom: 16px;
+    margin-bottom: 18px;
 }
 
 .ss-form-group label {
     display: block;
-    font-size: 12px;
-    font-weight: 700;
-    color: #374151;
-    margin-bottom: 6px;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    color: #444 !important;
+    margin-bottom: 6px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
 }
 
 .ss-form-control {
-    width: 100%;
-    padding: 9px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 7px;
-    font-size: 13px;
-    color: var(--text-primary);
-    background: var(--surface);
-    transition: border-color 0.15s, box-shadow 0.15s;
-    box-sizing: border-box;
+    width: 100% !important;
+    padding: 12px 14px !important;
+    border: 1.5px solid #ddd !important;
+    border-radius: 10px !important;
+    font-size: 15px !important;
+    color: #1a1a1a !important;
+    background: #ffffff !important;
+    transition: border-color 0.15s, box-shadow 0.15s !important;
+    box-sizing: border-box !important;
+    font-family: inherit !important;
 }
 
 .ss-form-control:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+    outline: none !important;
+    border-color: #002F6C !important;
+    box-shadow: 0 0 0 3px rgba(0, 47, 108, 0.1) !important;
 }
 
 .ss-toggle-wrapper {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
+    padding: 12px 16px !important;
+    border: 1.5px solid #e2e8f0 !important;
+    border-radius: 10px !important;
     background: #f9fafb;
 }
 
 .ss-toggle-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: #374151;
+    font-size: 14.5px !important;
+    font-weight: 600 !important;
+    color: #374151 !important;
 }
 
 .ss-switch {
     position: relative;
     display: inline-block;
-    width: 44px;
-    height: 22px;
+    width: 48px;
+    height: 26px;
 }
 
 .ss-switch input {
@@ -292,14 +310,14 @@ include __DIR__ . '/../partials/header.php';
     top: 0; left: 0; right: 0; bottom: 0;
     background-color: #cbd5e1;
     transition: .2s;
-    border-radius: 22px;
+    border-radius: 26px;
 }
 
 .ss-slider:before {
     position: absolute;
     content: "";
-    height: 16px;
-    width: 16px;
+    height: 20px;
+    width: 20px;
     left: 3px;
     bottom: 3px;
     background-color: white;
@@ -339,9 +357,9 @@ input:checked + .ss-slider:before {
 }
 
 .ss-btn {
-    padding: 9px 20px !important;
-    border-radius: 7px !important;
-    font-size: 13px !important;
+    padding: 12px 24px !important;
+    border-radius: 8px !important;
+    font-size: 15px !important;
     font-weight: 700 !important;
     cursor: pointer !important;
     background: transparent !important;
@@ -353,6 +371,7 @@ input:checked + .ss-slider:before {
     letter-spacing: 0.3px !important;
     white-space: nowrap !important;
     text-decoration: none !important;
+    line-height: 1.3 !important;
 }
 
 .ss-btn-primary {
@@ -391,29 +410,35 @@ input:checked + .ss-slider:before {
     color: #374151 !important;
 }
 
-/* Custom Virtual Station Combobox */
+/* Custom Virtual Station Combobox - Elder Friendly 15px */
 .am-combo { position: relative; }
 .am-combo-input {
-    width: 100%;
-    padding: 9px 12px;
-    border: 1px solid #cbd5e1;
-    border-radius: 7px;
-    font-size: 13px;
-    background: #fff;
-    box-sizing: border-box;
+    width: 100% !important;
+    padding: 12px 14px !important;
+    border: 1.5px solid #ddd !important;
+    border-radius: 10px !important;
+    font-size: 15px !important;
+    background: #fff !important;
+    color: #1a1a1a !important;
+    box-sizing: border-box !important;
+    outline: none !important;
+}
+.am-combo-input:focus {
+    border-color: #002F6C !important;
+    box-shadow: 0 0 0 3px rgba(0, 47, 108, 0.1) !important;
 }
 .am-combo-arrow {
     position: absolute;
-    right: 12px;
+    right: 14px;
     top: 50%;
     transform: translateY(-50%);
     color: #64748b;
     pointer-events: none;
-    font-size: 11px;
+    font-size: 13px !important;
 }
 .am-combo-clear {
     position: absolute;
-    right: 30px;
+    right: 34px;
     top: 50%;
     transform: translateY(-50%);
     background: none;
@@ -430,16 +455,16 @@ input:checked + .ss-slider:before {
     margin-top: 4px;
     background: #fff;
     border: 1px solid #cbd5e1;
-    border-radius: 8px;
+    border-radius: 10px;
     box-shadow: 0 10px 25px rgba(0,0,0,0.12);
     z-index: 9999;
     display: none;
-    max-height: 260px;
+    max-height: 280px;
     overflow-y: auto;
 }
 .am-combo-item {
-    padding: 10px 14px;
-    font-size: 13px;
+    padding: 12px 16px !important;
+    font-size: 14.5px !important;
     cursor: pointer;
     color: #334155;
     border-bottom: 1px solid #f1f5f9;
@@ -465,7 +490,7 @@ input:checked + .ss-slider:before {
                 <i class="fas fa-map-marker-alt"></i> Station Selection
             </div>
             <div style="display: flex; align-items: center; gap: 15px;">
-                <label style="font-weight: 700; color: #374151; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
+                <label style="font-weight: 700; color: #374151; font-size: 14px; text-transform: uppercase; letter-spacing: 0.3px;">
                     Scope Settings For:
                 </label>
                 <div class="am-combo" id="ss_station_combo" style="width: 420px;">
@@ -504,7 +529,7 @@ input:checked + .ss-slider:before {
                         </div>
                         <div id="logo_preview_container" style="margin-top:8px; display:flex; align-items:center; gap:12px;">
                             <img id="logo_preview_img" src="" alt="Company Logo" style="height:36px; border-radius:4px; border:1px solid #e2e8f0; padding:2px; background:#fff; display:none;">
-                            <span id="no_logo_placeholder" style="font-size:12px; color:#94a3b8; font-style:italic;">No custom logo uploaded (Default/Removed)</span>
+                            <span id="no_logo_placeholder" style="font-size:13.5px; color:#64748b; font-style:italic;">No custom logo uploaded (Default/Removed)</span>
                             <button type="button" id="btn_remove_logo" onclick="removeLogo()" style="display:none;"><i class="fas fa-trash-alt"></i> Remove Logo</button>
                         </div>
                     </div>
@@ -561,36 +586,91 @@ input:checked + .ss-slider:before {
                 </div>
             </div>
 
-            <!-- Appearance -->
+            <!-- Appearance & Navigation Customization -->
             <div class="ss-card" id="section_appearance">
                 <div class="ss-card-title">
-                    <i class="fas fa-paint-brush"></i> Appearance
+                    <i class="fas fa-paint-brush"></i> Appearance &amp; Navigation Themes
                 </div>
-                <div class="ss-grid-4">
+
+                <!-- Color Palettes / Presets -->
+                <div style="margin-bottom: 22px; background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 14px 18px;">
+                    <div style="font-size: 13.5px; font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-palette" style="color: #002F6C;"></i> Quick Color Presets (Click to preview &amp; apply):
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;" id="appearancePresets">
+                        <button type="button" class="btn" onclick="applyColorPreset('#00264D', '#E30613', '#002F6C')" style="background:#fff !important; color:#1e293b !important; border:1.5px solid #cbd5e1 !important; border-radius:8px !important; padding:8px 14px !important; font-size:13.5px !important; font-weight:600 !important; cursor:pointer !important; display:inline-flex !important; align-items:center !important; gap:8px !important; box-shadow:0 1px 3px rgba(0,0,0,0.05) !important;">
+                            <span style="width:16px; height:16px; border-radius:50%; background:#00264D; display:inline-block; border:1px solid #999;"></span>
+                            Petron Classic (Navy / Red)
+                        </button>
+                        <button type="button" class="btn" onclick="applyColorPreset('#006b1b', '#16a34a', '#006b1b')" style="background:#fff !important; color:#1e293b !important; border:1.5px solid #cbd5e1 !important; border-radius:8px !important; padding:8px 14px !important; font-size:13.5px !important; font-weight:600 !important; cursor:pointer !important; display:inline-flex !important; align-items:center !important; gap:8px !important; box-shadow:0 1px 3px rgba(0,0,0,0.05) !important;">
+                            <span style="width:16px; height:16px; border-radius:50%; background:#006b1b; display:inline-block; border:1px solid #999;"></span>
+                            Forest Green (Emerald)
+                        </button>
+                        <button type="button" class="btn" onclick="applyColorPreset('#1e293b', '#2563eb', '#1d4ed8')" style="background:#fff !important; color:#1e293b !important; border:1.5px solid #cbd5e1 !important; border-radius:8px !important; padding:8px 14px !important; font-size:13.5px !important; font-weight:600 !important; cursor:pointer !important; display:inline-flex !important; align-items:center !important; gap:8px !important; box-shadow:0 1px 3px rgba(0,0,0,0.05) !important;">
+                            <span style="width:16px; height:16px; border-radius:50%; background:#1e293b; display:inline-block; border:1px solid #999;"></span>
+                            Slate Charcoal (Blue)
+                        </button>
+                        <button type="button" class="btn" onclick="applyColorPreset('#1e1b4b', '#7c3aed', '#6366f1')" style="background:#fff !important; color:#1e293b !important; border:1.5px solid #cbd5e1 !important; border-radius:8px !important; padding:8px 14px !important; font-size:13.5px !important; font-weight:600 !important; cursor:pointer !important; display:inline-flex !important; align-items:center !important; gap:8px !important; box-shadow:0 1px 3px rgba(0,0,0,0.05) !important;">
+                            <span style="width:16px; height:16px; border-radius:50%; background:#1e1b4b; display:inline-block; border:1px solid #999;"></span>
+                            Royal Indigo (Purple)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Row 1: Navigation Color Customization -->
+                <div class="ss-grid-3">
+                    <div class="ss-form-group">
+                        <label for="ss_sidebar_color">Sidebar Navigation Color</label>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <input type="color" id="ss_sidebar_color" value="#00264D" style="padding:2px 4px; height:46px; width:54px; cursor:pointer; border:1.5px solid #cbd5e1; border-radius:8px; background:#fff;" oninput="onSidebarColorChange(this.value)">
+                            <input type="text" id="ss_sidebar_color_hex" class="ss-form-control" value="#00264D" readonly style="background:#f8fafc; font-family:monospace; text-align:center; font-weight:700; font-size:15px;">
+                        </div>
+                        <small style="color:#64748b; font-size:12.5px; margin-top:5px; display:block;">Background color of the sidebar navigation bar.</small>
+                    </div>
+
+                    <div class="ss-form-group">
+                        <label for="ss_nav_active_color">Active Navigation Item Color</label>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <input type="color" id="ss_nav_active_color" value="#E30613" style="padding:2px 4px; height:46px; width:54px; cursor:pointer; border:1.5px solid #cbd5e1; border-radius:8px; background:#fff;" oninput="onNavActiveColorChange(this.value)">
+                            <input type="text" id="ss_nav_active_color_hex" class="ss-form-control" value="#E30613" readonly style="background:#f8fafc; font-family:monospace; text-align:center; font-weight:700; font-size:15px;">
+                        </div>
+                        <small style="color:#64748b; font-size:12.5px; margin-top:5px; display:block;">Highlight pill color for the active menu page.</small>
+                    </div>
+
+                    <div class="ss-form-group">
+                        <label for="ss_accent_color">System Accent Color</label>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <input type="color" id="ss_accent_color" value="#002F6C" style="padding:2px 4px; height:46px; width:54px; cursor:pointer; border:1.5px solid #cbd5e1; border-radius:8px; background:#fff;" oninput="onAccentColorChange(this.value)">
+                            <input type="text" id="ss_accent_color_hex" class="ss-form-control" value="#002F6C" readonly style="background:#f8fafc; font-family:monospace; text-align:center; font-weight:700; font-size:15px;">
+                        </div>
+                        <small style="color:#64748b; font-size:12.5px; margin-top:5px; display:block;">Primary buttons, badges, and system headers.</small>
+                    </div>
+                </div>
+
+                <!-- Row 2: Layout, Theme & Refresh -->
+                <div class="ss-grid-3" style="margin-top:10px;">
                     <div class="ss-form-group">
                         <label for="ss_theme">Theme</label>
-                        <select id="ss_theme" class="ss-form-control">
+                        <select id="ss_theme" class="ss-form-control" onchange="onThemeChange(this.value)">
                             <option value="Light">Light</option>
                             <option value="Dark">Dark</option>
                         </select>
+                        <small style="color:#64748b; font-size:12.5px; margin-top:5px; display:block;">Toggle between Light and Dark interface modes.</small>
                     </div>
-                    <div class="ss-form-group">
-                        <label for="ss_accent_color">System Accent Color</label>
-                        <div style="display:flex; gap:8px; align-items:center;">
-                            <input type="color" id="ss_accent_color" value="#002F6C" style="padding:1px 3px; height:38px; width:45px; cursor:pointer; border:1px solid #cbd5e1; border-radius:6px; background:#fff;" oninput="document.getElementById('ss_accent_color_hex').value=this.value.toUpperCase()">
-                            <input type="text" id="ss_accent_color_hex" class="ss-form-control" value="#002F6C" readonly style="background:#f8fafc; font-family:monospace; text-align:center; font-weight:600;">
-                        </div>
-                    </div>
+
                     <div class="ss-form-group">
                         <label for="ss_sidebar_mode">Sidebar Mode</label>
-                        <select id="ss_sidebar_mode" class="ss-form-control">
+                        <select id="ss_sidebar_mode" class="ss-form-control" onchange="onSidebarModeChange(this.value)">
                             <option value="Expanded">Expanded</option>
                             <option value="Collapsed">Collapsed</option>
                         </select>
+                        <small style="color:#64748b; font-size:12.5px; margin-top:5px; display:block;">Default state of the navigation menu on load.</small>
                     </div>
+
                     <div class="ss-form-group">
                         <label for="ss_dashboard_auto_refresh">Auto Refresh Interval (seconds)</label>
                         <input type="number" id="ss_dashboard_auto_refresh" class="ss-form-control" value="10" min="5" max="300" title="Auto refresh interval in seconds (default 10s)">
+                        <small style="color:#64748b; font-size:12.5px; margin-top:5px; display:block;">Real-time background data sync rate (5s - 300s).</small>
                     </div>
                 </div>
             </div>
@@ -736,17 +816,17 @@ input:checked + .ss-slider:before {
                 <div class="ss-form-group" style="margin-bottom: 16px;">
                     <label for="ss_maintenance_end_time" style="display:flex; justify-content:space-between; align-items:center;">
                         <span><i class="fas fa-clock" style="color:#002F6C; margin-right:4px;"></i> Estimated Maintenance Completion Time (Timer)</span>
-                        <span id="maintTimerBadge" style="font-size:11px; font-weight:700; color:#d97706; text-transform:none;">Set target date & time or use quick presets below</span>
+                        <span id="maintTimerBadge" style="font-size:13px; font-weight:700; color:#d97706; text-transform:none;">Set target date & time or use quick presets below</span>
                     </label>
                     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                         <input type="datetime-local" id="ss_maintenance_end_time" class="ss-form-control" style="width:260px;" onchange="updateMaintenanceTimerPreview()">
                         <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                            <button type="button" class="ss-btn ss-btn-light" style="padding:6px 12px; font-size:12px;" onclick="addMaintenanceMinutes(15)">+15 Mins</button>
-                            <button type="button" class="ss-btn ss-btn-light" style="padding:6px 12px; font-size:12px;" onclick="addMaintenanceMinutes(30)">+30 Mins</button>
-                            <button type="button" class="ss-btn ss-btn-light" style="padding:6px 12px; font-size:12px;" onclick="addMaintenanceMinutes(60)">+1 Hour</button>
-                            <button type="button" class="ss-btn ss-btn-light" style="padding:6px 12px; font-size:12px;" onclick="addMaintenanceMinutes(120)">+2 Hours</button>
-                            <button type="button" class="ss-btn ss-btn-light" style="padding:6px 12px; font-size:12px;" onclick="addMaintenanceMinutes(240)">+4 Hours</button>
-                            <button type="button" class="ss-btn ss-btn-light" style="padding:6px 12px; font-size:12px; color:#dc2626;" onclick="clearMaintenanceTimer()">Clear Timer</button>
+                            <button type="button" class="ss-btn ss-btn-light" style="padding:8px 14px; font-size:13.5px; font-weight:600;" onclick="addMaintenanceMinutes(15)">+15 Mins</button>
+                            <button type="button" class="ss-btn ss-btn-light" style="padding:8px 14px; font-size:13.5px; font-weight:600;" onclick="addMaintenanceMinutes(30)">+30 Mins</button>
+                            <button type="button" class="ss-btn ss-btn-light" style="padding:8px 14px; font-size:13.5px; font-weight:600;" onclick="addMaintenanceMinutes(60)">+1 Hour</button>
+                            <button type="button" class="ss-btn ss-btn-light" style="padding:8px 14px; font-size:13.5px; font-weight:600;" onclick="addMaintenanceMinutes(120)">+2 Hours</button>
+                            <button type="button" class="ss-btn ss-btn-light" style="padding:8px 14px; font-size:13.5px; font-weight:600;" onclick="addMaintenanceMinutes(240)">+4 Hours</button>
+                            <button type="button" class="ss-btn ss-btn-light" style="padding:8px 14px; font-size:13.5px; font-weight:600; color:#dc2626;" onclick="clearMaintenanceTimer()">Clear Timer</button>
                         </div>
                     </div>
 
@@ -755,11 +835,11 @@ input:checked + .ss-slider:before {
                         <div style="display:flex; align-items:center; gap:10px;">
                             <i class="fas fa-stopwatch" style="font-size:22px; color:#d97706;"></i>
                             <div>
-                                <div style="font-size:11px; font-weight:700; color:#b45309; text-transform:uppercase; letter-spacing:0.4px;">Live Countdown Timer Preview</div>
+                                <div style="font-size:12.5px; font-weight:700; color:#b45309; text-transform:uppercase; letter-spacing:0.4px;">Live Countdown Timer Preview</div>
                                 <div id="maintCountdownPreview" style="font-size:17px; font-weight:800; color:#92400e; font-family:monospace;">No timer configured</div>
                             </div>
                         </div>
-                        <div id="maintTargetTimePreview" style="font-size:12px; font-weight:600; color:#78350f;">Target: None</div>
+                        <div id="maintTargetTimePreview" style="font-size:13.5px; font-weight:600; color:#78350f;">Target: None</div>
                     </div>
                 </div>
 
@@ -796,8 +876,8 @@ input:checked + .ss-slider:before {
             <i id="toastIcon" class="fas fa-check-circle" style="color:#16a34a; font-size:18px;"></i>
         </div>
         <div style="flex:1; min-width:0;">
-            <div id="toastTitle" style="font-size:13px; font-weight:700; color:#15803d; margin-bottom:3px;">Success</div>
-            <div id="toastMessage" style="font-size:12px; color:#374151; line-height:1.55; font-weight:400;">Settings saved successfully.</div>
+            <div id="toastTitle" style="font-size:15px; font-weight:700; color:#15803d; margin-bottom:3px;">Success</div>
+            <div id="toastMessage" style="font-size:14px; color:#374151; line-height:1.55; font-weight:400;">Settings saved successfully.</div>
         </div>
     </div>
 </div>
@@ -949,9 +1029,29 @@ function populateFormFields(s) {
     document.getElementById('ss_time_format').value = s.time_format || '12H';
     document.getElementById('ss_currency_symbol').value = s.currency_symbol || 'PHP (₱)';
     document.getElementById('ss_theme').value = s.theme || 'Light';
+
+    // Sidebar Navigation Color (priority: sidebar_color -> color_sidebar -> if user set custom accent color (#006b1b) -> default #00264D)
+    let sbCol = s.sidebar_color || s.color_sidebar || '';
+    if (!sbCol && s.system_accent_color && s.system_accent_color !== '#002F6C') {
+        sbCol = s.system_accent_color;
+    }
+    sbCol = sbCol || '#00264D';
+    document.getElementById('ss_sidebar_color').value = sbCol;
+    document.getElementById('ss_sidebar_color_hex').value = sbCol.toUpperCase();
+    onSidebarColorChange(sbCol);
+
+    // Active Navigation Item Color (priority: nav_active_color -> default #E30613)
+    const navActiveCol = s.nav_active_color || '#E30613';
+    document.getElementById('ss_nav_active_color').value = navActiveCol;
+    document.getElementById('ss_nav_active_color_hex').value = navActiveCol.toUpperCase();
+    onNavActiveColorChange(navActiveCol);
+
+    // System Accent Color
     const accentCol = s.system_accent_color || '#002F6C';
     document.getElementById('ss_accent_color').value = accentCol;
     document.getElementById('ss_accent_color_hex').value = accentCol.toUpperCase();
+    onAccentColorChange(accentCol);
+
     document.getElementById('ss_sidebar_mode').value = s.sidebar_mode || 'Expanded';
     document.getElementById('ss_dashboard_auto_refresh').value = s.dashboard_auto_refresh || '10';
     document.getElementById('ss_session_timeout').value = s.session_timeout || '30';
@@ -1264,7 +1364,12 @@ async function saveAllSystemSettings() {
             time_format: document.getElementById('ss_time_format').value,
             currency_symbol: document.getElementById('ss_currency_symbol').value,
             theme: document.getElementById('ss_theme').value,
+            sidebar_color: document.getElementById('ss_sidebar_color').value,
+            color_sidebar: document.getElementById('ss_sidebar_color').value,
+            nav_active_color: document.getElementById('ss_nav_active_color').value,
             system_accent_color: document.getElementById('ss_accent_color').value,
+            color_primary: document.getElementById('ss_accent_color').value,
+            color_button: document.getElementById('ss_accent_color').value,
             sidebar_mode: document.getElementById('ss_sidebar_mode').value,
             dashboard_auto_refresh: document.getElementById('ss_dashboard_auto_refresh').value,
             session_timeout: document.getElementById('ss_session_timeout').value,
@@ -1301,7 +1406,17 @@ async function saveAllSystemSettings() {
             const savedLogo = loadedSettings.company_logo || document.getElementById('logo_preview_img').src;
             updateHeaderBranding(savedLogo, savedName);
 
-            showToast('Settings Saved', 'System settings saved successfully.');
+            // Sync localStorage
+            localStorage.setItem('petronTheme', payload.settings.theme.toLowerCase());
+            localStorage.setItem('sidebarState', payload.settings.sidebar_mode.toLowerCase());
+
+            // Apply live appearance settings to DOM immediately
+            onSidebarColorChange(payload.settings.sidebar_color);
+            onNavActiveColorChange(payload.settings.nav_active_color);
+            onAccentColorChange(payload.settings.system_accent_color);
+            onThemeChange(payload.settings.theme);
+
+            showToast('Settings Saved', 'Appearance & system settings saved successfully.');
             loadSystemSettings(stationId);
         } else {
             showToast('Save Error', data.message || 'Failed to save system settings.', true);
@@ -1372,5 +1487,81 @@ function autoRefreshSuperadminSystemSettings() {
 }
 // ── STRICT 10-SECOND AUTO REFRESH INTERVAL ──
 setInterval(autoRefreshSuperadminSystemSettings, 10000);
+
+// ── REAL-TIME APPEARANCE PREVIEW HANDLERS ────────────────────────────────
+function onSidebarColorChange(val) {
+    if (!val) return;
+    const input = document.getElementById('ss_sidebar_color');
+    const hexInput = document.getElementById('ss_sidebar_color_hex');
+    if (input && input.value !== val) input.value = val;
+    if (hexInput) hexInput.value = val.toUpperCase();
+
+    document.documentElement.style.setProperty('--sidebar-bg', val);
+    const mainSidebar = document.getElementById('mainSidebar');
+    if (mainSidebar) {
+        mainSidebar.style.setProperty('background', val, 'important');
+        mainSidebar.style.setProperty('background-color', val, 'important');
+    }
+    document.querySelectorAll('.sidebar, aside.sidebar').forEach(s => {
+        s.style.setProperty('background', val, 'important');
+        s.style.setProperty('background-color', val, 'important');
+    });
+}
+
+function onNavActiveColorChange(val) {
+    if (!val) return;
+    const input = document.getElementById('ss_nav_active_color');
+    const hexInput = document.getElementById('ss_nav_active_color_hex');
+    if (input && input.value !== val) input.value = val;
+    if (hexInput) hexInput.value = val.toUpperCase();
+
+    document.documentElement.style.setProperty('--nav-active-color', val);
+    document.documentElement.style.setProperty('--petron-red', val);
+    document.querySelectorAll('.nav-item.active').forEach(el => {
+        el.style.setProperty('background-color', val, 'important');
+    });
+    document.querySelectorAll('.sidebar-sub-item.active').forEach(el => {
+        el.style.setProperty('border-left-color', val, 'important');
+    });
+}
+
+function onAccentColorChange(val) {
+    if (!val) return;
+    const input = document.getElementById('ss_accent_color');
+    const hexInput = document.getElementById('ss_accent_color_hex');
+    if (input && input.value !== val) input.value = val;
+    if (hexInput) hexInput.value = val.toUpperCase();
+
+    document.documentElement.style.setProperty('--primary', val);
+    document.documentElement.style.setProperty('--system-accent', val);
+    document.documentElement.style.setProperty('--petron-blue', val);
+}
+
+function onThemeChange(val) {
+    if (val === 'Dark') {
+        document.body.classList.add('dark-theme');
+        localStorage.setItem('petronTheme', 'dark');
+    } else {
+        document.body.classList.remove('dark-theme');
+        localStorage.setItem('petronTheme', 'light');
+    }
+}
+
+function onSidebarModeChange(val) {
+    if (typeof window.petronToggleSidebar === 'function') {
+        const isCollapsed = document.body.classList.contains('sidebar-collapsed');
+        if (val === 'Collapsed' && !isCollapsed) {
+            window.petronToggleSidebar();
+        } else if (val === 'Expanded' && isCollapsed) {
+            window.petronToggleSidebar();
+        }
+    }
+}
+
+function applyColorPreset(sidebarCol, activeCol, accentCol) {
+    onSidebarColorChange(sidebarCol);
+    onNavActiveColorChange(activeCol);
+    onAccentColorChange(accentCol);
+}
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -567,16 +567,49 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
 
 // --- APPEARANCE SETTINGS FROM SYSTEM SETTINGS ---
 $appearance_theme        = $station_settings['theme'] ?? 'Light';
-$appearance_accent_color = $station_settings['system_accent_color'] ?? '#002F6C';
-// Validate hex color format for safety
+$appearance_accent_color = $station_settings['system_accent_color'] ?? $station_settings['color_primary'] ?? '#002F6C';
 if (!preg_match('/^#[0-9A-Fa-f]{3,6}$/', $appearance_accent_color)) {
     $appearance_accent_color = '#002F6C';
 }
+
+// Sidebar Navigation Color priority: sidebar_color -> color_sidebar -> if user set custom accent color (#006b1b) -> default #00264D
+$appearance_sidebar_color = $station_settings['sidebar_color'] ?? $station_settings['color_sidebar'] ?? '';
+if (!preg_match('/^#[0-9A-Fa-f]{3,6}$/', $appearance_sidebar_color)) {
+    if ($appearance_accent_color !== '#002F6C') {
+        $appearance_sidebar_color = $appearance_accent_color;
+    } else {
+        $appearance_sidebar_color = '#00264D';
+    }
+}
+
+// Active Nav Item Color: nav_active_color -> default #E30613
+$appearance_nav_active_color = $station_settings['nav_active_color'] ?? '#E30613';
+if (!preg_match('/^#[0-9A-Fa-f]{3,6}$/', $appearance_nav_active_color)) {
+    $appearance_nav_active_color = '#E30613';
+}
+
+$theme_sidebar_color = $appearance_sidebar_color;
+$theme_primary_color = $appearance_accent_color;
+$theme_button_color  = $appearance_accent_color;
+
 $appearance_sidebar_mode     = $station_settings['sidebar_mode'] ?? 'Expanded';
 $appearance_auto_refresh_sec = (int)($station_settings['dashboard_auto_refresh'] ?? 10);
 if ($appearance_auto_refresh_sec < 5)  $appearance_auto_refresh_sec = 5;
 if ($appearance_auto_refresh_sec > 3600) $appearance_auto_refresh_sec = 3600;
 $appearance_is_dark = (strtolower($appearance_theme) === 'dark');
+// ── Enforce Dynamic Timezone from System Settings ──
+if (function_exists('petron_init_dynamic_timezone')) {
+    petron_init_dynamic_timezone();
+} else {
+    $tzSetting = $station_settings['timezone'] ?? 'Asia/Manila (UTC+8)';
+    $tzIdent = trim(explode(' ', $tzSetting)[0]);
+    if (in_array($tzIdent, timezone_identifiers_list(), true)) {
+        date_default_timezone_set($tzIdent);
+    } else {
+        date_default_timezone_set('Asia/Manila');
+    }
+}
+
 $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'collapsed');
 
  ?>
@@ -793,13 +826,25 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
         -webkit-text-fill-color: inherit !important;
     }
   </style>
-  <style>
+  <style id="petronDynamicAppearanceStyles">
     :root {
         --petron-blue: <?php echo htmlspecialchars($appearance_accent_color); ?> !important;
         --primary: <?php echo htmlspecialchars($appearance_accent_color); ?> !important;
-        --sidebar-bg: <?php echo htmlspecialchars($theme_sidebar_color); ?> !important;
+        --sidebar-bg: <?php echo htmlspecialchars($appearance_sidebar_color); ?> !important;
+        --nav-active-color: <?php echo htmlspecialchars($appearance_nav_active_color); ?> !important;
+        --petron-red: <?php echo htmlspecialchars($appearance_nav_active_color); ?> !important;
         --system-accent: <?php echo htmlspecialchars($appearance_accent_color); ?> !important;
         font-size: <?php echo htmlspecialchars($theme_font_scale); ?>% !important;
+    }
+    #mainSidebar, .sidebar {
+        background: var(--sidebar-bg) !important;
+        background-color: var(--sidebar-bg) !important;
+    }
+    .nav-item.active {
+        background-color: var(--nav-active-color) !important;
+    }
+    .sidebar-sub-item.active {
+        border-left-color: var(--nav-active-color) !important;
     }
     button, .btn, .ss-btn-primary {
         background-color: <?php echo htmlspecialchars($theme_button_color); ?> !important;
@@ -1014,7 +1059,7 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
         --text-main: #333333;
         --text-secondary: #666666;
         --border-color: #e0e0e0;
-        --sidebar-bg: #00264D;
+        --sidebar-bg: <?php echo htmlspecialchars($appearance_sidebar_color); ?>;
         --sidebar-text: #ffffff;
         --header-bg: #ffffff;
         --header-text: #00264D;
@@ -3238,8 +3283,21 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
 window.petronSystemSettings = {
     theme: '<?php echo addslashes($appearance_theme); ?>',
     accentColor: '<?php echo addslashes($appearance_accent_color); ?>',
+    sidebarColor: '<?php echo addslashes($appearance_sidebar_color); ?>',
+    navActiveColor: '<?php echo addslashes($appearance_nav_active_color); ?>',
     sidebarMode: '<?php echo addslashes($appearance_sidebar_mode); ?>',
-    autoRefreshSec: <?php echo (int)$appearance_auto_refresh_sec; ?>
+    autoRefreshSec: <?php echo (int)$appearance_auto_refresh_sec; ?>,
+    timezone: '<?php echo addslashes($station_settings['timezone'] ?? 'Asia/Manila (UTC+8)'); ?>',
+    dateFormat: '<?php echo addslashes($station_settings['date_format'] ?? 'YYYY-MM-DD'); ?>',
+    timeFormat: '<?php echo addslashes($station_settings['time_format'] ?? '12H'); ?>',
+    currencySymbol: '<?php echo addslashes($station_settings['currency_symbol'] ?? 'PHP (₱)'); ?>',
+    bannerDuration: <?php echo (int)($station_settings['banner_duration'] ?? 5); ?>,
+    enableSystemNotifications: <?php echo (isset($station_settings['enable_system_notifications']) && $station_settings['enable_system_notifications'] == '0') ? 'false' : 'true'; ?>,
+    enableErrorNotifications: <?php echo (isset($station_settings['enable_error_notifications']) && $station_settings['enable_error_notifications'] == '0') ? 'false' : 'true'; ?>,
+    defaultPaperSize: '<?php echo addslashes($station_settings['default_paper_size'] ?? 'A4'); ?>',
+    defaultOrientation: '<?php echo addslashes($station_settings['default_orientation'] ?? 'Portrait'); ?>',
+    showCompanyLogoReports: <?php echo (isset($station_settings['show_company_logo_reports']) && $station_settings['show_company_logo_reports'] == '0') ? 'false' : 'true'; ?>,
+    showReportFooter: <?php echo (isset($station_settings['show_report_footer']) && $station_settings['show_report_footer'] == '0') ? 'false' : 'true'; ?>
 };
 </script>
 <!-- NUCLEAR-HEADER-FIX: Force header above any overlays and ensure clicks reach controls -->
@@ -4419,10 +4477,20 @@ require_once __DIR__ . '/rbac_menu.php';
                     <input type="text" name="petron_fake_username_decoy" style="display:none !important;" tabindex="-1" autocomplete="username" />
                     <input type="password" name="petron_fake_password_decoy" style="display:none !important;" tabindex="-1" autocomplete="current-password" />
                     <div style="position: relative; display: flex; align-items: center;">
-                        <i class="fas fa-search" style="position: absolute; left: 14px; color: #94a3b8; font-size: 14px; pointer-events: none;"></i>
+                        <i class="fas fa-search" style="position: absolute; left: 16px; color: #94a3b8; font-size: 16px; pointer-events: none;"></i>
+                        <?php
+                        $is_superadmin_dev_role = in_array($role, ['superadmin', 'developer']);
+                        if ($is_superadmin_dev_role) {
+                            $search_input_placeholder = 'Search Station, User, Module, Setting, or System Reference No...';
+                        } elseif (in_array($role, ['admin', 'manager'])) {
+                            $search_input_placeholder = 'Search Customer, Transaction, JO, Product, PO, or Reference No...';
+                        } else {
+                            $search_input_placeholder = 'Search Customer, Transaction, JO, Product, or Reference No...';
+                        }
+                        ?>
                         <input type="search" id="searchInput" 
                                name="petron_global_system_search"
-                               placeholder="Search Customer, JO, Product, OR No..." 
+                               placeholder="<?= htmlspecialchars($search_input_placeholder) ?>" 
                                autocomplete="chrome-off" 
                                autocapitalize="off" 
                                autocorrect="off"
@@ -4436,7 +4504,7 @@ require_once __DIR__ . '/rbac_menu.php';
                                onpointerdown="this.removeAttribute('readonly');"
                                onfocus="this.removeAttribute('readonly');"
                                onblur="this.setAttribute('readonly', 'readonly');"
-                               style="width: 100%; padding: 8px 14px 8px 38px; border-radius: 20px; border: 1px solid #cbd5e1; font-size: 13px; outline: none; background: #ffffff; color: #0f172a; transition: all 0.15s ease;" />
+                               style="width: 100%; padding: 9px 16px 9px 42px; border-radius: 20px; border: 1px solid #cbd5e1; font-size: 15px; outline: none; background: #ffffff; color: #0f172a; transition: all 0.15s ease;" />
                     </div>
                 </form>
                 <div id="searchSuggestions" style="display: none; position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; max-height: 450px; overflow-y: auto; z-index: 2147483647;"></div>
@@ -4544,21 +4612,21 @@ require_once __DIR__ . '/rbac_menu.php';
             <div class="profile-access" id="profileMenu" onclick="petronToggleProfile(event)">
                 <?php if ($hdr_pic): ?>
                 <img src="<?php echo htmlspecialchars($hdr_pic); ?>" alt="Profile"
-                     style="width:30px;height:30px;border-radius:50%;object-fit:cover;border:2px solid var(--petron-blue);flex-shrink:0;">
+                     style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid var(--petron-blue);flex-shrink:0;">
                 <?php else: ?>
-                <div style="width:30px;height:30px;border-radius:50%;background:var(--petron-blue);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <i class="fas fa-user" style="color:#fff;font-size:13px;"></i>
+                <div style="width:36px;height:36px;border-radius:50%;background:var(--petron-blue);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-user" style="color:#fff;font-size:16px;"></i>
                 </div>
                 <?php endif; ?>
-                <div style="text-align: right; margin-left: 6px;">
-                    <div style="font-weight: 700; font-size: 12px; color: var(--petron-blue); letter-spacing: 0.3px;">
+                <div style="text-align: right; margin-left: 8px;">
+                    <div style="font-weight: 700; font-size: 14px; color: var(--petron-blue); letter-spacing: 0.3px;">
                         <?php echo htmlspecialchars($hdr_display); ?>
                     </div>
-                    <div style="font-size: 10px; color: #888; margin-top: 1px; letter-spacing: 0.5px;">
+                    <div style="font-size: 12px; font-weight: 600; color: #666; margin-top: 2px; letter-spacing: 0.5px;">
                         <?php echo htmlspecialchars($hdr_role); ?>
                     </div>
                 </div>
-                <i class="fas fa-caret-down" style="font-size:0.7em; color:#888; margin-left: 4px;"></i>
+                <i class="fas fa-caret-down" style="font-size:0.85em; color:#666; margin-left: 6px;"></i>
 
                 <?php
                 // Determine dashboard / home URL based on role
@@ -4931,7 +4999,8 @@ require_once __DIR__ . '/rbac_menu.php';
         }
 
         function armToast(toast, duration) {
-            var timeout = (duration === undefined) ? 4000 : Number(duration);
+            var defaultDur = (window.petronSystemSettings && window.petronSystemSettings.bannerDuration) ? (window.petronSystemSettings.bannerDuration * 1000) : 5000;
+            var timeout = (duration === undefined || duration === null) ? defaultDur : Number(duration);
             var close = toast.querySelector('.petron-toast-close, .flash-close');
             if (close) close.addEventListener('click', function() { dismissToast(toast); });
             if (timeout > 0) {
@@ -4951,6 +5020,16 @@ require_once __DIR__ . '/rbac_menu.php';
         window.showToast = window.showToast || function(message, type, duration, title) {
             if (String(message == null ? '' : message).trim() === '') return;
             type = normalizeToastType(type);
+
+            // Enforce System Settings Notification Toggles
+            if (window.petronSystemSettings) {
+                if (type === 'error' && window.petronSystemSettings.enableErrorNotifications === false) {
+                    return; // Suppressed by System Settings
+                }
+                if (type !== 'error' && window.petronSystemSettings.enableSystemNotifications === false) {
+                    return; // Suppressed by System Settings
+                }
+            }
             var container = document.getElementById('petron-toast-container');
             if (!container) return;
             var cleanMsg = String(message).replace(/<[^>]*>?/gm, '').trim();
@@ -5609,21 +5688,34 @@ require_once __DIR__ . '/rbac_menu.php';
 
             // Icon + colour per result type
             var TYPE_META = {
-                'Transaction'    : { icon: 'fas fa-shopping-cart',  color: '#3b82f6' },
-                'Customer'       : { icon: 'fas fa-user',            color: '#10b981' },
-                'Vehicle'        : { icon: 'fas fa-car',             color: '#0284c7' },
-                'Product'        : { icon: 'fas fa-box',             color: '#f59e0b' },
-                'Job Order'      : { icon: 'fas fa-wrench',          color: '#8b5cf6' },
-                'Delivery'       : { icon: 'fas fa-truck',           color: '#ef4444' },
-                'Calendar'       : { icon: 'fas fa-calendar-alt',    color: '#06b6d4' },
-                'Report'         : { icon: 'fas fa-chart-bar',       color: '#64748b' },
-                'Station'        : { icon: 'fas fa-gas-pump',        color: '#002F6C' },
-                'Admin'          : { icon: 'fas fa-user-shield',     color: '#7c3aed' },
-                'System Log'     : { icon: 'fas fa-server',          color: '#dc2626' },
-                'Security'       : { icon: 'fas fa-shield-alt',      color: '#b91c1c' },
-                'Audit Trail'    : { icon: 'fas fa-history',         color: '#0891b2' },
-                'Product Mgmt'   : { icon: 'fas fa-tags',            color: '#e11d48' },
-                'Fuel Management': { icon: 'fas fa-gas-pump',        color: '#f97316' }
+                'Station'        : { icon: 'fas fa-gas-pump',             color: '#002F6C' },
+                'User'           : { icon: 'fas fa-user-shield',          color: '#7c3aed' },
+                'Module'         : { icon: 'fas fa-cubes',                color: '#0284c7' },
+                'Setting'        : { icon: 'fas fa-sliders-h',            color: '#f59e0b' },
+                'System Report'  : { icon: 'fas fa-file-alt',             color: '#10b981' },
+                'Audit Log'      : { icon: 'fas fa-history',              color: '#0891b2' },
+                'System Alert'   : { icon: 'fas fa-exclamation-triangle', color: '#ef4444' },
+                'Transaction'    : { icon: 'fas fa-shopping-cart',        color: '#3b82f6' },
+                'Customer'       : { icon: 'fas fa-user',                 color: '#10b981' },
+                'Vehicle'        : { icon: 'fas fa-car',                  color: '#0284c7' },
+                'Product'        : { icon: 'fas fa-box',                  color: '#f59e0b' },
+                'Job Order'      : { icon: 'fas fa-wrench',               color: '#8b5cf6' },
+                'Delivery'       : { icon: 'fas fa-truck',                color: '#ef4444' },
+                'Calendar'       : { icon: 'fas fa-calendar-alt',         color: '#06b6d4' },
+                'Report'         : { icon: 'fas fa-chart-bar',            color: '#64748b' },
+                'Purchase Order' : { icon: 'fas fa-file-invoice',         color: '#0369a1' },
+                'Stock Request'  : { icon: 'fas fa-boxes',                color: '#d97706' },
+                'Request/Approval': { icon: 'fas fa-clipboard-check',     color: '#7c3aed' },
+                'AR / Credit'    : { icon: 'fas fa-file-invoice-dollar',  color: '#b45309' },
+                'Employee'       : { icon: 'fas fa-id-badge',             color: '#7c3aed' },
+                'Mechanic'       : { icon: 'fas fa-tools',                color: '#059669' },
+                'Admin'          : { icon: 'fas fa-user-shield',          color: '#7c3aed' },
+                'System Log'     : { icon: 'fas fa-server',               color: '#dc2626' },
+                'Security'       : { icon: 'fas fa-shield-alt',           color: '#b91c1c' },
+                'Audit Trail'    : { icon: 'fas fa-history',              color: '#0891b2' },
+                'Product Mgmt'   : { icon: 'fas fa-tags',                 color: '#e11d48' },
+                'Fuel Management': { icon: 'fas fa-gas-pump',             color: '#f97316' },
+                'Fuel Reading'   : { icon: 'fas fa-tachometer-alt',       color: '#ea580c' }
             };
 
             // ── Resolve a relative link from search.php to an absolute URL ──
@@ -5737,20 +5829,6 @@ require_once __DIR__ . '/rbac_menu.php';
                     });
                 });
 
-                // "View all results" footer link
-                var _base = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
-                var viewAll = document.createElement('a');
-                viewAll.href = _base + '/public/search.php?q=' + encodeURIComponent(query);
-                viewAll.style.cssText =
-                    'display:flex;align-items:center;justify-content:center;gap:6px;' +
-                    'padding:10px 14px;font-size:12px;font-weight:600;color:#3b82f6;' +
-                    'border-top:1px solid #e2e8f0;text-decoration:none;background:#f8fafc;' +
-                    'border-radius:0 0 12px 12px;transition:background .12s;';
-                viewAll.addEventListener('mouseenter', function() { viewAll.style.background = '#eff6ff'; });
-                viewAll.addEventListener('mouseleave', function() { viewAll.style.background = '#f8fafc'; });
-                viewAll.innerHTML = '<i class="fas fa-search" style="font-size:11px;"></i> View all results for &ldquo;' + esc(query) + '&rdquo;';
-                searchSuggestions.appendChild(viewAll);
-
                 searchSuggestions.style.display = 'block';
             }
 
@@ -5798,12 +5876,6 @@ require_once __DIR__ . '/rbac_menu.php';
                             var dest2 = resolveLink(flatResults[0].link);
                             if (dest2 && dest2 !== '#') { window.location.href = dest2; return; }
                         }
-                    }
-                    // Fallback: full search page
-                    var q = this.value.trim();
-                    if (q.length >= 2) {
-                        var _base = (window.pageData && window.pageData.appBasePath) ? window.pageData.appBasePath : '';
-                        window.location.href = _base + '/public/search.php?q=' + encodeURIComponent(q);
                     }
                 } else if (e.key === 'ArrowDown') {
                     e.preventDefault();

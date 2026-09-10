@@ -526,7 +526,7 @@ try {
             case 'manager_approval':
             case 'master_data_approval':
             case 'admin_approval':
-                if ($role === 'admin') return 'admin_user_management.php';
+                if ($role === 'admin') return 'users.php';
                 return 'manager_fuel_transaction_validation.php';
             case 'fuel_calibration':
                 if ($role === 'admin') return 'admin_calibration_review.php';

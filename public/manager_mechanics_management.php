@@ -1764,6 +1764,18 @@ function showToastNotification(message, type = "success", title = "") {
 
 document.addEventListener("DOMContentLoaded", function() {
     try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const searchVal = urlParams.get('search');
+        if (searchVal) {
+            const searchInput = document.getElementById('tableSearch');
+            if (searchInput) {
+                searchInput.value = searchVal;
+                if (typeof filterTable === 'function') filterTable();
+            }
+        }
+    } catch(e) {}
+
+    try {
         const savedMsg  = sessionStorage.getItem("toastMsg");
         const savedType = sessionStorage.getItem("toastType") || "success";
         if (savedMsg) {

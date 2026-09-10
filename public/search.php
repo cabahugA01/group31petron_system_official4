@@ -23,6 +23,10 @@
 
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
+global $pdo;
+if (!isset($pdo) || !$pdo) {
+    $pdo = function_exists('get_pdo_connection') ? get_pdo_connection() : null;
+}
 require_login();
 
 $me          = current_user();
@@ -39,18 +43,25 @@ $query   = trim($_GET['q'] ?? '');
 $is_ajax = isset($_GET['ajax']);
 $results = [];
 
-// ── Helper: build station WHERE clause ───────────────────────
-function station_where(string $alias, int $station_id): string {
-    return $station_id ? "AND {$alias}.station_id = {$station_id}" : '';
-}
-
-// Log full page search queries
-if (!empty($query) && !$is_ajax) {
-    log_activity($pdo, $user_id, 'Global Search', "User searched for: {$query}");
+// Standalone "View all results" page is permanently removed.
+// If accessed directly in browser, redirect user to their respective dashboard.
+if (!$is_ajax) {
+    $redirect_url = in_array($role, ['superadmin', 'developer']) 
+        ? 'super_admin_dashboard.php' 
+        : ($role === 'admin' ? 'admin_dashboard.php' : ($role === 'manager' ? 'manager_dashboard.php' : 'staff_dashboard.php'));
+    header('Location: ' . $redirect_url);
+    exit;
 }
 
 // ── Icon map per category ─────────────────────────────────────
 $ICONS = [
+    'Station'          => 'fas fa-gas-pump',
+    'User'             => 'fas fa-user-shield',
+    'Module'           => 'fas fa-cubes',
+    'Setting'          => 'fas fa-sliders-h',
+    'System Report'    => 'fas fa-file-alt',
+    'Audit Log'        => 'fas fa-history',
+    'System Alert'     => 'fas fa-exclamation-triangle',
     'Transaction'      => 'fas fa-shopping-cart',
     'Customer'         => 'fas fa-user',
     'Vehicle'          => 'fas fa-car',
@@ -61,14 +72,27 @@ $ICONS = [
     'Report'           => 'fas fa-chart-bar',
     'Product Mgmt'     => 'fas fa-tags',
     'Fuel Management'  => 'fas fa-gas-pump',
-    'Station'          => 'fas fa-gas-pump',
+    'Purchase Order'   => 'fas fa-file-invoice',
+    'Stock Request'    => 'fas fa-boxes',
+    'Request/Approval' => 'fas fa-clipboard-check',
+    'AR / Credit'      => 'fas fa-file-invoice-dollar',
+    'Employee'         => 'fas fa-id-badge',
+    'Mechanic'         => 'fas fa-tools',
     'Admin'            => 'fas fa-user-shield',
     'System Log'       => 'fas fa-server',
     'Security'         => 'fas fa-shield-alt',
     'Audit Trail'      => 'fas fa-history',
+    'Fuel Reading'     => 'fas fa-tachometer-alt',
 ];
 
 $COLORS = [
+    'Station'          => '#002F6C',
+    'User'             => '#7c3aed',
+    'Module'           => '#0284c7',
+    'Setting'          => '#f59e0b',
+    'System Report'    => '#10b981',
+    'Audit Log'        => '#0891b2',
+    'System Alert'     => '#ef4444',
     'Transaction'      => '#3b82f6',
     'Customer'         => '#10b981',
     'Vehicle'          => '#0284c7',
@@ -79,1350 +103,1422 @@ $COLORS = [
     'Report'           => '#64748b',
     'Product Mgmt'     => '#e11d48',
     'Fuel Management'  => '#f97316',
-    'Station'          => '#002F6C',
+    'Purchase Order'   => '#0369a1',
+    'Stock Request'    => '#d97706',
+    'Request/Approval' => '#7c3aed',
+    'AR / Credit'      => '#b45309',
+    'Employee'         => '#7c3aed',
+    'Mechanic'         => '#059669',
     'Admin'            => '#7c3aed',
     'System Log'       => '#dc2626',
     'Security'         => '#b91c1c',
     'Audit Trail'      => '#0891b2',
+    'Fuel Reading'     => '#ea580c',
 ];
 
 $is_manager = in_array($role, ['manager', 'admin', 'superadmin', 'developer']);
+$is_admin   = ($role === 'admin');
 
 if (!empty($query)) {
     $like      = "%{$query}%";
     $date_like = '%' . str_replace(['/', '-', ' '], '%', $query) . '%';
+    $is_superadmin_dev = in_array($role, ['superadmin', 'developer']);
 
-    // ════════════════════════════════════════════════════════
-    // 1. TRANSACTIONS  (merchandise + fuel)
-    // ════════════════════════════════════════════════════════
-    if (is_module_enabled('transactions') || in_array($role, ['superadmin', 'developer'])) {
+    if ($is_superadmin_dev) {
+        // ════════════════════════════════════════════════════════════════════════
+        // SUPER ADMIN / DEVELOPER: STRICT SYSTEM ADMINISTRATION SEARCH ONLY
+        // ❌ NO Customers, NO Purchases, NO Job Orders, NO Merchandise/Fuel Sales, NO AR/Utang
+        // ✔️ Stations, Users, Modules, System Settings, System Reports, Audit References, System Alerts
+        // ════════════════════════════════════════════════════════════════════════
 
-        // -- Merchandise transactions --
-        try {
-            $sw   = $station_id ? "AND mt.station_id = {$station_id}" : '';
-            $stmt = $pdo->prepare(
-                "SELECT mt.id, mt.transaction_id, mt.status,
-                        mt.created_at, mt.payment_method,
-                        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name
-                 FROM merchandise_transactions mt
-                 LEFT JOIN users u ON u.id = mt.staff_id
-                 WHERE (mt.transaction_id LIKE ?
-                     OR mt.status         LIKE ?
-                     OR mt.payment_method LIKE ?
-                     OR u.username        LIKE ?
-                     OR DATE(mt.created_at) LIKE ?)
-                   {$sw}
-                 ORDER BY mt.created_at DESC LIMIT 10"
-            );
-            $stmt->execute([$like, $like, $like, $like, $date_like]);
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $txn_id = $r['transaction_id'] ?? ('#' . $r['id']);
-                $ts     = date('M d, Y H:i', strtotime($r['created_at']));
-                $txn_q  = urlencode($txn_id);
-
-                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                    $txn_link = 'admin_transactions_oversight.php?search=' . $txn_q;
-                } elseif ($role === 'manager') {
-                    $txn_link = 'manager_transaction_monitoring.php?search=' . $txn_q;
-                } else {
-                    $txn_link = 'staff_transactions_hub.php?section=history&hsearch=' . $txn_q;
-                }
-
-                $results[] = [
-                    'type'     => 'Transaction',
-                    'title'    => "Transaction {$txn_id}",
-                    'subtitle' => "Status: {$r['status']} · {$ts}",
-                    'meta'     => $r['payment_method'] ?? '',
-                    'link'     => $txn_link,
-                    'icon'     => $ICONS['Transaction'],
-                    'color'    => $COLORS['Transaction'],
-                ];
-            }
-        } catch (Exception $e) {}
-
-        // -- Fuel transactions --
-        try {
-            $sw   = $station_id ? "AND ft.station_id = {$station_id}" : '';
-            $stmt = $pdo->prepare(
-                "SELECT ft.id, ft.status, ft.fuel_type,
-                        ft.transaction_date, ft.shift_period
-                 FROM fuel_transactions ft
-                 WHERE (ft.fuel_type    LIKE ?
-                     OR ft.status       LIKE ?
-                     OR ft.shift_period LIKE ?
-                     OR CAST(ft.id AS CHAR) LIKE ?
-                     OR DATE(ft.transaction_date) LIKE ?)
-                   {$sw}
-                 ORDER BY ft.transaction_date DESC LIMIT 10"
-            );
-            $stmt->execute([$like, $like, $like, $like, $date_like]);
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $ts     = date('M d, Y H:i', strtotime($r['transaction_date']));
-                $fuel_q = urlencode($r['id']);
-
-                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                    $txn_link = 'admin_fuel_transactions_oversight.php?search=' . $fuel_q;
-                } elseif ($role === 'manager') {
-                    $txn_link = 'manager_fuel_transaction_validation.php?search=' . $fuel_q;
-                } else {
-                    $txn_link = 'staff_transactions_hub.php?section=fuel';
-                }
-
-                $results[] = [
-                    'type'     => 'Transaction',
-                    'title'    => "Fuel Transaction #{$r['id']} — {$r['fuel_type']}",
-                    'subtitle' => "Status: {$r['status']} · {$ts}",
-                    'meta'     => $r['shift_period'] ?? '',
-                    'link'     => $txn_link,
-                    'icon'     => $ICONS['Transaction'],
-                    'color'    => $COLORS['Transaction'],
-                ];
-            }
-        } catch (Exception $e) {}
-    }
-
-    // ════════════════════════════════════════════════════════
-    // 2. CUSTOMERS  (name, phone, email, customer_code, status)
-    // ════════════════════════════════════════════════════════
-    if (is_module_enabled('customers') || in_array($role, ['superadmin', 'developer'])) {
-        try {
-            $sw   = $station_id ? "AND c.station_id = {$station_id}" : '';
-            $stmt = $pdo->prepare(
-                "SELECT c.id, c.name, c.phone, c.email, c.status, c.customer_code
-                 FROM customers c
-                 WHERE (c.name          LIKE ?
-                     OR c.phone         LIKE ?
-                     OR c.email         LIKE ?
-                     OR c.customer_code LIKE ?
-                     OR c.status        LIKE ?)
-                   {$sw}
-                 ORDER BY c.name ASC LIMIT 10"
-            );
-            $stmt->execute([$like, $like, $like, $like, $like]);
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $contact = $r['phone'] ?: ($r['email'] ?: 'No contact');
-                $code    = $r['customer_code'] ? " · ID: {$r['customer_code']}" : '';
-                $cust_q  = urlencode($r['name']);
-
-                // admin & above share the manager_customers page (no separate admin version exists)
-                $cust_link = ($role === 'staff')
-                    ? 'staff_customer_list.php?search=' . $cust_q
-                    : 'manager_customers.php?search='   . $cust_q;
-
-                $results[] = [
-                    'type'     => 'Customer',
-                    'title'    => $r['name'],
-                    'subtitle' => "{$contact}{$code} · Status: {$r['status']}",
-                    'meta'     => $r['status'],
-                    'link'     => $cust_link,
-                    'icon'     => $ICONS['Customer'],
-                    'color'    => $COLORS['Customer'],
-                ];
-            }
-        } catch (Exception $e) {}
-    }
-
-    // ════════════════════════════════════════════════════════
-    // 2.5 VEHICLES  (plate number, brand, model, color)
-    // ════════════════════════════════════════════════════════
-    try {
-        $sw   = $station_id ? "AND (c.station_id = {$station_id} OR c.station_id IS NULL)" : '';
-        $stmt = $pdo->prepare(
-            "SELECT cv.id, cv.plate_number, cv.brand, cv.model, cv.color,
-                    c.name AS owner_name
-             FROM customer_vehicles cv
-             LEFT JOIN customers c ON c.id = cv.customer_id
-             WHERE (cv.plate_number LIKE ?
-                 OR cv.brand        LIKE ?
-                 OR cv.model        LIKE ?
-                 OR cv.color        LIKE ?)
-               {$sw}
-             ORDER BY cv.plate_number ASC LIMIT 10"
-        );
-        $stmt->execute([$like, $like, $like, $like]);
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $owner   = $r['owner_name'] ? " · Owner: {$r['owner_name']}" : '';
-            $desc    = trim("{$r['brand']} {$r['model']} {$r['color']}") ?: 'Vehicle';
-            $veh_q   = urlencode($r['plate_number']);
-            $veh_link = ($role === 'staff')
-                ? 'staff_customer_list.php?search=' . $veh_q
-                : 'manager_customers.php?search='   . $veh_q;
-
-            $results[] = [
-                'type'     => 'Vehicle',
-                'title'    => "Vehicle {$r['plate_number']}",
-                'subtitle' => "{$desc}{$owner}",
-                'meta'     => $r['plate_number'],
-                'link'     => $veh_link,
-                'icon'     => $ICONS['Vehicle'] ?? 'fas fa-car',
-                'color'    => $COLORS['Vehicle'] ?? '#0284c7',
-            ];
-        }
-    } catch (Exception $e) {}
-
-    // ════════════════════════════════════════════════════════
-    // 3. PRODUCTS & INVENTORY  (active products only)
-    // ════════════════════════════════════════════════════════
-    if (is_module_enabled('inventory') || in_array($role, ['superadmin', 'developer'])) {
-        try {
-            if ($station_id) {
-                $stmt = $pdo->prepare(
-                    "SELECT ip.id, ip.product_name, ip.sku, ip.category,
-                            COALESCE(si.stock_level, ip.stock) AS stock_level,
-                            ip.unit_price
-                     FROM inventory_products ip
-                     LEFT JOIN station_inventory si
-                            ON si.product_id = ip.id AND si.station_id = ?
-                     WHERE ip.status = 'active'
-                       AND (ip.product_name LIKE ?
-                         OR ip.sku          LIKE ?
-                         OR ip.category     LIKE ?
-                         OR CAST(COALESCE(si.stock_level, ip.stock) AS CHAR) LIKE ?)
-                     ORDER BY ip.product_name ASC LIMIT 10"
-                );
-                $stmt->execute([$station_id, $like, $like, $like, $like]);
-            } else {
-                $stmt = $pdo->prepare(
-                    "SELECT id, product_name, sku, category,
-                            stock AS stock_level, unit_price
-                     FROM inventory_products
-                     WHERE status = 'active'
-                       AND (product_name LIKE ?
-                         OR sku          LIKE ?
-                         OR category     LIKE ?
-                         OR CAST(stock AS CHAR) LIKE ?)
-                     ORDER BY product_name ASC LIMIT 10"
-                );
-                $stmt->execute([$like, $like, $like, $like]);
-            }
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $stock      = (int)($r['stock_level'] ?? 0);
-                $avail      = $stock > 0 ? "In Stock ({$stock})" : 'Out of Stock';
-                $p_q        = urlencode($r['product_name']);
-                $cat_lower  = strtolower(trim((string)($r['category'] ?? '')));
-                $name_lower = strtolower(trim((string)($r['product_name'] ?? '')));
-
-                $is_fuel = (strpos($cat_lower, 'fuel') !== false ||
-                            strpos($name_lower, 'diesel')    !== false ||
-                            strpos($name_lower, 'xcs')       !== false ||
-                            strpos($name_lower, 'kerosene')  !== false ||
-                            strpos($name_lower, 'xtra')      !== false ||
-                            strpos($name_lower, 'unleaded')  !== false ||
-                            strpos($name_lower, 'gasoline')  !== false);
-
-                if ($is_fuel) {
-                    if (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                        $inv_link = 'admin_inventory_fuel.php?search=' . $p_q;
-                    } elseif ($role === 'manager') {
-                        $inv_link = 'manager_inventory_fuel.php?search=' . $p_q;
-                    } else {
-                        $inv_link = 'staff_inventory_fuel.php?search=' . $p_q;
-                    }
-                    $icon  = 'fas fa-gas-pump';
-                    $color = '#f97316';
-                } else {
-                    if (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                        $inv_link = 'admin_inventory_merchandise.php?search=' . $p_q;
-                    } elseif ($role === 'manager') {
-                        $inv_link = 'manager_inventory_merchandise.php?search=' . $p_q;
-                    } else {
-                        $inv_link = 'staff_inventory_merchandise.php?search=' . $p_q;
-                    }
-                    $icon  = $ICONS['Product'];
-                    $color = $COLORS['Product'];
-                }
-
-                $results[] = [
-                    'type'     => 'Product',
-                    'title'    => $r['product_name'],
-                    'subtitle' => "SKU: {$r['sku']} · {$r['category']} · {$avail}",
-                    'meta'     => $r['category'],
-                    'link'     => $inv_link,
-                    'icon'     => $icon,
-                    'color'    => $color,
-                ];
-            }
-
-            // Also search fuel_inventory tanks directly
-            try {
-                if ($station_id) {
-                    $stmt_fuel = $pdo->prepare(
-                        "SELECT fi.id, fi.fuel_type, fi.current_level, fi.capacity, fi.price_per_liter
-                         FROM fuel_inventory fi
-                         WHERE fi.station_id = ?
-                           AND (fi.fuel_type LIKE ? OR CAST(fi.current_level AS CHAR) LIKE ?)
-                         ORDER BY fi.fuel_type ASC LIMIT 5"
-                    );
-                    $stmt_fuel->execute([$station_id, $like, $like]);
-                } else {
-                    $stmt_fuel = $pdo->prepare(
-                        "SELECT fi.id, fi.fuel_type, fi.current_level, fi.capacity, fi.price_per_liter
-                         FROM fuel_inventory fi
-                         WHERE (fi.fuel_type LIKE ? OR CAST(fi.current_level AS CHAR) LIKE ?)
-                         ORDER BY fi.fuel_type ASC LIMIT 5"
-                    );
-                    $stmt_fuel->execute([$like, $like]);
-                }
-                foreach ($stmt_fuel->fetchAll(PDO::FETCH_ASSOC) as $fr) {
-                    $fq = urlencode($fr['fuel_type']);
-                    if (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                        $fuel_inv_link = 'admin_inventory_fuel.php?search=' . $fq;
-                    } elseif ($role === 'manager') {
-                        $fuel_inv_link = 'manager_inventory_fuel.php?search=' . $fq;
-                    } else {
-                        $fuel_inv_link = 'staff_inventory_fuel.php?search=' . $fq;
-                    }
-                    $results[] = [
-                        'type'     => 'Product',
-                        'title'    => $fr['fuel_type'],
-                        'subtitle' => "Fuel Inventory · Level: {$fr['current_level']}L / {$fr['capacity']}L",
-                        'meta'     => 'Fuel',
-                        'link'     => $fuel_inv_link,
-                        'icon'     => 'fas fa-gas-pump',
-                        'color'    => '#f97316',
-                    ];
-                }
-            } catch (Exception $e_fuel) {}
-        } catch (Exception $e) {}
-    }
-
-    // ════════════════════════════════════════════════════════
-    // 4. JOB ORDERS  (job_order_id, customer, service, status)
-    // ════════════════════════════════════════════════════════
-    if (is_module_enabled('job_orders') || in_array($role, ['superadmin', 'developer'])) {
-        try {
-            $sw = $station_id ? "AND jo.station_id = {$station_id}" : '';
-            $uf = $role === 'staff'
-                ? "AND (jo.created_by = {$user_id} OR jo.assigned_to = {$user_id})"
-                : '';
-            $stmt = $pdo->prepare(
-                "SELECT jo.id, jo.job_order_id, jo.status,
-                        jo.customer_name, jo.service_type, jo.created_at,
-                        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name
-                 FROM job_orders jo
-                 LEFT JOIN users u ON u.id = jo.created_by
-                 WHERE (jo.job_order_id  LIKE ?
-                     OR jo.customer_name LIKE ?
-                     OR jo.service_type  LIKE ?
-                     OR jo.status        LIKE ?
-                     OR u.username       LIKE ?)
-                   {$sw} {$uf}
-                 ORDER BY jo.created_at DESC LIMIT 10"
-            );
-            $stmt->execute([$like, $like, $like, $like, $like]);
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $jo_num  = $r['job_order_id'] ?? ('#' . $r['id']);
-                $jo_q    = urlencode($jo_num);
-
-                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                    $jo_link = 'admin_transactions_oversight.php?search=' . $jo_q;
-                } elseif ($role === 'manager') {
-                    $jo_link = 'manager_job_orders.php?search=' . $jo_q;
-                } else {
-                    $jo_link = 'staff_transactions_hub.php?section=history&hsearch=' . $jo_q;
-                }
-
-                $results[] = [
-                    'type'     => 'Job Order',
-                    'title'    => "Job Order {$jo_num}",
-                    'subtitle' => "{$r['service_type']} · {$r['customer_name']} · {$r['status']}",
-                    'meta'     => $r['status'],
-                    'link'     => $jo_link,
-                    'icon'     => $ICONS['Job Order'],
-                    'color'    => $COLORS['Job Order'],
-                ];
-            }
-        } catch (Exception $e) {}
-    }
-
-    // ════════════════════════════════════════════════════════
-    // 5. DELIVERIES  (id, supplier, status, delivery_type)
-    // ════════════════════════════════════════════════════════
-    if (is_module_enabled('deliveries') || in_array($role, ['superadmin', 'developer'])) {
-        try {
-            $sw = $station_id ? "AND do2.station_id = {$station_id}" : '';
-            $uf = $role === 'staff'
-                ? "AND (do2.encoded_by = {$user_id} OR do2.assigned_to = {$user_id})"
-                : '';
-            $stmt = $pdo->prepare(
-                "SELECT do2.id, do2.status, do2.supplier,
-                        do2.delivery_date, do2.delivery_type,
-                        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name
-                 FROM deliveries_oversight do2
-                 LEFT JOIN users u ON u.id = do2.encoded_by
-                 WHERE (CAST(do2.id AS CHAR) LIKE ?
-                     OR do2.status        LIKE ?
-                     OR do2.supplier      LIKE ?
-                     OR do2.delivery_type LIKE ?
-                     OR u.username        LIKE ?)
-                   {$sw} {$uf}
-                 ORDER BY do2.delivery_date DESC LIMIT 10"
-            );
-            $stmt->execute([$like, $like, $like, $like, $like]);
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $dt    = $r['delivery_date'] ? date('M d, Y', strtotime($r['delivery_date'])) : 'TBD';
-                $del_q = urlencode($r['id']);
-
-                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                    $del_link = 'admin_merchandise_deliveries_oversight.php?search=' . $del_q;
-                } elseif ($role === 'manager') {
-                    $del_link = 'manager_merchandise_deliveries.php?search=' . $del_q;
-                } else {
-                    $del_link = 'staff_delivery_history.php?search=' . $del_q;
-                }
-
-                $results[] = [
-                    'type'     => 'Delivery',
-                    'title'    => "Delivery #{$r['id']} — {$r['supplier']}",
-                    'subtitle' => "Status: {$r['status']} · {$dt} · {$r['delivery_type']}",
-                    'meta'     => $r['status'],
-                    'link'     => $del_link,
-                    'icon'     => $ICONS['Delivery'],
-                    'color'    => $COLORS['Delivery'],
-                ];
-            }
-        } catch (Exception $e) {}
-    }
-
-    // ════════════════════════════════════════════════════════
-    // 6. CALENDAR / SCHEDULE  (title, event_type, date)
-    // ════════════════════════════════════════════════════════
-    if (is_module_enabled('calendar') || in_array($role, ['superadmin', 'developer'])) {
-        try {
-            $sw = $station_id ? "AND (ce.station_id = {$station_id} OR ce.station_id IS NULL)" : '';
-            $uf = $role === 'staff'
-                ? "AND (ce.user_id = {$user_id} OR ce.user_id IS NULL OR ce.assigned_to = {$user_id})"
-                : '';
-            $stmt = $pdo->prepare(
-                "SELECT ce.id, ce.title, ce.start_time, ce.end_time,
-                        ce.event_type, ce.description,
-                        u.username AS assigned_name
-                 FROM calendar_events ce
-                 LEFT JOIN users u ON u.id = ce.user_id
-                 WHERE (ce.title       LIKE ?
-                     OR ce.event_type  LIKE ?
-                     OR ce.description LIKE ?
-                     OR u.username     LIKE ?
-                     OR DATE(ce.start_time) LIKE ?)
-                   {$sw} {$uf}
-                 ORDER BY ce.start_time DESC LIMIT 10"
-            );
-            $stmt->execute([$like, $like, $like, $like, $date_like]);
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $start = $r['start_time'] ? date('M d, Y h:i A', strtotime($r['start_time'])) : 'TBD';
-                $end   = $r['end_time']   ? date('h:i A', strtotime($r['end_time']))           : '';
-                $range = $end ? "{$start} – {$end}" : $start;
-
-                if (in_array($role, ['admin', 'superadmin', 'developer'])) {
-                    $cal_link = 'admin_calendar.php';
-                } elseif ($role === 'manager') {
-                    $cal_link = 'manager_calendar.php';
-                } else {
-                    $cal_link = 'staff_calendar.php';
-                }
-
-                $results[] = [
-                    'type'     => 'Calendar',
-                    'title'    => $r['title'] ?: ucfirst($r['event_type'] ?? 'Event'),
-                    'subtitle' => $range . ($r['assigned_name'] ? " · {$r['assigned_name']}" : ''),
-                    'meta'     => $r['event_type'] ?? '',
-                    'link'     => $cal_link,
-                    'icon'     => $ICONS['Calendar'],
-                    'color'    => $COLORS['Calendar'],
-                ];
-            }
-        } catch (Exception $e) {}
-    }
-
-    // ════════════════════════════════════════════════════════
-    // 7. REPORTS  (activity_logs with report/summary keywords)
-    // ════════════════════════════════════════════════════════
-    if (is_module_enabled('reports') || in_array($role, ['superadmin', 'developer'])) {
-        try {
-            $sw = $station_id ? "AND (al.station_id = {$station_id} OR al.station_id IS NULL)" : '';
-            $stmt = $pdo->prepare(
-                "SELECT al.id, al.action, al.details, al.created_at
-                 FROM activity_logs al
-                 WHERE (al.action LIKE ? OR al.details LIKE ?)
-                   AND (al.action LIKE '%Summary%'
-                     OR al.action LIKE '%Report%'
-                     OR al.action LIKE '%Completion%'
-                     OR al.details LIKE '%daily%'
-                     OR al.details LIKE '%summary%'
-                     OR al.details LIKE '%report%')
-                   {$sw}
-                 ORDER BY al.created_at DESC LIMIT 8"
-            );
-            $stmt->execute([$like, $like]);
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $ts = date('M d, Y H:i', strtotime($r['created_at']));
-
-                if (in_array($role, ['superadmin', 'developer'])) {
-                    $report_link = 'reports_technical.php';
-                } elseif ($role === 'admin') {
-                    $report_link = 'admin_reports.php';
-                } elseif ($role === 'manager') {
-                    $report_link = 'manager_reports.php';
-                } else {
-                    $report_link = 'staff_reports.php';
-                }
-
-                $results[] = [
-                    'type'     => 'Report',
-                    'title'    => $r['action'],
-                    'subtitle' => mb_strimwidth($r['details'] ?? '', 0, 80, '…') . " · {$ts}",
-                    'meta'     => $ts,
-                    'link'     => $report_link,
-                    'icon'     => $ICONS['Report'],
-                    'color'    => $COLORS['Report'],
-                ];
-            }
-        } catch (Exception $e) {}
-    }
-
-    // ════════════════════════════════════════════════════════
-    // 8. PRODUCT MANAGEMENT  (manager / admin — pricing view)
-    //    Active products only
-    // ════════════════════════════════════════════════════════
-    if ($is_manager) {
-        try {
-            $stmt = $pdo->prepare(
-                "SELECT ip.id, ip.product_name, ip.sku, ip.category,
-                        ip.unit_price, ip.cost_price, ip.stock AS stock_level
-                 FROM inventory_products ip
-                 WHERE ip.status = 'active'
-                   AND (ip.product_name LIKE ?
-                     OR ip.sku          LIKE ?
-                     OR ip.category     LIKE ?
-                     OR CAST(ip.unit_price AS CHAR) LIKE ?
-                     OR CAST(ip.cost_price AS CHAR) LIKE ?)
-                 ORDER BY ip.product_name ASC LIMIT 10"
-            );
-            $stmt->execute([$like, $like, $like, $like, $like]);
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $price = $r['unit_price'] ? '₱' . number_format($r['unit_price'], 2) : 'No price';
-                $cost  = $r['cost_price']  ? ' · Cost: ₱' . number_format($r['cost_price'], 2) : '';
-                $pm_q  = urlencode($r['product_name']);
-
-                $prod_mgmt_link = in_array($role, ['admin', 'superadmin', 'developer'])
-                    ? 'admin_set_prices.php?tab=merch&search='   . $pm_q
-                    : 'manager_set_prices.php?tab=merch&search=' . $pm_q;
-
-                $results[] = [
-                    'type'     => 'Product Mgmt',
-                    'title'    => $r['product_name'],
-                    'subtitle' => "SKU: {$r['sku']} · {$r['category']} · Price: {$price}{$cost}",
-                    'meta'     => $r['category'],
-                    'link'     => $prod_mgmt_link,
-                    'icon'     => $ICONS['Product Mgmt'],
-                    'color'    => $COLORS['Product Mgmt'],
-                ];
-            }
-        } catch (Exception $e) {}
-    }
-
-    // ════════════════════════════════════════════════════════
-    // 9. FUEL MANAGEMENT  (manager / admin — tanks + pump readings)
-    // ════════════════════════════════════════════════════════
-    if ($is_manager) {
-        // Fuel tanks
-        try {
-            $sw2  = $station_id ? "AND fi.station_id = {$station_id}" : '';
-            $stmt = $pdo->prepare(
-                "SELECT fi.id, fi.fuel_type, fi.current_level, fi.capacity, fi.station_id
-                 FROM fuel_inventory fi
-                 WHERE (fi.fuel_type LIKE ?
-                     OR CAST(fi.current_level AS CHAR) LIKE ?
-                     OR CAST(fi.capacity      AS CHAR) LIKE ?)
-                   {$sw2}
-                 ORDER BY fi.fuel_type ASC LIMIT 8"
-            );
-            $stmt->execute([$like, $like, $like]);
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $pct  = $r['capacity'] > 0 ? round(($r['current_level'] / $r['capacity']) * 100) : 0;
-                $fuel_mgmt_link = in_array($role, ['admin', 'superadmin', 'developer'])
-                    ? 'admin_set_prices.php?tab=fuel'
-                    : 'manager_set_prices.php?tab=fuel';
-
-                $results[] = [
-                    'type'     => 'Fuel Management',
-                    'title'    => "Fuel Tank — {$r['fuel_type']}",
-                    'subtitle' => "Level: {$r['current_level']}L / {$r['capacity']}L ({$pct}%)",
-                    'meta'     => $r['fuel_type'],
-                    'link'     => $fuel_mgmt_link,
-                    'icon'     => $ICONS['Fuel Management'],
-                    'color'    => $COLORS['Fuel Management'],
-                ];
-            }
-        } catch (Exception $e) {}
-
-        // Pump daily readings
-        try {
-            $sw2  = $station_id ? "AND fdr.station_id = {$station_id}" : '';
-            $stmt = $pdo->prepare(
-                "SELECT fdr.id, fdr.pump_number, fdr.computed_liters,
-                        fdr.reading_date, fp.fuel_type
-                 FROM fuel_daily_readings fdr
-                 LEFT JOIN fuel_pumps fp ON fp.id = fdr.pump_id
-                 WHERE (CAST(fdr.pump_number AS CHAR) LIKE ?
-                     OR fp.fuel_type LIKE ?
-                     OR DATE(fdr.reading_date) LIKE ?)
-                   {$sw2}
-                 ORDER BY fdr.reading_date DESC LIMIT 8"
-            );
-            $stmt->execute([$like, $like, $date_like]);
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $dt   = date('M d, Y', strtotime($r['reading_date']));
-                $pump = $r['pump_number'] ?? $r['id'];
-                $fuel_mgmt_link = in_array($role, ['admin', 'superadmin', 'developer'])
-                    ? 'admin_set_prices.php?tab=fuel'
-                    : 'manager_set_prices.php?tab=fuel';
-
-                $results[] = [
-                    'type'     => 'Fuel Management',
-                    'title'    => "Pump #{$pump} Reading — {$dt}",
-                    'subtitle' => "Fuel: {$r['fuel_type']} · Computed: {$r['computed_liters']}L",
-                    'meta'     => $r['fuel_type'] ?? '',
-                    'link'     => $fuel_mgmt_link,
-                    'icon'     => $ICONS['Fuel Management'],
-                    'color'    => $COLORS['Fuel Management'],
-                ];
-            }
-        } catch (Exception $e) {}
-    }
-
-    // ════════════════════════════════════════════════════════
-    // 10. STATIONS  (superadmin / developer only)
-    // ════════════════════════════════════════════════════════
-    if (in_array($role, ['superadmin', 'developer'])) {
+        // 1. STATIONS (Station Name, Station Code, Location, Status)
         try {
             $stmt = $pdo->prepare(
                 "SELECT id, name, address, status, station_code
                  FROM stations
-                 WHERE (name         LIKE ?
-                     OR address      LIKE ?
-                     OR status       LIKE ?
-                     OR station_code LIKE ?)
+                 WHERE (name LIKE ? OR address LIKE ? OR status LIKE ? OR station_code LIKE ? OR CONCAT('ST-', id) LIKE ?)
                  ORDER BY name ASC LIMIT 8"
             );
-            $stmt->execute([$like, $like, $like, $like]);
+            $stmt->execute([$like, $like, $like, $like, $like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $code = $r['station_code'] ? " · Code: {$r['station_code']}" : '';
+                $code = $r['station_code'] ? "Code: {$r['station_code']} · " : '';
                 $results[] = [
                     'type'     => 'Station',
                     'title'    => $r['name'],
-                    'subtitle' => ($r['address'] ?? 'No address') . $code . " · Status: {$r['status']}",
+                    'subtitle' => "{$code}Address: " . ($r['address'] ?? 'General') . " · Status: " . ucfirst($r['status'] ?? 'active'),
                     'meta'     => $r['status'],
-                    'link'     => 'superadmin_station_management.php',
+                    'link'     => 'superadmin_station_management.php?q=' . urlencode($r['name']),
                     'icon'     => $ICONS['Station'],
                     'color'    => $COLORS['Station'],
                 ];
             }
         } catch (Exception $e) {}
-    }
 
-    // ════════════════════════════════════════════════════════
-    // 11. ADMINS / USERS  (superadmin / developer only)
-    // ════════════════════════════════════════════════════════
-    if (in_array($role, ['superadmin', 'developer'])) {
+        // 2. USERS (Admin/Owner, Manager, Staff, User ID USR-0001, Email, Username)
         try {
             $stmt = $pdo->prepare(
-                "SELECT id, username,
-                        COALESCE(NULLIF(CONCAT(first_name,' ',last_name),' '), username) AS full_name,
-                        role, email, status
-                 FROM users
-                 WHERE (username   LIKE ?
-                     OR first_name LIKE ?
-                     OR last_name  LIKE ?
-                     OR email      LIKE ?
-                     OR role       LIKE ?
-                     OR status     LIKE ?)
-                 ORDER BY full_name ASC LIMIT 10"
+                "SELECT u.id, u.username,
+                        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username) AS full_name,
+                        u.role, u.email, u.status, s.name AS station_name,
+                        CONCAT('USR-', LPAD(u.id, 4, '0')) AS user_code
+                 FROM users u
+                 LEFT JOIN stations s ON s.id = u.station_id
+                 WHERE (u.username   LIKE ?
+                     OR u.first_name LIKE ?
+                     OR u.last_name  LIKE ?
+                     OR u.email      LIKE ?
+                     OR u.role       LIKE ?
+                     OR u.status     LIKE ?
+                     OR CONCAT('USR-', LPAD(u.id, 4, '0')) LIKE ?
+                     OR CONCAT('USR-', u.id) LIKE ?)
+                 ORDER BY u.id ASC LIMIT 10"
             );
-            $stmt->execute([$like, $like, $like, $like, $like, $like]);
+            $stmt->execute([$like, $like, $like, $like, $like, $like, $like, $like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $email = $r['email'] ? " · {$r['email']}" : '';
+                $stName = $r['station_name'] ? " · Station: {$r['station_name']}" : ' · Global';
+                $roleDisp = ucfirst(strtolower($r['role']));
                 $results[] = [
-                    'type'     => 'Admin',
-                    'title'    => $r['full_name'] . ' (@' . $r['username'] . ')',
-                    'subtitle' => ucfirst($r['role']) . $email . " · Status: {$r['status']}",
+                    'type'     => 'User',
+                    'title'    => "{$r['full_name']} [{$r['user_code']}]",
+                    'subtitle' => "Role: {$roleDisp}{$stName} · Status: " . ucfirst($r['status'] ?? 'active'),
                     'meta'     => $r['role'],
-                    'link'     => 'superadmin_admin_management.php',
-                    'icon'     => $ICONS['Admin'],
-                    'color'    => $COLORS['Admin'],
+                    'link'     => (in_array(strtolower($r['role']), ['superadmin','developer','admin']) ? 'superadmin_admin_management.php?search=' : 'users.php?search=') . urlencode($r['username']),
+                    'icon'     => $ICONS['User'],
+                    'color'    => $COLORS['User'],
                 ];
             }
         } catch (Exception $e) {}
-    }
 
-    // ════════════════════════════════════════════════════════
-    // 12. SYSTEM LOGS  (superadmin / developer only)
-    // ════════════════════════════════════════════════════════
-    if (in_array($role, ['superadmin', 'developer'])) {
-        try {
-            $stmt = $pdo->prepare(
-                "SELECT al.id, al.action, al.details, al.ip_address, al.created_at,
-                        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'System') AS user_name
-                 FROM activity_logs al
-                 LEFT JOIN users u ON u.id = al.user_id
-                 WHERE (al.action     LIKE ?
-                     OR al.details    LIKE ?
-                     OR al.ip_address LIKE ?
-                     OR u.username    LIKE ?)
-                 ORDER BY al.created_at DESC LIMIT 8"
-            );
-            $stmt->execute([$like, $like, $like, $like]);
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $ts  = date('M d, Y H:i', strtotime($r['created_at']));
-                $ip  = $r['ip_address'] ? " · IP: {$r['ip_address']}" : '';
+        // 3. MODULES & MODULE CONFIGURATION (Inventory, Transactions, Customers, Deliveries, etc.)
+        $system_modules = [
+            ['name' => 'Inventory Management',           'slug' => 'inventory',     'desc' => 'Track station stock levels, reorder points, fuel dipping, and tank readings.'],
+            ['name' => 'Transaction Processing',         'slug' => 'transactions',  'desc' => 'POS billing, cash/card sales recording, OR issuance, and shift transactions.'],
+            ['name' => 'Customer Accounts & AR',         'slug' => 'customers',     'desc' => 'Customer credit lines, vehicle plates, AR balances, payments, and statement generation.'],
+            ['name' => 'Job Order & Mechanic Bay',       'slug' => 'job_orders',    'desc' => 'Auto bay work orders, mechanic performance tracking, and service invoicing.'],
+            ['name' => 'Fuel Tank & Pump Dispenser',      'slug' => 'fuel',          'desc' => 'Fuel delivery receipting, nozzle meters, variance monitoring, and dip calibration.'],
+            ['name' => 'Deliveries & PO Receiving',      'slug' => 'deliveries',    'desc' => 'Purchase order tracking, supplier deliveries, batch verification, and QA checks.'],
+            ['name' => 'Technical & System Reports',     'slug' => 'reports',       'desc' => 'System uptime, error analytics, database logs, and administrative summaries.'],
+            ['name' => 'Station Management Hub',         'slug' => 'stations',      'desc' => 'Branch station profiling, geolocations, POS terminal keys, and store status.'],
+            ['name' => 'Database Backup & Schema',       'slug' => 'database',      'desc' => 'MySQL automated backups, table optimization, schema migrations, and restoration.'],
+            ['name' => 'System Administration Settings',      'slug' => 'settings',      'desc' => 'Security policies, appearance themes, session idle timeouts, and branding.']
+        ];
+        foreach ($system_modules as $mod) {
+            if (stripos($mod['name'], $query) !== false || stripos($mod['slug'], $query) !== false || stripos($mod['desc'], $query) !== false || stripos('module', $query) !== false) {
+                $status = function_exists('is_module_enabled') && is_module_enabled($mod['slug']) ? 'Enabled' : 'Active';
                 $results[] = [
-                    'type'     => 'System Log',
-                    'title'    => $r['action'],
-                    'subtitle' => mb_strimwidth($r['details'] ?? '', 0, 70, '…') . " · {$r['user_name']}{$ip} · {$ts}",
-                    'meta'     => $ts,
-                    'link'     => 'activity_logs.php',
-                    'icon'     => $ICONS['System Log'],
-                    'color'    => $COLORS['System Log'],
+                    'type'     => 'Module',
+                    'title'    => "Module: {$mod['name']}",
+                    'subtitle' => "System Component · {$mod['desc']} · Status: {$status}",
+                    'meta'     => $mod['slug'],
+                    'link'     => 'module_configuration.php',
+                    'icon'     => $ICONS['Module'],
+                    'color'    => $COLORS['Module'],
+                ];
+            }
+        }
+
+        // 4. SYSTEM SETTINGS (Session Timeout, System Name, Timezone, Password Policy, Maintenance, Theme, etc.)
+        $known_settings = [
+            ['name' => 'Session Timeout',                    'key' => 'session_timeout',             'cat' => 'Security',     'desc' => 'Inactivity timeout duration before user session expires'],
+            ['name' => 'System Name & Branding',             'key' => 'system_name',                 'cat' => 'General',      'desc' => 'Company application title and header branding'],
+            ['name' => 'Company Logo',                       'key' => 'company_logo',                'cat' => 'General',      'desc' => 'Company visual branding logo across top header and reports'],
+            ['name' => 'Timezone Setting',                   'key' => 'timezone',                    'cat' => 'Regional',     'desc' => 'Server & database standard operational timezone'],
+            ['name' => 'Date & Time Formatting',             'key' => 'date_format',                 'cat' => 'Regional',     'desc' => 'Date presentation format (YYYY-MM-DD, 12H vs 24H)'],
+            ['name' => 'Currency Symbol',                    'key' => 'currency_symbol',             'cat' => 'Regional',     'desc' => 'Global financial currency symbol (₱, $, €)'],
+            ['name' => 'Sidebar Navigation Color',           'key' => 'sidebar_color',               'cat' => 'Appearance',   'desc' => 'Custom background styling for navigation drawer'],
+            ['name' => 'Active Navigation Item Color',       'key' => 'nav_active_color',            'cat' => 'Appearance',   'desc' => 'Pill badge highlight for current active menu page'],
+            ['name' => 'System Accent Color',                'key' => 'system_accent_color',         'cat' => 'Appearance',   'desc' => 'Primary theme button, badge, and UI highlight accent'],
+            ['name' => 'Appearance Theme (Light/Dark)',      'key' => 'theme',                       'cat' => 'Appearance',   'desc' => 'Interface visual mode toggle (Light Mode vs Dark Mode)'],
+            ['name' => 'Sidebar Mode (Expanded/Collapsed)',  'key' => 'sidebar_mode',                'cat' => 'Appearance',   'desc' => 'Default state of sidebar menu on initial load'],
+            ['name' => 'Auto Refresh Interval',              'key' => 'dashboard_auto_refresh',      'cat' => 'Appearance',   'desc' => 'Background live polling refresh cycle in seconds'],
+            ['name' => 'Minimum Password Length',            'key' => 'min_password_length',         'cat' => 'Security',     'desc' => 'Password security requirement minimum character length'],
+            ['name' => 'Maximum Login Attempts',             'key' => 'max_login_attempts',          'cat' => 'Security',     'desc' => 'Failed password attempt threshold before temporary lockout'],
+            ['name' => 'Password Complexity Rules',          'key' => 'require_uppercase',           'cat' => 'Security',     'desc' => 'Enforce uppercase, numeric, and special character requirements'],
+            ['name' => 'Success Banner Duration',            'key' => 'banner_duration',             'cat' => 'Notification', 'desc' => 'Toast notification auto-dismiss display duration'],
+            ['name' => 'System Notifications Toggle',        'key' => 'enable_system_notifications', 'cat' => 'Notification', 'desc' => 'Enable or suppress standard UI popups and alerts'],
+            ['name' => 'Report Paper Size & Orientation',    'key' => 'default_paper_size',         'cat' => 'Reports',      'desc' => 'Default print media layout settings (A4 / Letter, Portrait)'],
+            ['name' => 'Maintenance Mode & Gatekeeper',      'key' => 'maintenance_mode',            'cat' => 'Maintenance',  'desc' => 'Lock system access for non-superadmin users during upgrades'],
+            ['name' => 'Maintenance Banner Message',         'key' => 'maintenance_message',         'cat' => 'Maintenance',  'desc' => 'Customer notice displayed during scheduled downtime']
+        ];
+        foreach ($known_settings as $ks) {
+            if (stripos($ks['name'], $query) !== false || stripos($ks['key'], $query) !== false || stripos($ks['desc'], $query) !== false || stripos($ks['cat'], $query) !== false || stripos('setting', $query) !== false) {
+                $results[] = [
+                    'type'     => 'Setting',
+                    'title'    => "Setting: {$ks['name']}",
+                    'subtitle' => "Category: {$ks['cat']} · {$ks['desc']}",
+                    'meta'     => $ks['key'],
+                    'link'     => 'superadmin_system_settings.php',
+                    'icon'     => $ICONS['Setting'],
+                    'color'    => $COLORS['Setting'],
+                ];
+            }
+        }
+
+        // 5. SYSTEM REPORTS (Health, Database, Backup, Error, Security)
+        $admin_reports = [
+            ['title' => 'System Health Report',         'tab' => 'health',   'desc' => 'Server CPU load, RAM usage, storage partition health, and uptime metrics'],
+            ['title' => 'Database Status & Schema',     'tab' => 'database', 'desc' => 'MySQL active connection pool, database sizing, and table storage telemetry'],
+            ['title' => 'Database Backup Report',       'tab' => 'backup',   'desc' => 'System-generated SQL archives, snapshot sizes, and recovery timestamps'],
+            ['title' => 'System Error & Exception Log', 'tab' => 'error',    'desc' => 'Application exceptions, PHP fatal errors, and query failure diagnostics'],
+            ['title' => 'Security Audit Report',        'tab' => 'security', 'desc' => 'Failed auth attempts, brute-force detections, and permission denials']
+        ];
+        foreach ($admin_reports as $rep) {
+            if (stripos($rep['title'], $query) !== false || stripos($rep['desc'], $query) !== false || stripos('report', $query) !== false) {
+                $results[] = [
+                    'type'     => 'System Report',
+                    'title'    => $rep['title'],
+                    'subtitle' => "Administrative Technical Report · {$rep['desc']}",
+                    'meta'     => $rep['tab'],
+                    'link'     => 'reports_technical.php?tab=' . $rep['tab'],
+                    'icon'     => $ICONS['System Report'],
+                    'color'    => $COLORS['System Report'],
+                ];
+            }
+        }
+
+        // 6. AUDIT REFERENCE & AUDIT LOGS (AUD-000123, System Activity, Actions)
+        try {
+            $audit_id_query = preg_replace('/^aud-?0*/i', '', $query);
+            $audit_like_id = is_numeric($audit_id_query) ? (int)$audit_id_query : -1;
+
+            $stmt = $pdo->prepare(
+                "SELECT al.id, al.action, al.details, al.ip_address, al.created_at,
+                        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'System') AS user_name,
+                        CONCAT('AUD-', LPAD(al.id, 6, '0')) AS audit_ref
+                 FROM activity_logs al
+                 LEFT JOIN users u ON u.id = al.user_id
+                 WHERE (al.action LIKE ? 
+                     OR al.details LIKE ? 
+                     OR CONCAT('AUD-', LPAD(al.id, 6, '0')) LIKE ? 
+                     OR al.id = ?)
+                 ORDER BY al.id DESC LIMIT 8"
+            );
+            $stmt->execute([$like, $like, $like, $audit_like_id]);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $ts = date('M d, Y H:i', strtotime($r['created_at']));
+                $results[] = [
+                    'type'     => 'Audit Log',
+                    'title'    => "[{$r['audit_ref']}] {$r['action']}",
+                    'subtitle' => mb_strimwidth($r['details'] ?? '', 0, 70, '…') . " · {$r['user_name']} · {$ts}",
+                    'meta'     => $r['audit_ref'],
+                    'link'     => 'superadmin_audit_trail.php?search=' . urlencode($r['audit_ref']),
+                    'icon'     => $ICONS['Audit Log'],
+                    'color'    => $COLORS['Audit Log'],
                 ];
             }
         } catch (Exception $e) {}
-    }
 
-    // ════════════════════════════════════════════════════════
-    // 13. SECURITY EVENTS  (superadmin / developer only)
-    // ════════════════════════════════════════════════════════
-    if (in_array($role, ['superadmin', 'developer'])) {
+        // 7. SYSTEM ALERTS (Security events, failures, exceptions)
         try {
             $stmt = $pdo->prepare(
-                "SELECT al.id, al.action, al.details, al.ip_address, al.created_at,
-                        COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS user_name
+                "SELECT al.id, al.action, al.details, al.created_at,
+                        CONCAT('ALT-', LPAD(al.id, 5, '0')) AS alert_ref
                  FROM activity_logs al
-                 LEFT JOIN users u ON u.id = al.user_id
-                 WHERE (al.action     LIKE ?
-                     OR al.details    LIKE ?
-                     OR al.ip_address LIKE ?)
-                   AND (al.action LIKE '%fail%'   OR al.action LIKE '%Failed%'
-                     OR al.action LIKE '%Unauthorized%' OR al.action LIKE '%unauthorized%'
-                     OR al.action LIKE '%lock%'   OR al.action LIKE '%suspicious%'
-                     OR al.details LIKE '%denied%' OR al.details LIKE '%brute%')
-                 ORDER BY al.created_at DESC LIMIT 8"
+                 WHERE (al.action LIKE ? OR al.details LIKE ? OR CONCAT('ALT-', LPAD(al.id, 5, '0')) LIKE ?)
+                   AND (al.action LIKE '%fail%' OR al.action LIKE '%Failed%'
+                     OR al.action LIKE '%Error%' OR al.action LIKE '%Exception%'
+                     OR al.action LIKE '%Unauthorized%' OR al.action LIKE '%Lock%'
+                     OR al.action LIKE '%Denied%' OR al.action LIKE '%Warning%'
+                     OR al.details LIKE '%fail%' OR al.details LIKE '%error%')
+                 ORDER BY al.id DESC LIMIT 8"
             );
             $stmt->execute([$like, $like, $like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $ts = date('M d, Y H:i', strtotime($r['created_at']));
-                $ip = $r['ip_address'] ? " · IP: {$r['ip_address']}" : '';
                 $results[] = [
-                    'type'     => 'Security',
-                    'title'    => $r['action'],
-                    'subtitle' => "User: {$r['user_name']}{$ip} · {$ts}",
-                    'meta'     => $ts,
-                    'link'     => 'reports_security.php',
-                    'icon'     => $ICONS['Security'],
-                    'color'    => $COLORS['Security'],
+                    'type'     => 'System Alert',
+                    'title'    => "[{$r['alert_ref']}] Alert: {$r['action']}",
+                    'subtitle' => mb_strimwidth($r['details'] ?? '', 0, 70, '…') . " · {$ts}",
+                    'meta'     => $r['alert_ref'],
+                    'link'     => 'superadmin_audit_trail.php?tab=security',
+                    'icon'     => $ICONS['System Alert'],
+                    'color'    => $COLORS['System Alert'],
                 ];
             }
         } catch (Exception $e) {}
-    }
 
-    // ════════════════════════════════════════════════════════
-    // 14. AUDIT TRAIL  (superadmin / developer / admin / manager)
-    // ════════════════════════════════════════════════════════
-    if (in_array($role, ['superadmin', 'developer', 'admin', 'manager'])) {
-        try {
-            if (in_array($role, ['superadmin', 'developer'])) {
+    } else {
+        // ════════════════════════════════════════════════════════════════════════
+        // REGULAR USERS (Admin / Manager / Staff): STATION OPERATIONAL SEARCH
+        // Mapped strictly to authorized station business modules:
+        // Transactions, Customers, Inventory, Fuel Mgmt, Pricing, Calendar, Reports
+        // ════════════════════════════════════════════════════════════════════════
+
+        $like      = "%{$query}%";
+        $date_like = '%' . str_replace(['/', '-', ' '], '%', $query) . '%';
+        $name_words = preg_split('/\s+/', trim($query));
+        $name_like = '%' . implode('%', $name_words) . '%';
+
+        // ════════════════════════════════════════════════════════
+        // 1. TRANSACTIONS  (Merchandise + Fuel)
+        // ════════════════════════════════════════════════════════
+        if (is_module_enabled('transactions') || $is_admin) {
+            // -- Merchandise transactions --
+            try {
+                $txn_clean = preg_replace('/^txn-?0*/i', '', $query);
+                $txn_num   = is_numeric($txn_clean) ? (int)$txn_clean : -1;
+                $sw = $station_id ? "AND mt.station_id = {$station_id}" : '';
                 $stmt = $pdo->prepare(
-                    "SELECT al.id, al.action, al.details, al.created_at,
+                    "SELECT mt.id, mt.transaction_id,
+                            COALESCE(mt.payment_status, mt.validation_status, 'Completed') AS status,
+                            mt.created_at, mt.payment_method, mt.customer_name, mt.total_amount, mt.transaction_type,
+                            mt.job_order_service,
+                            st.name AS station_name,
+                            COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name
+                     FROM merchandise_transactions mt
+                     LEFT JOIN users u ON u.id = mt.staff_id
+                     LEFT JOIN stations st ON st.id = mt.station_id
+                     WHERE (mt.transaction_id     LIKE ?
+                         OR mt.customer_name      LIKE ?
+                         OR mt.payment_method     LIKE ?
+                         OR mt.payment_status     LIKE ?
+                         OR mt.validation_status  LIKE ?
+                         OR mt.transaction_type   LIKE ?
+                         OR mt.job_order_service  LIKE ?
+                         OR CONCAT('TXN-', LPAD(mt.id, 5, '0')) LIKE ?
+                         OR CONCAT('TXN-', mt.id) LIKE ?
+                         OR mt.id = ?
+                         OR u.username            LIKE ?
+                         OR DATE(mt.created_at)   LIKE ?)
+                       {$sw}
+                     ORDER BY mt.created_at DESC LIMIT 10"
+                );
+                $stmt->execute([$like, $like, $like, $like, $like, $like, $like, $like, $like, $txn_num, $like, $date_like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $txn_id   = $r['transaction_id'] ?? ('#' . $r['id']);
+                    $ts       = date('M d, Y H:i', strtotime($r['created_at']));
+                    $txn_q    = urlencode($txn_id);
+                    $amt_str  = $r['total_amount'] ? '₱' . number_format((float)$r['total_amount'], 2) : '';
+                    $raw_type = strtolower((string)($r['transaction_type'] ?? ''));
+                    $is_combined = ($raw_type === 'combined' || (strpos($raw_type, 'job') !== false && strpos($raw_type, 'merch') !== false));
+                    $type_str = $is_combined ? 'Job Order + Merchandise' : ($r['transaction_type'] ? ucwords(str_replace('_', ' ', $r['transaction_type'])) : 'Merchandise');
+
+                    $title_str = $is_combined ? "Transaction {$txn_id} — {$type_str}" : "Transaction {$txn_id}";
+                    $sub_items = array_filter([
+                        $r['customer_name'] ?? '',
+                        !$is_combined ? $type_str : '',
+                        $amt_str,
+                        $r['status'] ?? '',
+                        $r['station_name'] ?? ''
+                    ]);
+                    $subtitle = implode(' · ', $sub_items) ?: "Status: {$r['status']} · {$ts}";
+
+                    if ($is_admin) {
+                        $txn_link = 'admin_transactions_oversight.php?search=' . $txn_q;
+                    } elseif ($role === 'manager') {
+                        $txn_link = 'manager_validated_transactions.php?search=' . $txn_q;
+                    } else {
+                        $txn_link = 'staff_transactions_hub.php?section=history&hsearch=' . $txn_q;
+                    }
+
+                    $results[] = [
+                        'type'     => 'Transaction',
+                        'title'    => $title_str,
+                        'subtitle' => $subtitle,
+                        'meta'     => $r['status'] ?? '',
+                        'link'     => $txn_link,
+                        'icon'     => $ICONS['Transaction'],
+                        'color'    => $COLORS['Transaction'],
+                    ];
+                }
+            } catch (Exception $e) {}
+
+            // -- Fuel transactions --
+            try {
+                $ftxn_clean = preg_replace('/^(fuel|fr|tx)-?0*/i', '', $query);
+                $ftxn_num   = is_numeric($ftxn_clean) ? (int)$ftxn_clean : -1;
+                $sw = $station_id ? "AND ft.station_id = {$station_id}" : '';
+                $stmt = $pdo->prepare(
+                    "SELECT ft.id, ft.transaction_id, ft.status, ft.fuel_type,
+                            ft.liters_sold, ft.total_amount, ft.payment_method,
+                            ft.transaction_date, ft.shift_period, ft.shift_name,
+                            st.name AS station_name
+                     FROM fuel_transactions ft
+                     LEFT JOIN stations st ON st.id = ft.station_id
+                     WHERE (ft.fuel_type    LIKE ?
+                         OR ft.status       LIKE ?
+                         OR ft.shift_period LIKE ?
+                         OR ft.shift_name   LIKE ?
+                         OR ft.transaction_id LIKE ?
+                         OR CONCAT('TXN-', LPAD(ft.id, 5, '0')) LIKE ?
+                         OR ft.id = ?
+                         OR DATE(ft.transaction_date) LIKE ?)
+                       {$sw}
+                     ORDER BY ft.transaction_date DESC LIMIT 10"
+                );
+                $stmt->execute([$like, $like, $like, $like, $like, $like, $ftxn_num, $date_like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $ts       = date('M d, Y H:i', strtotime($r['transaction_date']));
+                    $fuel_ref = $r['transaction_id'] ?: ('#' . $r['id']);
+                    $fuel_q   = urlencode($fuel_ref);
+                    $amt_str  = $r['total_amount'] ? '₱' . number_format((float)$r['total_amount'], 2) : '';
+                    $vol_str  = $r['liters_sold'] ? number_format((float)$r['liters_sold'], 2) . 'L' : '';
+
+                    $sub_items = array_filter([
+                        $vol_str,
+                        $amt_str,
+                        $r['status'] ?? '',
+                        $r['shift_period'] ?? '',
+                        $r['station_name'] ?? ''
+                    ]);
+                    $subtitle = implode(' · ', $sub_items) ?: "Status: {$r['status']} · {$ts}";
+
+                    if ($is_admin) {
+                        $txn_link = 'admin_fuel_transactions_oversight.php?search=' . $fuel_q;
+                    } elseif ($role === 'manager') {
+                        $txn_link = 'manager_fuel_transaction_validation.php?search=' . $fuel_q;
+                    } else {
+                        $txn_link = 'staff_transactions_hub.php?section=fuel';
+                    }
+
+                    $results[] = [
+                        'type'     => 'Transaction',
+                        'title'    => "Fuel Tx {$fuel_ref} — {$r['fuel_type']}",
+                        'subtitle' => $subtitle,
+                        'meta'     => $r['status'] ?? '',
+                        'link'     => $txn_link,
+                        'icon'     => $ICONS['Transaction'],
+                        'color'    => $COLORS['Transaction'],
+                    ];
+                }
+            } catch (Exception $e) {}
+        }
+
+        // ════════════════════════════════════════════════════════
+        // 2. CUSTOMERS  (name, phone, email, customer_id, status)
+        // ════════════════════════════════════════════════════════
+        if (is_module_enabled('customers') || $is_admin) {
+            try {
+                $cust_clean = preg_replace('/^cus(t)?-?0*/i', '', $query);
+                $cust_num   = is_numeric($cust_clean) ? (int)$cust_clean : -1;
+                $sw = $station_id ? "AND c.station_id = {$station_id}" : '';
+                $stmt = $pdo->prepare(
+                    "SELECT c.id, c.name, COALESCE(c.phone, c.contact_number) AS phone, c.email, c.status, c.customer_id AS cust_code
+                     FROM customers c
+                     WHERE (c.name           LIKE ?
+                         OR c.name           LIKE ?
+                         OR c.phone          LIKE ?
+                         OR c.contact_number LIKE ?
+                         OR c.email          LIKE ?
+                         OR c.customer_id    LIKE ?
+                         OR CONCAT('CUST-', LPAD(c.id, 4, '0')) LIKE ?
+                         OR CONCAT('CUST-', LPAD(c.id, 3, '0')) LIKE ?
+                         OR CONCAT('CUST-', c.id) LIKE ?
+                         OR CONCAT('CUS-', LPAD(c.id, 4, '0')) LIKE ?
+                         OR CONCAT('CUS-', LPAD(c.id, 3, '0')) LIKE ?
+                         OR c.id = ?
+                         OR c.status         LIKE ?)
+                       {$sw}
+                     ORDER BY c.name ASC LIMIT 10"
+                );
+                $stmt->execute([$like, $name_like, $like, $like, $like, $like, $like, $like, $like, $like, $like, $cust_num, $like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $contact   = $r['phone'] ?: ($r['email'] ?: 'No contact');
+                    $code_disp = $r['cust_code'] ?: ('CUST-' . str_pad($r['id'], 4, '0', STR_PAD_LEFT));
+                    $cust_q    = urlencode($r['name']);
+
+                    // Fetch 2 most recent transactions for customer preview
+                    $rec_str = '';
+                    try {
+                        $cid = (int)$r['id'];
+                        $r_stmt = $pdo->prepare(
+                            "SELECT transaction_id, transaction_type
+                             FROM merchandise_transactions
+                             WHERE (customer_id = ? OR customer_name LIKE ?)
+                               AND (station_id = ? OR ? = 0)
+                             ORDER BY created_at DESC LIMIT 2"
+                        );
+                        $r_stmt->execute([$cid, "%{$r['name']}%", $station_id, $station_id]);
+                        $recent_txns = $r_stmt->fetchAll(PDO::FETCH_ASSOC);
+                        if (!empty($recent_txns)) {
+                            $parts = [];
+                            foreach ($recent_txns as $rtx) {
+                                $tid = $rtx['transaction_id'] ?: 'TXN';
+                                $tt = strtolower($rtx['transaction_type'] ?? '');
+                                $tlabel = ($tt === 'combined') ? 'Job Order + Merchandise' : (($tt === 'job_order') ? 'Job Order' : 'Merchandise');
+                                $parts[] = "{$tid} — {$tlabel}";
+                            }
+                            $rec_str = ' · Recent: ' . implode(' | ', $parts);
+                        }
+                    } catch (Exception $e_rec) {}
+
+                    $cust_link = ($role === 'staff')
+                        ? 'staff_customer_list.php?search=' . $cust_q
+                        : 'manager_customers.php?search='   . $cust_q;
+
+                    $results[] = [
+                        'type'     => 'Customer',
+                        'title'    => "{$r['name']} ({$code_disp})",
+                        'subtitle' => "Contact: {$contact} · Status: " . ucfirst($r['status']) . $rec_str,
+                        'meta'     => $r['status'],
+                        'link'     => $cust_link,
+                        'icon'     => $ICONS['Customer'],
+                        'color'    => $COLORS['Customer'],
+                    ];
+                }
+            } catch (Exception $e) {}
+        }
+
+        // ════════════════════════════════════════════════════════
+        // 2.5 VEHICLES  (plate number, brand, model, color)
+        // ════════════════════════════════════════════════════════
+        if (is_module_enabled('customers') || $is_admin) {
+            try {
+                $sw = $station_id ? "AND (c.station_id = {$station_id} OR c.station_id IS NULL)" : '';
+                $stmt = $pdo->prepare(
+                    "SELECT cv.id, cv.plate_number, cv.brand, cv.model, cv.color,
+                            c.name AS owner_name
+                     FROM customer_vehicles cv
+                     LEFT JOIN customers c ON c.id = cv.customer_id
+                     WHERE (cv.plate_number LIKE ?
+                         OR cv.brand        LIKE ?
+                         OR cv.model        LIKE ?
+                         OR cv.color        LIKE ?)
+                       {$sw}
+                     ORDER BY cv.plate_number ASC LIMIT 10"
+                );
+                $stmt->execute([$like, $like, $like, $like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $owner    = $r['owner_name'] ? " · Owner: {$r['owner_name']}" : '';
+                    $desc     = trim("{$r['brand']} {$r['model']} {$r['color']}") ?: 'Vehicle';
+                    $veh_q    = urlencode($r['plate_number']);
+                    $veh_link = ($role === 'staff')
+                        ? 'staff_customer_list.php?search=' . $veh_q
+                        : 'manager_customers.php?search='   . $veh_q;
+
+                    $results[] = [
+                        'type'     => 'Vehicle',
+                        'title'    => "Vehicle {$r['plate_number']}",
+                        'subtitle' => "{$desc}{$owner}",
+                        'meta'     => $r['plate_number'],
+                        'link'     => $veh_link,
+                        'icon'     => $ICONS['Vehicle'] ?? 'fas fa-car',
+                        'color'    => $COLORS['Vehicle'] ?? '#0284c7',
+                    ];
+                }
+            } catch (Exception $e) {}
+        }
+
+        // ════════════════════════════════════════════════════════
+        // 3. PRODUCTS & INVENTORY  (Inventory module)
+        // ════════════════════════════════════════════════════════
+        if (is_module_enabled('inventory') || $is_admin) {
+            try {
+                $prod_clean = preg_replace('/^(eo|p|sku)-?0*/i', '', $query);
+                $prod_num   = is_numeric($prod_clean) ? (int)$prod_clean : -1;
+
+                if ($station_id) {
+                    $stmt = $pdo->prepare(
+                        "SELECT ip.id, ip.product_name, ip.sku, ip.category,
+                                COALESCE(si.stock_level, ip.stock) AS stock_level,
+                                ip.unit_price
+                         FROM inventory_products ip
+                         LEFT JOIN station_inventory si
+                                ON si.product_id = ip.id AND si.station_id = ?
+                         WHERE ip.status = 'active'
+                           AND (ip.product_name LIKE ?
+                             OR ip.sku          LIKE ?
+                             OR ip.category     LIKE ?
+                             OR CONCAT('EO-', LPAD(ip.id, 3, '0')) LIKE ?
+                             OR CONCAT('EO-', LPAD(ip.id, 4, '0')) LIKE ?
+                             OR CONCAT('EO-', ip.id) LIKE ?
+                             OR CONCAT('P-', ip.id) LIKE ?
+                             OR ip.id = ?
+                             OR CAST(COALESCE(si.stock_level, ip.stock) AS CHAR) LIKE ?)
+                         ORDER BY ip.product_name ASC LIMIT 10"
+                    );
+                    $stmt->execute([$station_id, $like, $like, $like, $like, $like, $like, $like, $prod_num, $like]);
+                } else {
+                    $stmt = $pdo->prepare(
+                        "SELECT id, product_name, sku, category,
+                                stock AS stock_level, unit_price
+                         FROM inventory_products
+                         WHERE status = 'active'
+                           AND (product_name LIKE ?
+                             OR sku          LIKE ?
+                             OR category     LIKE ?
+                             OR CONCAT('EO-', LPAD(id, 3, '0')) LIKE ?
+                             OR CONCAT('EO-', LPAD(id, 4, '0')) LIKE ?
+                             OR CONCAT('EO-', id) LIKE ?
+                             OR CONCAT('P-', id) LIKE ?
+                             OR id = ?
+                             OR CAST(stock AS CHAR) LIKE ?)
+                         ORDER BY product_name ASC LIMIT 10"
+                    );
+                    $stmt->execute([$like, $like, $like, $like, $like, $like, $like, $prod_num, $like]);
+                }
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $stock      = (int)($r['stock_level'] ?? 0);
+                    $status_lbl = $stock <= 0 ? 'Out of Stock' : ($stock <= 10 ? 'Low Stock' : 'In Stock');
+                    $p_q        = urlencode($r['product_name']);
+                    $cat_lower  = strtolower(trim((string)($r['category'] ?? '')));
+                    $name_lower = strtolower(trim((string)($r['product_name'] ?? '')));
+                    $sku_disp   = $r['sku'] ?: ('EO-' . str_pad($r['id'], 3, '0', STR_PAD_LEFT));
+                    $price_disp = ((float)($r['unit_price'] ?? 0) > 0) ? ' · ₱' . number_format((float)$r['unit_price'], 2) : '';
+
+                    $is_fuel = (strpos($cat_lower, 'fuel') !== false ||
+                                strpos($name_lower, 'diesel')    !== false ||
+                                strpos($name_lower, 'xcs')       !== false ||
+                                strpos($name_lower, 'kerosene')  !== false ||
+                                strpos($name_lower, 'xtra')      !== false ||
+                                strpos($name_lower, 'unleaded')  !== false ||
+                                strpos($name_lower, 'gasoline')  !== false);
+
+                    if ($is_fuel) {
+                        $inv_link = $is_admin
+                            ? 'admin_inventory_fuel.php?search=' . $p_q
+                            : ($role === 'manager' ? 'manager_inventory_fuel.php?search=' . $p_q : 'staff_inventory_fuel.php?search=' . $p_q);
+                        $icon  = 'fas fa-gas-pump';
+                        $color = '#f97316';
+                    } else {
+                        $inv_link = $is_admin
+                            ? 'admin_inventory_merchandise.php?search=' . $p_q
+                            : ($role === 'manager' ? 'manager_inventory_merchandise.php?search=' . $p_q : 'staff_inventory_merchandise.php?search=' . $p_q);
+                        $icon  = $ICONS['Product'];
+                        $color = $COLORS['Product'];
+                    }
+
+                    $results[] = [
+                        'type'     => 'Product',
+                        'title'    => "{$r['product_name']} [{$sku_disp}]",
+                        'subtitle' => "SKU: {$sku_disp} · Stock: {$stock} bottles{$price_disp} · Status: {$status_lbl}",
+                        'meta'     => $status_lbl,
+                        'link'     => $inv_link,
+                        'icon'     => $icon,
+                        'color'    => $color,
+                    ];
+                }
+
+                // Also search fuel_inventory tanks
+                try {
+                    $sw_fi = $station_id ? "WHERE fi.station_id = {$station_id}" : '';
+                    $stmt_fuel = $pdo->prepare(
+                        "SELECT fi.id, fi.fuel_type, fi.current_level, fi.capacity, fi.price_per_liter
+                         FROM fuel_inventory fi
+                         {$sw_fi}
+                         AND (fi.fuel_type LIKE ? OR CAST(fi.current_level AS CHAR) LIKE ?)
+                         ORDER BY fi.fuel_type ASC LIMIT 5"
+                    );
+                    $stmt_fuel->execute([$like, $like]);
+                    foreach ($stmt_fuel->fetchAll(PDO::FETCH_ASSOC) as $fr) {
+                        $fq  = urlencode($fr['fuel_type']);
+                        $pct = $fr['capacity'] > 0 ? round(($fr['current_level'] / $fr['capacity']) * 100) : 0;
+                        $fuel_inv_link = $is_admin
+                            ? 'admin_inventory_fuel.php?search=' . $fq
+                            : ($role === 'manager' ? 'manager_inventory_fuel.php?search=' . $fq : 'staff_inventory_fuel.php?search=' . $fq);
+                        $results[] = [
+                            'type'     => 'Product',
+                            'title'    => "Fuel Tank — {$fr['fuel_type']}",
+                            'subtitle' => "Fuel Inventory · Current Level: {$fr['current_level']}L / {$fr['capacity']}L ({$pct}%)",
+                            'meta'     => 'Fuel',
+                            'link'     => $fuel_inv_link,
+                            'icon'     => 'fas fa-gas-pump',
+                            'color'    => '#f97316',
+                        ];
+                    }
+                } catch (Exception $e_fuel) {}
+            } catch (Exception $e) {}
+        }
+
+        // ════════════════════════════════════════════════════════
+        // 4. JOB ORDERS  (Transactions Module)
+        // ════════════════════════════════════════════════════════
+        if (is_module_enabled('job_orders') || is_module_enabled('transactions') || $is_admin) {
+            try {
+                $jo_clean = preg_replace('/^jo-?0*/i', '', $query);
+                $jo_num   = is_numeric($jo_clean) ? (int)$jo_clean : -1;
+                $sw = $station_id ? "AND jo.station_id = {$station_id}" : '';
+                $stmt = $pdo->prepare(
+                    "SELECT jo.id,
+                            COALESCE(NULLIF(jo.job_order_id,''), jo.job_order_number, CONCAT('JO-', LPAD(jo.id, 5, '0'))) AS jo_ref,
+                            jo.status, jo.customer_name, jo.service_type, jo.created_at, jo.total_cost,
+                            COALESCE(m.full_name, CONCAT(m.first_name, ' ', m.last_name)) AS mechanic_name
+                     FROM job_orders jo
+                     LEFT JOIN mechanics m ON m.id = jo.assigned_mechanic_id
+                     WHERE (jo.job_order_id     LIKE ?
+                         OR jo.job_order_number LIKE ?
+                         OR jo.customer_name    LIKE ?
+                         OR jo.service_type     LIKE ?
+                         OR CONCAT('JO-', LPAD(jo.id, 5, '0')) LIKE ?
+                         OR CONCAT('JO-', jo.id) LIKE ?
+                         OR jo.id = ?
+                         OR jo.status           LIKE ?)
+                       {$sw}
+                     ORDER BY jo.created_at DESC LIMIT 10"
+                );
+                $stmt->execute([$like, $like, $like, $like, $like, $like, $jo_num, $like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $jo_num_disp = $r['jo_ref'];
+                    $jo_q        = urlencode($jo_num_disp);
+                    $mech        = $r['mechanic_name'] ?: 'Unassigned';
+                    $subtitle    = "Customer: {$r['customer_name']} · Service: {$r['service_type']} · Mechanic: {$mech} · Status: {$r['status']}";
+
+                    if ($is_admin) {
+                        $jo_link = 'admin_transactions_oversight.php?search=' . $jo_q;
+                    } elseif ($role === 'manager') {
+                        $jo_link = 'manager_validated_transactions.php?search=' . $jo_q;
+                    } else {
+                        $jo_link = 'staff_transactions_hub.php?section=history&hsearch=' . $jo_q;
+                    }
+
+                    $results[] = [
+                        'type'     => 'Job Order',
+                        'title'    => "Job Order {$jo_num_disp}",
+                        'subtitle' => $subtitle,
+                        'meta'     => $r['status'],
+                        'link'     => $jo_link,
+                        'icon'     => $ICONS['Job Order'],
+                        'color'    => $COLORS['Job Order'],
+                    ];
+                }
+
+                // Also search job orders recorded via station transactions
+                try {
+                    $sw_mt_jo = $station_id ? "AND mt.station_id = {$station_id}" : '';
+                    $stmt_mt_jo = $pdo->prepare(
+                        "SELECT mt.id, mt.transaction_id,
+                                COALESCE(NULLIF(mt.job_order_id,''), mt.transaction_id) AS jo_ref,
+                                COALESCE(mt.workflow_status, mt.validation_status, 'Completed') AS status,
+                                mt.customer_name,
+                                COALESCE(NULLIF(mt.job_order_service,''), 'Vehicle Service') AS service_type,
+                                mt.created_at, mt.total_amount AS total_cost,
+                                COALESCE(NULLIF(mt.job_order_mechanic_name,''), 'Mechanic on Duty') AS mechanic_name
+                         FROM merchandise_transactions mt
+                         WHERE (LOWER(COALESCE(mt.transaction_type, '')) IN ('job_order', 'service', 'combined') OR mt.job_order_service IS NOT NULL OR mt.job_order_id IS NOT NULL)
+                           AND (mt.transaction_id           LIKE ?
+                             OR mt.customer_name            LIKE ?
+                             OR mt.job_order_service        LIKE ?
+                             OR mt.job_order_vehicle_plate  LIKE ?
+                             OR mt.job_order_mechanic_name  LIKE ?
+                             OR CONCAT('JO-', LPAD(mt.id, 5, '0')) LIKE ?
+                             OR CONCAT('JO-', mt.id)        LIKE ?
+                             OR mt.id = ?
+                             OR CAST(mt.job_order_id AS CHAR) LIKE ?)
+                           {$sw_mt_jo}
+                         ORDER BY mt.created_at DESC LIMIT 6"
+                    );
+                    $stmt_mt_jo->execute([$like, $like, $like, $like, $like, $like, $like, $jo_num, $like]);
+                    foreach ($stmt_mt_jo->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                        $jo_num_disp = !empty($r['jo_ref']) && strpos($r['jo_ref'], 'MERCH') === false ? $r['jo_ref'] : ('JO-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT));
+                        $jo_q        = urlencode($jo_num_disp);
+                        $mech        = $r['mechanic_name'];
+                        $subtitle    = "Customer: {$r['customer_name']} · Service: {$r['service_type']} · Mechanic: {$mech} · Status: {$r['status']}";
+
+                        if ($is_admin) {
+                            $jo_link = 'admin_transactions_oversight.php?search=' . $jo_q;
+                        } elseif ($role === 'manager') {
+                            $jo_link = 'manager_validated_transactions.php?search=' . $jo_q;
+                        } else {
+                            $jo_link = 'staff_transactions_hub.php?section=history&hsearch=' . $jo_q;
+                        }
+
+                        $results[] = [
+                            'type'     => 'Job Order',
+                            'title'    => "Job Order {$jo_num_disp}",
+                            'subtitle' => $subtitle,
+                            'meta'     => $r['status'],
+                            'link'     => $jo_link,
+                            'icon'     => $ICONS['Job Order'],
+                            'color'    => $COLORS['Job Order'],
+                        ];
+                    }
+                } catch (Exception $e_jo) {}
+            } catch (Exception $e) {}
+        }
+
+        // ════════════════════════════════════════════════════════
+        // 4.5. FUEL READINGS / SHIFT READINGS (Fuel Sales Closing & Pump Readings)
+        // ════════════════════════════════════════════════════════
+        try {
+            $fr_clean = preg_replace('/^fr-?0*/i', '', $query);
+            $fr_num   = is_numeric($fr_clean) ? (int)$fr_clean : -1;
+            $sw_fsc   = $station_id ? "AND (fsc.station_id = {$station_id} OR fsc.station_id IS NULL)" : '';
+            $stmt_fsc = $pdo->prepare(
+                "SELECT fsc.id, fsc.report_date, fsc.shift, fsc.shift_period,
+                        fsc.total_fuel_sales, fsc.total_liters, fsc.status, fsc.encoded_at
+                 FROM fuel_sales_closing fsc
+                 WHERE (CONCAT('FR-', LPAD(fsc.id, 5, '0')) LIKE ?
+                     OR CONCAT('FR-', fsc.id) LIKE ?
+                     OR fsc.id = ?
+                     OR fsc.shift LIKE ?
+                     OR fsc.shift_period LIKE ?
+                     OR fsc.status LIKE ?
+                     OR DATE(fsc.report_date) LIKE ?
+                     OR ? LIKE '%reading%'
+                     OR ? LIKE '%shift%'
+                     OR ? LIKE '%fuel%')
+                   {$sw_fsc}
+                 ORDER BY fsc.report_date DESC LIMIT 5"
+            );
+            $stmt_fsc->execute([$like, $like, $fr_num, $like, $like, $like, $date_like, $like, $like, $like]);
+            foreach ($stmt_fsc->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $fr_ref   = 'FR-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT);
+                $liters   = number_format((float)$r['total_liters'], 2) . 'L';
+                $sales    = '₱' . number_format((float)$r['total_fuel_sales'], 2);
+                $status_c = ucwords(strtolower(str_replace('_', ' ', $r['status'] ?? 'Submitted')));
+
+                $fr_link = ($role === 'manager')
+                    ? 'manager_fuel_transaction_validation.php?search=' . urlencode($fr_ref)
+                    : ($is_admin ? 'admin_reports.php?tab=fuel' : 'staff_fuel_sales_summary.php?date=' . urlencode($r['report_date']));
+
+                $results[] = [
+                    'type'     => 'Fuel Reading',
+                    'title'    => "Fuel Reading {$fr_ref} — {$r['shift']} ({$r['report_date']})",
+                    'subtitle' => "Shift: {$r['shift']} · Total: {$liters} · Sales: {$sales} · Status: {$status_c}",
+                    'meta'     => $status_c,
+                    'link'     => $fr_link,
+                    'icon'     => $ICONS['Fuel Reading'],
+                    'color'    => $COLORS['Fuel Reading'],
+                ];
+            }
+        } catch (Exception $e_fr) {}
+
+        // ════════════════════════════════════════════════════════
+        // 5. DELIVERIES  (Inventory Module)
+        // ════════════════════════════════════════════════════════
+        if (is_module_enabled('deliveries') || is_module_enabled('inventory') || $is_admin) {
+            try {
+                $sw = $station_id ? "AND do2.station_id = {$station_id}" : '';
+                $uf = ''; // Scoped station-wide so staff can locate expected/received station deliveries
+                $stmt = $pdo->prepare(
+                    "SELECT do2.id, do2.delivery_ref, do2.dr_number, do2.status, do2.supplier, do2.product,
+                            do2.delivery_date, do2.delivery_type, do2.payable_amount
+                     FROM deliveries_oversight do2
+                     WHERE (CAST(do2.id AS CHAR) LIKE ?
+                         OR do2.delivery_ref     LIKE ?
+                         OR do2.dr_number        LIKE ?
+                         OR do2.status           LIKE ?
+                         OR do2.supplier         LIKE ?
+                         OR do2.product          LIKE ?
+                         OR do2.delivery_type    LIKE ?)
+                       {$sw} {$uf}
+                     ORDER BY do2.delivery_date DESC LIMIT 10"
+                );
+                $stmt->execute([$like, $like, $like, $like, $like, $like, $like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $dt      = $r['delivery_date'] ? date('M d, Y', strtotime($r['delivery_date'])) : 'TBD';
+                    $del_ref = $r['dr_number'] ?: ($r['delivery_ref'] ?: ('#' . $r['id']));
+                    $del_q   = urlencode($del_ref);
+
+                    if ($is_admin) {
+                        $del_link = 'admin_merchandise_deliveries_oversight.php?search=' . $del_q;
+                    } elseif ($role === 'manager') {
+                        $del_link = 'manager_stock_in.php?search=' . $del_q;
+                    } else {
+                        $del_link = 'staff_record_delivery.php';
+                    }
+
+                    $results[] = [
+                        'type'     => 'Delivery',
+                        'title'    => "Delivery {$del_ref} — {$r['supplier']}",
+                        'subtitle' => "Product: {$r['product']} · Status: {$r['status']} · {$dt} · {$r['delivery_type']}",
+                        'meta'     => $r['status'],
+                        'link'     => $del_link,
+                        'icon'     => $ICONS['Delivery'],
+                        'color'    => $COLORS['Delivery'],
+                    ];
+                }
+            } catch (Exception $e) {}
+        }
+
+        // ════════════════════════════════════════════════════════
+        // 6. CALENDAR  (Calendar Module)
+        // ════════════════════════════════════════════════════════
+        if (is_module_enabled('calendar') || $is_admin) {
+            try {
+                $sw = $station_id ? "AND (sce.station_id = {$station_id} OR sce.station_id IS NULL)" : '';
+                $stmt = $pdo->prepare(
+                    "SELECT sce.id, sce.event_date, sce.start_time, sce.end_time,
+                            sce.work_description, sce.status,
+                            COALESCE(et.type_name, et.type_key, 'Event') AS event_type,
+                            COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Staff') AS assigned_name
+                     FROM staff_calendar_events sce
+                     LEFT JOIN staff_event_types et ON et.id = sce.event_type_id
+                     LEFT JOIN users u ON u.id = sce.staff_encoder_id
+                     WHERE (sce.work_description LIKE ?
+                         OR et.type_name        LIKE ?
+                         OR et.type_key         LIKE ?
+                         OR sce.status          LIKE ?
+                         OR u.username          LIKE ?
+                         OR DATE(sce.event_date) LIKE ?)
+                       {$sw}
+                     ORDER BY sce.event_date DESC LIMIT 10"
+                );
+                $stmt->execute([$like, $like, $like, $like, $like, $date_like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $dt    = $r['event_date'] ? date('M d, Y', strtotime($r['event_date'])) : 'TBD';
+                    $title = $r['work_description'] ?: ($r['event_type'] . ' Schedule');
+
+                    if ($is_admin) {
+                        $cal_link = 'admin_calendar.php';
+                    } elseif ($role === 'manager') {
+                        $cal_link = 'manager_calendar.php';
+                    } else {
+                        $cal_link = 'staff_calendar.php';
+                    }
+
+                    $results[] = [
+                        'type'     => 'Calendar',
+                        'title'    => mb_strimwidth($title, 0, 50, '…'),
+                        'subtitle' => "{$dt} · {$r['event_type']} · {$r['assigned_name']} · Status: {$r['status']}",
+                        'meta'     => $r['status'],
+                        'link'     => $cal_link,
+                        'icon'     => $ICONS['Calendar'],
+                        'color'    => $COLORS['Calendar'],
+                    ];
+                }
+            } catch (Exception $e) {}
+        }
+
+        // ════════════════════════════════════════════════════════
+        // 7. REPORTS  (Reports Module)
+        // ════════════════════════════════════════════════════════
+        if (is_module_enabled('reports') || $is_admin) {
+            try {
+                $stmt = $pdo->prepare(
+                    "SELECT al.id, al.action, al.details, al.reference, al.created_at,
                             COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'System') AS user_name
                      FROM activity_logs al
                      LEFT JOIN users u ON u.id = al.user_id
-                     WHERE (al.action LIKE ? OR al.details LIKE ?)
-                       AND (al.action LIKE '%Config%'   OR al.action LIKE '%Setting%'
-                         OR al.action LIKE '%Export%'   OR al.action LIKE '%Deploy%'
-                         OR al.action LIKE '%Backup%'   OR al.action LIKE '%Restore%'
-                         OR al.action LIKE '%Integration%' OR al.action LIKE '%Module%')
+                     WHERE (al.action LIKE ? OR al.details LIKE ? OR al.reference LIKE ?)
+                       AND (al.action LIKE '%Summary%'
+                         OR al.action LIKE '%Report%'
+                         OR al.action LIKE '%Completion%'
+                         OR al.details LIKE '%daily%'
+                         OR al.details LIKE '%summary%'
+                         OR al.details LIKE '%report%'
+                         OR al.reference LIKE 'REP-%')
+                       AND (u.station_id = ? OR u.station_id IS NULL OR al.user_id IS NULL)
                      ORDER BY al.created_at DESC LIMIT 8"
                 );
-                $stmt->execute([$like, $like]);
-                $audit_link = 'superadmin_audit_trail.php';
-            } elseif ($role === 'admin') {
+                $stmt->execute([$like, $like, $like, $station_id]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $ts = date('M d, Y H:i', strtotime($r['created_at']));
+
+                    if ($is_admin) {
+                        $report_link = 'admin_reports.php';
+                    } elseif ($role === 'manager') {
+                        $report_link = 'manager_reports.php';
+                    } else {
+                        $report_link = 'staff_reports.php';
+                    }
+
+                    $results[] = [
+                        'type'     => 'Report',
+                        'title'    => $r['action'],
+                        'subtitle' => mb_strimwidth($r['details'] ?? '', 0, 80, '…') . " · {$ts}",
+                        'meta'     => $ts,
+                        'link'     => $report_link,
+                        'icon'     => $ICONS['Report'],
+                        'color'    => $COLORS['Report'],
+                    ];
+                }
+            } catch (Exception $e) {}
+        }
+
+        // ════════════════════════════════════════════════════════
+        // 8. PRODUCT & PRICING MANAGEMENT  (Product & Pricing Module)
+        // ════════════════════════════════════════════════════════
+        if ($is_manager || $is_admin) {
+            try {
                 $stmt = $pdo->prepare(
-                    "SELECT al.id, al.action_type AS action, al.action_details AS details, al.created_at,
-                            COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'System') AS user_name
-                     FROM audit_logs al
-                     LEFT JOIN users u ON u.id = al.user_id
-                     WHERE (al.action_type LIKE ? OR al.action_details LIKE ?)
-                       AND u.station_id = ?
-                     ORDER BY al.created_at DESC LIMIT 8"
+                    "SELECT ip.id, ip.product_name, ip.sku, ip.category,
+                            ip.unit_price, ip.cost_price, ip.stock AS stock_level
+                     FROM inventory_products ip
+                     WHERE ip.status = 'active'
+                       AND (ip.product_name LIKE ?
+                         OR ip.sku          LIKE ?
+                         OR ip.category     LIKE ?
+                         OR CAST(ip.unit_price AS CHAR) LIKE ?
+                         OR CAST(ip.cost_price AS CHAR) LIKE ?)
+                     ORDER BY ip.product_name ASC LIMIT 10"
                 );
-                $stmt->execute([$like, $like, $station_id]);
-                $audit_link = 'admin_audit_trail.php';
-            } else { // manager
+                $stmt->execute([$like, $like, $like, $like, $like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $price = $r['unit_price'] ? '₱' . number_format($r['unit_price'], 2) : 'No price';
+                    $cost  = $r['cost_price']  ? ' · Cost: ₱' . number_format($r['cost_price'], 2) : '';
+                    $pm_q  = urlencode($r['product_name']);
+
+                    $prod_mgmt_link = $is_admin
+                        ? 'admin_set_prices.php?tab=merch&search='   . $pm_q
+                        : 'manager_set_prices.php?tab=merch&search=' . $pm_q;
+
+                    $results[] = [
+                        'type'     => 'Product Mgmt',
+                        'title'    => $r['product_name'],
+                        'subtitle' => "SKU: {$r['sku']} · {$r['category']} · Price: {$price}{$cost}",
+                        'meta'     => $r['category'],
+                        'link'     => $prod_mgmt_link,
+                        'icon'     => $ICONS['Product Mgmt'],
+                        'color'    => $COLORS['Product Mgmt'],
+                    ];
+                }
+            } catch (Exception $e) {}
+        }
+
+        // ════════════════════════════════════════════════════════
+        // 9. FUEL MANAGEMENT  (Fuel Management Module — Pumps & Tanks)
+        // ════════════════════════════════════════════════════════
+        if ($is_manager || $is_admin) {
+            // Fuel pumps
+            try {
+                $sw_fp = $station_id ? "AND fp.station_id = {$station_id}" : '';
                 $stmt = $pdo->prepare(
-                    "SELECT al.id, al.action_type AS action, al.action_details AS details, al.created_at,
-                            COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'System') AS user_name
-                     FROM audit_logs al
-                     LEFT JOIN users u ON u.id = al.user_id
-                     WHERE (al.action_type LIKE ? OR al.action_details LIKE ?)
-                       AND al.user_id = ?
-                     ORDER BY al.created_at DESC LIMIT 8"
+                    "SELECT fp.id, fp.pump_number, fp.status, fp.capacity, ft.name AS fuel_name
+                     FROM fuel_pumps fp
+                     LEFT JOIN fuel_types ft ON ft.id = fp.fuel_type_id
+                     WHERE (fp.pump_number LIKE ?
+                         OR fp.status      LIKE ?
+                         OR ft.name        LIKE ?)
+                       {$sw_fp}
+                     ORDER BY fp.pump_number ASC LIMIT 8"
                 );
-                $stmt->execute([$like, $like, $user_id]);
-                $audit_link = 'manager_audit_trail.php';
-            }
+                $stmt->execute([$like, $like, $like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $fuel_mgmt_link = $is_admin
+                        ? 'admin_fuel_transactions_oversight.php'
+                        : 'manager_fuel_pump_master.php';
 
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $ts = date('M d, Y H:i', strtotime($r['created_at']));
-                $results[] = [
-                    'type'     => 'Audit Trail',
-                    'title'    => $r['action'],
-                    'subtitle' => mb_strimwidth($r['details'] ?? '', 0, 70, '…') . " · {$r['user_name']} · {$ts}",
-                    'meta'     => $ts,
-                    'link'     => $audit_link,
-                    'icon'     => $ICONS['Audit Trail'],
-                    'color'    => $COLORS['Audit Trail'],
-                ];
-            }
-        } catch (Exception $e) {}
+                    $results[] = [
+                        'type'     => 'Fuel Management',
+                        'title'    => "Fuel Pump #{$r['pump_number']}",
+                        'subtitle' => "Fuel: {$r['fuel_name']} · Capacity: {$r['capacity']}L · Status: {$r['status']}",
+                        'meta'     => $r['status'] ?? '',
+                        'link'     => $fuel_mgmt_link,
+                        'icon'     => $ICONS['Fuel Management'],
+                        'color'    => $COLORS['Fuel Management'],
+                    ];
+                }
+            } catch (Exception $e) {}
+        }
+
+        // ════════════════════════════════════════════════════════
+        // 10-A. PURCHASE ORDERS  (Station-scoped for Admin, Manager, Staff)
+        // ════════════════════════════════════════════════════════
+        if ($is_admin || in_array($role, ['manager', 'staff'])) {
+            $po_clean = preg_replace('/^(po|fpo)-?0*/i', '', $query);
+            $po_num   = is_numeric($po_clean) ? (int)$po_clean : -1;
+            $sw_po    = $station_id ? "AND po.station_id = {$station_id}" : '';
+
+            // Merchandise Purchase Orders
+            try {
+                $stmt = $pdo->prepare(
+                    "SELECT po.id, po.po_number, po.product_name, po.status,
+                            po.total_amount, po.created_at, po.supplier_name,
+                            po.expected_delivery_date
+                     FROM purchase_orders po
+                     WHERE (po.po_number      LIKE ?
+                         OR po.product_name   LIKE ?
+                         OR po.supplier_name  LIKE ?
+                         OR po.status         LIKE ?
+                         OR CONCAT('PO-', LPAD(po.id, 5, '0')) LIKE ?
+                         OR CONCAT('PO-', po.id) LIKE ?
+                         OR po.id = ?
+                         OR CAST(po.total_amount AS CHAR) LIKE ?)
+                       {$sw_po}
+                     ORDER BY po.created_at DESC LIMIT 8"
+                );
+                $stmt->execute([$like, $like, $like, $like, $like, $like, $po_num, $like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $po_num_disp = $r['po_number'] ?: ('PO-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT));
+                    $amount      = $r['total_amount'] ? '₱' . number_format((float)$r['total_amount'], 2) : '';
+                    $deliv       = $r['expected_delivery_date'] ? ' · ETA: ' . date('M d, Y', strtotime($r['expected_delivery_date'])) : '';
+                    $supplier    = $r['supplier_name'] ? " · Supplier: {$r['supplier_name']}" : '';
+                    $po_q        = urlencode($po_num_disp);
+                    $po_link     = $is_admin
+                        ? 'admin_merchandise_deliveries_oversight.php?search=' . $po_q
+                        : ($role === 'manager' ? 'manager_stock_request_review.php?search=' . $po_q : 'staff_record_delivery.php?po=' . $po_q);
+
+                    $results[] = [
+                        'type'     => 'Purchase Order',
+                        'title'    => "{$po_num_disp} — {$r['product_name']}",
+                        'subtitle' => "Status: {$r['status']}{$supplier} · {$amount}{$deliv}",
+                        'meta'     => $r['status'],
+                        'link'     => $po_link,
+                        'icon'     => $ICONS['Purchase Order'],
+                        'color'    => $COLORS['Purchase Order'],
+                    ];
+                }
+            } catch (Exception $e) {}
+
+            // Fuel Purchase Orders
+            try {
+                $sw_fpo = $station_id ? "AND fpo.station_id = {$station_id}" : '';
+                $stmt = $pdo->prepare(
+                    "SELECT fpo.id, fpo.po_number, fpo.status,
+                            fpo.volume, fpo.total_amount, fpo.created_at,
+                            ft.name AS fuel_type_display
+                     FROM fuel_purchase_orders fpo
+                     LEFT JOIN fuel_types ft ON ft.id = fpo.fuel_type_id
+                     WHERE (fpo.po_number LIKE ?
+                         OR fpo.status   LIKE ?
+                         OR CONCAT('PO-', LPAD(fpo.id, 5, '0')) LIKE ?
+                         OR CONCAT('FPO-', LPAD(fpo.id, 5, '0')) LIKE ?
+                         OR fpo.id = ?
+                         OR CAST(fpo.volume AS CHAR) LIKE ?)
+                       {$sw_fpo}
+                     ORDER BY fpo.created_at DESC LIMIT 5"
+                );
+                $stmt->execute([$like, $like, $like, $like, $po_num, $like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $po_num_disp = $r['po_number'] ?: ('FPO-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT));
+                    $amount      = $r['total_amount'] ? ' · ₱' . number_format((float)$r['total_amount'], 2) : '';
+                    $fuel        = $r['fuel_type_display'] ?? 'Fuel';
+                    $fpo_link    = $is_admin
+                        ? 'admin_fuel_deliveries_oversight.php'
+                        : ($role === 'manager' ? 'manager_fuel_purchase_orders.php' : 'staff_record_delivery.php');
+
+                    $results[] = [
+                        'type'     => 'Purchase Order',
+                        'title'    => "{$po_num_disp} — {$fuel} PO",
+                        'subtitle' => "Fuel PO · Volume: {$r['volume']}L · Status: {$r['status']}{$amount}",
+                        'meta'     => $r['status'],
+                        'link'     => $fpo_link,
+                        'icon'     => 'fas fa-gas-pump',
+                        'color'    => $COLORS['Purchase Order'],
+                    ];
+                }
+            } catch (Exception $e) {}
+        }
+
+        // ════════════════════════════════════════════════════════
+        // 10-B. ACCOUNTS RECEIVABLE / AR  (Admin, Manager, Staff)
+        // ════════════════════════════════════════════════════════
+        if ($is_admin || in_array($role, ['manager', 'staff'])) {
+            $ar_clean = preg_replace('/^ar-?0*/i', '', $query);
+            $ar_num   = is_numeric($ar_clean) ? (int)$ar_clean : -1;
+
+            // 1. Transaction-level AR / accounts receivable records
+            try {
+                $sw_ar = $station_id ? "AND (c.station_id = {$station_id} OR c.station_id IS NULL)" : '';
+                $stmt = $pdo->prepare(
+                    "SELECT ar.id, ar.transaction_id, ar.or_number,
+                            ar.total_amount, ar.amount_paid, ar.outstanding_balance,
+                            ar.status, ar.created_at,
+                            c.name AS customer_name, c.customer_id AS cust_code
+                     FROM customer_accounts_receivable ar
+                     LEFT JOIN customers c ON c.id = ar.customer_id
+                     WHERE (ar.transaction_id      LIKE ?
+                         OR ar.or_number           LIKE ?
+                         OR c.name                 LIKE ?
+                         OR c.customer_id          LIKE ?
+                         OR CONCAT('AR-', LPAD(ar.id, 5, '0')) LIKE ?
+                         OR CONCAT('AR-', ar.id)   LIKE ?
+                         OR ar.id = ?
+                         OR ar.status              LIKE ?
+                         OR CAST(ar.outstanding_balance AS CHAR) LIKE ?)
+                       {$sw_ar}
+                     ORDER BY ar.created_at DESC LIMIT 8"
+                );
+                $stmt->execute([$like, $like, $like, $like, $like, $like, $ar_num, $like, $like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $cust    = $r['customer_name'] ? " · {$r['customer_name']}" : '';
+                    $code    = $r['cust_code']     ? " [{$r['cust_code']}]"     : '';
+                    $balance = $r['outstanding_balance'] !== null ? '₱' . number_format((float)$r['outstanding_balance'], 2) : '';
+                    $or_ref  = $r['or_number'] ? " OR#: {$r['or_number']}" : '';
+                    $ar_ref  = $r['transaction_id'] ?: ('AR-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT));
+                    $ar_q    = urlencode($ar_ref);
+                    $ar_link = $is_admin
+                        ? 'admin_transactions_oversight.php?tab=ar&search=' . $ar_q
+                        : ($role === 'manager' ? 'manager_validated_transactions.php?tab=ar&search=' . $ar_q : 'staff_transactions_hub.php?section=history&hsearch=' . $ar_q);
+                    $results[] = [
+                        'type'     => 'AR / Credit',
+                        'title'    => "{$ar_ref}{$code}{$cust}",
+                        'subtitle' => "Balance: {$balance} · Status: {$r['status']}{$or_ref}",
+                        'meta'     => $r['status'],
+                        'link'     => $ar_link,
+                        'icon'     => $ICONS['AR / Credit'],
+                        'color'    => $COLORS['AR / Credit'],
+                    ];
+                }
+            } catch (Exception $e) {}
+
+            // 2. Customer credit balance accounts (Customer AR reference)
+            try {
+                $is_ar_query = (stripos($query, 'ar') !== false || stripos($query, 'balance') !== false || stripos($query, 'credit') !== false || $ar_num > 0);
+                if ($is_ar_query) {
+                    $sw_c_ar = $station_id ? "AND (c.station_id = {$station_id} OR c.station_id IS NULL)" : '';
+                    $stmt_c_ar = $pdo->prepare(
+                        "SELECT c.id, c.name, c.customer_id AS cust_code, c.credit_limit,
+                                COALESCE(c.outstanding_balance, c.current_balance, c.balance, 0) AS balance,
+                                c.status
+                         FROM customers c
+                         WHERE (c.name LIKE ?
+                             OR c.customer_id LIKE ?
+                             OR CONCAT('AR-', LPAD(c.id, 5, '0')) LIKE ?
+                             OR CONCAT('AR-', c.id) LIKE ?
+                             OR c.id = ?)
+                           {$sw_c_ar}
+                         ORDER BY c.name ASC LIMIT 5"
+                    );
+                    $stmt_c_ar->execute([$like, $like, $like, $like, $ar_num]);
+                    foreach ($stmt_c_ar->fetchAll(PDO::FETCH_ASSOC) as $cr) {
+                        $ar_ref   = 'AR-' . str_pad($cr['id'], 5, '0', STR_PAD_LEFT);
+                        $code_ref = $cr['cust_code'] ? " [{$cr['cust_code']}]" : '';
+                        $bal      = '₱' . number_format((float)$cr['balance'], 2);
+                        $lim      = ((float)$cr['credit_limit'] > 0) ? ' · Limit: ₱' . number_format((float)$cr['credit_limit'], 2) : '';
+
+                        $ar_cust_link = ($role === 'staff')
+                            ? 'staff_transactions_hub.php?section=history&hsearch=' . urlencode($cr['name'])
+                            : ($role === 'manager' ? 'manager_validated_transactions.php?tab=ar&search=' . urlencode($cr['name']) : 'admin_transactions_oversight.php?tab=ar&search=' . urlencode($cr['name']));
+
+                        $results[] = [
+                            'type'     => 'AR / Credit',
+                            'title'    => "{$ar_ref}{$code_ref} — {$cr['name']}",
+                            'subtitle' => "AR Balance: {$bal}{$lim} · Status: " . ucfirst($cr['status']),
+                            'meta'     => $cr['status'],
+                            'link'     => $ar_cust_link,
+                            'icon'     => $ICONS['AR / Credit'],
+                            'color'    => $COLORS['AR / Credit'],
+                        ];
+                    }
+                }
+            } catch (Exception $e_c_ar) {}
+        }
+
+        // ════════════════════════════════════════════════════════
+        // 10-C. STOCK REQUESTS  (Manager, Admin, Staff)
+        // ════════════════════════════════════════════════════════
+        if (in_array($role, ['manager', 'staff']) || $is_admin) {
+            $sr_clean = preg_replace('/^(sr|fsr)-?0*/i', '', $query);
+            $sr_num   = is_numeric($sr_clean) ? (int)$sr_clean : -1;
+
+            // Merchandise Stock Requests
+            try {
+                $sw_sr = $station_id ? "AND sr.station_id = {$station_id}" : '';
+                $stmt = $pdo->prepare(
+                    "SELECT sr.id, sr.request_no, sr.item_name, sr.item_sku,
+                            sr.requested_quantity, sr.status, sr.created_at
+                     FROM stock_requests sr
+                     WHERE (sr.request_no LIKE ?
+                         OR sr.item_name  LIKE ?
+                         OR sr.item_sku   LIKE ?
+                         OR CONCAT('SR-', LPAD(sr.id, 5, '0')) LIKE ?
+                         OR CONCAT('SR-', sr.id) LIKE ?
+                         OR sr.id = ?
+                         OR sr.status     LIKE ?)
+                       {$sw_sr}
+                     ORDER BY sr.created_at DESC LIMIT 6"
+                );
+                $stmt->execute([$like, $like, $like, $like, $like, $sr_num, $like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $sr_ref  = $r['request_no'] ?: ('SR-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT));
+                    $sr_q    = urlencode($sr_ref);
+                    $sr_link = ($role === 'manager')
+                        ? 'manager_stock_request_review.php?search=' . $sr_q
+                        : ($is_admin ? 'admin_merchandise_deliveries_oversight.php?search=' . $sr_q : 'staff_inventory_merchandise.php?search=' . $sr_q);
+
+                    $results[] = [
+                        'type'     => 'Stock Request',
+                        'title'    => "{$sr_ref} — {$r['item_name']}",
+                        'subtitle' => "SKU: {$r['item_sku']} · Qty: {$r['requested_quantity']} · Status: {$r['status']}",
+                        'meta'     => $r['status'],
+                        'link'     => $sr_link,
+                        'icon'     => $ICONS['Stock Request'],
+                        'color'    => $COLORS['Stock Request'],
+                    ];
+                }
+            } catch (Exception $e) {}
+
+            // Fuel Stock Requests
+            try {
+                $sw_fsr = $station_id ? "AND fsr.station_id = {$station_id}" : '';
+                $stmt_fsr = $pdo->prepare(
+                    "SELECT fsr.id, fsr.request_no, fsr.fuel_type,
+                            fsr.requested_liters, fsr.status, fsr.created_at
+                     FROM fuel_stock_requests fsr
+                     WHERE (fsr.request_no LIKE ?
+                         OR fsr.fuel_type  LIKE ?
+                         OR CONCAT('SR-', LPAD(fsr.id, 5, '0')) LIKE ?
+                         OR CONCAT('FSR-', LPAD(fsr.id, 5, '0')) LIKE ?
+                         OR fsr.id = ?
+                         OR fsr.status     LIKE ?)
+                       {$sw_fsr}
+                     ORDER BY fsr.created_at DESC LIMIT 5"
+                );
+                $stmt_fsr->execute([$like, $like, $like, $like, $sr_num, $like]);
+                foreach ($stmt_fsr->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $sr_ref  = $r['request_no'] ?: ('FSR-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT));
+                    $sr_q    = urlencode($sr_ref);
+                    $sr_link = ($role === 'manager')
+                        ? 'manager_stock_request_review.php?search=' . $sr_q
+                        : ($is_admin ? 'admin_fuel_deliveries_oversight.php?search=' . $sr_q : 'staff_inventory_fuel.php?search=' . $sr_q);
+
+                    $results[] = [
+                        'type'     => 'Stock Request',
+                        'title'    => "{$sr_ref} — {$r['fuel_type']}",
+                        'subtitle' => "Fuel Request · Qty: {$r['requested_liters']}L · Status: {$r['status']}",
+                        'meta'     => $r['status'],
+                        'link'     => $sr_link,
+                        'icon'     => 'fas fa-gas-pump',
+                        'color'    => $COLORS['Stock Request'],
+                    ];
+                }
+            } catch (Exception $e_fsr) {}
+        }
+
+        // ════════════════════════════════════════════════════════
+        // 10-D. REQUESTS / APPROVALS  (Manager & Admin)
+        // Master Data Requests + Transaction Requests (Void/Adjustment)
+        // ════════════════════════════════════════════════════════
+        if ($role === 'manager' || $is_admin) {
+            // Master Data Requests
+            try {
+                $sw_mdr = $station_id ? "AND mdr.station_id = {$station_id}" : '';
+                $stmt = $pdo->prepare(
+                    "SELECT mdr.id, mdr.request_no, mdr.category, mdr.source_module, mdr.status, mdr.created_at
+                     FROM master_data_requests mdr
+                     WHERE (mdr.request_no LIKE ?
+                         OR mdr.category   LIKE ?
+                         OR mdr.status     LIKE ?)
+                       {$sw_mdr}
+                     ORDER BY mdr.created_at DESC LIMIT 5"
+                );
+                $stmt->execute([$like, $like, $like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $req_ref  = $r['request_no'] ?: ('REQ-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT));
+                    $req_q    = urlencode($req_ref);
+                    $req_link = ($role === 'manager')
+                        ? 'manager_request_data_management.php?search=' . $req_q
+                        : 'admin_transactions_oversight.php?tab=requests&search=' . $req_q;
+
+                    $results[] = [
+                        'type'     => 'Request/Approval',
+                        'title'    => "{$req_ref} — {$r['category']} Request",
+                        'subtitle' => "Module: {$r['source_module']} · Status: {$r['status']}",
+                        'meta'     => $r['status'],
+                        'link'     => $req_link,
+                        'icon'     => $ICONS['Request/Approval'],
+                        'color'    => $COLORS['Request/Approval'],
+                    ];
+                }
+            } catch (Exception $e) {}
+
+            // Transaction Requests (Void / Adjustment)
+            try {
+                $sw_tr = $station_id ? "AND tr.station_id = {$station_id}" : '';
+                $stmt = $pdo->prepare(
+                    "SELECT tr.id, tr.transaction_id, tr.request_type, tr.request_reason, tr.status, tr.requested_at
+                     FROM transaction_requests tr
+                     WHERE (tr.transaction_id LIKE ?
+                         OR tr.request_type   LIKE ?
+                         OR tr.request_reason LIKE ?
+                         OR tr.status         LIKE ?)
+                       {$sw_tr}
+                     ORDER BY tr.id DESC LIMIT 5"
+                );
+                $stmt->execute([$like, $like, $like, $like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $tr_q    = urlencode($r['transaction_id']);
+                    $tr_link = ($role === 'manager')
+                        ? 'manager_validated_transactions.php?search=' . $tr_q
+                        : 'admin_transactions_oversight.php?search=' . $tr_q;
+
+                    $results[] = [
+                        'type'     => 'Request/Approval',
+                        'title'    => "Request #{$r['id']} — {$r['request_type']} (Tx #{$r['transaction_id']})",
+                        'subtitle' => "Reason: {$r['request_reason']} · Status: {$r['status']}",
+                        'meta'     => $r['status'],
+                        'link'     => $tr_link,
+                        'icon'     => $ICONS['Request/Approval'],
+                        'color'    => $COLORS['Request/Approval'],
+                    ];
+                }
+            } catch (Exception $e) {}
+        }
+
+        // ════════════════════════════════════════════════════════
+        // 10-E. EMPLOYEE / STAFF LOOKUP  (Manager only)
+        // ════════════════════════════════════════════════════════
+        if ($role === 'manager') {
+            try {
+                $sw_u = $station_id ? "AND u.station_id = {$station_id}" : '';
+                $stmt = $pdo->prepare(
+                    "SELECT u.id, u.employee_id, u.username,
+                            COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username) AS full_name,
+                            u.role, u.status, u.assigned_shift
+                     FROM users u
+                     WHERE u.role IN ('staff', 'manager')
+                       AND (u.username    LIKE ?
+                         OR u.first_name  LIKE ?
+                         OR u.last_name   LIKE ?
+                         OR u.employee_id LIKE ?)
+                       {$sw_u}
+                     ORDER BY u.role ASC LIMIT 5"
+                );
+                $stmt->execute([$like, $like, $like, $like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $emp_id = $r['employee_id'] ? " [{$r['employee_id']}]" : '';
+                    $shift  = $r['assigned_shift'] ? " · Shift: {$r['assigned_shift']}" : '';
+                    $results[] = [
+                        'type'     => 'Employee',
+                        'title'    => $r['full_name'] . $emp_id,
+                        'subtitle' => ucfirst($r['role']) . "{$shift} · Status: {$r['status']}",
+                        'meta'     => $r['role'],
+                        'link'     => 'manager_calendar.php',
+                        'icon'     => $ICONS['Employee'],
+                        'color'    => $COLORS['Employee'],
+                    ];
+                }
+            } catch (Exception $e) {}
+        }
+
+        // ════════════════════════════════════════════════════════
+        // 10-F. MECHANICS LOOKUP  (Manager only — Mechanics Management)
+        // ════════════════════════════════════════════════════════
+        if ($role === 'manager') {
+            try {
+                $sw_m = $station_id ? "AND m.station_id = {$station_id}" : '';
+                $stmt = $pdo->prepare(
+                    "SELECT m.id, m.full_name, m.first_name, m.last_name,
+                            m.specialization, m.shift_assignment, m.status
+                     FROM mechanics m
+                     WHERE m.archived = 0
+                       AND (m.full_name       LIKE ?
+                         OR m.first_name      LIKE ?
+                         OR m.last_name       LIKE ?
+                         OR m.specialization  LIKE ?
+                         OR m.status          LIKE ?)
+                       {$sw_m}
+                     ORDER BY m.full_name ASC LIMIT 6"
+                );
+                $stmt->execute([$like, $like, $like, $like, $like]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $m_name = $r['full_name'] ?: trim("{$r['first_name']} {$r['last_name']}");
+                    $spec   = $r['specialization'] ? " · {$r['specialization']}" : '';
+                    $shift  = $r['shift_assignment'] ? " · Shift: {$r['shift_assignment']}" : '';
+                    $results[] = [
+                        'type'     => 'Mechanic',
+                        'title'    => $m_name,
+                        'subtitle' => "Mechanic{$spec}{$shift} · Status: " . ucfirst($r['status']),
+                        'meta'     => $r['status'],
+                        'link'     => 'manager_mechanics_management.php?search=' . urlencode($m_name),
+                        'icon'     => $ICONS['Mechanic'],
+                        'color'    => $COLORS['Mechanic'],
+                    ];
+                }
+            } catch (Exception $e) {}
+        }
     }
 }
 
-// ── AJAX: return JSON for autocomplete (max 4 per type) ──────
-if ($is_ajax) {
-    header('Content-Type: application/json; charset=utf-8');
-    
-    if (!empty($query) && strlen(trim($query)) >= 3) {
-        log_activity($pdo, $user_id, 'Global Search (Ajax)', "User searched: {$query}");
-    }
-    
-    // Limit to 4 per category for dropdown
-    $grouped = [];
-    foreach ($results as $r) {
-        $t = $r['type'];
-        if (!isset($grouped[$t])) $grouped[$t] = [];
-        if (count($grouped[$t]) < 4) $grouped[$t][] = $r;
-    }
-    $flat = [];
-    foreach ($grouped as $items) {
-        foreach ($items as $i) $flat[] = $i;
-    }
-    echo json_encode($flat);
-    exit;
+// ── Return JSON for header search autocomplete ──────
+header('Content-Type: application/json; charset=utf-8');
+
+if (!empty($query) && strlen(trim($query)) >= 3) {
+    log_activity($pdo, $user_id, 'Global Search (Ajax)', "User searched: {$query}");
 }
 
-// ── Full results page ─────────────────────────────────────────
-$page_id = 'search';
-include __DIR__ . '/../partials/header.php';
-?>
-
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-
-.srp-page {
-    min-height: 100vh;
-    background: #f0f4f8;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+// Group results by type (max 4 per category for dropdown)
+$grouped = [];
+foreach ($results as $r) {
+    $t = $r['type'];
+    if (!isset($grouped[$t])) $grouped[$t] = [];
+    if (count($grouped[$t]) < 4) $grouped[$t][] = $r;
 }
-
-.srp-hero {
-    background: linear-gradient(135deg, #002F6C 0%, #001f4d 60%, #00122e 100%);
-    padding: 36px 32px 28px;
-    color: #fff;
-    position: relative;
-    overflow: hidden;
+$flat = [];
+foreach ($grouped as $items) {
+    foreach ($items as $i) $flat[] = $i;
 }
-.srp-hero::before {
-    content: '';
-    position: absolute;
-    top: -40px; right: -60px;
-    width: 300px; height: 300px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.04);
-    pointer-events: none;
-}
-.srp-hero::after {
-    content: '';
-    position: absolute;
-    bottom: -60px; left: 20%;
-    width: 200px; height: 200px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.03);
-    pointer-events: none;
-}
-.srp-hero-inner {
-    max-width: 1200px;
-    margin: 0 auto;
-    position: relative;
-    z-index: 1;
-}
-.srp-hero h1 {
-    font-size: 26px;
-    font-weight: 800;
-    margin: 0 0 6px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    letter-spacing: -0.3px;
-}
-.srp-hero h1 i {
-    font-size: 22px;
-    opacity: 0.85;
-}
-.srp-hero-meta {
-    font-size: 13px;
-    color: rgba(255,255,255,0.7);
-    font-weight: 500;
-    margin-bottom: 20px;
-}
-.srp-hero-meta strong {
-    color: #fff;
-    font-weight: 700;
-}
-
-/* Search Bar */
-.srp-search-form {
-    display: flex;
-    gap: 10px;
-    max-width: 700px;
-}
-.srp-search-form input {
-    flex: 1;
-    padding: 13px 20px;
-    border-radius: 10px;
-    border: 2px solid rgba(255,255,255,0.2);
-    background: rgba(255,255,255,0.12);
-    font-size: 14px;
-    outline: none;
-    transition: all .2s;
-    color: #fff;
-    font-weight: 500;
-    backdrop-filter: blur(4px);
-    font-family: inherit;
-}
-.srp-search-form input::placeholder { color: rgba(255,255,255,0.5); }
-.srp-search-form input:focus {
-    border-color: rgba(255,255,255,0.5);
-    background: rgba(255,255,255,0.18);
-}
-.srp-search-form button {
-    padding: 13px 24px;
-    border-radius: 10px;
-    border: none;
-    background: #df1f26;
-    color: #fff;
-    font-size: 14px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all .2s;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-family: inherit;
-    white-space: nowrap;
-    appearance: none;
-}
-.srp-search-form button:hover {
-    background: #c01a20;
-    transform: translateY(-1px);
-}
-
-/* Main Layout */
-.srp-body {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 24px 24px 60px;
-    display: grid;
-    grid-template-columns: 240px 1fr;
-    gap: 24px;
-    align-items: start;
-}
-
-/* Sidebar */
-.srp-sidebar {
-    position: sticky;
-    top: 16px;
-    background: #fff;
-    border-radius: 14px;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.05);
-    padding: 20px 16px;
-    overflow: hidden;
-}
-.srp-sidebar-title {
-    font-size: 10px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #94a3b8;
-    margin-bottom: 14px;
-    padding: 0 4px;
-}
-.srp-sidebar-stat {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 7px 12px;
-    border-radius: 8px;
-    margin-bottom: 4px;
-    font-size: 13px;
-    font-weight: 600;
-    color: #334155;
-    cursor: pointer;
-    text-decoration: none;
-    transition: all .15s;
-    border: 1.5px solid transparent;
-}
-.srp-sidebar-stat:hover {
-    background: #f1f5f9;
-    color: #002F6C;
-    border-color: #e2e8f0;
-}
-.srp-sidebar-stat .srp-cat-icon {
-    width: 26px;
-    height: 26px;
-    border-radius: 7px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    color: #fff;
-    flex-shrink: 0;
-    margin-right: 8px;
-}
-.srp-sidebar-stat-left {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    min-width: 0;
-    flex: 1;
-}
-.srp-sidebar-stat-left span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 12px;
-    font-weight: 700;
-}
-.srp-sidebar-badge {
-    background: #f1f5f9;
-    color: #475569;
-    font-size: 10px;
-    font-weight: 800;
-    padding: 2px 7px;
-    border-radius: 20px;
-    flex-shrink: 0;
-}
-.srp-sidebar-divider {
-    border: none;
-    border-top: 1px solid #f1f5f9;
-    margin: 12px 0;
-}
-.srp-total-badge {
-    text-align: center;
-    background: linear-gradient(135deg, #002F6C, #001f4d);
-    color: #fff;
-    border-radius: 10px;
-    padding: 10px;
-    margin-top: 12px;
-    font-size: 12px;
-    font-weight: 700;
-}
-.srp-total-badge strong {
-    display: block;
-    font-size: 22px;
-    font-weight: 900;
-    line-height: 1.2;
-}
-
-/* Results Area */
-.srp-results {
-    min-width: 0;
-}
-
-/* Result Groups */
-.srp-group {
-    margin-bottom: 20px;
-    background: #fff;
-    border-radius: 14px;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-    overflow: hidden;
-}
-.srp-group-title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 20px;
-    border-bottom: 1px solid #f1f5f9;
-    background: #fafbfc;
-}
-.srp-group-title-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 9px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    color: #fff;
-    flex-shrink: 0;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-}
-.srp-group-title-text {
-    font-size: 12px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: #1e293b;
-    flex: 1;
-}
-.srp-count {
-    background: #e2e8f0;
-    color: #475569;
-    font-size: 10px;
-    font-weight: 800;
-    padding: 3px 9px;
-    border-radius: 20px;
-}
-
-/* Result Items */
-.srp-item {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 14px 20px;
-    text-decoration: none;
-    color: inherit;
-    transition: background .15s;
-    border-bottom: 1px solid #f8fafc;
-    position: relative;
-}
-.srp-item:last-child { border-bottom: none; }
-.srp-item:hover {
-    background: #f8fafc;
-}
-.srp-item:hover .srp-item-arrow {
-    color: #002F6C;
-    transform: translateX(3px);
-}
-.srp-item-icon {
-    width: 42px;
-    height: 42px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 15px;
-    flex-shrink: 0;
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-}
-.srp-item-body {
-    flex: 1;
-    min-width: 0;
-}
-.srp-item-title {
-    font-size: 14px;
-    font-weight: 700;
-    color: #0f172a;
-    margin-bottom: 3px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.srp-item-sub {
-    font-size: 12px;
-    color: #64748b;
-    line-height: 1.45;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    font-weight: 500;
-}
-.srp-item-arrow {
-    color: #cbd5e1;
-    font-size: 12px;
-    flex-shrink: 0;
-    transition: all .2s;
-}
-
-/* Empty State */
-.srp-empty {
-    grid-column: 1 / -1;
-    text-align: center;
-    padding: 80px 20px;
-    color: #94a3b8;
-    background: #fff;
-    border-radius: 14px;
-    border: 2px dashed #e2e8f0;
-}
-.srp-empty i {
-    font-size: 52px;
-    margin-bottom: 16px;
-    display: block;
-    color: #cbd5e1;
-}
-.srp-empty-title {
-    font-size: 18px;
-    font-weight: 700;
-    color: #475569;
-    margin-bottom: 8px;
-}
-.srp-empty-sub {
-    font-size: 14px;
-    color: #94a3b8;
-    font-weight: 500;
-}
-.srp-empty-sub strong { color: #002F6C; }
-
-/* No query prompt */
-.srp-prompt {
-    grid-column: 1 / -1;
-    background: #fff;
-    border-radius: 14px;
-    border: 1px solid #e2e8f0;
-    padding: 60px 40px;
-    text-align: center;
-}
-.srp-prompt i {
-    font-size: 56px;
-    color: #002F6C;
-    opacity: .15;
-    display: block;
-    margin-bottom: 20px;
-}
-.srp-prompt-title {
-    font-size: 20px;
-    font-weight: 800;
-    color: #1e293b;
-    margin-bottom: 8px;
-}
-.srp-prompt-sub {
-    font-size: 14px;
-    color: #64748b;
-    font-weight: 500;
-}
-
-/* Responsive */
-@media (max-width: 900px) {
-    .srp-body {
-        grid-template-columns: 1fr;
-        padding: 16px 16px 40px;
-    }
-    .srp-sidebar { position: static; }
-    .srp-hero { padding: 24px 20px 20px; }
-    .srp-search-form { flex-direction: column; }
-    .srp-search-form button { justify-content: center; }
-    .srp-hero h1 { font-size: 22px; }
-}
-</style>
-
-<div class="srp-page">
-
-<!-- Hero Search Header -->
-<div class="srp-hero">
-    <div class="srp-hero-inner">
-        <h1><i class="fas fa-search"></i> Search Results</h1>
-        <?php if ($query): ?>
-        <div class="srp-hero-meta">
-            Showing results for <strong>"<?= htmlspecialchars($query) ?>"</strong>
-            &mdash; <strong><?= count($results) ?></strong> result<?= count($results) !== 1 ? 's' : '' ?> found
-        </div>
-        <?php else: ?>
-        <div class="srp-hero-meta">Search across transactions, customers, products, deliveries, and more</div>
-        <?php endif; ?>
-        <form class="srp-search-form" method="get" action="search.php">
-            <input type="text" name="q" value="<?= htmlspecialchars($query) ?>"
-                   placeholder="Search customers, products, orders, deliveries..." autofocus>
-            <button type="submit"><i class="fas fa-search"></i> Search</button>
-        </form>
-    </div>
-</div>
-
-<!-- Body: Sidebar + Results -->
-<div class="srp-body">
-
-<?php if (empty($query)): ?>
-    <div class="srp-prompt">
-        <i class="fas fa-search"></i>
-        <div class="srp-prompt-title">What are you looking for?</div>
-        <div class="srp-prompt-sub">Search across customers, products, transactions, job orders, deliveries, and more</div>
-    </div>
-
-<?php elseif (empty($results)): ?>
-    <div class="srp-empty">
-        <i class="fas fa-inbox"></i>
-        <div class="srp-empty-title">No results found</div>
-        <div class="srp-empty-sub">No matches for <strong>"<?= htmlspecialchars($query) ?>"</strong>. Try different keywords or check your spelling.</div>
-    </div>
-
-<?php else:
-    // Group results by type
-    $grouped = [];
-    foreach ($results as $r) {
-        $grouped[$r['type']][] = $r;
-    }
-?>
-
-    <!-- Sidebar: Category Summary -->
-    <aside class="srp-sidebar">
-        <div class="srp-sidebar-title">Categories</div>
-        <?php foreach ($grouped as $type => $items):
-            $icon  = $ICONS[$type]  ?? 'fas fa-circle';
-            $color = $COLORS[$type] ?? '#64748b';
-            $anchor = 'grp-' . preg_replace('/[^a-z0-9]/', '-', strtolower($type));
-        ?>
-        <a class="srp-sidebar-stat" href="#<?= $anchor ?>">
-            <span class="srp-sidebar-stat-left">
-                <span class="srp-cat-icon" style="background:<?= $color ?>;">
-                    <i class="<?= $icon ?>"></i>
-                </span>
-                <span><?= htmlspecialchars($type) ?></span>
-            </span>
-            <span class="srp-sidebar-badge"><?= count($items) ?></span>
-        </a>
-        <?php endforeach; ?>
-        <hr class="srp-sidebar-divider">
-        <div class="srp-total-badge">
-            <strong><?= count($results) ?></strong>
-            Total Results
-        </div>
-    </aside>
-
-    <!-- Results -->
-    <div class="srp-results">
-        <?php foreach ($grouped as $type => $items):
-            $icon  = $ICONS[$type]  ?? 'fas fa-circle';
-            $color = $COLORS[$type] ?? '#64748b';
-            $anchor = 'grp-' . preg_replace('/[^a-z0-9]/', '-', strtolower($type));
-        ?>
-        <div class="srp-group" id="<?= $anchor ?>">
-            <div class="srp-group-title">
-                <span class="srp-group-title-icon" style="background:<?= $color ?>;">
-                    <i class="<?= $icon ?>"></i>
-                </span>
-                <span class="srp-group-title-text"><?= htmlspecialchars($type) ?></span>
-                <span class="srp-count"><?= count($items) ?></span>
-            </div>
-            <?php foreach ($items as $r): ?>
-            <a class="srp-item" href="<?= htmlspecialchars($r['link']) ?>">
-                <div class="srp-item-icon" style="background:<?= $color ?>;">
-                    <i class="<?= $icon ?>"></i>
-                </div>
-                <div class="srp-item-body">
-                    <div class="srp-item-title"><?= htmlspecialchars($r['title']) ?></div>
-                    <div class="srp-item-sub"><?= htmlspecialchars($r['subtitle']) ?></div>
-                </div>
-                <i class="fas fa-chevron-right srp-item-arrow"></i>
-            </a>
-            <?php endforeach; ?>
-        </div>
-        <?php endforeach; ?>
-    </div>
-
-<?php endif; ?>
-
-</div><!-- /.srp-body -->
-</div><!-- /.srp-page -->
-
-<?php include __DIR__ . '/../partials/footer.php'; ?>
+echo json_encode($flat);
+exit;

@@ -297,10 +297,10 @@ if (empty($stations)) {
 }
 ?>
 
-<div style="padding: 0 !important;">
+<div class="mc-page-wrap" style="padding: 0 !important; width: 100% !important; max-width: 100% !important; overflow-x: hidden !important; box-sizing: border-box !important;">
 <div class="page-head">
     <div>
-        <h1 class="h1"><i class="fas fa-cogs"></i> Station-Dependent Module Control</h1>
+        <h1 class="h1"><i class="fas fa-cogs" style="margin-right: 8px;"></i> Station-Dependent Module Control</h1>
     </div>
 </div>
 
@@ -377,19 +377,19 @@ setTimeout(function(){ dismissToast('toastError'); }, 7000);
 <?php endif; ?>
 
 <!-- Station-Dependent Configuration Section -->
-<div class="card" id="tb_station_combo_card" style="margin-bottom: 30px; overflow: visible !important;">
+<div class="card" id="tb_station_combo_card" style="margin-bottom: 25px; overflow: visible !important;">
     <div class="card-header" style="background: #f8f9fa; border-bottom: 2px solid #e9ecef;">
-        <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--petron-blue, #00264D);">
-            <i class="fas fa-map-marker-alt" style="color: #3b82f6;"></i> Station-Dependent Configuration
+        <h3 style="margin: 0; font-size: 19px; font-weight: 700; color: var(--petron-blue, #00264D); display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-map-marker-alt" style="color: #3b82f6; font-size: 20px;"></i> Station-Dependent Configuration
         </h3>
     </div>
-    <div class="card-body" style="padding: 20px; overflow: visible !important;">
-        <div style="display: flex; align-items: center; gap: 15px; position: relative; margin-bottom: 15px;">
-            <label for="tb_station_display" style="font-weight: 600; color: #374151; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
-                Search Station
+    <div class="card-body" style="padding: 22px; overflow: visible !important;">
+        <div style="display: flex; align-items: center; gap: 15px; position: relative; margin-bottom: 15px; flex-wrap: wrap;">
+            <label for="tb_station_display" style="font-weight: 700; color: #374151; font-size: 15px; text-transform: uppercase; letter-spacing: 0.5px;">
+                Search Station:
             </label>
             <!-- Searchable station filter (SEARCHABLE SELECT) -->
-            <div class="am-combo am-combo-toolbar" id="tb_station_combo" style="width:450px; position: relative; z-index: 100;">
+            <div class="am-combo am-combo-toolbar" id="tb_station_combo" style="width:450px; max-width: 100%; position: relative; z-index: 100;">
                 <input type="text" class="am-combo-input" id="tb_station_display" placeholder="Type to search stations..." autocomplete="off" style="padding-right:80px; cursor: text;">
                 <button type="button" class="am-combo-clear" id="tb_station_clear" tabindex="-1" title="Clear filter"><i class="fas fa-times"></i></button>
                 <i class="fas fa-chevron-down am-combo-arrow"></i>
@@ -402,12 +402,12 @@ setTimeout(function(){ dismissToast('toastError'); }, 7000);
             </div>
         </div>
         <!-- Station selection info banner -->
-        <div id="stationSelectionBanner" style="display: none; padding: 12px 16px; background: #dbeafe; border-left: 4px solid #3b82f6; border-radius: 6px; margin-top: 15px;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <i class="fas fa-info-circle" style="color: #3b82f6; font-size: 18px;"></i>
+        <div id="stationSelectionBanner" style="display: none; padding: 14px 18px; background: #dbeafe; border-left: 5px solid #3b82f6; border-radius: 8px; margin-top: 15px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <i class="fas fa-info-circle" style="color: #3b82f6; font-size: 20px;"></i>
                 <div style="flex: 1;">
-                    <div style="font-weight: 600; color: #1e40af; font-size: 14px;">Selected Station:</div>
-                    <div id="selectedStationName" style="color: #1f2937; font-size: 13px; margin-top: 2px;"></div>
+                    <div style="font-weight: 700; color: #1e40af; font-size: 15px;">Selected Station:</div>
+                    <div id="selectedStationName" style="color: #1f2937; font-size: 15px; font-weight: 600; margin-top: 2px;"></div>
                 </div>
             </div>
         </div>
@@ -419,23 +419,23 @@ setTimeout(function(){ dismissToast('toastError'); }, 7000);
 <?php
 $coreModules = ['dashboard','transactions','fuel_management','inventory','customers','product_pricing','calendar','reports','notifications','backup_restore','audit_trail','api_integration'];
 ?>
-<div class="card">
+<div class="card" style="margin-bottom: 25px;">
     <div class="card-header" style="background: #f8f9fa; border-bottom: 2px solid #e9ecef; display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--petron-blue, #00264D);">
-            <i class="fas fa-globe" style="color: #10b981;"></i> Global Module Settings
+        <h3 style="margin: 0; font-size: 19px; font-weight: 700; color: var(--petron-blue, #00264D); display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-globe" style="color: #10b981; font-size: 20px;"></i> Global Module Settings
         </h3>
     </div>
-    <div class="card-body" style="padding: 20px 20px 10px;">
-        <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+    <div class="card-body" style="padding: 20px 20px 14px;">
+        <div style="display: flex; gap: 14px; margin-bottom: 10px; flex-wrap: wrap;">
             <input type="text" 
                    id="moduleSearch" 
                    aria-label="Search modules by name or description"
                    placeholder="Search modules by name or description..." 
-                   style="flex: 1; padding: 10px 15px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;"
+                   style="flex: 1; min-width: 240px; padding: 11px 16px; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 15px;"
                    oninput="filterModules()">
             <select id="statusFilter" 
                     aria-label="Filter modules by status"
-                    style="padding: 10px 15px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;"
+                    style="padding: 11px 16px; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 15px; min-width: 150px;"
                     onchange="filterModules()">
                 <option value="">All Status</option>
                 <option value="enabled">Enabled</option>
@@ -443,13 +443,19 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
             </select>
         </div>
     </div>
-    <div class="card-body" style="padding: 0;">
-        <table class="module-table">
+    <div class="card-body" style="padding: 0; overflow-x: hidden !important; width: 100% !important; max-width: 100% !important; box-sizing: border-box !important;">
+        <table class="module-table" style="table-layout: fixed !important; width: 100% !important; max-width: 100% !important; min-width: 100% !important; border-collapse: collapse !important; margin: 0 !important;">
+            <colgroup>
+                <col style="width: 50%;">
+                <col style="width: 14%;">
+                <col style="width: 16%;">
+                <col style="width: 20%;">
+            </colgroup>
             <thead>
                 <tr>
                     <th style="width: 50%;">Module</th>
-                    <th style="width: 15%; text-align: center;">Version</th>
-                    <th style="width: 15%; text-align: center;">Status</th>
+                    <th style="width: 14%; text-align: center;">Version</th>
+                    <th style="width: 16%; text-align: center;">Status</th>
                     <th style="width: 20%; text-align: center;">Action</th>
                 </tr>
             </thead>
@@ -460,41 +466,41 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
                     data-status="<?php echo $module['is_enabled'] ? 'enabled' : 'disabled'; ?>"
                     style="<?php echo !$isCore ? 'background: #f0fff4;' : ''; ?>">
                     <td>
-                        <div style="display:flex;align-items:center;gap:8px;">
+                        <div style="display:flex;align-items:center;gap:10px;">
                             <?php if (!$isCore): ?>
-                            <span title="Custom Module" style="background:#10b981;color:white;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.5px;text-transform:uppercase;">CUSTOM</span>
+                            <span title="Custom Module" style="background:#10b981;color:white;font-size:11px;font-weight:800;padding:3px 8px;border-radius:4px;letter-spacing:0.5px;text-transform:uppercase;flex-shrink:0;">CUSTOM</span>
                             <?php endif; ?>
-                            <div>
-                                <h4 style="margin: 0; font-size: 15px; font-weight: 600; color: #1f2937;">
+                            <div style="min-width: 0; overflow: hidden;">
+                                <h4 style="margin: 0; font-size: 17px; font-weight: 700; color: #111827;">
                                     <?php echo htmlspecialchars($module['module_name']); ?>
                                 </h4>
-                                <p style="margin: 4px 0 0 0; color: #6b7280; font-size: 12px; line-height: 1.4;">
+                                <p style="margin: 4px 0 0 0; color: #4b5563; font-size: 14px; line-height: 1.45;">
                                     <?php echo htmlspecialchars($module['module_description'] ?: 'No description provided.'); ?>
                                 </p>
                             </div>
                         </div>
                     </td>
-                    <td style="text-align: center; font-weight: 600; color: #374151; font-family: monospace; font-size: 13px;">
+                    <td style="text-align: center; font-weight: 700; color: #1f2937; font-family: monospace; font-size: 14px;">
                         <?php echo htmlspecialchars($module['version'] ?? 'v1.0'); ?>
                     </td>
                     <td style="text-align: center;">
                         <?php if ($module['is_enabled']): ?>
-                            <span style="display:inline-block;background:#dcfce7;color:#15803d;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;">Enabled</span>
+                            <span style="display:inline-block;background:#dcfce7;color:#15803d;padding:6px 14px;border-radius:6px;font-size:13px;font-weight:700;">Enabled</span>
                         <?php else: ?>
-                            <span style="display:inline-block;background:#fee2e2;color:#dc2626;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;">Disabled</span>
+                            <span style="display:inline-block;background:#fee2e2;color:#dc2626;padding:6px 14px;border-radius:6px;font-size:13px;font-weight:700;">Disabled</span>
                         <?php endif; ?>
                     </td>
-                    <td style="text-align: center;">
-                        <div style="display:inline-flex;gap:6px;justify-content:center;align-items:center;flex-wrap:wrap;">
+                    <td style="text-align: center; white-space: nowrap;">
+                        <div style="display:inline-flex;gap:8px;justify-content:center;align-items:center;">
                             <button class="btn-action btn-configure" 
                                     onclick="showModuleSettings('<?php echo $module['module_key']; ?>')"
-                                    style="background:#002F6C;color:white;"
+                                    style="background:#002F70;color:white;padding:9px 18px;font-size:14px;font-weight:700;border-radius:7px;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:7px;box-shadow:0 1px 3px rgba(0,0,0,0.12);"
                                     title="Configure Module">
                                 <i class="fas fa-cog"></i> Configure
                             </button>
                             <?php if (!$isCore): ?>
                             <button onclick="deleteModule('<?php echo $module['module_key']; ?>','<?php echo htmlspecialchars(addslashes($module['module_name'])); ?>')"
-                                    style="background:#ef4444;color:white;border:none;padding:6px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;"
+                                    style="background:#ef4444;color:white;border:none;padding:9px 13px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;"
                                     title="Delete Custom Module">
                                 <i class="fas fa-trash"></i>
                             </button>
@@ -525,34 +531,34 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
 
 <!-- Module Configuration Modal -->
 <div id="moduleConfigModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.55); z-index: 9999; align-items: center; justify-content: center; padding: 40px 20px;">
-    <div class="modal-content modal-large" style="width: 100%; max-width: 580px; display: flex; flex-direction: column; max-height: 82vh; margin: auto; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4); background: #ffffff;">
+    <div class="modal-content modal-large" style="width: 100%; max-width: 640px; display: flex; flex-direction: column; max-height: 85vh; margin: auto; border-radius: 14px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4); background: #ffffff;">
         <!-- Header -->
-        <div class="modal-header" style="background: #ffffff; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e5e7eb; border-top-left-radius: 12px; border-top-right-radius: 12px; flex-shrink: 0;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="background: #eff6ff; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid #bfdbfe;">
-                    <i class="fas fa-cog" style="color: #0057b8 !important; font-size: 17px;"></i>
+        <div class="modal-header" style="background: #ffffff; padding: 20px 26px; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e5e7eb; border-top-left-radius: 14px; border-top-right-radius: 14px; flex-shrink: 0;">
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <div style="background: #eff6ff; width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1.5px solid #bfdbfe;">
+                    <i class="fas fa-cog" style="color: #0057b8 !important; font-size: 20px;"></i>
                 </div>
                 <div>
-                    <h3 style="margin: 0; color: #00264D !important; font-size: 16px; font-weight: 700; letter-spacing: 0.3px;"><span id="configModuleTitle" style="color: #00264D !important;">Module Configuration</span></h3>
+                    <h3 style="margin: 0; color: #00264D !important; font-size: 19px; font-weight: 700; letter-spacing: 0.3px;"><span id="configModuleTitle" style="color: #00264D !important;">Module Configuration</span></h3>
                 </div>
             </div>
             <!-- X button removed for clean layout -->
         </div>
         <form id="moduleConfigForm" onsubmit="saveModuleConfig(event)" style="display: flex; flex-direction: column; flex: 1; overflow: hidden; margin: 0;">
-            <div class="modal-body" style="padding: 24px 26px 30px 26px; flex: 1; overflow-y: auto; background: #ffffff;">
+            <div class="modal-body" style="padding: 26px 28px 32px 28px; flex: 1; overflow-y: auto; background: #ffffff;">
                 <div id="moduleConfigContent">
                     <!-- Dynamic configuration content loaded here -->
                 </div>
             </div>
-            <div class="modal-footer" style="background: #ffffff; border-top: 2px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; flex-shrink: 0;">
-                <button type="button" class="btn btn-secondary" style="background: #ef4444 !important; color: white !important; border: none; font-weight: 700; font-size: 12px; padding: 9px 18px; border-radius: 7px; cursor: pointer;" onclick="resetModuleConfig()">
+            <div class="modal-footer" style="background: #ffffff; border-top: 2px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; padding: 18px 26px; flex-shrink: 0;">
+                <button type="button" class="btn btn-secondary" style="background: #ef4444 !important; color: white !important; border: none; font-weight: 700; font-size: 14px; padding: 10px 20px; border-radius: 7px; cursor: pointer;" onclick="resetModuleConfig()">
                     Restore Default
                 </button>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <button type="button" style="padding: 9px 22px; border: 1px solid #d1d5db !important; border-radius: 7px; background: #ffffff !important; cursor: pointer; font-size: 13px; font-weight: 600; color: #374151 !important;" onclick="closeModuleConfigModal()">
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <button type="button" style="padding: 10px 22px; border: 1.5px solid #d1d5db !important; border-radius: 7px; background: #ffffff !important; cursor: pointer; font-size: 14.5px; font-weight: 700; color: #374151 !important;" onclick="closeModuleConfigModal()">
                         Cancel
                     </button>
-                    <button type="submit" style="padding: 9px 24px; border: none !important; border-radius: 7px; background: #16a34a !important; color: #ffffff !important; font-size: 13px; font-weight: 700; cursor: pointer; letter-spacing: 0.2px;">
+                    <button type="submit" style="padding: 10px 26px; border: none !important; border-radius: 7px; background: #16a34a !important; color: #ffffff !important; font-size: 14.5px; font-weight: 700; cursor: pointer; letter-spacing: 0.2px; box-shadow: 0 2px 4px rgba(22,163,74,0.3);">
                         Save Configuration
                     </button>
                 </div>
@@ -564,7 +570,7 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
 <!-- Module Audit Panel -->
 <div id="moduleAuditPanel" class="card" style="display: none;">
     <div class="card-header">
-        <h3><span id="auditModuleTitle">Module Audit Log</span></h3>
+        <h3 style="font-size: 19px; font-weight: 700; color: #00264D;"><span id="auditModuleTitle">Module Audit Log</span></h3>
         <button class="btn btn-ghost btn-sm" onclick="hideModuleAudit()">
             <i class="fas fa-times"></i>
         </button>
@@ -578,24 +584,24 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
 
 <!-- Disable Module Confirmation Modal -->
 <div id="disableConfirmModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); z-index: 10000; align-items: center; justify-content: center; padding: 40px 20px;">
-    <div class="modal-content" style="max-width: 480px; width: 100%; border-radius: 12px; overflow: hidden; background: #ffffff; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
-        <div class="modal-header" style="background: #dc2626; padding: 18px 22px; color: white; display: flex; align-items: center; justify-content: space-between; border-top-left-radius: 12px; border-top-right-radius: 12px;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <i class="fas fa-exclamation-triangle" style="font-size: 20px; color: white;"></i>
-                <h3 style="margin: 0; color: white !important; font-size: 16px; font-weight: 700;">Disable Module Confirmation</h3>
+    <div class="modal-content" style="max-width: 520px; width: 100%; border-radius: 14px; overflow: hidden; background: #ffffff; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+        <div class="modal-header" style="background: #dc2626; padding: 18px 24px; color: white; display: flex; align-items: center; justify-content: space-between; border-top-left-radius: 14px; border-top-right-radius: 14px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <i class="fas fa-exclamation-triangle" style="font-size: 22px; color: white;"></i>
+                <h3 style="margin: 0; color: white !important; font-size: 19px; font-weight: 700;">Disable Module Confirmation</h3>
             </div>
         </div>
-        <div class="modal-body" style="padding: 24px; background: #ffffff;">
-            <div style="font-size: 15px; font-weight: 700; color: #1f2937; margin-bottom: 8px;">
+        <div class="modal-body" style="padding: 26px; background: #ffffff;">
+            <div style="font-size: 17px; font-weight: 700; color: #1f2937; margin-bottom: 10px;">
                 Disable <span id="disableModuleName"></span> Module?
             </div>
-            <p style="font-size: 13px; color: #4b5563; margin-bottom: 14px;">
+            <p style="font-size: 15px; color: #4b5563; margin-bottom: 16px; line-height: 1.5;">
                 You are about to disable the <strong id="disableModuleNameText"></strong> module.
             </p>
             
-            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px; margin-bottom: 18px;">
-                <div style="font-size: 11px; font-weight: 700; color: #991b1b; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">Effects:</div>
-                <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #7f1d1d; line-height: 1.6;">
+            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 16px; margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: 800; color: #991b1b; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;">Effects:</div>
+                <ul style="margin: 0; padding-left: 20px; font-size: 14.5px; color: #7f1d1d; line-height: 1.6;">
                     <li><span id="disableModuleNameMenu"></span> menu will be hidden.</li>
                     <li>Users will no longer access the <span id="disableModuleNameAccess"></span>.</li>
                     <li>Existing data will <strong>NOT</strong> be deleted.</li>
@@ -603,20 +609,20 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
                 </ul>
             </div>
             
-            <div style="margin-bottom: 14px;">
-                <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 15px; font-weight: 700; color: #374151; margin-bottom: 8px;">
                     Type <strong style="color: #dc2626;">CONFIRM</strong> to continue:
                 </label>
                 <input type="text" id="confirmDisableInput" class="form-input" placeholder="CONFIRM" autocomplete="off"
-                       style="width: 100%; padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 7px; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;"
+                       style="width: 100%; padding: 11px 14px; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;"
                        oninput="checkConfirmDisableInput(this.value)">
             </div>
         </div>
-        <div class="modal-footer" style="background: #ffffff; border-top: 2px solid #e5e7eb; padding: 16px 22px; display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
-            <button type="button" onclick="closeDisableConfirmModal()" style="padding: 10px 22px; border: 1px solid #94a3b8 !important; border-radius: 7px; background: #f8fafc !important; cursor: pointer; font-size: 13px; font-weight: 700; color: #0f172a !important; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: inline-flex; align-items: center; justify-content: center;">
+        <div class="modal-footer" style="background: #ffffff; border-top: 2px solid #e5e7eb; padding: 18px 24px; display: flex; justify-content: flex-end; gap: 14px; align-items: center;">
+            <button type="button" onclick="closeDisableConfirmModal()" style="padding: 11px 24px; border: 1.5px solid #94a3b8 !important; border-radius: 8px; background: #f8fafc !important; cursor: pointer; font-size: 14.5px; font-weight: 700; color: #0f172a !important; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: inline-flex; align-items: center; justify-content: center;">
                 Cancel
             </button>
-            <button type="button" id="btnSubmitDisable" disabled onclick="executeDisableModule()" style="padding: 10px 24px; border: none !important; border-radius: 7px; background: #dc2626 !important; color: #ffffff !important; font-size: 13px; font-weight: 700; cursor: not-allowed; opacity: 0.55; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(220,38,38,0.3);">
+            <button type="button" id="btnSubmitDisable" disabled onclick="executeDisableModule()" style="padding: 11px 26px; border: none !important; border-radius: 8px; background: #dc2626 !important; color: #ffffff !important; font-size: 14.5px; font-weight: 700; cursor: not-allowed; opacity: 0.55; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(220,38,38,0.3);">
                 Disable Module
             </button>
         </div>
@@ -624,6 +630,24 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
 </div>
 
 <style>
+    /* Zero Horizontal Scrolling & Elder Friendly Typography */
+    html, body {
+        overflow-x: hidden !important;
+        max-width: 100vw !important;
+        box-sizing: border-box !important;
+    }
+
+    *, *:before, *:after {
+        box-sizing: border-box !important;
+    }
+
+    .mc-page-wrap {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+        box-sizing: border-box !important;
+    }
+
     /* Page Layout */
     body {
         background: #f3f4f6;
@@ -656,106 +680,208 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
     }
     
     .page-head .sub {
-        font-size: 13px;
-        color: #666;
+        font-size: 15px !important;
+        color: #555;
         margin-top: 4px;
     }
     
     .card-header h3 {
         margin: 0 !important;
-        font-size: 16px !important;
-        font-weight: 600 !important;
+        font-size: 19px !important;
+        font-weight: 700 !important;
         color: var(--petron-blue, #00264D) !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
     }
     
-    /* Admin Management Combo Styles (EXACT COPY) */
-    .am-combo-toolbar .am-combo-input { padding-top: 9px; padding-bottom: 9px; font-size: 13px; }
+    /* Station Search Combo Styles - Elder Friendly (15px font) */
+    .am-combo-toolbar .am-combo-input {
+        padding-top: 10px !important;
+        padding-bottom: 10px !important;
+        font-size: 15px !important;
+        height: 44px !important;
+    }
     .am-combo { position: relative; }
-    .am-combo-input { width: 100%; padding: 10px 36px 10px 13px; border: 1px solid #ddd; border-radius: 10px; font-size: 13px; outline: none; transition: border-color .2s; background: #fff; box-sizing: border-box; cursor: text; }
-    .am-combo-input:focus { border-color: var(--petron-blue); box-shadow: 0 0 0 3px rgba(0,38,77,.08); }
-    .am-combo-input.has-value { border-color: var(--petron-blue); }
-    .am-combo-arrow { position: absolute; right: 32px; top: 50%; transform: translateY(-50%); color: #999; font-size: 12px; pointer-events: none; transition: transform .2s; z-index: 1; }
-    .am-combo.open .am-combo-arrow { transform: translateY(-50%) rotate(180deg); }
-    .am-combo-clear { position: absolute; right: 52px; top: 50%; transform: translateY(-50%); color: #bbb; font-size: 13px; cursor: pointer; display: none; background: none; border: none; padding: 2px 4px; line-height: 1; z-index: 2; }
-    .am-combo-clear:hover { color: #cc0000; }
-    .am-combo-dropdown { display: none; position: fixed; background: #fff; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 99999; max-height: 220px; overflow: hidden; flex-direction: column; }
+    .am-combo-input {
+        width: 100% !important;
+        padding: 11px 65px 11px 14px !important;
+        border: 1.5px solid #d1d5db !important;
+        border-radius: 8px !important;
+        font-size: 15px !important;
+        outline: none !important;
+        transition: border-color .2s, box-shadow .2s !important;
+        background: #fff !important;
+        box-sizing: border-box !important;
+        cursor: text !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+    }
+    .am-combo-input:focus {
+        border-color: #00264D !important;
+        box-shadow: 0 0 0 3px rgba(0,38,77,.1) !important;
+    }
+    .am-combo-input.has-value {
+        border-color: #00264D !important;
+    }
+    .am-combo-arrow {
+        position: absolute;
+        right: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #64748b;
+        font-size: 14px;
+        pointer-events: none;
+        transition: transform .2s;
+        z-index: 1;
+    }
+    .am-combo.open .am-combo-arrow {
+        transform: translateY(-50%) rotate(180deg);
+    }
+    .am-combo-clear {
+        position: absolute;
+        right: 36px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #94a3b8;
+        font-size: 15px;
+        cursor: pointer;
+        display: none;
+        background: none;
+        border: none;
+        padding: 4px;
+        line-height: 1;
+        z-index: 2;
+    }
+    .am-combo-clear:hover {
+        color: #dc2626;
+    }
+    .am-combo-dropdown {
+        display: none;
+        position: fixed;
+        background: #fff;
+        border: 1.5px solid #d1d5db;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0,0,0,.15);
+        z-index: 99999;
+        max-height: 260px;
+        overflow: hidden;
+        flex-direction: column;
+    }
     .am-combo.open .am-combo-dropdown { display: flex; }
-    .am-combo-search { padding: 9px 12px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-    .am-combo-search i { color: #bbb; font-size: 13px; }
-    .am-combo-search input { border: none; outline: none; font-size: 13px; flex: 1; background: transparent; }
+    .am-combo-search {
+        padding: 10px 14px;
+        border-bottom: 1px solid #f0f0f0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+    .am-combo-search i { color: #94a3b8; font-size: 15px; }
+    .am-combo-search input { border: none; outline: none; font-size: 15px; flex: 1; background: transparent; }
     .am-combo-list { overflow-y: auto; flex: 1; }
-    .am-combo-option { padding: 10px 14px; font-size: 13px; cursor: pointer; transition: background .12s; display: flex; align-items: flex-start; gap: 8px; }
-    .am-combo-option:hover, .am-combo-option.focused { background: #f0f5ff; color: var(--petron-blue); }
-    .am-combo-option.selected { background: rgba(0,38,77,.08); font-weight: 600; color: var(--petron-blue); }
-    .am-combo-option .opt-icon { color: #bbb; font-size: 11px; flex-shrink: 0; }
-    .am-combo-option.selected .opt-icon { color: var(--petron-blue); }
-    .am-combo-empty { padding: 18px 14px; font-size: 13px; color: #bbb; text-align: center; }
+    .am-combo-option {
+        padding: 12px 16px !important;
+        font-size: 15px !important;
+        cursor: pointer;
+        transition: background .12s;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #1f2937;
+    }
+    .am-combo-option:hover, .am-combo-option.focused {
+        background: #f0f5ff;
+        color: #00264D;
+        font-weight: 600;
+    }
+    .am-combo-option.selected {
+        background: rgba(0,38,77,.08);
+        font-weight: 700;
+        color: #00264D;
+    }
+    .am-combo-option .opt-icon { color: #64748b; font-size: 13px; flex-shrink: 0; }
+    .am-combo-option.selected .opt-icon { color: #00264D; }
+    .am-combo-empty { padding: 18px 14px; font-size: 15px; color: #888; text-align: center; }
     .am-combo-hidden { display: none !important; }
 
-    /* Module Table Styles */
+    /* Module Table Styles - 100% Fit & No Horizontal Scroll */
     .module-table {
-        width: 100%;
-        border-collapse: collapse;
+        table-layout: fixed !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 100% !important;
+        border-collapse: collapse !important;
         background: white;
+        margin: 0 !important;
+        box-sizing: border-box !important;
     }
     
     .module-table thead th {
-        background: #1e3a5f;
-        color: #ffffff;
-        padding: 14px 16px;
+        background: #002F70 !important;
+        color: #ffffff !important;
+        padding: 14px 16px !important;
         text-align: left;
-        font-weight: 600;
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        border-bottom: none;
+        font-weight: 700 !important;
+        font-size: 14px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+        border-bottom: none !important;
+        box-sizing: border-box !important;
+        white-space: nowrap !important;
     }
     
     .module-table tbody tr {
-        border-bottom: 1px solid #e5e7eb;
-        transition: background-color .15s;
+        border-bottom: 1px solid #e5e7eb !important;
+        transition: background-color .15s ease;
     }
     
     .module-table tbody tr:hover {
-        background-color: #f9fafb;
+        background-color: #f8fafc !important;
     }
     
     .module-table tbody tr:last-child {
-        border-bottom: none;
+        border-bottom: none !important;
     }
     
     .module-table tbody td {
-        padding: 16px;
-        vertical-align: middle;
+        padding: 16px 14px !important;
+        vertical-align: middle !important;
+        box-sizing: border-box !important;
     }
     
-    /* Status Badge */
+    /* Status Badge - High Contrast & Large Text */
     .status-badge {
-        display: inline-block;
-        padding: 5px 12px;
-        border-radius: 12px;
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.3px;
+        display: inline-block !important;
+        padding: 6px 14px !important;
+        border-radius: 6px !important;
+        font-size: 13px !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.3px !important;
     }
     
-    .status-badge.status-enabled {
-        background-color: #d1fae5;
-        color: #065f46;
+    .status-badge.status-enabled,
+    .status-badge.enabled {
+        background-color: #dcfce7 !important;
+        color: #15803d !important;
+        border: 1px solid #bbf7d0 !important;
     }
     
-    .status-badge.status-disabled {
-        background-color: #fee2e2;
-        color: #991b1b;
+    .status-badge.status-disabled,
+    .status-badge.disabled {
+        background-color: #fee2e2 !important;
+        color: #dc2626 !important;
+        border: 1px solid #fecaca !important;
     }
     
     /* Toggle Switch */
     .toggle-switch {
         position: relative;
         display: inline-block;
-        width: 48px;
-        height: 24px;
+        width: 52px;
+        height: 28px;
     }
     
     .toggle-switch input {
@@ -773,14 +899,14 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
         bottom: 0;
         background-color: #cbd5e1;
         transition: .3s;
-        border-radius: 24px;
+        border-radius: 28px;
     }
     
     .toggle-slider:before {
         position: absolute;
         content: "";
-        height: 18px;
-        width: 18px;
+        height: 22px;
+        width: 22px;
         left: 3px;
         bottom: 3px;
         background-color: white;
@@ -796,29 +922,35 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
         transform: translateX(24px);
     }
     
-    /* Action Buttons */
+    /* Action Buttons - Fully Visible & Elder Friendly */
     .btn-action {
-        padding: 7px 14px;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 600;
-        cursor: pointer;
-        border: none;
-        transition: all .2s;
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
+        padding: 9px 18px !important;
+        border-radius: 7px !important;
+        font-size: 14px !important;
+        font-weight: 700 !important;
+        cursor: pointer !important;
+        border: none !important;
+        transition: all .2s ease !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 7px !important;
+        white-space: nowrap !important;
+        text-decoration: none !important;
     }
     
     .btn-configure {
-        background: white !important;
-        color: #00264D !important;
-        border: 1px solid #00264D !important;
+        background: #002F70 !important;
+        color: #ffffff !important;
+        border: 1px solid #002F70 !important;
+        box-shadow: 0 2px 5px rgba(0,47,112,0.2) !important;
     }
     
     .btn-configure:hover {
-        background: #00264D !important;
-        color: white !important;
+        background: #001f4d !important;
+        border-color: #001f4d !important;
+        color: #ffffff !important;
+        box-shadow: 0 4px 10px rgba(0,47,112,0.3) !important;
     }
     
     /* Modal Styles */
@@ -1127,40 +1259,38 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
         border-color: #9ca3af;
     }
 
-    /* Module Table Styles */
-    .module-table {
-        width: 100%;
-        border-collapse: collapse;
+    /* Modal & Form Elder-Friendly Overrides */
+    .modal-content.modal-large {
+        max-width: 640px !important;
+        width: 100% !important;
+        border-radius: 14px !important;
     }
-    
-    .module-table thead th {
-        background-color: #f9fafb;
-        padding: 16px 20px;
-        text-align: left;
-        font-weight: 600;
-        color: #374151;
-        font-size: 14px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        border-bottom: 2px solid #e5e7eb;
+
+    #moduleConfigModal label {
+        font-size: 14.5px !important;
+        color: #374151 !important;
     }
-    
-    .module-table tbody tr {
-        border-bottom: 1px solid #e5e7eb;
-        transition: background-color 0.2s ease;
+
+    #moduleConfigModal input[type="text"],
+    #moduleConfigModal input[type="number"],
+    #moduleConfigModal select {
+        font-size: 14.5px !important;
+        padding: 9px 13px !important;
+        border: 1.5px solid #cbd5e1 !important;
+        border-radius: 8px !important;
+        box-sizing: border-box !important;
     }
-    
-    .module-table tbody tr:hover {
-        background-color: #f9fafb;
+
+    #moduleConfigModal input[type="checkbox"] {
+        width: 18px !important;
+        height: 18px !important;
+        cursor: pointer !important;
     }
-    
-    .module-table tbody tr:last-child {
-        border-bottom: none;
-    }
-    
-    .module-table tbody td {
-        padding: 20px;
-        vertical-align: middle;
+
+    #moduleConfigModal input[type="radio"] {
+        width: 20px !important;
+        height: 20px !important;
+        cursor: pointer !important;
     }
     
     .module-actions {
@@ -1711,23 +1841,23 @@ function showModuleSettings(moduleKey) {
     const isCurrentlyEnabled = (currentStatus === 'enabled');
     
     const statusBadgeHtml = isCurrentlyEnabled 
-        ? '<span style="background: #dcfce7; color: #15803d; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 6px;">Enabled</span>'
-        : '<span style="background: #fee2e2; color: #dc2626; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 6px;">Disabled</span>';
+        ? '<span style="background: #dcfce7; color: #15803d; font-size: 13px; font-weight: 700; padding: 5px 12px; border-radius: 6px; display: inline-block;">Enabled</span>'
+        : '<span style="background: #fee2e2; color: #dc2626; font-size: 13px; font-weight: 700; padding: 5px 12px; border-radius: 6px; display: inline-block;">Disabled</span>';
     
     const moduleStatusSection = `
-        <div style="margin-bottom: 20px;">
-            <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+        <div style="margin-bottom: 22px;">
+            <div style="font-size: 15px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
                 <span>Module Status Toggle</span>
-                <span style="font-size: 11px; text-transform: none; color: #64748b; font-weight: 500;">Flexible Status Control</span>
+                <span style="font-size: 13px; text-transform: none; color: #64748b; font-weight: 600;">Flexible Status Control</span>
             </div>
-            <div style="display: flex; gap: 24px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px 18px; border-radius: 8px; align-items: center;">
-                <label for="opt_module_status_enabled" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #16a34a;">
-                    <input type="radio" id="opt_module_status_enabled" name="module_status" value="enabled" ${isCurrentlyEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer;">
-                    <i class="fas fa-check-circle" style="color: #16a34a;"></i> Enabled
+            <div style="display: flex; gap: 28px; background: #f8fafc; border: 1.5px solid #e2e8f0; padding: 14px 20px; border-radius: 10px; align-items: center;">
+                <label for="opt_module_status_enabled" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 15px; font-weight: 700; color: #16a34a;">
+                    <input type="radio" id="opt_module_status_enabled" name="module_status" value="enabled" ${isCurrentlyEnabled ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
+                    <i class="fas fa-check-circle" style="color: #16a34a; font-size: 18px;"></i> Enabled
                 </label>
-                <label for="opt_module_status_disabled" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #dc2626;">
-                    <input type="radio" id="opt_module_status_disabled" name="module_status" value="disabled" ${!isCurrentlyEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer;">
-                    <i class="fas fa-times-circle" style="color: #dc2626;"></i> Disabled
+                <label for="opt_module_status_disabled" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 15px; font-weight: 700; color: #dc2626;">
+                    <input type="radio" id="opt_module_status_disabled" name="module_status" value="disabled" ${!isCurrentlyEnabled ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
+                    <i class="fas fa-times-circle" style="color: #dc2626; font-size: 18px;"></i> Disabled
                 </label>
             </div>
         </div>
@@ -1735,19 +1865,19 @@ function showModuleSettings(moduleKey) {
     
     // Top Module Information Card (Module Name, Version, Status)
     const topInfoCard = `
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 18px; margin-bottom: 22px;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; align-items: center;">
+        <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; margin-bottom: 22px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; align-items: center;">
                 <div>
-                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Module Name</div>
-                    <div style="font-size: 15px; font-weight: 700; color: #00264D; margin-top: 2px;">${moduleName}</div>
+                    <div style="font-size: 12.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Module Name</div>
+                    <div style="font-size: 17px; font-weight: 700; color: #00264D; margin-top: 3px;">${moduleName}</div>
                 </div>
                 <div>
-                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Version</div>
-                    <div style="font-size: 13px; font-weight: 600; color: #334155; margin-top: 2px; font-family: monospace;">v1.0.0</div>
+                    <div style="font-size: 12.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Version</div>
+                    <div style="font-size: 15px; font-weight: 700; color: #334155; margin-top: 3px; font-family: monospace;">v1.0.0</div>
                 </div>
                 <div>
-                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Status</div>
-                    <div style="margin-top: 2px;">${statusBadgeHtml}</div>
+                    <div style="font-size: 12.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Status</div>
+                    <div style="margin-top: 3px;">${statusBadgeHtml}</div>
                 </div>
             </div>
         </div>
@@ -2359,4 +2489,5 @@ function autoRefreshModuleConfiguration() {
 }
 setInterval(autoRefreshModuleConfiguration, 10000);
 </script>
+</div>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

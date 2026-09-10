@@ -214,168 +214,441 @@ include __DIR__ . '/../partials/header.php';
 ?>
 
 <style>
-/* ── Station Management Styles (sm- prefix) ── */
-.sm-page { padding: 12px 24px 28px; }
-.sm-page-head { margin-bottom: 24px; padding-top: 10px; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 0 !important; }
-.sm-page-head h1 { font-size: 22px !important; font-weight: 700 !important; color: var(--petron-blue) !important; margin: 0 !important; text-transform: uppercase !important; }
-.sm-page-head .sub { font-size: 13px; color: #666; margin-top: 4px; text-transform: none !important; }
+/* ── SuperAdmin Station Management: 100% Screen Fit & ZERO Horizontal Scrolling (Elder-Friendly Matching Admin Management) ── */
+.sm-page {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+    padding: 12px 24px 28px !important;
+}
 
-/* Stats */
-.sm-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 14px; margin-bottom: 24px; }
-.sm-stat-card { background: #fff; border: 1px solid #eaeaea; border-radius: 14px; padding: 18px 20px; display: flex; align-items: center; gap: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
-.sm-stat-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-.sm-stat-icon.blue  { background: rgba(0,38,77,.1);   color: var(--petron-blue); }
-.sm-stat-icon.green { background: rgba(40,167,69,.1);  color: #28a745; }
-.sm-stat-icon.amber { background: rgba(255,193,7,.15); color: #b8860b; }
-.sm-stat-icon.red   { background: rgba(204,0,0,.1);    color: #cc0000; }
-.sm-stat-val { font-size: 26px; font-weight: 800; color: var(--petron-blue); line-height: 1; }
-.sm-stat-lbl { font-size: 12px; color: #666; margin-top: 2px; }
+.sm-page-head {
+    display: flex !important;
+    justify-content: space-between !important;
+    gap: 16px !important;
+    align-items: center !important;
+    margin-top: 0 !important;
+    margin-bottom: 25px !important;
+    padding: 0 !important;
+    border: none !important;
+    width: 100% !important;
+}
+.sm-page-head h1 {
+    margin: 0 !important;
+    color: #002f70 !important;
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    line-height: 1.2 !important;
+}
+.sm-page-head .sub {
+    font-size: 15px !important;
+    color: #666 !important;
+    margin-top: 4px !important;
+    text-transform: none !important;
+}
+
+/* Stats Row */
+.sm-stats {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)) !important;
+    gap: 14px !important;
+    margin-bottom: 24px !important;
+}
+.sm-stat-card {
+    background: #fff !important;
+    border: 1px solid #eaeaea !important;
+    border-radius: 14px !important;
+    padding: 20px 22px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 14px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,.04) !important;
+}
+.sm-stat-icon {
+    width: 50px !important;
+    height: 50px !important;
+    border-radius: 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 22px !important;
+    flex-shrink: 0 !important;
+}
+.sm-stat-icon.blue  { background: rgba(0,38,77,.1) !important;  color: var(--petron-blue) !important; }
+.sm-stat-icon.green { background: rgba(40,167,69,.1) !important; color: #28a745 !important; }
+.sm-stat-icon.amber { background: rgba(255,193,7,.15) !important; color: #b8860b !important; }
+.sm-stat-icon.red   { background: rgba(204,0,0,.1) !important;   color: #cc0000 !important; }
+.sm-stat-val {
+    font-size: 32px !important;
+    font-weight: 800 !important;
+    color: var(--petron-blue) !important;
+    line-height: 1 !important;
+}
+.sm-stat-lbl {
+    font-size: 15px !important;
+    color: #666 !important;
+    margin-top: 4px !important;
+}
 
 /* Toolbar */
-.sm-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
-.sm-toolbar input, .sm-toolbar select { padding: 9px 13px; border: 1px solid #ddd; border-radius: 10px; font-size: 13px; background: #fff; outline: none; }
-.sm-toolbar input:focus, .sm-toolbar select:focus { border-color: var(--petron-blue); box-shadow: 0 0 0 3px rgba(0,38,77,.08); }
-.sm-toolbar input { width: 240px; }
-.sm-toolbar-right { margin-left: auto; }
+.sm-toolbar {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    flex-wrap: wrap !important;
+    margin-bottom: 16px !important;
+}
+.sm-toolbar input, .sm-toolbar select {
+    padding: 10px 14px !important;
+    border: 1px solid #ddd !important;
+    border-radius: 10px !important;
+    font-size: 15px !important;
+    background: #fff !important;
+    outline: none !important;
+}
+.sm-toolbar input:focus, .sm-toolbar select:focus {
+    border-color: var(--petron-blue) !important;
+    box-shadow: 0 0 0 3px rgba(0,38,77,.08) !important;
+}
+.sm-toolbar input { width: 260px !important; }
+.sm-toolbar-right { margin-left: auto !important; }
+#smRowCount {
+    font-size: 14px !important;
+    color: #555 !important;
+    font-weight: 600 !important;
+}
 
-/* Table */
-.sm-table-wrap { background: #fff; border: 1px solid #eaeaea; border-radius: 16px; overflow-x: auto; overflow-y: visible; -webkit-overflow-scrolling: touch; box-shadow: 0 2px 12px rgba(0,0,0,.05); }
-.sm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.sm-table thead th { background: var(--petron-blue); color: #fff; padding: 13px 16px; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
-.sm-table tbody tr { border-bottom: 1px solid #f0f0f0; transition: background .15s; }
-.sm-table tbody tr:last-child { border-bottom: none; }
-.sm-table tbody tr:hover { background: #f8fafc; }
-.sm-table td { padding: 13px 16px; vertical-align: middle; }
-.sm-table td .sname { font-weight: 600; color: #1a1a1a; }
-.sm-table td .sloc  { font-size: 12px; color: #888; margin-top: 2px; }
-
-/* Sticky Actions column */
+/* Table Wrap & Fixed Table */
+.sm-table-wrap {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    border: 1px solid #eaeaea !important;
+    border-radius: 14px !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,.05) !important;
+    background: #ffffff !important;
+    box-sizing: border-box !important;
+}
+.sm-table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    border-collapse: collapse !important;
+    box-sizing: border-box !important;
+}
+.sm-table thead th {
+    background: #002F70 !important;
+    color: #ffffff !important;
+    padding: 10px 6px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    box-sizing: border-box !important;
+    text-align: left;
+}
 .sm-table thead th.col-actions,
 .sm-table tbody td.col-actions {
-    position: sticky;
-    right: 0;
-    z-index: 3;
-    white-space: nowrap;
-    text-align: center;
+    position: static !important;
+    box-shadow: none !important;
+    text-align: center !important;
+    white-space: normal !important;
 }
-.sm-table thead th.col-actions {
-    background: var(--petron-blue);
-    box-shadow: -3px 0 8px rgba(0,0,0,.12);
+.sm-table tbody td {
+    padding: 8px 6px !important;
+    font-size: 14px !important;
+    vertical-align: middle !important;
+    border-bottom: 1px solid #f0f0f0 !important;
+    box-sizing: border-box !important;
 }
-.sm-table tbody td.col-actions {
-    background: #fff;
-    box-shadow: -3px 0 8px rgba(0,0,0,.06);
+.sm-table tbody tr {
+    border-bottom: 1px solid #f0f0f0 !important;
+    transition: background .15s !important;
 }
-.sm-table tbody tr:hover td.col-actions { background: #f8fafc; }
+.sm-table tbody tr:last-child { border-bottom: none !important; }
+.sm-table tbody tr:hover { background: #f8fafc !important; }
 
 /* Badges */
-.badge-active   { background: rgba(40,167,69,.12); color: #1a7a35; border: 1px solid rgba(40,167,69,.25); padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-.badge-inactive { background: rgba(204,0,0,.1);    color: #cc0000; border: 1px solid rgba(204,0,0,.2);    padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-.badge-no-admin { background: rgba(255,193,7,.15); color: #b8860b; border: 1px solid rgba(255,193,7,.3);  padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+.badge-active {
+    background: rgba(40,167,69,.12) !important;
+    color: #1a7a35 !important;
+    border: 1px solid rgba(40,167,69,.25) !important;
+    padding: 3px 8px !important;
+    border-radius: 12px !important;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    display: inline-block !important;
+}
+.badge-inactive {
+    background: rgba(204,0,0,.1) !important;
+    color: #cc0000 !important;
+    border: 1px solid rgba(204,0,0,.2) !important;
+    padding: 3px 8px !important;
+    border-radius: 12px !important;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    display: inline-block !important;
+}
+.badge-no-admin {
+    background: rgba(255,193,7,.15) !important;
+    color: #b8860b !important;
+    border: 1px solid rgba(255,193,7,.3) !important;
+    padding: 3px 8px !important;
+    border-radius: 12px !important;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    display: inline-block !important;
+}
 
-/* Buttons */
-.sm-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: all .2s; text-decoration: none; background: none; }
-.sm-btn-primary  { background: var(--petron-blue); color: #fff; border-color: var(--petron-blue); }
-.sm-btn-primary:hover  { background: #001a3d; }
-.sm-btn-edit     { color: var(--petron-blue); border-color: var(--petron-blue); }
-.sm-btn-edit:hover     { background: rgba(0,38,77,.06); }
-.sm-btn-assign   { color: #28a745; border-color: #28a745; }
-.sm-btn-assign:hover   { background: rgba(40,167,69,.06); }
-.sm-btn-deact    { color: #cc0000; border-color: #cc0000; }
-.sm-btn-deact:hover    { background: rgba(204,0,0,.06); }
-.sm-btn-activate { color: #28a745; border-color: #28a745; }
-.sm-btn-activate:hover { background: rgba(40,167,69,.06); }
+/* Action Buttons & General Buttons */
+.sm-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    padding: 5px 8px !important;
+    border-radius: 5px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    text-decoration: none !important;
+    box-sizing: border-box !important;
+    white-space: nowrap !important;
+    line-height: 1 !important;
+    background: #ffffff !important;
+    border: 1.5px solid transparent !important;
+    transition: all .15s ease !important;
+}
+.sm-btn-primary {
+    background: #ffffff !important;
+    color: #00264D !important;
+    border: 1.5px solid #00264D !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    padding: 10px 22px !important;
+    border-radius: 6px !important;
+}
+.sm-btn-primary:hover {
+    background: #00264D !important;
+    color: #ffffff !important;
+}
+.sm-btn-view {
+    color: #6f42c1 !important;
+    border-color: #6f42c1 !important;
+}
+.sm-btn-view:hover {
+    background: #6f42c1 !important;
+    color: #ffffff !important;
+}
+.sm-btn-edit {
+    color: #00264D !important;
+    border-color: #00264D !important;
+}
+.sm-btn-edit:hover {
+    background: #00264D !important;
+    color: #ffffff !important;
+}
+.sm-btn-assign {
+    color: #28a745 !important;
+    border-color: #28a745 !important;
+}
+.sm-btn-assign:hover {
+    background: #28a745 !important;
+    color: #ffffff !important;
+}
+.sm-btn-deact {
+    color: #dc2626 !important;
+    border-color: #dc2626 !important;
+}
+.sm-btn-deact:hover {
+    background: #dc2626 !important;
+    color: #ffffff !important;
+}
+.sm-btn-activate {
+    color: #16a34a !important;
+    border-color: #16a34a !important;
+}
+.sm-btn-activate:hover {
+    background: #16a34a !important;
+    color: #ffffff !important;
+}
 
-/* Modal */
+/* Modals */
 .sm-modal-overlay {
     display: none;
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,.45);
     z-index: 9000;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
-    padding: 24px 12px;
-    overflow-y: auto;
+    padding: 20px;
 }
-.sm-modal-overlay.open { display: flex; }
+.sm-modal-overlay.open { display: flex !important; }
 .sm-modal {
     background: #fff;
     border-radius: 20px;
-    width: min(580px, 100%);
-    /* No max-height on the modal itself — let the overlay scroll */
-    display: flex;
-    flex-direction: column;
+    width: min(680px, 95vw);
+    max-height: 90vh;
+    overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0,0,0,.2);
-    animation: smSlide .25s ease;
-    margin: auto; /* vertical centering when content is short */
+    animation: smSlideIn .25s ease;
+    position: relative;
 }
-.sm-modal.narrow { width: min(440px, 100%); }
-@keyframes smSlide { from { opacity:0; transform:translateY(-20px); } to { opacity:1; transform:translateY(0); } }
-/* Sticky header */
+.sm-modal.narrow { width: min(480px, 95vw); }
+@keyframes smSlideIn { from { opacity:0; transform:translateY(-20px); } to { opacity:1; transform:translateY(0); } }
 .sm-modal-header {
-    padding: 22px 24px 16px;
+    padding: 22px 26px 18px;
     border-bottom: 1px solid #eee;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    flex-shrink: 0;
     position: sticky;
     top: 0;
     background: #fff;
-    z-index: 2;
-    border-radius: 20px 20px 0 0;
+    z-index: 20;
 }
-.sm-modal-header h2 { font-size: 17px !important; font-weight: 700 !important; color: var(--petron-blue) !important; margin: 0 !important; text-transform: uppercase !important; }
-.sm-modal-close { background: none; border: none; font-size: 20px; color: #999; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
-.sm-modal-close:hover { background: #f0f0f0; color: #333; }
-/* Scrollable body */
-.sm-modal-body { padding: 22px 24px; flex: 1 1 auto; }
-/* Sticky footer */
+.sm-modal-header h2 {
+    font-size: 19px !important;
+    font-weight: 700 !important;
+    color: var(--petron-blue) !important;
+    margin: 0 !important;
+    text-transform: uppercase !important;
+}
+.sm-modal-close { display: none !important; }
+.sm-modal-body { padding: 24px 26px 14px; }
 .sm-modal-footer {
-    padding: 16px 24px;
+    padding: 18px 26px;
     border-top: 1px solid #eee;
     display: flex;
     justify-content: flex-end;
     gap: 10px;
-    flex-shrink: 0;
     position: sticky;
     bottom: 0;
     background: #fff;
-    z-index: 2;
-    border-radius: 0 0 20px 20px;
+    z-index: 20;
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.03);
 }
 
-/* Form */
-.sm-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+/* Modal Footer Buttons */
+.sm-modal-footer button:not(.sm-btn-primary):not([class*="activate"]):not([class*="deact"]) {
+    background: #ffffff !important;
+    color: #00264D !important;
+    border: 1.5px solid #00264D !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    padding: 10px 24px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+}
+.sm-modal-footer button.sm-btn-primary {
+    background: #00264D !important;
+    color: #ffffff !important;
+    border: 1.5px solid #00264D !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    padding: 10px 24px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+}
+.sm-modal-footer button.sm-btn-primary:hover {
+    background: #001a33 !important;
+}
+
+/* Forms */
+.sm-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 .sm-form-row.full { grid-template-columns: 1fr; }
-.sm-form-group { display: flex; flex-direction: column; gap: 5px; }
-.sm-form-group label { font-size: 12px; font-weight: 600; color: #444; text-transform: uppercase; letter-spacing: .3px; }
-.sm-form-group input, .sm-form-group select, .sm-form-group textarea { padding: 10px 13px; border: 1px solid #ddd; border-radius: 10px; font-size: 13px; outline: none; transition: border-color .2s; font-family: inherit; }
-.sm-form-group input:focus, .sm-form-group select:focus, .sm-form-group textarea:focus { border-color: var(--petron-blue); box-shadow: 0 0 0 3px rgba(0,38,77,.08); }
-.sm-form-hint { font-size: 11px; color: #888; margin-top: 2px; }
+.sm-form-group { display: flex; flex-direction: column; gap: 6px; }
+.sm-form-group label {
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    color: #444 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .3px !important;
+}
+.sm-form-group input, .sm-form-group select, .sm-form-group textarea {
+    padding: 12px 14px !important;
+    border: 1px solid #ddd !important;
+    border-radius: 10px !important;
+    font-size: 15px !important;
+    outline: none !important;
+    transition: border-color .2s !important;
+    font-family: inherit !important;
+}
+.sm-form-group input:focus, .sm-form-group select:focus, .sm-form-group textarea:focus {
+    border-color: var(--petron-blue) !important;
+    box-shadow: 0 0 0 3px rgba(0,38,77,.08) !important;
+}
+.sm-form-hint {
+    font-size: 13px !important;
+    color: #888 !important;
+    margin-top: 2px !important;
+}
 
 /* Fuel type checkboxes */
 .sm-fuel-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-.sm-fuel-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid #ddd; border-radius: 20px; font-size: 12px; cursor: pointer; transition: all .15s; user-select: none; }
+.sm-fuel-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border: 1px solid #ddd;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+    user-select: none;
+}
 .sm-fuel-chip input { display: none; }
 .sm-fuel-chip.checked { background: var(--petron-blue); color: #fff; border-color: var(--petron-blue); }
 .sm-fuel-chip:hover { border-color: var(--petron-blue); }
 
 /* Flash */
-.sm-flash { padding: 12px 16px; border-radius: 10px; margin-bottom: 18px; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 10px; }
+.sm-flash {
+    padding: 14px 18px;
+    border-radius: 10px;
+    margin-bottom: 18px;
+    font-size: 14.5px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
 .sm-flash.success { background: rgba(40,167,69,.1); border: 1px solid rgba(40,167,69,.3); color: #1a7a35; }
 .sm-flash.error   { background: rgba(204,0,0,.08);  border: 1px solid rgba(204,0,0,.25);  color: #cc0000; }
 
 /* Empty */
-.sm-empty { text-align: center; padding: 60px 20px; color: #999; }
+.sm-empty { text-align: center; padding: 60px 20px; color: #999; font-size: 15px; }
 .sm-empty i { font-size: 40px; margin-bottom: 12px; opacity: .4; display: block; }
 
 /* Confirm */
 .sm-confirm-body { padding: 28px 24px; text-align: center; }
 .sm-confirm-body i { font-size: 44px; margin-bottom: 14px; display: block; }
-.sm-confirm-body p { font-size: 15px; color: #333; margin: 0 0 6px; }
-.sm-confirm-body .sub { font-size: 13px; color: #888; }
+.sm-confirm-body p { font-size: 16px; font-weight: 600; color: #333; margin: 0 0 6px; }
+.sm-confirm-body .sub { font-size: 14px; color: #666; }
 
 /* ── Configure Station Tabs ── */
 .cfg-tabs {
@@ -386,70 +659,111 @@ include __DIR__ . '/../partials/header.php';
     background: #fafafa;
     flex-shrink: 0;
     position: sticky;
-    top: 73px; /* below the sticky modal header */
+    top: 73px;
     z-index: 1;
-    overflow:hidden;
-    scrollbar-width: none;
+    overflow: hidden;
 }
-.cfg-tabs::-webkit-scrollbar { display: none; }
-.cfg-tab { background: none; border: none; border-bottom: 3px solid transparent; padding: 13px 16px; font-size: 13px; font-weight: 600; color: #888; cursor: pointer; display: flex; align-items: center; gap: 7px; margin-bottom: -2px; transition: all .2s; white-space: nowrap; }
-.cfg-tab i { font-size: 13px; }
+.cfg-tab {
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    padding: 13px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #666;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: -2px;
+    transition: all .2s;
+    white-space: nowrap;
+}
+.cfg-tab i { font-size: 14px; }
 .cfg-tab:hover { color: var(--petron-blue); }
-.cfg-tab.active { color: var(--petron-blue); border-bottom-color: var(--petron-blue); background: none; }
+.cfg-tab.active { color: var(--petron-blue); border-bottom-color: var(--petron-blue); font-weight: 700; background: none; }
 .cfg-panel { display: none; }
 .cfg-panel.active { display: block; }
 .cfg-panel-inner { padding: 22px 24px; }
-.cfg-section-head { display: flex; align-items: flex-start; gap: 14px; padding: 14px 16px; background: rgba(0,38,77,.04); border-radius: 12px; border-left: 4px solid var(--petron-blue); }
+.cfg-section-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 16px;
+    background: rgba(0,38,77,.04);
+    border-radius: 12px;
+    border-left: 4px solid var(--petron-blue);
+}
 .cfg-section-head > i { font-size: 20px; color: var(--petron-blue); margin-top: 2px; flex-shrink: 0; }
-.cfg-section-title { font-size: 14px; font-weight: 700; color: var(--petron-blue); text-transform: uppercase; letter-spacing: .3px; }
-.cfg-section-desc  { font-size: 12px; color: #666; margin-top: 3px; line-height: 1.5; text-transform: none !important; }
-.cfg-info-box { background: #f8fafc; border: 1px solid #e8edf2; border-radius: 10px; padding: 11px 14px; font-size: 12px; color: #555; display: flex; align-items: flex-start; gap: 8px; }
-.cfg-info-box i { color: var(--petron-blue); flex-shrink: 0; margin-top: 1px; }
+.cfg-section-title { font-size: 15px; font-weight: 700; color: var(--petron-blue); text-transform: uppercase; letter-spacing: .3px; }
+.cfg-section-desc  { font-size: 13px; color: #666; margin-top: 3px; line-height: 1.5; text-transform: none !important; }
+.cfg-info-box {
+    background: #f8fafc;
+    border: 1px solid #e8edf2;
+    border-radius: 10px;
+    padding: 12px 15px;
+    font-size: 13px;
+    color: #555;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+.cfg-info-box i { color: var(--petron-blue); flex-shrink: 0; margin-top: 2px; }
+
 /* Merchandise catalog rows */
-.merch-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #f5f5f5; font-size: 13px; }
+.merch-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #f5f5f5; font-size: 14px; }
 .merch-row:last-child { border-bottom: none; }
 .merch-row:hover { background: #f8fafc; }
-.merch-row .merch-name { flex: 1; font-weight: 500; }
-.merch-row .merch-cat  { font-size: 11px; color: #aaa; margin-left: 4px; }
-.merch-row .merch-price { font-size: 12px; color: #555; width: 80px; text-align: right; }
-.merch-row .merch-add  { background: var(--petron-blue); color: #fff; border: none; border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.merch-row .merch-name { flex: 1; font-weight: 600; }
+.merch-row .merch-cat  { font-size: 12px; color: #888; margin-left: 4px; }
+.merch-row .merch-price { font-size: 13px; color: #555; width: 80px; text-align: right; }
+.merch-row .merch-add  { background: var(--petron-blue); color: #fff; border: none; border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .merch-row .merch-add:hover { background: #001a3d; }
-.merch-row .merch-remove { background: none; color: #cc0000; border: 1px solid #cc0000; border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.merch-row .merch-remove { background: none; color: #cc0000; border: 1px solid #cc0000; border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .merch-row .merch-remove:hover { background: rgba(204,0,0,.06); }
-.merch-row .merch-price-input { width: 80px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; text-align: right; outline: none; }
+.merch-row .merch-price-input { width: 85px; padding: 5px 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; text-align: right; outline: none; }
 .merch-row .merch-price-input:focus { border-color: var(--petron-blue); }
 
-/* Searchable combo (reuse am-combo styles, add sm-combo alias) */
+/* Searchable combo */
 .sm-combo { position: relative; }
-.sm-combo-input { width: 100%; padding: 10px 36px 10px 13px; border: 1px solid #ddd; border-radius: 10px; font-size: 13px; outline: none; transition: border-color .2s; background: #fff; box-sizing: border-box; cursor: text; }
+.sm-combo-input {
+    width: 100%;
+    padding: 12px 36px 12px 14px;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    font-size: 15px;
+    outline: none;
+    transition: border-color .2s;
+    background: #fff;
+    box-sizing: border-box;
+    cursor: text;
+}
 .sm-combo-input:focus { border-color: var(--petron-blue); box-shadow: 0 0 0 3px rgba(0,38,77,.08); }
 .sm-combo-input.has-value { border-color: var(--petron-blue); }
-.sm-combo-arrow { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); color: #999; font-size: 12px; pointer-events: none; transition: transform .2s; }
+.sm-combo-arrow { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); color: #999; font-size: 14px; pointer-events: none; transition: transform .2s; }
 .sm-combo.open .sm-combo-arrow { transform: translateY(-50%) rotate(180deg); }
-.sm-combo-clear { position: absolute; right: 30px; top: 50%; transform: translateY(-50%); color: #bbb; font-size: 13px; cursor: pointer; display: none; background: none; border: none; padding: 2px 4px; line-height: 1; }
+.sm-combo-clear { position: absolute; right: 32px; top: 50%; transform: translateY(-50%); color: #bbb; font-size: 14px; cursor: pointer; display: none; background: none; border: none; padding: 2px 4px; line-height: 1; }
 .sm-combo-clear:hover { color: #cc0000; }
-.sm-combo-dropdown { display: none; position: fixed; background: #fff; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 99999; max-height: 220px; overflow: hidden; flex-direction: column; }
+.sm-combo-dropdown { display: none; position: fixed; background: #fff; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 99999; max-height: 240px; overflow: hidden; flex-direction: column; }
 .sm-combo.open .sm-combo-dropdown { display: flex; }
-.sm-combo-search { padding: 9px 12px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.sm-combo-search i { color: #bbb; font-size: 13px; }
-.sm-combo-search input { border: none; outline: none; font-size: 13px; flex: 1; background: transparent; }
+.sm-combo-search { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.sm-combo-search i { color: #bbb; font-size: 14px; }
+.sm-combo-search input { border: none; outline: none; font-size: 14px; flex: 1; background: transparent; }
 .sm-combo-list { overflow-y: auto; flex: 1; }
-.sm-combo-option { padding: 10px 14px; font-size: 13px; cursor: pointer; transition: background .12s; display: flex; align-items: center; gap: 8px; }
+.sm-combo-option { padding: 11px 14px; font-size: 14px; cursor: pointer; transition: background .12s; display: flex; align-items: center; gap: 8px; }
 .sm-combo-option:hover, .sm-combo-option.focused { background: #f0f5ff; color: var(--petron-blue); }
 .sm-combo-option.selected { background: rgba(0,38,77,.08); font-weight: 600; color: var(--petron-blue); }
-.sm-combo-option .opt-icon { color: #bbb; font-size: 11px; flex-shrink: 0; }
+.sm-combo-option .opt-icon { color: #bbb; font-size: 12px; flex-shrink: 0; }
 .sm-combo-option.selected .opt-icon { color: var(--petron-blue); }
-.sm-combo-empty { padding: 18px 14px; font-size: 13px; color: #bbb; text-align: center; }
+.sm-combo-empty { padding: 18px 14px; font-size: 14px; color: #bbb; text-align: center; }
 
 @media (max-width: 640px) {
     .sm-form-row { grid-template-columns: 1fr; }
-    .sm-toolbar input { width: 100%; }
+    .sm-toolbar input { width: 100% !important; }
     .sm-modal-overlay { padding: 12px 8px; }
     .cfg-tabs { padding: 0 12px; }
-    .cfg-tab { padding: 10px 10px; font-size: 12px; }
+    .cfg-tab { padding: 10px 10px; font-size: 13px; }
 }
-
-/* Footer and toggle scroll button styles are provided by partials/footer.php */
 </style>
 
 <div class="sm-page">
@@ -512,23 +826,34 @@ include __DIR__ . '/../partials/header.php';
         <option value="no">No Admin</option>
     </select>
     <div class="sm-toolbar-right">
-        <span id="smRowCount" style="font-size:12px;color:#888;"></span>
+        <span id="smRowCount" style="font-size:14px;color:#555;font-weight:600;"></span>
     </div>
 </div>
 
 <!-- Table -->
 <div class="sm-table-wrap">
     <table class="sm-table">
+        <colgroup>
+            <col style="width: 3%;">
+            <col style="width: 7%;">
+            <col style="width: 17%;">
+            <col style="width: 18%;">
+            <col style="width: 14%;">
+            <col style="width: 8%;">
+            <col style="width: 5%;">
+            <col style="width: 8%;">
+            <col style="width: 20%;">
+        </colgroup>
         <thead>
             <tr>
-                <th>#</th>
-                <th>Station ID</th>
+                <th style="text-align:center;">#</th>
+                <th style="text-align:center;">Station ID</th>
                 <th>Station</th>
                 <th>Location</th>
                 <th>Assigned Admin</th>
-                <th>Status</th>
-                <th>Users</th>
-                <th>Registered</th>
+                <th style="text-align:center;">Status</th>
+                <th style="text-align:center;">Users</th>
+                <th style="text-align:center;">Registered</th>
                 <th style="text-align:center;" class="col-actions">Actions</th>
             </tr>
         </thead>
@@ -546,74 +871,86 @@ include __DIR__ . '/../partials/header.php';
             data-city="<?php echo strtolower(htmlspecialchars($disp['city_prov'] ?: $loc['city'])); ?>"
             data-status="<?php echo strtolower($st['status']); ?>"
             data-hasadmin="<?php echo $st['admin_id'] ? 'yes' : 'no'; ?>">
-            <td style="color:#999;font-size:12px;"><?php echo $i + 1; ?></td>
+            <td style="color:#666;font-size:13.5px;text-align:center;"><?php echo $i + 1; ?></td>
 
             <!-- Station ID -->
             <td style="text-align:center;">
-                <div style="display:inline-flex;align-items:center;gap:4px;background:#f0f4f8;border:1px solid #dde3ea;border-radius:6px;padding:4px 10px;">
-                    <i class="fas fa-hashtag" style="font-size:9px;color:#888;"></i>
-                    <span style="font-size:12px;color:#555;font-weight:700;font-family:monospace;"><?php echo str_pad($st['id'], 4, '0', STR_PAD_LEFT); ?></span>
+                <div style="display:inline-flex;align-items:center;gap:4px;background:#f0f4f8;border:1px solid #dde3ea;border-radius:6px;padding:4px 8px;">
+                    <i class="fas fa-hashtag" style="font-size:10px;color:#888;"></i>
+                    <span style="font-size:13px;color:#333;font-weight:700;font-family:monospace;"><?php echo str_pad($st['id'], 4, '0', STR_PAD_LEFT); ?></span>
                 </div>
             </td>
 
             <!-- Station Name -->
             <td>
-                <div class="sname" style="font-size:13px;font-weight:700;color:#1a1a1a;line-height:1.3;">
+                <div class="sname" style="font-size:15px;font-weight:600;color:#1a1a1a;line-height:1.25;word-break:break-word;">
                     <?php echo htmlspecialchars($st['name']); ?>
                 </div>
             </td>
 
             <!-- Location (parsed) -->
-            <td style="max-width:200px;">
+            <td>
                 <?php if ($disp['street']): ?>
-                <div style="font-size:12px;color:#333;font-weight:500;line-height:1.3;"><?php echo htmlspecialchars($disp['street']); ?></div>
+                <div style="font-size:13.5px;color:#333;font-weight:500;line-height:1.25;word-break:break-word;"><?php echo htmlspecialchars($disp['street']); ?></div>
                 <?php endif; ?>
                 <?php if ($disp['city_prov']): ?>
-                <div style="font-size:12px;color:#555;margin-top:2px;"><?php echo htmlspecialchars($disp['city_prov']); ?></div>
+                <div style="font-size:13px;color:#555;margin-top:2px;line-height:1.25;"><?php echo htmlspecialchars($disp['city_prov']); ?></div>
                 <?php endif; ?>
                 <?php if ($disp['region']): ?>
-                <div style="font-size:11px;color:#aaa;margin-top:2px;"><?php echo htmlspecialchars($disp['region']); ?></div>
+                <div style="font-size:12.5px;color:#777;margin-top:2px;"><?php echo htmlspecialchars($disp['region']); ?></div>
                 <?php endif; ?>
                 <?php if (!$disp['street'] && !$disp['city_prov'] && !$disp['region']): ?>
-                <span style="color:#bbb;font-size:12px;">—</span>
+                <span style="color:#999;font-size:13px;">—</span>
                 <?php endif; ?>
             </td>
+
+            <!-- Assigned Admin -->
             <td>
                 <?php if ($st['admin_id']): ?>
-                <div style="font-size:13px;font-weight:600;"><?php echo htmlspecialchars($st['admin_name']); ?></div>
-                <div style="font-size:11px;color:#888;"><?php echo htmlspecialchars($st['admin_email'] ?? ''); ?></div>
+                <div style="font-size:14.5px;font-weight:600;color:#1a1a1a;line-height:1.25;word-break:break-word;"><?php echo htmlspecialchars($st['admin_name']); ?></div>
+                <div style="font-size:13px;color:#666;margin-top:2px;word-break:break-all;"><?php echo htmlspecialchars($st['admin_email'] ?? ''); ?></div>
                 <?php else: ?>
-                <span class="badge-no-admin"><i class="fas fa-exclamation-triangle" style="font-size:9px;"></i> Unassigned</span>
+                <span class="badge-no-admin"><i class="fas fa-exclamation-triangle" style="font-size:10px;"></i> Unassigned</span>
                 <?php endif; ?>
             </td>
-            <td>
+
+            <!-- Status -->
+            <td style="text-align:center;">
                 <?php if (strtolower($st['status']) === 'active'): ?>
-                <span class="badge-active"><i class="fas fa-circle" style="font-size:7px;"></i> Active</span>
+                <span class="badge-active"><i class="fas fa-circle" style="font-size:8px;"></i> Active</span>
                 <?php else: ?>
-                <span class="badge-inactive"><i class="fas fa-circle" style="font-size:7px;"></i> Inactive</span>
+                <span class="badge-inactive"><i class="fas fa-circle" style="font-size:8px;"></i> Inactive</span>
                 <?php endif; ?>
             </td>
-            <td style="font-size:13px;color:#555;"><?php echo (int)$st['active_users']; ?></td>
-            <td style="font-size:12px;color:#888;"><?php echo $st['created_at'] ? date('M d, Y', strtotime($st['created_at'])) : '—'; ?></td>
-            <td style="text-align:center;white-space:nowrap;" class="col-actions">
-                <button class="sm-btn sm-btn-view" onclick="openProfileModal(<?php echo (int)$st['id']; ?>, '<?php echo htmlspecialchars(addslashes($st['name'])); ?>')" title="View Profile" style="background:#fff;color:#6f42c1;border-color:#6f42c1;">
-                    <i class="fas fa-eye"></i> Profile
-                </button>
-                <button class="sm-btn sm-btn-edit" onclick="openEditModal(<?php echo htmlspecialchars(json_encode($st)); ?>)" title="Edit">
-                    <i class="fas fa-pen"></i> Edit
-                </button>
-                <button class="sm-btn sm-btn-assign" onclick="openAssignModal(<?php echo (int)$st['id']; ?>, '<?php echo htmlspecialchars(addslashes($st['name'])); ?>', <?php echo $st['admin_id'] ? (int)$st['admin_id'] : 'null'; ?>)" title="Assign Admin">
-                    <i class="fas fa-user-shield"></i> Assign
-                </button>
-                <?php if (strtolower($st['status']) === 'active'): ?>
-                <button class="sm-btn sm-btn-deact" onclick="confirmStatus(<?php echo (int)$st['id']; ?>, '<?php echo htmlspecialchars(addslashes($st['name'])); ?>', 'deactivate')" title="Deactivate">
-                    <i class="fas fa-ban"></i>
-                </button>
-                <?php else: ?>
-                <button class="sm-btn sm-btn-activate" onclick="confirmStatus(<?php echo (int)$st['id']; ?>, '<?php echo htmlspecialchars(addslashes($st['name'])); ?>', 'activate')" title="Activate">
-                    <i class="fas fa-check-circle"></i>
-                </button>
-                <?php endif; ?>
+
+            <!-- Users -->
+            <td style="font-size:14px;font-weight:600;color:#333;text-align:center;"><?php echo (int)$st['active_users']; ?></td>
+
+            <!-- Registered -->
+            <td style="font-size:13px;color:#555;text-align:center;"><?php echo $st['created_at'] ? date('M d, Y', strtotime($st['created_at'])) : '—'; ?></td>
+
+            <!-- Actions -->
+            <td style="text-align:center;" class="col-actions">
+                <div style="display:flex;gap:4px;justify-content:center;align-items:center;flex-wrap:wrap;">
+                    <button class="sm-btn sm-btn-view" onclick="openProfileModal(<?php echo (int)$st['id']; ?>, '<?php echo htmlspecialchars(addslashes($st['name'])); ?>')" title="View Profile">
+                        <i class="fas fa-eye"></i> Profile
+                    </button>
+                    <button class="sm-btn sm-btn-edit" onclick="openEditModal(<?php echo htmlspecialchars(json_encode($st)); ?>)" title="Edit">
+                        <i class="fas fa-pen"></i> Edit
+                    </button>
+                    <button class="sm-btn sm-btn-assign" onclick="openAssignModal(<?php echo (int)$st['id']; ?>, '<?php echo htmlspecialchars(addslashes($st['name'])); ?>', <?php echo $st['admin_id'] ? (int)$st['admin_id'] : 'null'; ?>)" title="Assign Admin">
+                        <i class="fas fa-user-shield"></i> Assign
+                    </button>
+                    <?php if (strtolower($st['status']) === 'active'): ?>
+                    <button class="sm-btn sm-btn-deact" onclick="confirmStatus(<?php echo (int)$st['id']; ?>, '<?php echo htmlspecialchars(addslashes($st['name'])); ?>', 'deactivate')" title="Deactivate">
+                        <i class="fas fa-ban"></i>
+                    </button>
+                    <?php else: ?>
+                    <button class="sm-btn sm-btn-activate" onclick="confirmStatus(<?php echo (int)$st['id']; ?>, '<?php echo htmlspecialchars(addslashes($st['name'])); ?>', 'activate')" title="Activate">
+                        <i class="fas fa-check-circle"></i>
+                    </button>
+                    <?php endif; ?>
+                </div>
             </td>
         </tr>
         <?php endforeach; ?>
@@ -630,7 +967,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="sm-modal-header">
       <div>
         <h2 style="margin-bottom:2px !important;"><i class="fas fa-building" style="margin-right:8px;"></i>Station Profile</h2>
-        <div id="p_station_subtitle" style="font-size:12px;color:#888;font-weight:400;text-transform:none !important;"></div>
+        <div id="p_station_subtitle" style="font-size:14px;color:#666;font-weight:500;text-transform:none !important;"></div>
       </div>
       <button class="sm-modal-close" onclick="closeModal('profileModal')">&times;</button>
     </div>
@@ -669,7 +1006,7 @@ include __DIR__ . '/../partials/header.php';
         <!-- Location divider -->
         <div style="display:flex;align-items:center;gap:10px;margin:14px 0 10px;">
           <div style="flex:1;height:1px;background:#eee;"></div>
-          <span style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;"><i class="fas fa-map-marker-alt" style="margin-right:4px;"></i>Location Details</span>
+          <span style="font-size:13px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;"><i class="fas fa-map-marker-alt" style="margin-right:4px;"></i>Location Details</span>
           <div style="flex:1;height:1px;background:#eee;"></div>
         </div>
 
@@ -707,7 +1044,7 @@ include __DIR__ . '/../partials/header.php';
         <div class="sm-form-row full">
           <div class="sm-form-group">
             <label>Location Preview</label>
-            <div id="r_location_preview" style="padding:10px 13px;background:#f8fafc;border:1px solid #eee;border-radius:10px;font-size:12px;color:#555;min-height:36px;line-height:1.5;"></div>
+            <div id="r_location_preview" style="padding:12px 14px;background:#f8fafc;border:1px solid #eee;border-radius:10px;font-size:14px;color:#444;min-height:40px;line-height:1.5;"></div>
             <span class="sm-form-hint">This is how the full location will be stored and displayed in reports.</span>
           </div>
         </div>
@@ -715,7 +1052,7 @@ include __DIR__ . '/../partials/header.php';
         <!-- Fuel types divider -->
         <div style="display:flex;align-items:center;gap:10px;margin:14px 0 10px;">
           <div style="flex:1;height:1px;background:#eee;"></div>
-          <span style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;"><i class="fas fa-gas-pump" style="margin-right:4px;"></i>Fuel Types</span>
+          <span style="font-size:13px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;"><i class="fas fa-gas-pump" style="margin-right:4px;"></i>Fuel Types</span>
           <div style="flex:1;height:1px;background:#eee;"></div>
         </div>
 
@@ -753,7 +1090,7 @@ include __DIR__ . '/../partials/header.php';
     <div class="sm-modal-header">
       <div>
         <h2 style="margin-bottom:2px !important;"><i class="fas fa-cog" style="margin-right:8px;"></i>Configure Station</h2>
-        <div id="e_station_subtitle" style="font-size:12px;color:#888;font-weight:400;text-transform:none !important;"></div>
+        <div id="e_station_subtitle" style="font-size:14px;color:#666;font-weight:500;text-transform:none !important;"></div>
       </div>
       <button class="sm-modal-close" onclick="closeModal('editModal')">&times;</button>
     </div>
@@ -844,7 +1181,7 @@ include __DIR__ . '/../partials/header.php';
         <div class="sm-form-row full">
           <div class="sm-form-group">
             <label>Location Preview</label>
-            <div id="e_location_preview" style="padding:10px 13px;background:#f8fafc;border:1px solid #eee;border-radius:10px;font-size:12px;color:#555;min-height:36px;line-height:1.5;"></div>
+            <div id="e_location_preview" style="padding:12px 14px;background:#f8fafc;border:1px solid #eee;border-radius:10px;font-size:14px;color:#444;min-height:40px;line-height:1.5;"></div>
             <span class="sm-form-hint">This is how the full location will be stored and displayed in reports.</span>
           </div>
         </div>
@@ -951,7 +1288,7 @@ include __DIR__ . '/../partials/header.php';
       <input type="hidden" name="station_id" id="a_station_id">
       <div class="sm-modal-body">
         <div id="assignAlert" class="sm-flash error" style="display:none;"></div>
-        <p id="a_station_label" style="font-size:13px;color:#555;margin:0 0 16px;"></p>
+        <p id="a_station_label" style="font-size:14.5px;font-weight:600;color:#333;margin:0 0 16px;"></p>
 
         <div class="sm-form-group">
           <label>Select Admin to Assign <span style="color:#cc0000;">*</span></label>
@@ -1578,26 +1915,26 @@ async function openProfileModal(stationId, stationName) {
 
           <!-- Station Info -->
           <div style="background:#fff;border:1px solid #eee;border-radius:10px;padding:16px;margin-bottom:16px;">
-            <div style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;"><i class="fas fa-info-circle" style="margin-right:5px;"></i>Station Info</div>
+            <div style="font-size:13px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;"><i class="fas fa-info-circle" style="margin-right:5px;"></i>Station Info</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;">
-              <div><span style="color:#888;font-size:11px;display:block;">Station ID</span><strong>#${String(d.id).padStart(4,'0')}</strong></div>
-              <div><span style="color:#888;font-size:11px;display:block;">Status</span>${statusBadge}</div>
-              <div><span style="color:#888;font-size:11px;display:block;">Assigned Admin</span><strong>${esc(d.admin_name||'Unassigned')}</strong></div>
-              <div><span style="color:#888;font-size:11px;display:block;">Registered</span><strong>${d.created_at ? new Date(d.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—'}</strong></div>
-              <div style="grid-column:1/-1;"><span style="color:#888;font-size:11px;display:block;">Full Address</span><strong>${esc(locStr)}</strong></div>
+              <div><span style="color:#666;font-size:12.5px;display:block;">Station ID</span><strong>#${String(d.id).padStart(4,'0')}</strong></div>
+              <div><span style="color:#666;font-size:12.5px;display:block;">Status</span>${statusBadge}</div>
+              <div><span style="color:#666;font-size:12.5px;display:block;">Assigned Admin</span><strong>${esc(d.admin_name||'Unassigned')}</strong></div>
+              <div><span style="color:#666;font-size:12.5px;display:block;">Registered</span><strong>${d.created_at ? new Date(d.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—'}</strong></div>
+              <div style="grid-column:1/-1;"><span style="color:#666;font-size:12.5px;display:block;">Full Address</span><strong>${esc(locStr)}</strong></div>
             </div>
           </div>
 
           <!-- Pumps -->
           <div style="background:#fff;border:1px solid #eee;border-radius:10px;overflow:hidden;margin-bottom:16px;">
-            <div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.5px;"><i class="fas fa-gas-pump" style="margin-right:5px;color:var(--petron-blue);"></i>Fuel Pumps</div>
+            <div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-size:13px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px;"><i class="fas fa-gas-pump" style="margin-right:5px;color:var(--petron-blue);"></i>Fuel Pumps</div>
             <div style="overflow:hidden;">
               <table style="width:100%;border-collapse:collapse;font-size:13px;">
                 <thead><tr style="background:#f8fafc;">
-                  <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;">Pump #</th>
-                  <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;">Fuel Type</th>
-                  <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;">Capacity</th>
-                  <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;">Status</th>
+                  <th style="padding:8px 12px;text-align:left;font-size:12.5px;font-weight:700;color:#555;text-transform:uppercase;">Pump #</th>
+                  <th style="padding:8px 12px;text-align:left;font-size:12.5px;font-weight:700;color:#555;text-transform:uppercase;">Fuel Type</th>
+                  <th style="padding:8px 12px;text-align:left;font-size:12.5px;font-weight:700;color:#555;text-transform:uppercase;">Capacity</th>
+                  <th style="padding:8px 12px;text-align:left;font-size:12.5px;font-weight:700;color:#555;text-transform:uppercase;">Status</th>
                 </tr></thead>
                 <tbody>${pumpsHtml}</tbody>
               </table>
@@ -1606,12 +1943,12 @@ async function openProfileModal(stationId, stationName) {
 
           <!-- Fuel Inventory -->
           <div style="background:#fff;border:1px solid #eee;border-radius:10px;overflow:hidden;margin-bottom:16px;">
-            <div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.5px;"><i class="fas fa-tint" style="margin-right:5px;color:var(--petron-blue);"></i>Fuel Inventory (Current Stock)</div>
+            <div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-size:13px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px;"><i class="fas fa-tint" style="margin-right:5px;color:var(--petron-blue);"></i>Fuel Inventory (Current Stock)</div>
             <div style="overflow:hidden;">
               <table style="width:100%;border-collapse:collapse;font-size:13px;">
                 <thead><tr style="background:#f8fafc;">
-                  <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;">Fuel Type</th>
-                  <th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;">Stock Level</th>
+                  <th style="padding:8px 12px;text-align:left;font-size:12.5px;font-weight:700;color:#555;text-transform:uppercase;">Fuel Type</th>
+                  <th style="padding:8px 12px;text-align:right;font-size:12.5px;font-weight:700;color:#555;text-transform:uppercase;">Stock Level</th>
                 </tr></thead>
                 <tbody>${fuelHtml}</tbody>
               </table>
@@ -1620,14 +1957,14 @@ async function openProfileModal(stationId, stationName) {
 
           <!-- Merchandise -->
           <div style="background:#fff;border:1px solid #eee;border-radius:10px;overflow:hidden;">
-            <div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.5px;"><i class="fas fa-boxes" style="margin-right:5px;color:var(--petron-blue);"></i>Merchandise Stock</div>
+            <div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-size:13px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px;"><i class="fas fa-boxes" style="margin-right:5px;color:var(--petron-blue);"></i>Merchandise Stock</div>
             <div style="overflow:hidden;">
               <table style="width:100%;border-collapse:collapse;font-size:13px;">
                 <thead><tr style="background:#f8fafc;">
-                  <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;">Product</th>
-                  <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;">Category</th>
-                  <th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;">Stock</th>
-                  <th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;">Price</th>
+                  <th style="padding:8px 12px;text-align:left;font-size:12.5px;font-weight:700;color:#555;text-transform:uppercase;">Product</th>
+                  <th style="padding:8px 12px;text-align:left;font-size:12.5px;font-weight:700;color:#555;text-transform:uppercase;">Category</th>
+                  <th style="padding:8px 12px;text-align:right;font-size:12.5px;font-weight:700;color:#555;text-transform:uppercase;">Stock</th>
+                  <th style="padding:8px 12px;text-align:right;font-size:12.5px;font-weight:700;color:#555;text-transform:uppercase;">Price</th>
                 </tr></thead>
                 <tbody>${merchHtml}</tbody>
               </table>

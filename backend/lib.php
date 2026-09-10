@@ -1,4 +1,52 @@
 <?php
+
+// ── DYNAMIC TIMEZONE & SYSTEM SETTINGS HELPERS ──
+if (!function_exists('petron_init_dynamic_timezone')) {
+    function petron_init_dynamic_timezone(): void {
+        global $pdo;
+        try {
+            if (!isset($pdo) || !$pdo) {
+                require_once __DIR__ . '/../public/db_connect.php';
+            }
+            $tzStmt = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key = 'timezone' AND station_id = 0 LIMIT 1");
+            $storedTz = $tzStmt ? $tzStmt->fetchColumn() : false;
+            if ($storedTz) {
+                $tzIdent = trim(explode(' ', $storedTz)[0]);
+                if (in_array($tzIdent, timezone_identifiers_list(), true)) {
+                    date_default_timezone_set($tzIdent);
+                    return;
+                }
+            }
+        } catch (Throwable $e) {}
+        date_default_timezone_set('Asia/Manila');
+    }
+    petron_init_dynamic_timezone();
+}
+
+if (!function_exists('petron_currency_symbol')) {
+    function petron_currency_symbol(): string {
+        static $sym = null;
+        if ($sym !== null) return $sym;
+        global $pdo;
+        try {
+            if (!isset($pdo) || !$pdo) {
+                require_once __DIR__ . '/../public/db_connect.php';
+            }
+            $stmt = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'currency_symbol' AND station_id = 0 LIMIT 1");
+            $stmt->execute();
+            $raw = $stmt->fetchColumn();
+            if ($raw && preg_match('/\((.*?)\)/', $raw, $m)) {
+                $sym = $m[1];
+            } else {
+                $sym = '₱';
+            }
+        } catch (Throwable $e) {
+            $sym = '₱';
+        }
+        return $sym ?: '₱';
+    }
+}
+
 require_once __DIR__ . '/security_helpers.php';
 
 if (!function_exists('is_system_in_maintenance_mode')) {
