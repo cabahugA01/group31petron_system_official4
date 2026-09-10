@@ -157,55 +157,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 break;
                 
-            case 'add_module':
-                $moduleName  = trim($_POST['module_name'] ?? '');
-                $moduleCode  = trim($_POST['module_code'] ?? '');
-                $moduleDesc  = trim($_POST['module_description'] ?? '');
-                $moduleVersion = trim($_POST['module_version'] ?? 'v1.0.0') ?: 'v1.0.0';
-                $isEnabled   = ($_POST['module_status'] ?? 'enabled') === 'enabled' ? 1 : 0;
-                $accessRoles = $_POST['user_access'] ?? [];
-                $userAccess  = !empty($accessRoles) ? implode(', ', array_map('trim', $accessRoles)) : 'Admin, Manager, Staff';
-                // Generate module_key from module_code: lowercase + underscores
-                $moduleKey   = strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $moduleCode));
-                $moduleKey   = trim($moduleKey, '_');
-
-                if (empty($moduleName)) {
-                    $msg = "Module Name is required.";
-                } elseif (empty($moduleCode)) {
-                    $msg = "Module Code is required.";
-                } elseif (empty($moduleKey)) {
-                    $msg = "Module Code produced an invalid key. Use letters and numbers only.";
-                } else {
-                    try {
-                        $checkStmt = $pdo->prepare("SELECT COUNT(*) FROM module_settings WHERE module_key = ?");
-                        $checkStmt->execute([$moduleKey]);
-                        if ($checkStmt->fetchColumn() > 0) {
-                            $msg = "Module code &lsquo;{$moduleCode}&rsquo; already exists. Choose a different code.";
-                        } else {
-                            $orderStmt = $pdo->query("SELECT COALESCE(MAX(module_order), 0) FROM module_settings");
-                            $nextOrder = (int)$orderStmt->fetchColumn() + 1;
-
-                            $insertStmt = $pdo->prepare("
-                                INSERT INTO module_settings
-                                    (module_key, module_code, module_name, module_description,
-                                     is_enabled, user_access, module_order, version, last_updated)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, DATE_FORMAT(NOW(), '%b %d, %Y'))
-                            ");
-                            $insertStmt->execute([
-                                $moduleKey, $moduleCode, $moduleName, $moduleDesc,
-                                $isEnabled, $userAccess, $nextOrder, $moduleVersion
-                            ]);
-
-                            $success = "<strong>Module &lsquo;{$moduleName}&rsquo;</strong> has been registered successfully!";
-                            log_activity($pdo, $me['id'], 'Module Configuration',
-                                "Registered new module: {$moduleName} (code: {$moduleCode})");
-                        }
-                    } catch (Exception $e) {
-                        $msg = "Error adding module: " . $e->getMessage();
-                    }
-                }
-                break;
-
             case 'reset_module_config':
                 $moduleKey = $_POST['module_key'] ?? '';
                 $stationId = $_POST['station_id'] ?? 'all';
@@ -473,9 +424,6 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
         <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--petron-blue, #00264D);">
             <i class="fas fa-globe" style="color: #10b981;"></i> Global Module Settings
         </h3>
-        <button class="btn-register-module" onclick="openAddModuleModal()" style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:transparent !important;color:#00264D !important;border:1.5px solid #00264D !important;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;">
-            <i class="fas fa-plus-circle" style="color:#0057b8 !important;"></i> Register New Module
-        </button>
     </div>
     <div class="card-body" style="padding: 20px 20px 10px;">
         <div style="display: flex; gap: 12px; margin-bottom: 20px;">
@@ -625,125 +573,6 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
         <div id="moduleAuditContent">
             <!-- Audit log will be loaded dynamically -->
         </div>
-    </div>
-</div>
-<!-- Add Module Modal -->
-<div id="addModuleModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.55); z-index: 9999; align-items: center; justify-content: center; padding: 45px 20px;">
-    <div class="modal-content" style="max-width: 540px; width: 100%; display: flex; flex-direction: column; max-height: 80vh; margin: auto; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4); background: #ffffff;">
-        <!-- Header (Clean White Header, No Dark Blue, No Subtext, No X Icon) -->
-        <div class="modal-header" style="background: #ffffff; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e5e7eb; flex-shrink: 0;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="background: #eff6ff; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid #bfdbfe;">
-                    <i class="fas fa-puzzle-piece" style="color: #0057b8 !important; font-size: 18px;"></i>
-                </div>
-                <div>
-                    <h3 style="margin: 0; color: #00264D !important; font-size: 17px; font-weight: 700; letter-spacing: 0.3px;">Register Module</h3>
-                </div>
-            </div>
-        </div>
-
-        <form id="addModuleForm" method="POST" action="" style="display: flex; flex-direction: column; flex: 1; overflow: hidden; margin: 0;">
-            <input type="hidden" name="action" value="add_module">
-            <div class="modal-body" style="padding: 28px 26px 36px 26px; flex: 1; overflow-y: auto; background: #ffffff;">
-
-                <!-- Section: Module Information -->
-                <div style="margin-top: 5px; margin-bottom: 24px;">
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e5e7eb;">
-                        <i class="fas fa-info-circle" style="color: #0057b8;"></i>
-                        <span style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px;">Module Information</span>
-                    </div>
-
-                    <!-- Module Name -->
-                    <div style="margin-bottom: 16px;">
-                        <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Module Name <span style="color: #dc2626;">*</span></label>
-                        <input type="text" name="module_name" class="form-input"
-                               placeholder="e.g., Loyalty Rewards"
-                               required style="width: 100%; font-size: 14px;">
-                    </div>
-
-                    <!-- Module Code -->
-                    <div style="margin-bottom: 16px;">
-                        <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Module Code <span style="color: #dc2626;">*</span></label>
-                        <input type="text" name="module_code" id="moduleCodeInput" class="form-input"
-                               placeholder="e.g., LOYALTY_REWARDS"
-                               required style="width: 100%; font-size: 14px; font-family: monospace;"
-                               oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9_]/g,'');">
-                        <small style="color: #6b7280; margin-top: 4px; display: block;">Uppercase letters, numbers, underscores only. Unique identifier for this module.</small>
-                    </div>
-
-                    <!-- Description -->
-                    <div style="margin-bottom: 16px;">
-                        <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Module Description</label>
-                        <textarea name="module_description" class="form-input" rows="3"
-                                  placeholder="Brief description of what this module does..."
-                                  style="width: 100%; resize: vertical; font-size: 13px;"></textarea>
-                    </div>
-
-                    <!-- Version -->
-                    <div style="margin-bottom: 6px;">
-                        <label style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Module Version</label>
-                        <input type="text" name="module_version" class="form-input"
-                               placeholder="e.g., v1.0.0" value="v1.0.0"
-                               style="width: 160px; font-family: monospace; font-size: 13px;">
-                    </div>
-                </div>
-
-                <!-- Section: Status -->
-                <div style="margin-bottom: 24px;">
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e5e7eb;">
-                        <i class="fas fa-toggle-on" style="color: #10b981;"></i>
-                        <span style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px;">Module Status</span>
-                    </div>
-                    <div style="display: flex; gap: 24px;">
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #16a34a;">
-                            <input type="radio" name="module_status" value="enabled" checked
-                                   style="width: 16px; height: 16px; accent-color: #16a34a;">
-                            <span>Enabled</span>
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #6b7280;">
-                            <input type="radio" name="module_status" value="disabled"
-                                   style="width: 16px; height: 16px; accent-color: #6b7280;">
-                            <span>Disabled</span>
-                        </label>
-                    </div>
-                </div>
-
-                <!-- Section: Role Access -->
-                <div style="margin-bottom: 24px;">
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e5e7eb;">
-                        <i class="fas fa-users-cog" style="color: #3b82f6;"></i>
-                        <span style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px;">Role Access (Sidebar Navigation)</span>
-                    </div>
-                    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-                        <label for="acc_role_admin" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #374151; font-weight: 600;">
-                            <input type="checkbox" id="acc_role_admin" name="user_access[]" value="Admin" checked style="width: 16px; height: 16px;">
-                            <span>Admin</span>
-                        </label>
-                        <label for="acc_role_manager" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #374151; font-weight: 600;">
-                            <input type="checkbox" id="acc_role_manager" name="user_access[]" value="Manager" checked style="width: 16px; height: 16px;">
-                            <span>Manager</span>
-                        </label>
-                        <label for="acc_role_staff" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #374151; font-weight: 600;">
-                            <input type="checkbox" id="acc_role_staff" name="user_access[]" value="Staff" checked style="width: 16px; height: 16px;">
-                            <span>Staff</span>
-                        </label>
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- Footer -->
-            <div class="modal-footer" style="background: #ffffff; border-top: 2px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 14px; align-items: center; padding: 18px 26px; flex-shrink: 0;">
-                <button type="button" onclick="closeAddModuleModal()"
-                        style="padding: 10px 24px; border: 1px solid #d1d5db !important; border-radius: 7px; background: #ffffff !important; cursor: pointer; font-size: 13px; font-weight: 600; color: #374151 !important; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                    Cancel
-                </button>
-                <button type="submit"
-                        style="padding: 10px 24px; border: none !important; border-radius: 7px; background: #16a34a !important; color: #ffffff !important; font-size: 13px; font-weight: 700; cursor: pointer; letter-spacing: 0.2px; box-shadow: 0 2px 6px rgba(22,163,74,0.3);">
-                    Register Module
-                </button>
-            </div>
-        </form>
     </div>
 </div>
 
@@ -990,33 +819,6 @@ $coreModules = ['dashboard','transactions','fuel_management','inventory','custom
     .btn-configure:hover {
         background: #00264D !important;
         color: white !important;
-    }
-    
-    /* Register Module Button Rules (NEVER DARK BLUE ON CLICK) */
-    .btn-register-module,
-    .btn-register-module:hover,
-    .btn-register-module:focus,
-    .btn-register-module:active,
-    .btn-register-module:visited {
-        background: transparent !important;
-        color: #00264D !important;
-        border: 1.5px solid #00264D !important;
-        box-shadow: none !important;
-        outline: none !important;
-        text-decoration: none !important;
-    }
-    
-    .btn-register-module:hover,
-    .btn-register-module:focus,
-    .btn-register-module:active {
-        background: rgba(0, 38, 77, 0.08) !important;
-        color: #00264D !important;
-        border-color: #00264D !important;
-    }
-    
-    .btn-register-module i {
-        font-size: 14px;
-        color: #0057b8 !important;
     }
     
     /* Modal Styles */
@@ -2430,37 +2232,6 @@ function updateModuleSetting(moduleKey, configKey, newValue) {
     form.submit();
 }
 
-// Open Add Module Modal
-function openAddModuleModal() {
-    document.getElementById('addModuleModal').style.display = 'flex';
-    document.body.style.overflow = 'hidden';
-}
-
-// Close Add Module Modal
-function closeAddModuleModal() {
-    document.getElementById('addModuleModal').style.display = 'none';
-    document.body.style.overflow = '';
-    document.getElementById('addModuleForm').reset();
-    // Reset icon preview
-    const preview = document.getElementById('iconPreview');
-    if (preview) preview.className = 'fas fa-cube';
-}
-
-// Auto-fill form with a suggestion preset
-function fillModuleSuggestion(key, name, icon, desc) {
-    const form = document.getElementById('addModuleForm');
-    if (!form) return;
-    form.querySelector('[name="module_key"]').value = key;
-    form.querySelector('[name="module_name"]').value = name;
-    form.querySelector('[name="module_description"]').value = desc;
-    const iconInput = form.querySelector('[name="module_icon"]');
-    if (iconInput) {
-        iconInput.value = icon;
-        const preview = document.getElementById('iconPreview');
-        if (preview) preview.className = 'fas ' + icon;
-    }
-}
-
 // Delete a custom (non-core) module
 function deleteModule(moduleKey, moduleName) {
     if (!confirm(`Are you sure you want to permanently delete the module:\n\n"${moduleName}" (${moduleKey})?\n\nThis action cannot be undone.`)) {
@@ -2476,15 +2247,9 @@ function deleteModule(moduleKey, moduleName) {
     form.submit();
 }
 
-
 // Close modals when clicking outside
 document.addEventListener('click', function(event) {
-    const addModal = document.getElementById('addModuleModal');
     const configModal = document.getElementById('moduleConfigModal');
-    
-    if (event.target === addModal) {
-        closeAddModuleModal();
-    }
     if (event.target === configModal) {
         closeModuleConfigModal();
     }
@@ -2493,13 +2258,8 @@ document.addEventListener('click', function(event) {
 // Close modals with Escape key
 document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {
-        const addModal = document.getElementById('addModuleModal');
         const configModal = document.getElementById('moduleConfigModal');
-        
-        if (addModal.style.display === 'flex') {
-            closeAddModuleModal();
-        }
-        if (configModal.style.display === 'flex') {
+        if (configModal && configModal.style.display === 'flex') {
             closeModuleConfigModal();
         }
     }

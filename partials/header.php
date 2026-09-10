@@ -565,6 +565,20 @@ $theme_sidebar_color = $station_settings['color_sidebar'] ?? '#00264D';
 $theme_font_scale    = $station_settings['font_scale'] ?? '100';
 $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_settings['high_contrast'] === '1' || $station_settings['high_contrast'] === 'true'));
 
+// --- APPEARANCE SETTINGS FROM SYSTEM SETTINGS ---
+$appearance_theme        = $station_settings['theme'] ?? 'Light';
+$appearance_accent_color = $station_settings['system_accent_color'] ?? '#002F6C';
+// Validate hex color format for safety
+if (!preg_match('/^#[0-9A-Fa-f]{3,6}$/', $appearance_accent_color)) {
+    $appearance_accent_color = '#002F6C';
+}
+$appearance_sidebar_mode     = $station_settings['sidebar_mode'] ?? 'Expanded';
+$appearance_auto_refresh_sec = (int)($station_settings['dashboard_auto_refresh'] ?? 10);
+if ($appearance_auto_refresh_sec < 5)  $appearance_auto_refresh_sec = 5;
+if ($appearance_auto_refresh_sec > 3600) $appearance_auto_refresh_sec = 3600;
+$appearance_is_dark = (strtolower($appearance_theme) === 'dark');
+$appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'collapsed');
+
  ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -781,9 +795,10 @@ $theme_high_contrast = (isset($station_settings['high_contrast']) && ($station_s
   </style>
   <style>
     :root {
-        --petron-blue: <?php echo htmlspecialchars($theme_primary_color); ?> !important;
-        --primary: <?php echo htmlspecialchars($theme_primary_color); ?> !important;
+        --petron-blue: <?php echo htmlspecialchars($appearance_accent_color); ?> !important;
+        --primary: <?php echo htmlspecialchars($appearance_accent_color); ?> !important;
         --sidebar-bg: <?php echo htmlspecialchars($theme_sidebar_color); ?> !important;
+        --system-accent: <?php echo htmlspecialchars($appearance_accent_color); ?> !important;
         font-size: <?php echo htmlspecialchars($theme_font_scale); ?>% !important;
     }
     button, .btn, .ss-btn-primary {
@@ -3217,7 +3232,16 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
 </style>
 
 </head>
-<body class="app" data-page="<?php echo htmlspecialchars($page_id); ?>" data-role="<?php echo htmlspecialchars($role); ?>">
+<body class="app<?php echo $appearance_is_dark ? ' dark-theme' : ''; ?>" data-page="<?php echo htmlspecialchars($page_id); ?>" data-role="<?php echo htmlspecialchars($role); ?>" data-sidebar-mode="<?php echo htmlspecialchars($appearance_sidebar_mode); ?>">
+<!-- System appearance settings exposed to JS -->
+<script>
+window.petronSystemSettings = {
+    theme: '<?php echo addslashes($appearance_theme); ?>',
+    accentColor: '<?php echo addslashes($appearance_accent_color); ?>',
+    sidebarMode: '<?php echo addslashes($appearance_sidebar_mode); ?>',
+    autoRefreshSec: <?php echo (int)$appearance_auto_refresh_sec; ?>
+};
+</script>
 <!-- NUCLEAR-HEADER-FIX: Force header above any overlays and ensure clicks reach controls -->
 <style id="nuclearHeaderFix">
     .top-header{ position:fixed !important; top:0; left:0; right:0; z-index:2147483640 !important; pointer-events:auto !important; }
@@ -5363,21 +5387,27 @@ require_once __DIR__ . '/rbac_menu.php';
     document.addEventListener('click', petronHandleBodyOutsideClick, true);
 
 
-    // Apply saved theme immediately (BEFORE DOMContentLoaded to prevent flicker)
+    // Apply theme: system DB setting is authoritative — always sync localStorage to match
     (function() {
+        var dbTheme = (window.petronSystemSettings && window.petronSystemSettings.theme)
+            ? window.petronSystemSettings.theme.toLowerCase()
+            : 'light';
+        // Use DB setting; localStorage is only for same-session toggle (reset on each load)
         var savedTheme = localStorage.getItem('petronTheme');
-        console.log('Initializing theme from localStorage:', savedTheme);
-        
-        if (savedTheme === 'dark') {
+        // If user has NOT manually toggled this session, use DB value; always sync:
+        var effectiveTheme = dbTheme; // DB takes precedence
+        localStorage.setItem('petronTheme', effectiveTheme === 'dark' ? 'dark' : 'light');
+        console.log('Initializing theme from system settings (DB):', effectiveTheme);
+
+        if (effectiveTheme === 'dark') {
             document.body.classList.add('dark-theme');
-            // Wait for elements to be available
             setTimeout(function() {
                 var icon = document.getElementById('themeIcon');
                 if (icon) icon.className = 'fas fa-sun';
                 var btn = document.getElementById('themeToggle');
                 if (btn) btn.title = 'Switch to Light Mode';
             }, 0);
-        } else if (savedTheme === 'light') {
+        } else {
             document.body.classList.remove('dark-theme');
             setTimeout(function() {
                 var icon = document.getElementById('themeIcon');
@@ -5435,10 +5465,16 @@ require_once __DIR__ . '/rbac_menu.php';
             });
         }
         
-        // Restore sidebar state (desktop only)
+        // Restore sidebar state (desktop only) — DB system setting is authoritative
         if (window.innerWidth >= 992) {
-            var saved = localStorage.getItem('sidebarState');
-            if (saved === 'collapsed') {
+            var dbSidebarMode = (window.petronSystemSettings && window.petronSystemSettings.sidebarMode)
+                ? window.petronSystemSettings.sidebarMode.toLowerCase()
+                : 'expanded';
+            // DB setting always wins; sync localStorage to match
+            var sidebarEffective = dbSidebarMode;
+            localStorage.setItem('sidebarState', sidebarEffective);
+
+            if (sidebarEffective === 'collapsed') {
                 var s    = document.getElementById('mainSidebar');
                 var icon = document.getElementById('sidebarToggleIcon');
                 var main = document.querySelector('.main');
@@ -5446,6 +5482,14 @@ require_once __DIR__ . '/rbac_menu.php';
                 if (icon) icon.className = 'fas fa-chevron-right';
                 if (main) { main.style.left = '70px'; main.classList.add('sidebar-collapsed'); }
                 document.body.classList.add('sidebar-collapsed');
+            } else {
+                var s    = document.getElementById('mainSidebar');
+                var icon = document.getElementById('sidebarToggleIcon');
+                var main = document.querySelector('.main');
+                if (s) s.classList.remove('collapsed');
+                if (icon) icon.className = 'fas fa-chevron-left';
+                if (main) { main.style.left = ''; main.classList.remove('sidebar-collapsed'); }
+                document.body.classList.remove('sidebar-collapsed');
             }
         }
 
