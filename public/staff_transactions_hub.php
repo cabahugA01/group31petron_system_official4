@@ -15795,34 +15795,152 @@ document.addEventListener('DOMContentLoaded', function() {
         const mdr = <?= json_encode($applied_mdr, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
         if (!mdr || !mdr.payload) return;
 
+        const p = mdr.payload;
+        let itemTitle = '';
+        let itemSubtitle = '';
+        let targetScrollEl = null;
+        const highlightedInputs = [];
+
+        function parseMdrDuration(dur) {
+            if (!dur) return 60;
+            if (typeof dur === 'number') return dur;
+            const s = String(dur).trim().toLowerCase();
+            const h = s.match(/(\d+(?:\.\d+)?)\s*(?:hour|hr|h)/);
+            if (h) return Math.round(parseFloat(h[1]) * 60);
+            const m = s.match(/(\d+)\s*(?:min|m)/);
+            if (m) return parseInt(m[1], 10);
+            const num = parseInt(s, 10);
+            return isNaN(num) ? 60 : num;
+        }
+
+        // ── 1. VEHICLE CATEGORY ──────────────────────────────────────────
         if (mdr.category === 'Vehicle') {
-            const p = mdr.payload;
+            itemTitle = (p.vehicle_brand || '') + ' ' + (p.vehicle_model || '');
+            itemSubtitle = 'Type: ' + (p.vehicle_type || 'SUV') + (p.fuel_type ? ' • Fuel: ' + p.fuel_type : '');
+
             const vt = document.getElementById('joVehicleType');
             const vb = document.getElementById('joVehicleBrand');
             const vm = document.getElementById('joVehicleModel');
 
-            if (vt) vt.value = p.vehicle_type || 'SUV';
-            if (vb) vb.value = p.vehicle_brand || '';
-            if (vm) vm.value = p.vehicle_model || '';
+            if (vt) { vt.value = p.vehicle_type || 'SUV'; highlightedInputs.push(vt); targetScrollEl = vt; }
+            if (vb) { vb.value = p.vehicle_brand || ''; highlightedInputs.push(vb); }
+            if (vm) { vm.value = p.vehicle_model || ''; highlightedInputs.push(vm); }
+        }
+        // ── 2. SERVICE TYPE CATEGORY ─────────────────────────────────────
+        else if (mdr.category === 'Service Type') {
+            itemTitle = p.service_name || 'Service';
+            itemSubtitle = 'Category: ' + (p.category || p.service_category || 'Others');
 
-            // Visual feedback - green glow on the loaded fields
-            [vt, vb, vm].forEach(el => {
-                if (el) {
-                    el.style.transition = 'all 0.3s ease';
-                    el.style.borderColor = '#10b981';
-                    el.style.backgroundColor = '#ecfdf5';
-                    setTimeout(() => {
-                        el.style.borderColor = '';
-                        el.style.backgroundColor = '';
-                    }, 5000);
-                }
-            });
+            const stInput  = document.getElementById('joServiceType');
+            const stHidden = document.getElementById('joServiceTypeValue');
+            const stPrice  = document.getElementById('joServicePrice');
+            const stDur    = document.getElementById('joEstimatedDuration');
+            const stNotes  = document.getElementById('joNotes');
+            const autoInfo = document.getElementById('joServiceAutoInfo');
+            const autoCat  = document.getElementById('joServiceAutoCategory');
 
-            if (typeof showTxnAlert === 'function') {
-                showTxnAlert('Approved Request ' + (mdr.request_no || '') + ' (' + (p.vehicle_brand || '') + ' ' + (p.vehicle_model || '') + ') data loaded into Job Order form.', 'success');
+            if (stInput) {
+                stInput.value = p.service_name || '';
+                highlightedInputs.push(stInput);
+                targetScrollEl = stInput;
+            }
+            if (stHidden) {
+                stHidden.value = p.service_name || '';
+            }
+            if (stPrice) {
+                const pr = parseFloat(p.suggested_price || p.default_price || p.price || 0);
+                if (pr > 0) stPrice.value = pr.toFixed(2);
+                highlightedInputs.push(stPrice);
+            }
+            if (stDur) {
+                const durVal = parseMdrDuration(p.estimated_duration);
+                stDur.value = durVal;
+                highlightedInputs.push(stDur);
+            }
+            if (stNotes && p.remarks) {
+                stNotes.value = p.remarks;
+                highlightedInputs.push(stNotes);
+            }
+            if (autoCat) {
+                autoCat.textContent = p.category || p.service_category || 'Others';
+            }
+            if (autoInfo) {
+                autoInfo.style.display = 'block';
+            }
+
+            if (typeof onJoServiceTypeChange === 'function') {
+                onJoServiceTypeChange();
             }
         }
-    }, 250);
+        // ── 3. MERCHANDISE PRODUCT CATEGORY ──────────────────────────────
+        else if (mdr.category === 'Merchandise Product') {
+            itemTitle = p.product_name || 'Product';
+            itemSubtitle = 'Category: ' + (p.category || 'General') + (p.selling_price ? ' • Price: ₱' + parseFloat(p.selling_price).toFixed(2) : '');
+
+            const searchInput = document.getElementById('merchProductSearchInput') || document.getElementById('posProductSearch');
+            if (searchInput) {
+                searchInput.value = p.product_name || '';
+                highlightedInputs.push(searchInput);
+                targetScrollEl = searchInput;
+                if (typeof filterMerchandiseProducts === 'function') {
+                    filterMerchandiseProducts(p.product_name);
+                }
+            }
+        }
+
+        // Apply green glow styling on populated inputs
+        highlightedInputs.forEach(el => {
+            if (el) {
+                el.style.transition = 'all 0.3s ease';
+                el.style.borderColor = '#10b981';
+                el.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.2)';
+                el.style.backgroundColor = '#f0fdf4';
+                setTimeout(() => {
+                    el.style.borderColor = '';
+                    el.style.boxShadow = '';
+                    el.style.backgroundColor = '';
+                }, 8000);
+            }
+        });
+
+        // Smooth scroll to the filled section
+        if (targetScrollEl) {
+            targetScrollEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        // Display a prominent floating notification toast/card at top right
+        const banner = document.createElement('div');
+        banner.id = 'mdrLoadedBanner';
+        banner.style.cssText = 'position:fixed;top:75px;right:24px;z-index:9999999;background:#ffffff;border:2px solid #10b981;border-radius:12px;box-shadow:0 14px 35px rgba(0,0,0,0.18);padding:16px 18px;max-width:420px;display:flex;gap:14px;align-items:flex-start;animation:fadeInDown 0.3s ease;';
+        banner.innerHTML = `
+            <div style="width:42px;height:42px;border-radius:50%;background:#ecfdf5;color:#059669;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;border:1.5px solid #a7f3d0;">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:11px;font-weight:800;color:#059669;text-transform:uppercase;letter-spacing:0.5px;">✓ Manager Approved Request Loaded</div>
+                <div style="font-size:15px;font-weight:800;color:#002F70;margin:3px 0 2px 0;word-break:break-word;">
+                    ${escapeHtml(mdr.request_no || 'Request')}: ${escapeHtml(itemTitle)}
+                </div>
+                <div style="font-size:12px;color:#64748b;margin-bottom:6px;">
+                    ${escapeHtml(itemSubtitle)}
+                </div>
+                <div style="font-size:12px;color:#1e293b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;line-height:1.4;">
+                    <i class="fas fa-info-circle" style="color:#002F70;margin-right:4px;"></i>
+                    Approved data has been loaded into your form fields below.
+                </div>
+            </div>
+            <button onclick="document.getElementById('mdrLoadedBanner')?.remove()" 
+                    style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:18px;line-height:1;padding:2px 4px;margin-left:4px;"
+                    title="Dismiss">&times;</button>
+        `;
+        document.body.appendChild(banner);
+        setTimeout(() => banner && banner.remove(), 10000);
+
+        if (typeof showTxnAlert === 'function') {
+            showTxnAlert('✓ ' + (mdr.request_no || 'Request') + ' (' + itemTitle + ') loaded successfully.', 'success');
+        }
+
+    }, 300);
 });
 </script>
 <?php endif; ?>
