@@ -99,8 +99,18 @@ try {
     $stmt = $pdo->prepare("
         SELECT 
             r.*,
-            COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.name, u.username, 'Staff Encoder') as requester_name,
-            COALESCE(CONCAT(rev.first_name, ' ', rev.last_name), rev.name, rev.username, '') as reviewer_name,
+            COALESCE(
+                NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), ''),
+                NULLIF(TRIM(u.name), ''),
+                NULLIF(TRIM(u.username), ''),
+                'Staff Encoder'
+            ) AS requester_name,
+            COALESCE(
+                NULLIF(TRIM(CONCAT(COALESCE(rev.first_name, ''), ' ', COALESCE(rev.last_name, ''))), ''),
+                NULLIF(TRIM(rev.name), ''),
+                NULLIF(TRIM(rev.username), ''),
+                ''
+            ) AS reviewer_name,
             st.name AS station_name
         FROM master_data_requests r
         LEFT JOIN users u ON r.requested_by = u.id
@@ -113,6 +123,48 @@ try {
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     error_log('Master Data Requests query error: ' . $e->getMessage());
+}
+
+// ── 5 Petron Station Inventory Fuel Types ─────────────────────────────────────
+// Aligned directly with fuel_inventory UGT tanks & PETRON_7_UGT_CONFIG
+$fuel_types_list = ['Diesel', 'Turbo Diesel', 'XCS Plus', 'Xtra UNL', 'Kerosene'];
+try {
+    $ft_stmt = $pdo->query("SELECT DISTINCT fuel_type FROM fuel_inventory WHERE fuel_type IS NOT NULL AND TRIM(fuel_type) != ''");
+    $raw_fuels = $ft_stmt->fetchAll(PDO::FETCH_COLUMN);
+    $canon_fuels = [];
+    foreach ($raw_fuels as $rf) {
+        $nl = strtolower(trim($rf));
+        if (strpos($nl, 'turbo') !== false) {
+            $c = 'Turbo Diesel';
+        } elseif (strpos($nl, 'diesel') !== false) {
+            $c = 'Diesel';
+        } elseif (strpos($nl, 'kerosene') !== false) {
+            $c = 'Kerosene';
+        } elseif (strpos($nl, 'xcs') !== false) {
+            $c = 'XCS Plus';
+        } elseif (strpos($nl, 'xtra') !== false || strpos($nl, 'unl') !== false || strpos($nl, 'advance') !== false) {
+            $c = 'Xtra UNL';
+        } else {
+            $c = trim($rf);
+        }
+        if ($c && !in_array($c, $canon_fuels, true)) {
+            $canon_fuels[] = $c;
+        }
+    }
+    // Preferred standard Petron display order
+    $preferred = ['Diesel', 'Turbo Diesel', 'XCS Plus', 'Xtra UNL', 'Kerosene'];
+    $final_fuels = [];
+    foreach ($preferred as $pf) {
+        if (in_array($pf, $canon_fuels, true)) $final_fuels[] = $pf;
+    }
+    foreach ($canon_fuels as $cf) {
+        if (!in_array($cf, $final_fuels, true)) $final_fuels[] = $cf;
+    }
+    if (count($final_fuels) >= 5) {
+        $fuel_types_list = array_slice($final_fuels, 0, 5);
+    }
+} catch (Exception $e) {
+    $fuel_types_list = ['Diesel', 'Turbo Diesel', 'XCS Plus', 'Xtra UNL', 'Kerosene'];
 }
 
 require_once __DIR__ . '/../partials/header.php';
@@ -213,18 +265,18 @@ require_once __DIR__ . '/../partials/header.php';
     gap: 3px;
 }
 .filters-form label {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
-    color: #64748b;
+    color: #475569;
     text-transform: uppercase;
     letter-spacing: 0.4px;
 }
 .filters-form .inp, .modal-body .inp {
-    height: 36px;
-    padding: 0 10px;
+    height: 38px;
+    padding: 0 12px;
     border: 1px solid #cbd5e1;
     border-radius: 7px;
-    font-size: 13px;
+    font-size: 13.5px;
     color: #1e293b;
     background: #fff;
     outline: none;
@@ -285,93 +337,218 @@ require_once __DIR__ . '/../partials/header.php';
     background: #b91c1c;
 }
 
+/* Requests Table - Full-Width Fixed Layout (ZERO horizontal scroll, high legibility, fully compressed) */
 .table-card {
     background: #fff;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
-    overflow: hidden;
+    overflow: hidden !important;
     box-shadow: 0 1px 4px rgba(0,0,0,0.05);
-    width: 100%;
-    box-sizing: border-box;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
 }
 .table-card-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 13px 16px;
+    padding: 12px 16px;
     border-bottom: 1px solid #e9ecef;
     background: #f8fafc;
 }
 .table-card-title {
-    font-size: 13px;
-    font-weight: 700;
+    font-size: 13.5px;
+    font-weight: 800;
     color: #00264D;
+    letter-spacing: 0.2px;
 }
-.table-responsive {
-    width: 100%;
-    overflow-x: auto;
+.table-responsive,
+.vt-table-wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+    box-sizing: border-box !important;
+    background: #ffffff !important;
 }
-.tbl-requests {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-    text-align: left;
+table.tbl-requests,
+table.tbl-requests.report-table.no-min-width.print-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    font-size: 12.5px !important;
+    text-align: left !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
 }
-.tbl-requests th {
-    background: #002F70;
-    color: #fff;
-    font-weight: 700;
-    text-transform: uppercase;
-    font-size: 11px;
-    letter-spacing: 0.4px;
-    padding: 9px 12px;
-    border-bottom: 2px solid #001a3d;
-    white-space: nowrap;
+table.tbl-requests thead th,
+table.tbl-requests.report-table.no-min-width.print-table thead th {
+    background: #002F70 !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    font-size: 12px !important;
+    letter-spacing: 0.3px !important;
+    padding: 10px 7px !important;
+    border-bottom: 2px solid #001a3d !important;
+    vertical-align: middle !important;
+    white-space: normal !important;
+    line-height: 1.25 !important;
+    word-break: break-word !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
 }
-.tbl-requests td {
-    padding: 9px 12px;
-    border-bottom: 1px solid #f1f5f9;
-    color: #334155;
-    vertical-align: middle;
+table.tbl-requests tbody td,
+table.tbl-requests.report-table.no-min-width.print-table tbody td {
+    padding: 10px 7px !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    color: #0f172a !important;
+    vertical-align: middle !important;
+    font-size: 13px !important;
+    line-height: 1.4 !important;
+    box-sizing: border-box !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    overflow: hidden !important;
 }
-.tbl-requests tr:hover td {
-    background: #eff6ff;
+table.tbl-requests tbody tr:hover td {
+    background: #f8fafc !important;
 }
 
-/* Badges */
+/* Badges - Larger & High Contrast for Senior/Older Users */
 .badge {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 4px;
-    padding: 3px 8px;
+    padding: 4px 8px;
     border-radius: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.25;
+    box-sizing: border-box;
 }
-.badge-pending  { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+.badge-pending  { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
 .badge-approved { background: #d1fae5; color: #15803d; border: 1px solid #86efac; }
 .badge-rejected { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
 
-.badge-cat { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
-.badge-cat-vehicle { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-.badge-cat-merchandise { background: #fdf2f8; color: #be185d; border: 1px solid #fbcfe8; }
-.badge-cat-service { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+.badge-cat { background: #f1f5f9; color: #1e293b; border: 1px solid #cbd5e1; font-weight: 800; }
+.badge-cat-vehicle { background: #eff6ff; color: #1d4ed8; border: 1.5px solid #bfdbfe; font-weight: 800; }
+.badge-cat-merchandise { background: #fdf2f8; color: #be185d; border: 1.5px solid #fbcfe8; font-weight: 800; }
+.badge-cat-service { background: #f5f3ff; color: #6d28d9; border: 1.5px solid #ddd6fe; font-weight: 800; }
 
-/* Structured Payload Display */
+/* Structured Payload Display - Clear, High Contrast & Larger Text */
 .payload-struct {
     display: flex;
     flex-direction: column;
     gap: 3px;
-    font-size: 11.5px;
+    font-size: 13px;
     line-height: 1.4;
+    word-break: break-word;
+    overflow-wrap: break-word;
 }
 .payload-struct div {
-    color: #334155;
+    color: #0f172a;
+    font-size: 13px;
+    word-break: break-word;
+    overflow-wrap: break-word;
 }
 .payload-struct strong {
-    color: #475569;
+    color: #1e293b;
+    font-weight: 800;
+    font-size: 13px;
+}
+
+/* Action Button - High Contrast & Sized for Senior Users */
+.btn-review-action {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    padding: 6px 8px !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    border-radius: 6px !important;
+    background: #002F70 !important;
+    color: #ffffff !important;
+    border: none !important;
+    cursor: pointer !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    transition: all 0.15s ease !important;
+    box-shadow: 0 1px 2px rgba(0,47,112,0.2) !important;
+    text-decoration: none !important;
+    white-space: nowrap !important;
+}
+.btn-review-action:hover {
+    background: #001f4d !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 4px rgba(0,47,112,0.3) !important;
+}
+
+/* Custom Fuel Type Combobox - Always opens downward */
+.fuel-combo-wrap {
+    position: relative;
+    width: 100%;
+}
+.fuel-combo-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding-right: 32px !important;
+}
+.fuel-combo-arrow {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #64748b;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s ease;
+    pointer-events: auto;
+}
+.fuel-combo-arrow:hover {
+    color: #002F70;
+}
+.fuel-combo-list {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px) !important;
+    bottom: auto !important;
+    left: 0;
+    right: 0;
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.18), 0 8px 10px -6px rgba(0,0,0,0.1);
+    z-index: 9999999 !important;
+    max-height: 230px;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+.fuel-combo-list.open {
+    display: block !important;
+}
+.fuel-combo-item {
+    padding: 10px 14px;
+    font-size: 13.5px;
     font-weight: 700;
+    color: #0f172a;
+    cursor: pointer;
+    line-height: 1.3;
+    transition: background 0.1s ease, color 0.1s ease;
+}
+.fuel-combo-item:hover,
+.fuel-combo-item.highlighted {
+    background: #eff6ff !important;
+    color: #002F70 !important;
 }
 
 /* Modal */
@@ -448,10 +625,10 @@ require_once __DIR__ . '/../partials/header.php';
     gap: 10px;
 }
 .edit-form-grid label {
-    font-size: 11.5px;
+    font-size: 13px;
     font-weight: 700;
-    color: #475569;
-    margin-bottom: 2px;
+    color: #334155;
+    margin-bottom: 4px;
     display: block;
 }
 </style>
@@ -523,29 +700,40 @@ require_once __DIR__ . '/../partials/header.php';
 </form>
 
 <!-- Requests Table -->
-<div class="table-card">
+<div class="table-card" style="width:100% !important;max-width:100% !important;overflow:hidden !important;box-sizing:border-box !important;">
     <div class="table-card-head">
         <div class="table-card-title"><i class="fas fa-list-ul" style="margin-right: 6px;color:#002F70;"></i> Master Data Request Log</div>
     </div>
-    <div class="table-responsive">
-        <table class="tbl-requests">
+    <div class="table-responsive vt-table-wrapper" style="width:100% !important;max-width:100% !important;overflow-x:hidden !important;overflow-y:visible !important;box-sizing:border-box !important;">
+        <table class="tbl-requests report-table rpt-table no-min-width print-table" style="width:100% !important;max-width:100% !important;min-width:0 !important;table-layout:fixed !important;margin:0 !important;border-collapse:collapse !important;">
+            <colgroup>
+                <col style="width:8.5%;"> <!-- REQ NO. -->
+                <col style="width:9.5%;"> <!-- CATEGORY -->
+                <col style="width:11%;">  <!-- REQUESTER -->
+                <col style="width:24%;">  <!-- REQUESTED DETAILS -->
+                <col style="width:9%;">   <!-- STATUS -->
+                <col style="width:11%;">  <!-- DATE SUBMITTED -->
+                <col style="width:10%;">  <!-- DATE PROCESSED -->
+                <col style="width:10%;">  <!-- PROCESSED BY -->
+                <col style="width:7%;">   <!-- ACTIONS -->
+            </colgroup>
             <thead>
                 <tr>
-                    <th style="width:10%">REQ No.</th>
-                    <th style="width:12%">Category</th>
-                    <th style="width:12%">Requester</th>
-                    <th style="width:25%">Requested Details</th>
-                    <th style="width:9%">Status</th>
-                    <th style="width:11%">Date Submitted</th>
-                    <th style="width:11%">Date Processed</th>
-                    <th style="width:10%">Processed By</th>
-                    <th style="width:8%;text-align:center;">Actions</th>
+                    <th style="width:8.5%;text-align:left;padding:10px 6px;box-sizing:border-box;">REQ NO.</th>
+                    <th style="width:9.5%;text-align:left;padding:10px 6px;box-sizing:border-box;">CATEGORY</th>
+                    <th style="width:11%;text-align:left;padding:10px 6px;box-sizing:border-box;">REQUESTER</th>
+                    <th style="width:24%;text-align:left;padding:10px 6px;box-sizing:border-box;">REQUESTED DETAILS</th>
+                    <th style="width:9%;text-align:center;padding:10px 4px;box-sizing:border-box;">STATUS</th>
+                    <th style="width:11%;text-align:left;padding:10px 6px;box-sizing:border-box;">DATE<br>SUBMITTED</th>
+                    <th style="width:10%;text-align:left;padding:10px 6px;box-sizing:border-box;">DATE<br>PROCESSED</th>
+                    <th style="width:10%;text-align:left;padding:10px 6px;box-sizing:border-box;">PROCESSED<br>BY</th>
+                    <th style="width:7%;text-align:center;padding:10px 4px;box-sizing:border-box;">ACTIONS</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($rows)): ?>
                     <tr>
-                        <td colspan="9" style="text-align: center; padding: 48px; color: #94a3b8;">
+                        <td colspan="9" style="text-align: center; padding: 48px; color: #94a3b8; font-size: 14px; font-weight: 600;">
                             <i class="fas fa-inbox" style="font-size: 36px; display: block; margin-bottom: 10px;"></i>
                             No requests found matching the filters.
                         </td>
@@ -554,81 +742,143 @@ require_once __DIR__ . '/../partials/header.php';
                     <?php foreach ($rows as $row): 
                         $payload = json_decode($row['data_payload'], true) ?? [];
                         
-                        // Category Badge
+                        // Category Badge Styling
                         $catClass = 'badge-cat';
                         if ($row['category'] === 'Vehicle') $catClass = 'badge-cat-vehicle';
                         elseif ($row['category'] === 'Merchandise Product') $catClass = 'badge-cat-merchandise';
                         elseif ($row['category'] === 'Service Type') $catClass = 'badge-cat-service';
 
-                        // Status Badge
-                        if ($row['status'] === 'Approved') {
-                            $statusBadge = '<span class="badge badge-approved"><i class="fas fa-check-circle"></i> Approved</span>';
-                        } elseif ($row['status'] === 'Rejected') {
-                            $statusBadge = '<span class="badge badge-rejected"><i class="fas fa-times-circle"></i> Rejected</span>';
+                        // Status Check & Processing Status
+                        $status = trim($row['status'] ?? 'Pending');
+                        $is_processed = ($status !== 'Pending');
+
+                        // Status Badge (Enlarged & high-contrast matching Transaction Module)
+                        if ($status === 'Approved') {
+                            $statusBadge = '<span class="badge badge-approved" style="font-size:12px;font-weight:800;padding:4px 8px;"><i class="fas fa-check-circle"></i> Approved</span>';
+                        } elseif ($status === 'Rejected') {
+                            $statusBadge = '<span class="badge badge-rejected" style="font-size:12px;font-weight:800;padding:4px 8px;"><i class="fas fa-times-circle"></i> Rejected</span>';
                         } else {
-                            $statusBadge = '<span class="badge badge-pending"><i class="fas fa-clock"></i> Pending</span>';
+                            $statusBadge = '<span class="badge badge-pending" style="font-size:12px;font-weight:800;padding:4px 8px;"><i class="fas fa-clock"></i> Pending</span>';
                         }
 
-                        $date_processed = ($row['status'] !== 'Pending' && !empty($row['updated_at'])) ? date('M d, Y g:i A', strtotime($row['updated_at'])) : '—';
-                        $processed_by   = ($row['status'] !== 'Pending' && !empty($row['reviewer_name'])) ? htmlspecialchars($row['reviewer_name']) : '—';
+                        // Date Processed Formatting
+                        if ($is_processed && !empty($row['updated_at'])) {
+                            $date_processed_main = date('M d, Y', strtotime($row['updated_at']));
+                            $time_processed_sub  = date('h:i A', strtotime($row['updated_at']));
+                        } else {
+                            $date_processed_main = '—';
+                            $time_processed_sub  = '';
+                        }
+
+                        // Processed By Formatting
+                        if ($is_processed) {
+                            $processed_by_name = trim($row['reviewer_name'] ?? '');
+                            if ($processed_by_name === '' || $processed_by_name === '—') {
+                                $processed_by_name = !empty($row['reviewed_by']) ? 'Manager' : 'Manager';
+                            }
+                        } else {
+                            $processed_by_name = '—';
+                        }
                     ?>
                         <tr>
-                            <td><strong style="color:#002F70;font-family:monospace;"><?= htmlspecialchars($row['request_no']) ?></strong></td>
-                            <td><span class="badge <?= $catClass ?>"><?= htmlspecialchars($row['category']) ?></span></td>
-                            <td><strong style="font-size:12px;color:#1e293b;"><?= htmlspecialchars($row['requester_name']) ?></strong></td>
+                            <!-- 1. REQ NO. -->
+                            <td style="vertical-align:middle;padding:10px 6px;box-sizing:border-box;">
+                                <strong style="color:#002F70;font-family:Consolas, 'Courier New', monospace;font-size:13.5px;font-weight:800;letter-spacing:0.2px;display:block;white-space:nowrap;"><?= htmlspecialchars($row['request_no']) ?></strong>
+                            </td>
 
-                            <td>
+                            <!-- 2. CATEGORY -->
+                            <td style="vertical-align:middle;padding:10px 6px;box-sizing:border-box;">
+                                <span class="badge <?= $catClass ?>" style="display:inline-block;white-space:normal;line-height:1.2;font-size:12px;font-weight:800;padding:4px 8px;"><?= htmlspecialchars($row['category']) ?></span>
+                            </td>
+
+                            <!-- 3. REQUESTER -->
+                            <td style="vertical-align:middle;padding:10px 6px;box-sizing:border-box;">
+                                <div style="font-weight:800;font-size:13.5px;color:#0f172a;line-height:1.25;word-break:break-word;"><?= htmlspecialchars($row['requester_name']) ?></div>
+                                <?php if (!empty($row['station_name'])): ?>
+                                    <div style="font-size:11.5px;font-weight:600;color:#64748b;margin-top:2px;"><?= htmlspecialchars($row['station_name']) ?></div>
+                                <?php endif; ?>
+                            </td>
+
+                            <!-- 4. REQUESTED DETAILS -->
+                            <td style="vertical-align:middle;padding:10px 6px;box-sizing:border-box;word-break:break-word;overflow-wrap:break-word;">
                                 <div class="payload-struct">
                                     <?php if ($row['category'] === 'Merchandise Product'): ?>
-                                        <div><strong>Product Name:</strong> <?= htmlspecialchars($payload['product_name'] ?? '—') ?></div>
+                                        <div><strong>Product:</strong> <span style="color:#0f172a;font-weight:800;font-size:13.5px;"><?= htmlspecialchars($payload['product_name'] ?? '—') ?></span></div>
                                         <div><strong>Category:</strong> <?= htmlspecialchars($payload['category'] ?? 'Others') ?></div>
-                                        <div><strong>Unit of Measure:</strong> <?= htmlspecialchars($payload['unit'] ?? '—') ?></div>
+                                        <div><strong>UOM:</strong> <?= htmlspecialchars($payload['unit'] ?? '—') ?></div>
                                         <?php if (isset($payload['suggested_price']) && $payload['suggested_price'] !== ''): ?>
-                                            <div><strong>Suggested Selling Price:</strong> &#8369;<?= number_format((float)$payload['suggested_price'], 2) ?></div>
+                                            <div><strong>Price:</strong> <span style="font-weight:800;color:#002F70;font-size:13.5px;">&#8369;<?= number_format((float)$payload['suggested_price'], 2) ?></span></div>
                                         <?php endif; ?>
                                         <?php if (!empty($payload['brand'])): ?>
                                             <div><strong>Brand:</strong> <?= htmlspecialchars($payload['brand']) ?></div>
                                         <?php endif; ?>
                                     <?php elseif ($row['category'] === 'Service Type'): ?>
-                                        <div><strong>Service Name:</strong> <?= htmlspecialchars($payload['service_name'] ?? '—') ?></div>
+                                        <div><strong>Service:</strong> <span style="color:#0f172a;font-weight:800;font-size:13.5px;"><?= htmlspecialchars($payload['service_name'] ?? '—') ?></span></div>
                                         <div><strong>Category:</strong> <?= htmlspecialchars($payload['category'] ?? 'Others') ?></div>
-                                        <div><strong>Suggested Selling Price:</strong> &#8369;<?= number_format((float)($payload['suggested_price'] ?? 0), 2) ?></div>
+                                        <div><strong>Price:</strong> <span style="font-weight:800;color:#002F70;font-size:13.5px;">&#8369;<?= number_format((float)($payload['suggested_price'] ?? 0), 2) ?></span></div>
                                         <?php if (!empty($payload['estimated_duration'])): ?>
-                                            <div><strong>Est. Duration:</strong> <?= htmlspecialchars($payload['estimated_duration']) ?></div>
+                                            <div><strong>Duration:</strong> <?= htmlspecialchars($payload['estimated_duration']) ?></div>
                                         <?php endif; ?>
                                     <?php elseif ($row['category'] === 'Vehicle'): ?>
-                                        <div><strong>Vehicle Brand:</strong> <?= htmlspecialchars($payload['vehicle_brand'] ?? '—') ?></div>
-                                        <div><strong>Vehicle Model:</strong> <?= htmlspecialchars($payload['vehicle_model'] ?? '—') ?></div>
-                                        <div><strong>Vehicle Type:</strong> <?= htmlspecialchars($payload['vehicle_type'] ?? '—') ?></div>
-                                        <div><strong>Fuel Type:</strong> <?= htmlspecialchars($payload['fuel_type'] ?? '—') ?></div>
+                                        <div><strong>Brand:</strong> <span style="color:#0f172a;font-weight:800;font-size:13.5px;"><?= htmlspecialchars($payload['vehicle_brand'] ?? '—') ?></span></div>
+                                        <div><strong>Model:</strong> <?= htmlspecialchars($payload['vehicle_model'] ?? '—') ?></div>
+                                        <div><strong>Type:</strong> <?= htmlspecialchars($payload['vehicle_type'] ?? '—') ?></div>
+                                        <div><strong>Fuel:</strong> <?= htmlspecialchars($payload['fuel_type'] ?? '—') ?></div>
                                     <?php endif; ?>
 
                                     <?php if (!empty($payload['remarks'])): ?>
-                                        <div style="margin-top:4px;color:#64748b;">
-                                            <strong>Reason for Request:</strong> "<?= htmlspecialchars($payload['remarks']) ?>"
+                                        <div style="margin-top:3px;color:#334155;font-size:12px;line-height:1.3;font-style:italic;word-break:break-word;">
+                                            <strong style="color:#334155;font-style:normal;font-weight:700;">Reason:</strong> "<?= htmlspecialchars($payload['remarks']) ?>"
                                         </div>
                                     <?php endif; ?>
                                 </div>
                             </td>
-                            <td>
+
+                            <!-- 5. STATUS -->
+                            <td style="vertical-align:middle;text-align:center;padding:10px 4px;box-sizing:border-box;">
                                 <?= $statusBadge ?>
-                                <?php if ($row['status'] === 'Rejected' && !empty($row['rejection_reason'])): ?>
-                                    <div style="font-size: 11px; color: #dc2626; margin-top: 4px;">
+                                <?php if ($status === 'Rejected' && !empty($row['rejection_reason'])): ?>
+                                    <div style="font-size:11.5px;color:#dc2626;font-weight:700;margin-top:3px;line-height:1.2;word-break:break-word;">
                                         Reason: <?= htmlspecialchars($row['rejection_reason']) ?>
                                     </div>
                                 <?php endif; ?>
                             </td>
-                            <td style="font-size:11px;color:#64748b;"><?= date('M d, Y g:i A', strtotime($row['created_at'])) ?></td>
-                            <td style="font-size:11px;color:#64748b;"><?= $date_processed ?></td>
-                            <td style="font-size:11.5px;font-weight:600;color:#334155;"><?= $processed_by ?></td>
-                            <td style="text-align: center;">
-                                <?php if ($row['status'] === 'Pending'): ?>
-                                    <button class="btn-action btn-primary" style="height: 30px; padding: 0 10px; font-size: 11.5px;" 
-                                            onclick='openReviewModal(<?= json_encode($row) ?>)' title="Review Master Data Request">
-                                        <i class="fas fa-eye"></i> Review
+
+                            <!-- 6. DATE SUBMITTED (Stacked Date & Time) -->
+                            <td style="vertical-align:middle;padding:10px 6px;box-sizing:border-box;">
+                                <div style="font-weight:800;font-size:13px;color:#0f172a;line-height:1.2;white-space:nowrap;"><?= date('M d, Y', strtotime($row['created_at'])) ?></div>
+                                <div style="color:#64748b;font-size:12px;font-weight:700;margin-top:2px;white-space:nowrap;"><?= date('h:i A', strtotime($row['created_at'])) ?></div>
+                            </td>
+
+                            <!-- 7. DATE PROCESSED (Stacked Date & Time or Dash) -->
+                            <td style="vertical-align:middle;padding:10px 6px;box-sizing:border-box;">
+                                <?php if ($is_processed): ?>
+                                    <div style="font-weight:800;font-size:13px;color:#0f172a;line-height:1.2;white-space:nowrap;"><?= $date_processed_main ?></div>
+                                    <div style="color:#64748b;font-size:12px;font-weight:700;margin-top:2px;white-space:nowrap;"><?= $time_processed_sub ?></div>
+                                <?php else: ?>
+                                    <span style="color:#94a3b8;font-size:16px;font-weight:800;">—</span>
+                                <?php endif; ?>
+                            </td>
+
+                            <!-- 8. PROCESSED BY -->
+                            <td style="vertical-align:middle;padding:10px 6px;box-sizing:border-box;">
+                                <?php if ($is_processed): ?>
+                                    <div style="font-weight:800;font-size:13px;color:#0f172a;line-height:1.25;word-break:break-word;"><?= htmlspecialchars($processed_by_name) ?></div>
+                                <?php else: ?>
+                                    <span style="color:#94a3b8;font-size:16px;font-weight:800;">—</span>
+                                <?php endif; ?>
+                            </td>
+
+                            <!-- 9. ACTIONS -->
+                            <td style="vertical-align:middle;text-align:center;padding:10px 4px;box-sizing:border-box;">
+                                <?php if ($status === 'Pending'): ?>
+                                    <button class="btn-review-action" 
+                                            onclick='openReviewModal(<?= htmlspecialchars(json_encode($row), ENT_QUOTES, "UTF-8") ?>)' 
+                                            title="Review Master Data Request">
+                                        <i class="fas fa-eye" style="font-size:11px;"></i> Review
                                     </button>
                                 <?php else: ?>
-                                    <span style="color:#94a3b8; font-size:11.5px; font-style:italic;">Processed</span>
+                                    <span style="color:#64748b;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;gap:4px;"><i class="fas fa-check"></i> Done</span>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -644,7 +894,6 @@ require_once __DIR__ . '/../partials/header.php';
     <div class="modal-content">
         <div class="modal-header">
             <span class="modal-title" id="reviewModalTitle"><i class="fas fa-clipboard-check" style="color:#002F70;margin-right:6px;"></i> Review Request</span>
-            <button onclick="closeReviewModal()" style="background:none; border:none; cursor:pointer; font-size:22px; color:#94a3b8;">&times;</button>
         </div>
         <div class="modal-body">
             <!-- Request Information -->
@@ -714,10 +963,10 @@ function openReviewModal(req) {
 
     // Request Information
     let infoHtml = `
-        <div><strong>Request Number:</strong> <span style="color:#002F70;font-family:monospace;font-weight:700;">${escapeHtml(req.request_no)}</span></div>
-        <div><strong>Requester:</strong> ${escapeHtml(req.requester_name)} (${escapeHtml(req.station_name || 'Station')})</div>
-        <div><strong>Date Submitted:</strong> ${escapeHtml(req.created_at)}</div>
-        <div><strong>Category:</strong> <span class="badge badge-cat">${escapeHtml(req.category)}</span></div>
+        <div style="font-size:13.5px;margin-bottom:5px;"><strong>Request Number:</strong> <span style="color:#002F70;font-family:monospace;font-weight:800;font-size:14px;">${escapeHtml(req.request_no)}</span></div>
+        <div style="font-size:13.5px;margin-bottom:5px;"><strong>Requester:</strong> <span style="color:#0f172a;font-weight:700;">${escapeHtml(req.requester_name)}</span> (${escapeHtml(req.station_name || 'Station')})</div>
+        <div style="font-size:13.5px;margin-bottom:5px;"><strong>Date Submitted:</strong> ${escapeHtml(req.created_at)}</div>
+        <div style="font-size:13.5px;"><strong>Category:</strong> <span class="badge badge-cat" style="font-size:12px;font-weight:700;">${escapeHtml(req.category)}</span></div>
     `;
     document.getElementById('requestInfoBox').innerHTML = infoHtml;
 
@@ -800,12 +1049,20 @@ function openReviewModal(req) {
                 </div>
                 <div style="flex:1;">
                     <label>Fuel Type</label>
-                    <select id="edit_fuel_type" class="inp" style="width:100%;">
-                        <option value="Gasoline" ${payload.fuel_type === 'Gasoline' ? 'selected' : ''}>Gasoline</option>
-                        <option value="Diesel" ${payload.fuel_type === 'Diesel' ? 'selected' : ''}>Diesel</option>
-                        <option value="Electric" ${payload.fuel_type === 'Electric' ? 'selected' : ''}>Electric</option>
-                        <option value="Hybrid" ${payload.fuel_type === 'Hybrid' ? 'selected' : ''}>Hybrid</option>
-                    </select>
+                    <div class="fuel-combo-wrap" id="fuelComboWrap">
+                        <input type="text" id="edit_fuel_type" class="inp fuel-combo-input"
+                               value="${escapeHtml(payload.fuel_type || 'Gasoline')}"
+                               placeholder="Type or select fuel type..."
+                               autocomplete="off">
+                        <span class="fuel-combo-arrow"><i class="fas fa-chevron-down"></i></span>
+                        <div class="fuel-combo-list" id="fuelComboList">
+                            <?php foreach ($fuel_types_list as $_ft): ?>
+                            <div class="fuel-combo-item" data-value="<?= htmlspecialchars($_ft) ?>">
+                                <?= htmlspecialchars($_ft) ?>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div>
@@ -820,6 +1077,11 @@ function openReviewModal(req) {
     document.getElementById('remarksInput').value = '';
     
     toggleDecisionView();
+
+    // Initialise custom fuel combobox (Vehicle category only)
+    if (req.category === 'Vehicle') {
+        setTimeout(initFuelCombo, 0);
+    }
 
     // Show Modal
     document.getElementById('reviewModal').style.display = 'flex';
@@ -994,6 +1256,82 @@ if (urlParams.has('success')) {
     banner.innerHTML = `<i class="fas fa-check-circle" style="margin-right:8px;"></i> ${urlParams.get('success')}`;
     document.body.appendChild(banner);
     setTimeout(() => banner.remove(), 4000);
+}
+// ── Custom Fuel Type Combobox ──────────────────────────────────────────────
+// Called each time the Vehicle form is built inside the modal template literal
+function initFuelCombo() {
+    const wrap  = document.getElementById('fuelComboWrap');
+    const input = document.getElementById('edit_fuel_type');
+    const list  = document.getElementById('fuelComboList');
+    if (!wrap || !input || !list) return;
+
+    const allItems = Array.from(list.querySelectorAll('.fuel-combo-item'));
+
+    function showList() {
+        list.classList.add('open');
+    }
+    function hideList() {
+        list.classList.remove('open');
+    }
+    function filterItems(val) {
+        const q = val.trim().toLowerCase();
+        allItems.forEach(item => {
+            const text = item.getAttribute('data-value').toLowerCase();
+            item.style.display = (!q || text.includes(q)) ? '' : 'none';
+        });
+    }
+
+    // Toggle on input click or focus
+    input.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        if (list.classList.contains('open')) {
+            hideList();
+        } else {
+            filterItems(input.value);
+            showList();
+        }
+    });
+
+    input.addEventListener('focus', () => {
+        filterItems(input.value);
+        showList();
+    });
+
+    // Arrow icon click toggle
+    const arrow = wrap.querySelector('.fuel-combo-arrow');
+    if (arrow) {
+        arrow.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (list.classList.contains('open')) {
+                hideList();
+            } else {
+                filterItems('');
+                showList();
+                input.focus();
+            }
+        });
+    }
+
+    // Filter as user types manually
+    input.addEventListener('input', () => {
+        filterItems(input.value);
+        showList();
+    });
+
+    // Select item
+    list.addEventListener('mousedown', (e) => {
+        const item = e.target.closest('.fuel-combo-item');
+        if (item) {
+            input.value = item.getAttribute('data-value');
+            hideList();
+            e.preventDefault();
+        }
+    });
+
+    // Close on outside click
+    document.addEventListener('mousedown', (e) => {
+        if (!wrap.contains(e.target)) hideList();
+    }, { once: false });
 }
 </script>
 

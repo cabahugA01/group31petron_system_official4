@@ -36,6 +36,19 @@ if (empty($_SESSION['api_token'])) {
 }
 $_api_token = $_SESSION['api_token'];
 
+// ── Master Data Request applied via notification or direct link ──────────────
+$applied_mdr = null;
+if (!empty($_GET['apply_mdr'])) {
+    try {
+        $stmt_mdr = $pdo->prepare("SELECT * FROM master_data_requests WHERE id = ?");
+        $stmt_mdr->execute([(int)$_GET['apply_mdr']]);
+        $applied_mdr = $stmt_mdr->fetch(PDO::FETCH_ASSOC);
+        if ($applied_mdr) {
+            $applied_mdr['payload'] = json_decode($applied_mdr['data_payload'], true) ?: [];
+        }
+    } catch (Exception $e) {}
+}
+
 // ── Module gate ───────────────────────────────────────────────
 if (!in_array($role, ['superadmin','developer']) && !is_module_enabled('transactions')) {
     render_module_disabled_page('Transactions');
@@ -10588,7 +10601,7 @@ setTimeout(function() {
                                      color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;
                                      background:#f8fafc;border-bottom:1px solid #f1f5f9;">${cat}</div>`;
                 names.forEach(name => {
-                    html += `<div onclick="selectVehicleType('${name.replace(/'/g,"&#39;")}')"
+                    html += `<div onclick="selectVehicleType('${name.replace(/'/g,"&#39;")}', '${cat.replace(/'/g,"&#39;")}')"
                                   style="padding:9px 16px;font-size:13px;cursor:pointer;color:#1e293b;
                                          border-bottom:1px solid #f8fafc;transition:background .15s;"
                                   onmouseover="this.style.background='#eff6ff'"
@@ -10598,16 +10611,24 @@ setTimeout(function() {
             dd.innerHTML = html;
             dd.style.display = 'block';
         }
-        function selectVehicleType(name) {
+        function selectVehicleType(name, cat) {
             const inp = document.getElementById('joVehicleType');
-            if (inp) inp.value = name;
-            
-            // Auto-fill Vehicle Brand from the vehicle name
             const brandInput = document.getElementById('joVehicleBrand');
-            if (brandInput && name) {
-                // Extract brand from vehicle name (first word is usually the brand)
-                const brand = name.split(' ')[0];
-                brandInput.value = brand;
+            const modelInput = document.getElementById('joVehicleModel');
+
+            if (inp) {
+                // Clean category (e.g. 'SUVs' -> 'SUV') or use name
+                let cleanCat = (cat || '').replace(/s$/i, '').trim();
+                inp.value = cleanCat || name;
+            }
+            
+            // Auto-fill Vehicle Brand and Vehicle Model from the vehicle name
+            if (name) {
+                const parts = name.trim().split(/\s+/);
+                const brand = parts[0] || '';
+                const model = parts.slice(1).join(' ') || '';
+                if (brandInput) brandInput.value = brand;
+                if (modelInput) modelInput.value = model;
             }
             
             hideVehicleDropdown();
@@ -15766,3 +15787,42 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
+
+<?php if (!empty($applied_mdr)): ?>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        const mdr = <?= json_encode($applied_mdr, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+        if (!mdr || !mdr.payload) return;
+
+        if (mdr.category === 'Vehicle') {
+            const p = mdr.payload;
+            const vt = document.getElementById('joVehicleType');
+            const vb = document.getElementById('joVehicleBrand');
+            const vm = document.getElementById('joVehicleModel');
+
+            if (vt) vt.value = p.vehicle_type || 'SUV';
+            if (vb) vb.value = p.vehicle_brand || '';
+            if (vm) vm.value = p.vehicle_model || '';
+
+            // Visual feedback - green glow on the loaded fields
+            [vt, vb, vm].forEach(el => {
+                if (el) {
+                    el.style.transition = 'all 0.3s ease';
+                    el.style.borderColor = '#10b981';
+                    el.style.backgroundColor = '#ecfdf5';
+                    setTimeout(() => {
+                        el.style.borderColor = '';
+                        el.style.backgroundColor = '';
+                    }, 5000);
+                }
+            });
+
+            if (typeof showTxnAlert === 'function') {
+                showTxnAlert('Approved Request ' + (mdr.request_no || '') + ' (' + (p.vehicle_brand || '') + ' ' + (p.vehicle_model || '') + ') data loaded into Job Order form.', 'success');
+            }
+        }
+    }, 250);
+});
+</script>
+<?php endif; ?>

@@ -174,7 +174,7 @@ try {
                 "Master Data Request Approved: {$requestNo}",
                 "Your {$category} request ({$requestNo}) has been Approved.",
                 "mdr_approved_{$id}",
-                'staff_requests.php?id=' . $id,
+                "staff_transactions_hub.php?section=merchandise&apply_mdr={$id}",
                 'master_data_request', $id
             );
         } else {
