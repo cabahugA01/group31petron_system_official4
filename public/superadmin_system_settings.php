@@ -1219,7 +1219,7 @@ async function removeLogo() {
             }
 
             // Clear from in-memory loadedSettings so auto-refresh doesn't restore old logo
-            if (loadedSettings) { loadedSettings.company_logo = ''; loadedSettings.logo = ''; }
+            if (loadedSettings) { loadedSettings.company_logo = 'none'; loadedSettings.logo = 'none'; }
 
             // Reset file input
             const fileInput = document.getElementById('ss_logo_input');

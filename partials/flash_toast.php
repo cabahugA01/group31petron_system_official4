@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!container) {
             container = document.createElement('div');
             container.id = 'petron-toast-container';
-            container.style.cssText = 'position:fixed;top:84px;right:22px;z-index:2147483000;display:flex;flex-direction:column;gap:10px;width:min(390px,calc(100vw - 32px));pointer-events:none;';
+            container.style.cssText = 'position:fixed;top:96px;right:22px;z-index:2147483647;display:flex;flex-direction:column;gap:10px;width:min(390px,calc(100vw - 32px));pointer-events:none;';
             document.body.appendChild(container);
         }
 

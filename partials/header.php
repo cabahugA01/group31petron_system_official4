@@ -4418,25 +4418,37 @@ require_once __DIR__ . '/rbac_menu.php';
                 <i class="fas fa-bars" id="sidebarToggleIcon" style="pointer-events: none !important;"></i>
             </button>
             <?php 
-                $raw_logo = $station_settings['logo'] ?? $station_settings['company_logo'] ?? '';
+                $raw_logo = $station_settings['logo'] ?? $station_settings['company_logo'] ?? $station_settings['system_logo'] ?? '';
                 $raw_logo_clean = ltrim(preg_replace('/^(\.\.\/)+/', '', trim($raw_logo)), '/');
                 $logo_file_sys = !empty($raw_logo_clean) ? __DIR__ . '/../' . $raw_logo_clean : '';
                 
-                if (!empty($raw_logo_clean) && $raw_logo_clean !== 'none' && $raw_logo_clean !== 'removed' && file_exists($logo_file_sys)) {
+                $is_logo_removed = ($raw_logo === 'none' || $raw_logo_clean === 'none' || $raw_logo === 'removed' || $raw_logo_clean === 'removed');
+                $has_custom_logo = (!empty($raw_logo_clean) && !$is_logo_removed && file_exists($logo_file_sys));
+                
+                if ($is_logo_removed) {
+                    $logo_path = '';
+                    $show_header_logo = false;
+                } elseif ($has_custom_logo) {
                     $logo_path = $app_base_path . '/' . $raw_logo_clean;
+                    $show_header_logo = true;
                 } elseif (file_exists(__DIR__ . '/../assets/img/petron_logo.png')) {
                     $logo_path = $app_base_path . '/assets/img/petron_logo.png';
+                    $show_header_logo = true;
                 } elseif (file_exists(__DIR__ . '/../assets/img/Petron Logo.png')) {
                     $logo_path = $app_base_path . '/assets/img/Petron Logo.png';
+                    $show_header_logo = true;
                 } else {
                     $logo_path = $app_base_path . '/assets/img/petron_logo.png';
+                    $show_header_logo = true;
                 }
                 $fallback_logo = $app_base_path . '/assets/img/petron_logo.png';
                 $system_name = $station_settings['system_name'] ?? 'Petron Station Management System';
             ?>
             <img src="<?php echo htmlspecialchars($logo_path); ?>" 
+                 <?php if ($show_header_logo): ?>
                  onerror="if(this.src!=='<?php echo htmlspecialchars($fallback_logo); ?>') this.src='<?php echo htmlspecialchars($fallback_logo); ?>';" 
-                 alt="Petron Logo" class="brand-mark" id="petronLogo" style="display: inline-block !important; height: 38px; width: auto; max-width: 48px; object-fit: contain; vertical-align: middle; margin-right: 12px; flex-shrink: 0;">
+                 <?php endif; ?>
+                 alt="Petron Logo" class="brand-mark" id="petronLogo" style="<?php echo $show_header_logo ? 'display: inline-block !important;' : 'display: none !important;'; ?> height: 38px; width: auto; max-width: 48px; object-fit: contain; vertical-align: middle; margin-right: 12px; flex-shrink: 0;">
             <div class="brand-text">
                 <div class="brand-title" id="headerSystemName"><?php echo htmlspecialchars($system_name); ?></div>
                 <?php if ($station_name && $role !== 'superadmin'): ?>
@@ -4667,9 +4679,9 @@ require_once __DIR__ . '/rbac_menu.php';
     /* â”€â”€ JS-powered toast (bottom-right, for AJAX actions) â”€â”€ */
     #petron-toast-container {
         position: fixed;
-        top: 84px;
+        top: 96px;
         right: 22px;
-        z-index: 2147483000;
+        z-index: 2147483647;
         display: flex;
         flex-direction: column;
         gap: 10px;
@@ -4755,9 +4767,9 @@ require_once __DIR__ . '/rbac_menu.php';
     .petron-toast-close:hover { background: #f1f5f9; color: #0f172a; }
     .petron-flash {
         position: fixed;
-        top: 84px;
+        top: 96px;
         right: 22px;
-        z-index: 2147483000;
+        z-index: 2147483647;
         display: flex;
         align-items: flex-start;
         gap: 12px;
@@ -4803,13 +4815,13 @@ require_once __DIR__ . '/rbac_menu.php';
     .petron-flash .flash-close:hover { background: #f1f5f9; color: #0f172a; }
     @media (max-width: 640px) {
         #petron-toast-container {
-            top: 76px;
+            top: 92px;
             right: 12px;
             left: 12px;
             width: auto;
         }
         .petron-flash {
-            top: 76px;
+            top: 92px;
             right: 12px;
             left: 12px;
             width: auto;

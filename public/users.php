@@ -453,7 +453,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $msg = "User <strong>" . htmlspecialchars($full_name_for_email) . "</strong> created successfully! ✅ Login credentials have been automatically emailed to <strong>" . htmlspecialchars($email) . "</strong>.";
                 } else {
                     $msg = "User <strong>" . htmlspecialchars($full_name_for_email) . "</strong> created successfully. ⚠️ Email could not be sent automatically. Initial Temp Password: <strong>" . htmlspecialchars($password) . "</strong> — please share this manually with the employee.";
-                    $is_error = false; // User was created, just email failed — show as warning not error
+                    $is_error = false;
+                }
+
+                // AJAX: return JSON response and exit
+                if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                    header('Content-Type: application/json; charset=utf-8');
+                    echo json_encode(['success' => true, 'message' => $msg]);
+                    exit;
                 }
             }
             
@@ -689,6 +696,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {
             $msg = $e->getMessage();
             $is_error = true;
+            // AJAX: return JSON error and exit
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                exit;
+            }
         }
     }
 }
@@ -1465,16 +1478,18 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <?php if ($msg): ?>
-<!-- Floating Top-Right Toast Notification (Clear of Navbar) -->
-<div id="floatingToastMsg" style="position: fixed; top: 82px; right: 24px; z-index: 100002; max-width: 450px; background: #ffffff; border: 1.5px solid <?php echo $is_error ? '#fca5a5' : '#86efac'; ?>; border-radius: 10px; box-shadow: 0 12px 35px rgba(0,0,0,0.18); padding: 14px 18px; display: flex; align-items: flex-start; gap: 12px; animation: toastSlideIn .3s ease-out;">
-    <div style="font-size: 20px; color: <?php echo $is_error ? '#dc2626' : '#16a34a'; ?>; line-height: 1; flex-shrink: 0; margin-top: 2px;">
-        <i class="fas <?php echo $is_error ? 'fa-exclamation-circle' : 'fa-check-circle'; ?>"></i>
+<!-- Floating Top-Right Toast Notification (Clearly Below Header) -->
+<div id="floatingToastMsg" style="position: fixed; top: 95px; right: 24px; z-index: 2147483647; max-width: 450px; background: #ffffff; border: 2px solid <?php echo $is_error ? '#fca5a5' : '#10b981'; ?>; border-radius: 12px; box-shadow: 0 12px 35px rgba(0,0,0,0.18); padding: 14px 18px; display: flex; align-items: flex-start; gap: 12px; animation: toastSlideIn .3s ease-out;">
+    <div style="width: 36px; height: 36px; border-radius: 50%; background: <?php echo $is_error ? '#fef2f2' : '#ecfdf5'; ?>; color: <?php echo $is_error ? '#dc2626' : '#059669'; ?>; display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; border: 1.5px solid <?php echo $is_error ? '#fca5a5' : '#a7f3d0'; ?>;">
+        <i class="fas <?php echo $is_error ? 'fa-exclamation' : 'fa-check'; ?>"></i>
     </div>
-    <div style="flex: 1; font-size: 13px; line-height: 1.5; color: <?php echo $is_error ? '#991b1b' : '#166534'; ?>;">
-        <div style="font-weight: 800; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; color: <?php echo $is_error ? '#dc2626' : '#16a34a'; ?>;">
+    <div style="flex: 1; min-width: 0;">
+        <div style="font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; color: <?php echo $is_error ? '#dc2626' : '#059669'; ?>;">
             <?php echo $is_error ? 'System Notice / Error' : 'Success Notification'; ?>
         </div>
-        <?php echo $msg; ?>
+        <div style="font-size: 13.5px; font-weight: 700; color: #002F70; line-height: 1.4;">
+            <?php echo $msg; ?>
+        </div>
     </div>
 </div>
 <script>
@@ -1680,9 +1695,14 @@ setTimeout(function() {
             <span class="modal-title"><i class="fas fa-user-plus"></i> Add New User</span>
             <button class="modal-close" onclick="closeModal('addModal')">&times;</button>
         </div>
-        <form method="post" id="addUserForm" data-draft-module="user_creation_form" onsubmit="return validateAddForm();" autocomplete="off" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+        <form id="addUserForm" data-draft-module="user_creation_form" onsubmit="handleAddUserSubmit(event);" autocomplete="off" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
             <div class="modal-body">
                 <input type="hidden" name="action" value="add_user">
+                <!-- Inline error banner -->
+                <div id="addUserErrorBanner" style="display:none; background:#fef2f2; border:1.5px solid #fca5a5; border-radius:8px; padding:10px 14px; margin-bottom:12px; color:#991b1b; font-size:13px; font-weight:700; display:none; align-items:center; gap:8px;">
+                    <i class="fas fa-exclamation-circle" style="color:#dc2626; font-size:15px; flex-shrink:0;"></i>
+                    <span id="addUserErrorText"></span>
+                </div>
 
                 <div class="form-section-title"><i class="fas fa-id-card"></i> Personal Details</div>
 
@@ -2257,19 +2277,133 @@ function validateAddForm() {
         }
         const passErr = validatePasswordString(pass);
         if (passErr) {
-            alert(passErr);
+            showAddUserError(passErr);
             if (passEl) passEl.focus();
             return false;
         }
     }
 
-    const submitBtn = document.getElementById('btnSubmitAddUser');
-    if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Creating & Sending...</span>';
+    return true; // used only if called directly
+}
+
+// ── Show/hide inline error inside Add User modal ──────────────────────────
+function showAddUserError(msg) {
+    const banner = document.getElementById('addUserErrorBanner');
+    const text   = document.getElementById('addUserErrorText');
+    if (banner && text) {
+        text.textContent = msg;
+        banner.style.display = 'flex';
+        banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+}
+function clearAddUserError() {
+    const banner = document.getElementById('addUserErrorBanner');
+    if (banner) banner.style.display = 'none';
+}
+
+// ── Show success toast (top-right) ────────────────────────────────────────
+function showUserSuccessToast(html) {
+    const existing = document.getElementById('userSuccessToast');
+    if (existing) existing.remove();
+
+    const t = document.createElement('div');
+    t.id = 'userSuccessToast';
+    t.style.cssText = 'position:fixed;top:96px;right:24px;z-index:2147483647;max-width:420px;background:#ffffff;border:2px solid #10b981;border-radius:12px;box-shadow:0 12px 35px rgba(0,0,0,0.18);padding:14px 18px;display:flex;align-items:flex-start;gap:12px;animation:toastSlideIn .3s ease-out;';
+    t.innerHTML = `
+        <div style="width:36px;height:36px;border-radius:50%;background:#ecfdf5;color:#059669;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;border:1.5px solid #a7f3d0;">
+            <i class="fas fa-check"></i>
+        </div>
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:11px;font-weight:800;color:#059669;text-transform:uppercase;letter-spacing:0.5px;">User Created</div>
+            <div style="font-size:13.5px;font-weight:700;color:#002F70;margin:3px 0;line-height:1.4;">${html}</div>
+        </div>
+    `;
+    document.body.appendChild(t);
+    setTimeout(() => {
+        if (t.parentNode) {
+            t.style.transition = 'opacity 0.5s ease';
+            t.style.opacity = '0';
+            setTimeout(() => t.remove(), 500);
+        }
+    }, 8000);
+}
+
+// ── AJAX submit handler for Add User modal ────────────────────────────────
+async function handleAddUserSubmit(e) {
+    e.preventDefault();
+    clearAddUserError();
+
+    // Run client-side validation first (reuse existing checks but show inline)
+    const fnEl   = document.getElementById('add_first_name');
+    const lnEl   = document.getElementById('add_last_name');
+    const emEl   = document.getElementById('add_email');
+    const roleEl = document.getElementById('user_role_add');
+    const phEl   = document.getElementById('add_contact_number');
+    const unEl   = document.getElementById('add_username');
+    const passEl = document.getElementById('new_password');
+    const confEl = document.getElementById('confirm_password');
+
+    const fn   = (fnEl?.value || '').trim();
+    const ln   = (lnEl?.value || '').trim();
+    const em   = (emEl?.value || '').trim();
+    const role = (roleEl?.value || '').trim();
+    const ph   = (phEl?.value || '').trim();
+    const un   = (unEl?.value || '').trim();
+    const pass = passEl?.value || '';
+    const conf = confEl?.value || '';
+
+    const placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
+
+    if (!fn || placeholders.includes(fn.toLowerCase())) { showAddUserError('First Name is required and cannot be N/A or a placeholder.'); fnEl?.focus(); return; }
+    if (!ln || placeholders.includes(ln.toLowerCase())) { showAddUserError('Last Name is required and cannot be N/A or a placeholder.'); lnEl?.focus(); return; }
+    if (!em || placeholders.includes(em.toLowerCase())) { showAddUserError('Email Address is required.'); emEl?.focus(); return; }
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(em)) { showAddUserError('Invalid Email Address format.'); emEl?.focus(); return; }
+    if (ph !== '' && !placeholders.includes(ph.toLowerCase()) && !isValidPhilippineNumber(ph)) { showAddUserError('Invalid Contact Number: must be 11-digit PH mobile starting with 09.'); phEl?.focus(); return; }
+    if (!role) { showAddUserError('Role selection is required. Please select a role from the dropdown.'); roleEl?.focus(); return; }
+
+    const stationSel = document.getElementById('add_station_id');
+    if (stationSel && !stationSel.value) { showAddUserError('Please select a Station before creating this user.'); stationSel.focus(); return; }
+
+    if (pass !== '') {
+        if (conf === '') { showAddUserError('Please re-enter your password in the Confirm Password field.'); confEl?.focus(); return; }
+        if (pass !== conf) { showAddUserError('Passwords do not match. Please ensure both passwords are identical.'); confEl?.focus(); return; }
+        const passErr = validatePasswordString(pass);
+        if (passErr) { showAddUserError(passErr); passEl?.focus(); return; }
     }
 
-    return true;
+    const submitBtn = document.getElementById('btnSubmitAddUser');
+    const origLabel = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Creating &amp; Sending...</span>'; }
+
+    try {
+        const form = document.getElementById('addUserForm');
+        const formData = new FormData(form);
+
+        const res  = await fetch(window.location.pathname + window.location.search, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+            body: formData
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            closeModal('addModal');
+            const modalEl = document.getElementById('addModal');
+            if (modalEl) modalEl.style.setProperty('display', 'none', 'important');
+            clearAddUserForm();
+            showUserSuccessToast(data.message || 'User created successfully!');
+            // Reload table after short delay so new user appears
+            setTimeout(() => location.reload(), 1800);
+        } else {
+            showAddUserError(data.error || 'An error occurred. Please try again.');
+        }
+    } catch (err) {
+        showAddUserError('Network error: ' + err.message);
+    } finally {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = origLabel; }
+    }
 }
 
 function validateEditForm() {
@@ -2351,6 +2485,10 @@ function validateResetForm() {
 function clearAddUserForm() {
     const form = document.getElementById('addUserForm');
     if (form) form.reset();
+
+    // Hide inline error banner
+    const errBanner = document.getElementById('addUserErrorBanner');
+    if (errBanner) errBanner.style.display = 'none';
 
     const ids = [
         'add_first_name', 'add_last_name', 'add_contact_number',
@@ -2627,8 +2765,12 @@ function openViewModal(user) {
 function closeModal(modalId) {
     if (modalId === 'addModal') {
         clearAddUserForm();
+        clearAddUserError();
     }
-    document.getElementById(modalId).style.display = 'none';
+    const modalEl = document.getElementById(modalId);
+    if (modalEl) {
+        modalEl.style.setProperty('display', 'none', 'important');
+    }
 }
 
 window.onclick = function(event) {

@@ -641,6 +641,13 @@ table.tbl-requests tbody tr:hover td {
     </div>
 </div>
 
+<?php 
+$banner_msg = $_GET['success'] ?? $_SESSION['success'] ?? '';
+if (!empty($_SESSION['success'])) unset($_SESSION['success']);
+?>
+<?php /* Success message shown via floating toast (top-right); banner removed to avoid redundancy */ ?>
+
+
 <!-- KPIs -->
 <div class="txn-kpi-grid">
     <div class="txn-kpi-card yellow">
@@ -802,20 +809,32 @@ table.tbl-requests tbody tr:hover td {
                             <!-- 4. REQUESTED DETAILS -->
                             <td style="vertical-align:middle;padding:10px 6px;box-sizing:border-box;word-break:break-word;overflow-wrap:break-word;">
                                 <div class="payload-struct">
-                                    <?php if ($row['category'] === 'Merchandise Product'): ?>
+                                    <?php 
+                                        $reqReason = $payload['reason'] ?? $payload['remarks'] ?? $payload['notes'] ?? '';
+                                    ?>
+                                    <?php if ($row['category'] === 'Merchandise Product'): 
+                                        $merchPrice = $payload['unit_price'] ?? $payload['selling_price'] ?? $payload['price'] ?? $payload['suggested_price'] ?? null;
+                                    ?>
                                         <div><strong>Product:</strong> <span style="color:#0f172a;font-weight:800;font-size:13.5px;"><?= htmlspecialchars($payload['product_name'] ?? '—') ?></span></div>
                                         <div><strong>Category:</strong> <?= htmlspecialchars($payload['category'] ?? 'Others') ?></div>
                                         <div><strong>UOM:</strong> <?= htmlspecialchars($payload['unit'] ?? '—') ?></div>
-                                        <?php if (isset($payload['suggested_price']) && $payload['suggested_price'] !== ''): ?>
-                                            <div><strong>Price:</strong> <span style="font-weight:800;color:#002F70;font-size:13.5px;">&#8369;<?= number_format((float)$payload['suggested_price'], 2) ?></span></div>
+                                        <?php if ($merchPrice !== null && $merchPrice !== ''): ?>
+                                            <div><strong>Selling Price:</strong> <span style="font-weight:800;color:#002F70;font-size:13.5px;">&#8369;<?= number_format((float)$merchPrice, 2) ?></span></div>
                                         <?php endif; ?>
                                         <?php if (!empty($payload['brand'])): ?>
                                             <div><strong>Brand:</strong> <?= htmlspecialchars($payload['brand']) ?></div>
                                         <?php endif; ?>
-                                    <?php elseif ($row['category'] === 'Service Type'): ?>
+                                        <?php if (!empty($payload['sku'])): ?>
+                                            <div><strong>SKU:</strong> <?= htmlspecialchars($payload['sku']) ?></div>
+                                        <?php endif; ?>
+                                    <?php elseif ($row['category'] === 'Service Type'): 
+                                        $servicePrice = $payload['default_price'] ?? $payload['suggested_price'] ?? $payload['service_price'] ?? $payload['unit_price'] ?? $payload['price'] ?? null;
+                                    ?>
                                         <div><strong>Service:</strong> <span style="color:#0f172a;font-weight:800;font-size:13.5px;"><?= htmlspecialchars($payload['service_name'] ?? '—') ?></span></div>
                                         <div><strong>Category:</strong> <?= htmlspecialchars($payload['category'] ?? 'Others') ?></div>
-                                        <div><strong>Price:</strong> <span style="font-weight:800;color:#002F70;font-size:13.5px;">&#8369;<?= number_format((float)($payload['suggested_price'] ?? 0), 2) ?></span></div>
+                                        <?php if ($servicePrice !== null && $servicePrice !== ''): ?>
+                                            <div><strong>Price:</strong> <span style="font-weight:800;color:#002F70;font-size:13.5px;">&#8369;<?= number_format((float)$servicePrice, 2) ?></span></div>
+                                        <?php endif; ?>
                                         <?php if (!empty($payload['estimated_duration'])): ?>
                                             <div><strong>Duration:</strong> <?= htmlspecialchars($payload['estimated_duration']) ?></div>
                                         <?php endif; ?>
@@ -826,9 +845,9 @@ table.tbl-requests tbody tr:hover td {
                                         <div><strong>Fuel:</strong> <?= htmlspecialchars($payload['fuel_type'] ?? '—') ?></div>
                                     <?php endif; ?>
 
-                                    <?php if (!empty($payload['remarks'])): ?>
+                                    <?php if (!empty($reqReason)): ?>
                                         <div style="margin-top:3px;color:#334155;font-size:12px;line-height:1.3;font-style:italic;word-break:break-word;">
-                                            <strong style="color:#334155;font-style:normal;font-weight:700;">Reason:</strong> "<?= htmlspecialchars($payload['remarks']) ?>"
+                                            <strong style="color:#334155;font-style:normal;font-weight:700;">Reason:</strong> "<?= htmlspecialchars($reqReason) ?>"
                                         </div>
                                     <?php endif; ?>
                                 </div>
@@ -975,6 +994,17 @@ function openReviewModal(req) {
     editorDiv.innerHTML = '';
 
     if (req.category === 'Merchandise Product') {
+        const merchPrice = (payload.unit_price !== undefined && payload.unit_price !== null && payload.unit_price !== '') 
+            ? payload.unit_price 
+            : ((payload.selling_price !== undefined && payload.selling_price !== null && payload.selling_price !== '') 
+                ? payload.selling_price 
+                : ((payload.price !== undefined && payload.price !== null && payload.price !== '') 
+                    ? payload.price 
+                    : (payload.suggested_price ?? '')));
+        const merchReason = payload.reason ?? payload.remarks ?? payload.notes ?? '';
+        const merchSku = payload.sku ?? '';
+        const merchBrand = payload.brand ?? '';
+
         editorDiv.innerHTML = `
             <div>
                 <label>Product Name <span style="color:#dc2626;">*</span></label>
@@ -993,19 +1023,37 @@ function openReviewModal(req) {
             <div style="display:flex; gap:10px;">
                 <div style="flex:1;">
                     <label>Selling Price (&#8369;) <span style="color:#dc2626;">*</span></label>
-                    <input type="number" step="0.01" id="edit_suggested_price" class="inp" style="width:100%;" value="${payload.suggested_price || ''}">
+                    <input type="number" step="0.01" id="edit_suggested_price" class="inp" style="width:100%; font-weight:700; color:#002F70;" value="${merchPrice}">
                 </div>
                 <div style="flex:1;">
                     <label>Brand</label>
-                    <input type="text" id="edit_brand" class="inp" style="width:100%;" value="${escapeHtml(payload.brand || '')}">
+                    <input type="text" id="edit_brand" class="inp" style="width:100%;" value="${escapeHtml(merchBrand)}">
                 </div>
             </div>
             <div>
+                <label>SKU (Stock Keeping Unit)</label>
+                <input type="text" id="edit_sku" class="inp" style="width:100%; font-family:monospace;" value="${escapeHtml(merchSku)}" placeholder="e.g. PIATTOS-85G (Optional)">
+            </div>
+            <div>
                 <label>Reason for Request / Initial Notes</label>
-                <input type="text" id="edit_remarks" class="inp" style="width:100%;" value="${escapeHtml(payload.remarks || '')}">
+                <input type="text" id="edit_remarks" class="inp" style="width:100%;" value="${escapeHtml(merchReason)}">
             </div>
         `;
     } else if (req.category === 'Service Type') {
+        const servicePrice = (payload.default_price !== undefined && payload.default_price !== null && payload.default_price !== '')
+            ? payload.default_price
+            : ((payload.suggested_price !== undefined && payload.suggested_price !== null && payload.suggested_price !== '') 
+                ? payload.suggested_price 
+                : ((payload.service_price !== undefined && payload.service_price !== null && payload.service_price !== '') 
+                    ? payload.service_price 
+                    : ((payload.unit_price !== undefined && payload.unit_price !== null && payload.unit_price !== '') 
+                        ? payload.unit_price 
+                        : ((payload.price !== undefined && payload.price !== null && payload.price !== '') 
+                            ? payload.price 
+                            : '0.00'))));
+        const serviceReason = payload.reason ?? payload.remarks ?? payload.notes ?? '';
+        const serviceCategory = payload.service_category || payload.category || 'Others';
+
         editorDiv.innerHTML = `
             <div>
                 <label>Service Name <span style="color:#dc2626;">*</span></label>
@@ -1014,11 +1062,11 @@ function openReviewModal(req) {
             <div style="display:flex; gap:10px;">
                 <div style="flex:1;">
                     <label>Category <span style="color:#dc2626;">*</span></label>
-                    <input type="text" id="edit_category" class="inp" style="width:100%;" value="${escapeHtml(payload.category || 'Others')}">
+                    <input type="text" id="edit_category" class="inp" style="width:100%;" value="${escapeHtml(serviceCategory)}">
                 </div>
                 <div style="flex:1;">
                     <label>Selling Price (&#8369;) <span style="color:#dc2626;">*</span></label>
-                    <input type="number" step="0.01" id="edit_suggested_price" class="inp" style="width:100%;" value="${payload.suggested_price || 0}">
+                    <input type="number" step="0.01" id="edit_suggested_price" class="inp" style="width:100%; font-weight:700; color:#002F70;" value="${servicePrice}">
                 </div>
             </div>
             <div>
@@ -1027,10 +1075,11 @@ function openReviewModal(req) {
             </div>
             <div>
                 <label>Reason for Request / Initial Notes</label>
-                <input type="text" id="edit_remarks" class="inp" style="width:100%;" value="${escapeHtml(payload.remarks || '')}">
+                <input type="text" id="edit_remarks" class="inp" style="width:100%;" value="${escapeHtml(serviceReason)}">
             </div>
         `;
     } else if (req.category === 'Vehicle') {
+        const vehicleReason = payload.reason ?? payload.remarks ?? payload.notes ?? '';
         editorDiv.innerHTML = `
             <div style="display:flex; gap:10px;">
                 <div style="flex:1;">
@@ -1067,7 +1116,7 @@ function openReviewModal(req) {
             </div>
             <div>
                 <label>Reason for Request / Initial Notes</label>
-                <input type="text" id="edit_remarks" class="inp" style="width:100%;" value="${escapeHtml(payload.remarks || '')}">
+                <input type="text" id="edit_remarks" class="inp" style="width:100%;" value="${escapeHtml(vehicleReason)}">
             </div>
         `;
     }
@@ -1145,6 +1194,8 @@ async function submitReviewDecision(forcedAction) {
             const unit     = document.getElementById('edit_unit').value.trim();
             const price    = parseFloat(document.getElementById('edit_suggested_price').value);
             const brand    = document.getElementById('edit_brand').value.trim();
+            const skuEl    = document.getElementById('edit_sku');
+            const skuVal   = skuEl ? skuEl.value.trim() : '';
             const rem      = document.getElementById('edit_remarks').value.trim();
 
             if (!prodName) { setReviewError('Product Name is required.'); return; }
@@ -1156,8 +1207,12 @@ async function submitReviewDecision(forcedAction) {
                 product_name: prodName,
                 category: category,
                 unit: unit,
+                unit_price: price,
+                selling_price: price,
                 suggested_price: price,
+                sku: skuVal || null,
                 brand: brand || null,
+                reason: rem || null,
                 remarks: rem || null
             };
         } else if (currentRequest.category === 'Service Type') {
@@ -1238,24 +1293,40 @@ function escapeHtml(text) {
         .replace(/'/g, "&#039;");
 }
 
-// Show alert banner on success query param
+// Show professional floating toast on success query param
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.has('success')) {
-    const banner = document.createElement('div');
-    banner.style.position = 'fixed';
-    banner.style.top = '20px';
-    banner.style.right = '20px';
-    banner.style.background = '#10b981';
-    banner.style.color = '#fff';
-    banner.style.padding = '12px 24px';
-    banner.style.borderRadius = '8px';
-    banner.style.boxShadow = '0 10px 15px -3px rgba(0,0,0,0.1)';
-    banner.style.zIndex = '99999';
-    banner.style.fontSize = '14px';
-    banner.style.fontWeight = '600';
-    banner.innerHTML = `<i class="fas fa-check-circle" style="margin-right:8px;"></i> ${urlParams.get('success')}`;
-    document.body.appendChild(banner);
-    setTimeout(() => banner.remove(), 4000);
+    const successMsg = urlParams.get('success');
+    const toast = document.createElement('div');
+    toast.id = 'mgrFloatingToast';
+    toast.style.cssText = 'position:fixed;top:75px;right:24px;z-index:9999999;background:#ffffff;border:2px solid #10b981;border-radius:12px;box-shadow:0 12px 35px rgba(0,0,0,0.18);padding:14px 18px;max-width:420px;display:flex;gap:12px;align-items:flex-start;animation:fadeInDown 0.3s ease;';
+    toast.innerHTML = `
+        <div style="width:38px;height:38px;border-radius:50%;background:#ecfdf5;color:#059669;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;border:1.5px solid #a7f3d0;">
+            <i class="fas fa-check"></i>
+        </div>
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:11px;font-weight:800;color:#059669;text-transform:uppercase;letter-spacing:0.5px;">Decision Processed</div>
+            <div style="font-size:14px;font-weight:800;color:#002F70;margin:2px 0;line-height:1.3;word-break:break-word;">
+                ${escapeHtml(successMsg)}
+            </div>
+            <div style="font-size:12px;color:#64748b;">
+                The request status and inventory master data have been updated.
+            </div>
+        </div>
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        if (toast && toast.parentNode) {
+            toast.style.transition = 'opacity 0.5s ease';
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 500);
+        }
+    }, 7000);
+
+    if (window.history && window.history.replaceState) {
+        const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+    }
 }
 // ── Custom Fuel Type Combobox ──────────────────────────────────────────────
 // Called each time the Vehicle form is built inside the modal template literal

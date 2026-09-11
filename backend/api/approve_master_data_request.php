@@ -88,15 +88,25 @@ try {
         $reqStationId = !empty($req['station_id']) ? (int)$req['station_id'] : 1;
 
         if ($category === 'Merchandise Product') {
-            $sku = 'SKU-' . strtoupper(substr(md5(($payload['product_name'] ?? '') . time()), 0, 8));
-            $unitPrice = isset($payload['suggested_price']) ? floatval($payload['suggested_price']) : 0.00;
+            // Use staff-provided SKU if present; otherwise generate one
+            $sku = !empty($payload['sku'])
+                ? $payload['sku']
+                : ('SKU-' . strtoupper(substr(md5(($payload['product_name'] ?? '') . time()), 0, 8)));
+
+            // Price: prefer unit_price > selling_price > suggested_price
+            $unitPrice = floatval(
+                $payload['unit_price'] ??
+                $payload['selling_price'] ??
+                $payload['suggested_price'] ??
+                0.00
+            );
             $unitCost = $unitPrice * 0.70;
 
             // Insert into inventory_products
             $pStmt = $pdo->prepare("
                 INSERT INTO inventory_products
-                    (product_name, category, sku, unit_price, unit_cost, stock, stock_quantity, status, station_id, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, 0, 0, 'active', ?, NOW(), NOW())
+                    (product_name, category, sku, unit_price, unit_cost, selling_price, stock, stock_quantity, status, station_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 0, 0, 'active', ?, NOW(), NOW())
             ");
             $pStmt->execute([
                 $payload['product_name'] ?? '',
@@ -104,6 +114,7 @@ try {
                 $sku,
                 $unitPrice,
                 $unitCost,
+                $unitPrice,
                 $reqStationId
             ]);
             $newId = $pdo->lastInsertId();
@@ -190,10 +201,14 @@ try {
         error_log("Approval notification error: " . $notifErr->getMessage());
     }
 
+    $actionDesc = ($action === 'approve') ? 'Approved' : 'Rejected';
+    $successMsg = "Request {$requestNo} ({$category}) has been {$actionDesc} successfully.";
     echo json_encode([
-        'success' => true,
-        'message' => "Request {$newStatus} successfully.",
-        'status'  => $newStatus,
+        'success'       => true,
+        'message'       => $successMsg,
+        'request_no'    => $requestNo,
+        'category'      => $category,
+        'status'        => $newStatus,
         'new_record_id' => $newId ?? null
     ]);
 

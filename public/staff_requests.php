@@ -125,7 +125,7 @@ require_once __DIR__ . '/../partials/header.php';
                                     <?php elseif ($row['category'] === 'Merchandise Product'): ?>
                                         <strong><?= htmlspecialchars($payload['product_name'] ?? '') ?></strong>
                                         <div style="font-size: 11.5px; color: #64748b; margin-top: 2px;">
-                                            Cat: <?= htmlspecialchars($payload['category'] ?? 'N/A') ?> • Price: ₱<?= number_format((float)($payload['selling_price'] ?? $payload['price'] ?? 0), 2) ?>
+                                            Cat: <?= htmlspecialchars($payload['category'] ?? 'N/A') ?> • Price: ₱<?= number_format((float)($payload['unit_price'] ?? $payload['selling_price'] ?? $payload['price'] ?? $payload['suggested_price'] ?? 0), 2) ?>
                                         </div>
                                     <?php elseif ($row['category'] === 'Service Type'): ?>
                                         <strong><?= htmlspecialchars($payload['service_name'] ?? '') ?></strong>

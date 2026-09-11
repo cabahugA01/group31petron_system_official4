@@ -87,8 +87,13 @@ try {
 
             $relative_path = '../uploads/logos/' . $filename;
             upsertSetting($pdo, 'company_logo', $relative_path, 'general', $station_id, $me['id']);
-            // Also store under 'logo' key — used by partials/header.php for sidebar brand logo
             upsertSetting($pdo, 'logo', $relative_path, 'general', $station_id, $me['id']);
+            upsertSetting($pdo, 'system_logo', $relative_path, 'general', $station_id, $me['id']);
+
+            if ($station_id === 0) {
+                // If global logo is updated, update all stations that had 'none' so the new global logo applies system-wide
+                $pdo->prepare("UPDATE system_settings SET setting_value = ?, updated_at = NOW(), updated_by = ? WHERE setting_key IN ('company_logo','logo','system_logo') AND setting_value = 'none'")->execute([$relative_path, $me['id']]);
+            }
 
             echo json_encode(['success' => true, 'message' => 'Company logo uploaded successfully', 'logo_url' => $relative_path]);
             break;
@@ -97,9 +102,9 @@ try {
            2. REMOVE LOGO
         ------------------------------------------------------------------- */
         case 'remove_logo':
-            // Fetch stored logo path (may be keyed as 'company_logo' or 'logo')
+            // Fetch stored logo path (may be keyed as 'company_logo', 'logo', or 'system_logo')
             $logoPath = null;
-            $stmt = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key IN ('company_logo','logo') AND station_id = ? AND setting_value IS NOT NULL AND setting_value != '' AND setting_value != 'none' LIMIT 1");
+            $stmt = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key IN ('company_logo','logo','system_logo') AND station_id = ? AND setting_value IS NOT NULL AND setting_value != '' AND setting_value != 'none' LIMIT 1");
             $stmt->execute([$station_id]);
             $logoPath = $stmt->fetchColumn();
 
@@ -111,9 +116,15 @@ try {
                 }
             }
 
-            // Set both key variants for this station explicitly to 'none'
+            // Set all key variants explicitly to 'none'
             upsertSetting($pdo, 'company_logo', 'none', 'general', $station_id, $me['id']);
             upsertSetting($pdo, 'logo', 'none', 'general', $station_id, $me['id']);
+            upsertSetting($pdo, 'system_logo', 'none', 'general', $station_id, $me['id']);
+
+            // If global (station 0), ensure all station overrides are also updated to 'none' so all users across all stations see it removed
+            if ($station_id === 0) {
+                $pdo->prepare("UPDATE system_settings SET setting_value = 'none', updated_at = NOW(), updated_by = ? WHERE setting_key IN ('company_logo','logo','system_logo')")->execute([$me['id']]);
+            }
 
             echo json_encode(['success' => true, 'message' => 'Company logo removed successfully', 'logo_url' => '']);
             break;
@@ -174,9 +185,14 @@ try {
                 upsertSetting($pdo, $key, $valStr, $category, $station_id, $me['id']);
             }
 
-            // Sync company_logo → 'logo' key (read by partials/header.php for sidebar brand logo)
+            // Sync company_logo → 'logo' and 'system_logo' keys (read by partials/header.php and reports)
             if (isset($settings['company_logo']) && $settings['company_logo'] !== '') {
-                upsertSetting($pdo, 'logo', $settings['company_logo'], 'general', $station_id, $me['id']);
+                $logoVal = $settings['company_logo'];
+                upsertSetting($pdo, 'logo', $logoVal, 'general', $station_id, $me['id']);
+                upsertSetting($pdo, 'system_logo', $logoVal, 'general', $station_id, $me['id']);
+                if ($station_id === 0 && $logoVal === 'none') {
+                    $pdo->prepare("UPDATE system_settings SET setting_value = 'none', updated_at = NOW(), updated_by = ? WHERE setting_key IN ('company_logo','logo','system_logo')")->execute([$me['id']]);
+                }
             }
 
             // Sync sidebar_color → 'color_sidebar' (read by partials/header.php for sidebar background)

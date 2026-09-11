@@ -15875,7 +15875,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // ── 3. MERCHANDISE PRODUCT CATEGORY ──────────────────────────────
         else if (mdr.category === 'Merchandise Product') {
             itemTitle = p.product_name || 'Product';
-            itemSubtitle = 'Category: ' + (p.category || 'General') + (p.selling_price ? ' • Price: ₱' + parseFloat(p.selling_price).toFixed(2) : '');
+            const mdrPrice = p.unit_price ?? p.selling_price ?? p.price ?? p.suggested_price ?? null;
+            itemSubtitle = 'Category: ' + (p.category || 'General') + (mdrPrice ? ' • Price: ₱' + parseFloat(mdrPrice).toFixed(2) : '');
 
             const searchInput = document.getElementById('merchProductSearchInput') || document.getElementById('posProductSearch');
             if (searchInput) {
@@ -15917,7 +15918,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <i class="fas fa-check-circle"></i>
             </div>
             <div style="flex:1;min-width:0;">
-                <div style="font-size:11px;font-weight:800;color:#059669;text-transform:uppercase;letter-spacing:0.5px;">✓ Manager Approved Request Loaded</div>
+                <div style="font-size:11px;font-weight:800;color:#059669;text-transform:uppercase;letter-spacing:0.5px;">Manager Approved Request Loaded</div>
                 <div style="font-size:15px;font-weight:800;color:#002F70;margin:3px 0 2px 0;word-break:break-word;">
                     ${escapeHtml(mdr.request_no || 'Request')}: ${escapeHtml(itemTitle)}
                 </div>
@@ -15929,9 +15930,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     Approved data has been loaded into your form fields below.
                 </div>
             </div>
-            <button onclick="document.getElementById('mdrLoadedBanner')?.remove()" 
-                    style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:18px;line-height:1;padding:2px 4px;margin-left:4px;"
-                    title="Dismiss">&times;</button>
         `;
         document.body.appendChild(banner);
         setTimeout(() => banner && banner.remove(), 10000);
