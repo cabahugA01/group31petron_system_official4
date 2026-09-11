@@ -2242,26 +2242,20 @@ function get_system_logo_url($station_id = null) {
         $station_id = function_exists('user_station_id') ? (user_station_id() ?: 0) : 0;
     }
     
-    $default_logo = 'assets/img/Petron Logo.png';
+    $default_logo = 'assets/img/petron_logo.png';
     try {
         if ($pdo) {
             $stmt = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key IN ('company_logo','logo','system_logo') AND station_id = ? AND setting_value IS NOT NULL AND setting_value != '' ORDER BY id DESC LIMIT 1");
             $stmt->execute([$station_id]);
             $val = $stmt->fetchColumn();
-            if ($val !== false && $val !== null) {
-                if ($val === 'none' || $val === 'removed') {
-                    return '';
-                }
-                return $val;
+            if ($val !== false && $val !== null && $val !== '' && $val !== 'none' && $val !== 'removed') {
+                return ltrim(preg_replace('/^(\.\.\/)+/', '', trim($val)), '/');
             }
             if ($station_id > 0) {
                 $stmt->execute([0]);
                 $val = $stmt->fetchColumn();
-                if ($val !== false && $val !== null) {
-                    if ($val === 'none' || $val === 'removed') {
-                        return '';
-                    }
-                    return $val;
+                if ($val !== false && $val !== null && $val !== '' && $val !== 'none' && $val !== 'removed') {
+                    return ltrim(preg_replace('/^(\.\.\/)+/', '', trim($val)), '/');
                 }
             }
         }

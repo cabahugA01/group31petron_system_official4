@@ -840,6 +840,37 @@ include __DIR__ . '/../partials/header.php';
     overflow-x: visible !important;
     height: auto !important;
 }
+/* Reports-Style Export Bar & Buttons */
+.rpt-export-group {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    margin-left: auto !important;
+    white-space: nowrap !important;
+    flex-wrap: wrap !important;
+}
+.rpt-export-btn {
+    padding: 7px 13px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    background: #ffffff !important;
+    border: 1px solid !important;
+    transition: all 0.18s !important;
+    text-decoration: none !important;
+}
+.rpt-btn-print  { color: #475569 !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
+.rpt-btn-print:hover  { background: #f1f5f9 !important; color: #00264D !important; }
+.rpt-btn-pdf   { color: #dc2626 !important; border-color: #dc2626 !important; background: #ffffff !important; }
+.rpt-btn-pdf:hover   { background: #fef2f2 !important; color: #991b1b !important; }
+.rpt-btn-excel { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+.rpt-btn-excel:hover { background: #f0fdf4 !important; color: #166534 !important; }
+.rpt-btn-csv   { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
+.rpt-btn-csv:hover   { background: #f0fdf4 !important; color: #166534 !important; }
 .page-head {
     display: flex;
     justify-content: space-between;
@@ -1288,6 +1319,21 @@ table.pricing-table tbody tr:hover {
 <div class="page-head">
     <div>
         <h1 class="h1"><i class="fas fa-tags"></i> Product &amp; Pricing Overview</h1>
+    </div>
+    <!-- EXPORT TOOLBAR (Upper Right, Aligned with Controls) -->
+    <div class="rpt-export-group">
+        <button type="button" class="rpt-export-btn rpt-btn-print" onclick="exportPricing('print')">
+            <i class="fas fa-print"></i> Print
+        </button>
+        <button type="button" class="rpt-export-btn rpt-btn-pdf" onclick="exportPricing('pdf')">
+            <i class="fas fa-file-pdf"></i> PDF
+        </button>
+        <button type="button" class="rpt-export-btn rpt-btn-excel" onclick="exportPricing('excel')">
+            <i class="fas fa-file-excel"></i> Excel
+        </button>
+        <button type="button" class="rpt-export-btn rpt-btn-csv" onclick="exportPricing('csv')">
+            <i class="fas fa-file-csv"></i> CSV
+        </button>
     </div>
 </div>
 
@@ -3757,6 +3803,31 @@ function closeApprovePriceModalAdmin() {
 }
 
 // ── Tab Switching ─────────────────────────────────────────────────────────
+// ── Export Product & Pricing Report ─────────────────────────────────────────
+function exportPricing(format) {
+    const activeTab = document.getElementById('activeSection')?.value || 'fuel';
+    let q = '', st = '', cat = '', brd = '';
+    if (activeTab === 'fuel') {
+        q  = encodeURIComponent(document.getElementById('adminFuelSearch')?.value || document.getElementById('fuelSearchInput')?.value || '');
+        st = encodeURIComponent(document.getElementById('adminFuelStatusFilter')?.value || document.getElementById('fuelStatusFilter')?.value || '');
+    } else if (activeTab === 'merch') {
+        q   = encodeURIComponent(document.getElementById('adminSearchInput')?.value || document.getElementById('merchSearchInput')?.value || '');
+        st  = encodeURIComponent(document.getElementById('adminProdStatusFilter')?.value || document.getElementById('statusFilter')?.value || '');
+        cat = encodeURIComponent(document.getElementById('adminCatFilter')?.value || document.getElementById('catFilter')?.value || '');
+        brd = encodeURIComponent(document.getElementById('adminBrandFilter')?.value || document.getElementById('brandFilter')?.value || '');
+    } else if (activeTab === 'services') {
+        q   = encodeURIComponent(document.getElementById('svcSearchInput')?.value || '');
+        st  = encodeURIComponent(document.getElementById('svcStatusFilter')?.value || '');
+        cat = encodeURIComponent(document.getElementById('serviceCategoryFilter')?.value || '');
+    }
+    const url = `export_pricing_products.php?tab=${activeTab}&format=${format}&q=${q}&status=${st}&category=${cat}&brand=${brd}`;
+    if (format === 'print' || format === 'pdf') {
+        window.open(url, '_blank');
+    } else {
+        window.location.href = url;
+    }
+}
+
 function switchTab(tabName) {
     if (['fuel', 'merch', 'services'].indexOf(tabName) === -1) tabName = 'fuel';
 

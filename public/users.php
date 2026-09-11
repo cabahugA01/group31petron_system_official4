@@ -387,14 +387,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $station_target = $my_station_id;
                 }
 
-                // Role & per-station uniqueness rules
-                if ($role === 'manager' && $station_target) {
-                    $cm = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role)='manager' AND station_id=? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
-                    $cm->execute([$station_target]);
-                    if ((int)$cm->fetchColumn() > 0) {
-                        throw new Exception('This station already has an active Manager. Each station is allowed ONLY 1 Manager.');
-                    }
-                }
+                // Role & per-station uniqueness rules (multiple managers allowed)
 
                 if ($role === 'admin' && $station_target) {
                     $ca = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role)='admin' AND station_id=? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
@@ -524,13 +517,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 
                 $target_stn = !empty($target_user['station_id']) ? (int)$target_user['station_id'] : ($my_role === 'admin' ? $my_station_id : 0);
-                if ($role === 'manager' && $target_stn > 0) {
-                    $checkManager = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role) = 'manager' AND station_id = ? AND id != ? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
-                    $checkManager->execute([$target_stn, $id]);
-                    if ((int)$checkManager->fetchColumn() > 0) {
-                        throw new Exception("Cannot assign Manager role. This station already has an active Manager (Only 1 Manager allowed per station).");
-                    }
-                }
+                // Multiple managers allowed per station
                 if ($role === 'admin' && $target_stn > 0) {
                     $checkAdmin = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role) = 'admin' AND station_id = ? AND id != ? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
                     $checkAdmin->execute([$target_stn, $id]);
@@ -665,13 +652,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $target_role = strtolower(trim($target_user['role'] ?? 'staff'));
                 $target_stn  = (int)($target_user['station_id'] ?? 0);
 
-                if ($target_role === 'manager' && $target_stn > 0) {
-                    $chkMgr = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role) = 'manager' AND station_id = ? AND id != ? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
-                    $chkMgr->execute([$target_stn, $id]);
-                    if ((int)$chkMgr->fetchColumn() > 0) {
-                        throw new Exception("Cannot restore this Manager. Station already has an active Manager (Only 1 Manager allowed per station).");
-                    }
-                }
+                // Multiple managers allowed — no restore restriction
 
                 if ($target_role === 'admin' && $target_stn > 0) {
                     $chkAdm = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role) = 'admin' AND station_id = ? AND id != ? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
@@ -779,7 +760,7 @@ if ($my_station_id) {
         $station_manager_name  = trim((string)($mgr_row[1] ?? ''));
     } catch (Exception $e) {}
 }
-$manager_slot_taken = ($station_manager_count >= 1);
+$manager_slot_taken = false; // Multiple managers allowed per station
 
 // Get UI Config
 try {
@@ -829,7 +810,7 @@ if (isset($_GET['ajax_check_slots']) && !empty($_GET['station_id'])) {
 
         echo json_encode([
             'success'       => true,
-            'manager_taken' => $mgrCount >= 1,
+            'manager_taken' => false, // Multiple managers allowed
             'manager_name'  => $mgrName,
             'admin_taken'   => $admCount >= 1,
             'admin_name'    => $admName,
@@ -1749,23 +1730,11 @@ setTimeout(function() {
                                 <option value="admin">Admin</option>
                             <?php elseif ($my_role === 'admin'): ?>
                                 <option value="staff">Staff</option>
-                                <option value="manager" <?= $manager_slot_taken ? 'disabled' : '' ?>>
-                                    Manager<?= $manager_slot_taken ? ' (Slot Full — 1 already assigned)' : '' ?>
-                                </option>
+                            <option value="manager" >Manager</option>
                             <?php endif; ?>
                         </select>
                         <?php if ($my_role === 'admin'): ?>
-                        <div id="manager_slot_badge" style="margin-top:6px; font-size:11.5px; font-weight:700; padding:5px 10px; border-radius:6px; display:inline-flex; align-items:center; gap:6px;
-                            <?= $manager_slot_taken
-                                ? 'background:#fef2f2; color:#dc2626; border:1px solid #fca5a5;'
-                                : 'background:#f0fdf4; color:#16a34a; border:1px solid #86efac;' ?>">
-                            <i class="fas <?= $manager_slot_taken ? 'fa-times-circle' : 'fa-check-circle' ?>"></i>
-                            <?php if ($manager_slot_taken): ?>
-                                Manager slot full — <?= htmlspecialchars($station_manager_name ?: 'Someone') ?> is already the Manager of this branch. Only 1 Manager per branch is allowed.
-                            <?php else: ?>
-                                Manager slot available — This branch has no Manager yet. You can assign one.
-                            <?php endif; ?>
-                        </div>
+                        <div id="manager_slot_badge" style="display:none;"></div>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -2244,16 +2213,7 @@ function validateAddForm() {
         return false;
     }
 
-    // 6b. Role slot enforcement (client-side guard — applies to both Admin and Superadmin)
-    if (role === 'manager' || role === 'admin') {
-        const selectedOption = roleEl ? roleEl.options[roleEl.selectedIndex] : null;
-        if (selectedOption && selectedOption.disabled) {
-            const slotLabel = role === 'admin' ? 'Admin' : 'Manager';
-            alert(`Cannot create a ${slotLabel} for this branch. The ${slotLabel} slot is already filled (Only 1 ${slotLabel} per branch is allowed). Please archive or reassign the existing ${slotLabel} first.`);
-            if (roleEl) roleEl.focus();
-            return false;
-        }
-    }
+    // (Multiple managers per station are now allowed — no slot enforcement needed)
 
     // 6c. Superadmin must pick a station before submitting
     const stationSel = document.getElementById('add_station_id');
@@ -2563,18 +2523,12 @@ function onStationChangeCheckSlots(stationId) {
 
             let messages = [];
 
-            // Update Manager option
+            // Manager option always stays enabled (multiple managers allowed)
             const mgrOpt = Array.from(opts).find(o => o.value === 'manager');
             if (mgrOpt) {
-                if (data.manager_taken) {
-                    mgrOpt.disabled = true;
-                    mgrOpt.text = 'Manager (Slot Full — 1 already assigned)';
-                    messages.push('⛔ Manager slot taken by: ' + (data.manager_name || 'existing user'));
-                } else {
-                    mgrOpt.disabled = false;
-                    mgrOpt.text = 'Manager';
-                    messages.push('✅ Manager slot available');
-                }
+                mgrOpt.disabled = false;
+                mgrOpt.text = 'Manager';
+                messages.push('✅ Manager slot available');
             }
 
             // Update Admin option

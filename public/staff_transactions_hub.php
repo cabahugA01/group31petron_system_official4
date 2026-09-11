@@ -7166,7 +7166,7 @@ setTimeout(function() {
                                                                 onmouseover="this.style.background='#dbeafe';this.style.color='#002F70';this.style.borderColor='#3b82f6';"
                                                                 onmouseout="this.style.background='#f1f5f9';this.style.color='#334155';this.style.borderColor='#94a3b8';"
                                                                 title="Request Adjustment">
-                                                            <i class="fas fa-sliders-h" style="font-size:11px !important;"></i> <span style="font-size:11px !important;font-weight:700 !important;white-space:nowrap !important;display:inline !important;">Req. Adjust</span>
+                                                            <i class="fas fa-sliders-h" style="font-size:11px !important;"></i> <span style="font-size:11px !important;font-weight:700 !important;white-space:nowrap !important;display:inline !important;"><?= in_array($role, ['admin','superadmin']) ? 'Adjust' : 'Req. Adjust' ?></span>
                                                         </button>
                                                     <?php endif; ?>
 
@@ -7185,7 +7185,7 @@ setTimeout(function() {
                                                                 class="void-btn"
                                                                 style="width:100%;"
                                                                 title="Request Void">
-                                                            <i class="fas fa-ban"></i> <span>Req. Void</span>
+                                                            <i class="fas fa-ban"></i> <span><?= in_array($role, ['admin','superadmin']) ? 'Void' : 'Req. Void' ?></span>
                                                         </button>
                                                     <?php endif; ?>
                                                 </div>
@@ -7449,7 +7449,7 @@ setTimeout(function() {
                                                                 onmouseover="this.style.background='#dbeafe';this.style.color='#002F70';this.style.borderColor='#3b82f6';"
                                                                 onmouseout="this.style.background='#f1f5f9';this.style.color='#334155';this.style.borderColor='#94a3b8';"
                                                                 title="Request Combined Adjustment">
-                                                            <i class="fas fa-sliders-h" style="font-size:11px !important;"></i> <span style="font-size:11px !important;font-weight:700 !important;white-space:nowrap !important;display:inline !important;">Req. Adjust</span>
+                                                            <i class="fas fa-sliders-h" style="font-size:11px !important;"></i> <span style="font-size:11px !important;font-weight:700 !important;white-space:nowrap !important;display:inline !important;"><?= in_array($role, ['admin','superadmin']) ? 'Adjust' : 'Req. Adjust' ?></span>
                                                         </button>
                                                     <?php endif; ?>
 
@@ -7471,7 +7471,7 @@ setTimeout(function() {
                                                                 class="void-btn"
                                                                 style="width:100%;"
                                                                 title="Request Combined Void">
-                                                            <i class="fas fa-ban"></i> <span>Req. Void</span>
+                                                            <i class="fas fa-ban"></i> <span><?= in_array($role, ['admin','superadmin']) ? 'Void' : 'Req. Void' ?></span>
                                                         </button>
                                                     <?php endif; ?>
                                                 </div>
@@ -8077,8 +8077,8 @@ setTimeout(function() {
                         <i class="fas fa-wrench" style="color:#b45309;font-size:15px;"></i>
                     </div>
                     <div>
-                        <div style="font-size:14px;font-weight:700;color:#1e293b;">Request New Service Type</div>
-                        <div style="font-size:11px;color:#64748b;">Submitted for manager approval</div>
+                        <div style="font-size:14px;font-weight:700;color:#1e293b;"><?= in_array($role, ['admin','superadmin']) ? 'Add New Service Type' : 'Request New Service Type' ?></div>
+                        <div style="font-size:11px;color:#64748b;"><?= in_array($role, ['admin','superadmin']) ? 'Directly added to master data' : 'Submitted for manager approval' ?></div>
                     </div>
                 </div>
 
@@ -8196,7 +8196,7 @@ setTimeout(function() {
                     <button type="button" id="addServiceSubmitBtn"
                             onclick="submitNewServiceType()"
                             class="txn-btn primary">
-                        <i class="fas fa-paper-plane"></i> Submit for Approval
+                        <i class="fas <?= in_array($role, ['admin','superadmin']) ? 'fa-plus-circle' : 'fa-paper-plane' ?>"></i> <?= in_array($role, ['admin','superadmin']) ? 'Add Service' : 'Submit for Approval' ?>
                     </button>
                 </div>
             </div>
@@ -8216,8 +8216,8 @@ setTimeout(function() {
                         <i class="fas fa-car" style="color:#003d7a;font-size:15px;"></i>
                     </div>
                     <div>
-                        <div style="font-size:14px;font-weight:700;color:#1e293b;">Request New Vehicle</div>
-                        <div style="font-size:11px;color:#64748b;">Submitted for manager approval</div>
+                        <div style="font-size:14px;font-weight:700;color:#1e293b;"><?= in_array($role, ['admin','superadmin']) ? 'Add New Vehicle' : 'Request New Vehicle' ?></div>
+                        <div style="font-size:11px;color:#64748b;"><?= in_array($role, ['admin','superadmin']) ? 'Directly added to master data' : 'Submitted for manager approval' ?></div>
                     </div>
                 </div>
 
@@ -8320,7 +8320,7 @@ setTimeout(function() {
                     <button type="button" id="addVehicleSubmitBtn"
                             onclick="submitNewVehicleType()"
                             class="txn-btn primary">
-                        <i class="fas fa-paper-plane"></i> Submit for Approval
+                        <i class="fas <?= in_array($role, ['admin','superadmin']) ? 'fa-plus-circle' : 'fa-paper-plane' ?>"></i> <?= in_array($role, ['admin','superadmin']) ? 'Add Vehicle' : 'Submit for Approval' ?>
                     </button>
                 </div>
             </div>
@@ -8341,8 +8341,8 @@ setTimeout(function() {
                         <i class="fas fa-box-open" style="font-size:18px;color:#166534;"></i>
                     </div>
                     <div>
-                        <div style="font-size:14px;font-weight:700;color:#1e293b;">Request New Product</div>
-                        <div style="font-size:11px;color:#64748b;">Submitted for manager approval</div>
+                        <div style="font-size:14px;font-weight:700;color:#1e293b;"><?= in_array($role, ['admin','superadmin']) ? 'Add New Product' : 'Request New Product' ?></div>
+                        <div style="font-size:11px;color:#64748b;"><?= in_array($role, ['admin','superadmin']) ? 'Directly added to product inventory' : 'Submitted for manager approval' ?></div>
                     </div>
                 </div>
 
@@ -8473,7 +8473,7 @@ setTimeout(function() {
                     <button type="button" id="addProductSubmitBtn"
                             onclick="submitNewProduct()"
                             class="txn-btn primary">
-                        <i class="fas fa-paper-plane"></i> Submit for Approval
+                        <i class="fas <?= in_array($role, ['admin','superadmin']) ? 'fa-plus-circle' : 'fa-paper-plane' ?>"></i> <?= in_array($role, ['admin','superadmin']) ? 'Add Product' : 'Submit for Approval' ?>
                     </button>
                 </div>
             </div>
@@ -9734,10 +9734,8 @@ setTimeout(function() {
                     if (serviceHidden) serviceHidden.value = name;
                     if (servicePriceInput) servicePriceInput.value = price;
                     
-                    showTxnAlert(
-                        'Request submitted successfully! Request ID: #' + data.request_id + '. Status: Pending Manager Approval. You can use "' + name + '" now.',
-                        'success'
-                    );
+                    const svcMsg = data.auto_approved ? ('<i class="fas fa-check-circle"></i> Service "' + name + '" processed and added successfully!') : ('Request submitted successfully! Request ID: #' + data.request_id + '. Status: Pending Manager Approval. You can use "' + name + '" now.');
+                    showTxnAlert(svcMsg, 'success');
                 } else {
                     setAddServiceError(data.error || 'Submission failed.');
                 }
@@ -10786,10 +10784,8 @@ setTimeout(function() {
                     const displayName = brand + ' ' + model;
                     if (vehicleInput) vehicleInput.value = displayName;
                     
-                    showTxnAlert(
-                        'Request submitted successfully! Request ID: #' + data.request_id + '. Status: Pending Manager Approval. You can use "' + displayName + '" now.',
-                        'success'
-                    );
+                    const vehMsg = data.auto_approved ? ('<i class="fas fa-check-circle"></i> Vehicle "' + displayName + '" processed and added successfully!') : ('Request submitted successfully! Request ID: #' + data.request_id + '. Status: Pending Manager Approval. You can use "' + displayName + '" now.');
+                    showTxnAlert(vehMsg, 'success');
                 } else {
                     setAddVehicleError(data.error || 'Submission failed.');
                 }
@@ -10931,10 +10927,8 @@ setTimeout(function() {
 
                 if (data.success) {
                     closeAddProductModal();
-                    showTxnAlert(
-                        'Request submitted! Request ID: #' + data.request_id + '. Status: Pending Manager Approval.',
-                        'success'
-                    );
+                    const prdMsg = data.auto_approved ? ('<i class="fas fa-check-circle"></i> Product "' + name + '" processed and added successfully into inventory!') : ('Request submitted! Request ID: #' + data.request_id + '. Status: Pending Manager Approval.');
+                    showTxnAlert(prdMsg, 'success');
                 } else {
                     setAddProductError(data.error || 'Submission failed.');
                 }
@@ -12976,7 +12970,7 @@ setTimeout(function() {
                                                 data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
                                                 onclick="return openRequestAdjustModal(event, this);"
                                                 class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
-                                            <i class="fas fa-sliders-h"></i> Request Adjust
+                                            <i class="fas fa-sliders-h"></i> <?= in_array($role, ['admin','superadmin']) ? 'Adjust' : 'Request Adjust' ?>
                                         </button>
                                         <button type="button"
                                                 data-jo-id="<?= (int)$job['id'] ?>"
@@ -12987,7 +12981,7 @@ setTimeout(function() {
                                                 data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
                                                 onclick="return openRequestVoidModal(event, this);"
                                                 class="void-btn" >
-                                            <i class="fas fa-ban"></i> Request Void
+                                            <i class="fas fa-ban"></i> <?= in_array($role, ['admin','superadmin']) ? 'Void' : 'Request Void' ?>
                                         </button>
                                     <?php endif; ?>
 
@@ -13042,7 +13036,7 @@ setTimeout(function() {
                                             data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
                                             onclick="return openRequestAdjustModal(event, this);"
                                             class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
-                                        <i class="fas fa-sliders-h"></i> Request Adjust
+                                        <i class="fas fa-sliders-h"></i> <?= in_array($role, ['admin','superadmin']) ? 'Adjust' : 'Request Adjust' ?>
                                     </button>
                                     <button type="button"
                                             data-jo-id="<?= (int)$job['id'] ?>"
@@ -13053,7 +13047,7 @@ setTimeout(function() {
                                             data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
                                             onclick="return openRequestVoidModal(event, this);"
                                             class="void-btn" >
-                                        <i class="fas fa-ban"></i> Request Void
+                                        <i class="fas fa-ban"></i> <?= in_array($role, ['admin','superadmin']) ? 'Void' : 'Request Void' ?>
                                     </button>
 
                                 <?php elseif ($wf_status === 'In Progress'): ?>
@@ -13092,7 +13086,7 @@ setTimeout(function() {
                                             data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
                                             onclick="return openRequestAdjustModal(event, this);"
                                             class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
-                                        <i class="fas fa-sliders-h"></i> Request Adjust
+                                        <i class="fas fa-sliders-h"></i> <?= in_array($role, ['admin','superadmin']) ? 'Adjust' : 'Request Adjust' ?>
                                     </button>
                                     <button type="button"
                                             data-jo-id="<?= (int)$job['id'] ?>"
@@ -13103,7 +13097,7 @@ setTimeout(function() {
                                             data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
                                             onclick="return openRequestVoidModal(event, this);"
                                             class="void-btn" >
-                                        <i class="fas fa-ban"></i> Request Void
+                                        <i class="fas fa-ban"></i> <?= in_array($role, ['admin','superadmin']) ? 'Void' : 'Request Void' ?>
                                     </button>
 
                                 <?php else: ?>
@@ -13136,7 +13130,7 @@ setTimeout(function() {
                                             data-jo-mech="<?= htmlspecialchars($job['mechanic_name'] ?? 'Unassigned') ?>"
                                             onclick="return openRequestAdjustModal(event, this);"
                                             class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
-                                        <i class="fas fa-sliders-h"></i> Request Adjust
+                                        <i class="fas fa-sliders-h"></i> <?= in_array($role, ['admin','superadmin']) ? 'Adjust' : 'Request Adjust' ?>
                                     </button>
                                     <button type="button"
                                             data-jo-id="<?= (int)$job['id'] ?>"
@@ -13147,7 +13141,7 @@ setTimeout(function() {
                                             data-jo-paystatus="<?= htmlspecialchars($pay_label) ?>"
                                             onclick="return openRequestVoidModal(event, this);"
                                             class="void-btn" >
-                                        <i class="fas fa-ban"></i> Request Void
+                                        <i class="fas fa-ban"></i> <?= in_array($role, ['admin','superadmin']) ? 'Void' : 'Request Void' ?>
                                     </button>
                                 <?php endif; ?>
                             </div>
@@ -14437,6 +14431,8 @@ setTimeout(function() {
         
         // Dedicated Job Order Request Adjust & Request Void JS Functions
         window._activeJoDataForReq = window._activeJoDataForReq || null;
+        // Admin flag — admins directly void/adjust without going through request queue
+        window.IS_ADMIN = <?= in_array($role, ['admin','superadmin']) ? 'true' : 'false' ?>;
 
         window.closeRequestAdjustModal = function() {
             document.getElementById('requestAdjustModal').style.display = 'none';
@@ -14473,12 +14469,11 @@ setTimeout(function() {
             var btn = document.getElementById('reqAdjSubmitBtn');
             var origText = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (window.IS_ADMIN ? 'Applying...' : 'Submitting...');
 
-            var payload = {
+            var adjPayload = {
                 transaction_id: parseInt(document.getElementById('reqAdjTxnId').value),
                 record_source: document.getElementById('reqAdjRecordSource').value,
-                request_type: 'Adjustment',
                 correction_field: document.getElementById('reqAdjCorrectionField').value,
                 current_value: document.getElementById('reqAdjCurrentValue').value,
                 requested_value: document.getElementById('reqAdjRequestedValue').value.trim(),
@@ -14486,10 +14481,28 @@ setTimeout(function() {
                 remarks: document.getElementById('reqAdjRemarks').value.trim()
             };
 
-            fetch('../backend/api/request_transaction_action.php', {
+            var apiUrl, apiPayload;
+            if (window.IS_ADMIN) {
+                apiUrl = '../backend/api/admin_direct_txn_action.php';
+                apiPayload = {
+                    transaction_id: adjPayload.transaction_id,
+                    record_source:  adjPayload.record_source,
+                    action_type:    'Adjustment',
+                    reason:         adjPayload.request_reason,
+                    remarks:        adjPayload.remarks,
+                    correction_field: adjPayload.correction_field,
+                    current_value:  adjPayload.current_value,
+                    requested_value: adjPayload.requested_value
+                };
+            } else {
+                apiUrl = '../backend/api/request_transaction_action.php';
+                apiPayload = Object.assign({ request_type: 'Adjustment' }, adjPayload);
+            }
+
+            fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(apiPayload)
             })
             .then(res => res.json())
             .then(data => {
@@ -14497,10 +14510,13 @@ setTimeout(function() {
                 btn.innerHTML = origText;
                 if (data.success) {
                     closeRequestAdjustModal();
-                    showTxnAlert('<i class="fas fa-check"></i> ' + (data.message || 'Adjustment request submitted successfully! Status: ADJUSTMENT REQUESTED.'), 'success');
+                    var msg = window.IS_ADMIN
+                        ? '<i class="fas fa-check"></i> Transaction adjusted successfully.'
+                        : '<i class="fas fa-check"></i> ' + (data.message || 'Adjustment request submitted! Status: ADJUSTMENT REQUESTED.');
+                    showTxnAlert(msg, 'success');
                     setTimeout(function() { location.reload(); }, 1200);
                 } else {
-                    showTxnAlert('<i class="fas fa-times-circle"></i> ' + (data.error || 'Failed to submit adjustment request'), 'error');
+                    showTxnAlert('<i class="fas fa-times-circle"></i> ' + (data.error || 'Failed to apply adjustment'), 'error');
                 }
             })
             .catch(err => {
@@ -14519,20 +14535,36 @@ setTimeout(function() {
             var btn = document.getElementById('reqVoidSubmitBtn');
             var origText = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (window.IS_ADMIN ? 'Voiding...' : 'Submitting...');
 
-            var payload = {
-                transaction_id: parseInt(document.getElementById('reqVoidTxnId').value),
-                record_source: document.getElementById('reqVoidRecordSource').value,
-                request_type: 'Void',
-                request_reason: document.getElementById('reqVoidReasonSelect').value,
-                remarks: document.getElementById('reqVoidRemarks').value.trim()
-            };
+            var voidReason = document.getElementById('reqVoidReasonSelect').value;
+            var voidRemarks = document.getElementById('reqVoidRemarks').value.trim();
 
-            fetch('../backend/api/request_transaction_action.php', {
+            var apiUrl, apiPayload;
+            if (window.IS_ADMIN) {
+                apiUrl = '../backend/api/admin_direct_txn_action.php';
+                apiPayload = {
+                    transaction_id: parseInt(document.getElementById('reqVoidTxnId').value),
+                    record_source:  document.getElementById('reqVoidRecordSource').value,
+                    action_type:    'Void',
+                    reason:         voidReason,
+                    remarks:        voidRemarks
+                };
+            } else {
+                apiUrl = '../backend/api/request_transaction_action.php';
+                apiPayload = {
+                    transaction_id: parseInt(document.getElementById('reqVoidTxnId').value),
+                    record_source:  document.getElementById('reqVoidRecordSource').value,
+                    request_type:   'Void',
+                    request_reason: voidReason,
+                    remarks:        voidRemarks
+                };
+            }
+
+            fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(apiPayload)
             })
             .then(res => res.json())
             .then(data => {
@@ -14540,10 +14572,13 @@ setTimeout(function() {
                 btn.innerHTML = origText;
                 if (data.success) {
                     closeRequestVoidModal();
-                    showTxnAlert('<i class="fas fa-check"></i> ' + (data.message || 'Void request submitted successfully! Status: VOID REQUESTED.'), 'success');
+                    var msg = window.IS_ADMIN
+                        ? '<i class="fas fa-check"></i> Transaction voided successfully.'
+                        : '<i class="fas fa-check"></i> ' + (data.message || 'Void request submitted! Status: VOID REQUESTED.');
+                    showTxnAlert(msg, 'success');
                     setTimeout(function() { location.reload(); }, 1200);
                 } else {
-                    showTxnAlert('<i class="fas fa-times-circle"></i> ' + (data.error || 'Failed to submit void request'), 'error');
+                    showTxnAlert('<i class="fas fa-times-circle"></i> ' + (data.error || 'Failed to void transaction'), 'error');
                 }
             })
             .catch(err => {
@@ -15328,7 +15363,7 @@ setTimeout(function() {
           <div style="background:#fff;border-radius:14px;max-width:500px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);margin:auto;max-height:min(88vh, 640px);display:flex;flex-direction:column;overflow:hidden;">
              <div style="background:#002F70;color:#ffffff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
                <h3 style="margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
-                  <i class="fas fa-sliders-h" style="color:#ffffff !important;"></i> <span id="reqAdjTitleText">REQUEST ADJUSTMENT</span>
+                  <i class="fas fa-sliders-h" style="color:#ffffff !important;"></i> <span id="reqAdjTitleText"><?= in_array($role, ['admin','superadmin']) ? 'APPLY ADJUSTMENT' : 'REQUEST ADJUSTMENT' ?></span>
                </h3>
              </div>
              <form id="requestAdjustForm" onsubmit="submitRequestAdjust(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
@@ -15412,7 +15447,7 @@ setTimeout(function() {
                  </button>
                  <button type="submit" id="reqAdjSubmitBtn"
                          style="height:38px !important;padding:0 22px !important;background:#002F70 !important;color:#ffffff !important;border:none !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 2px 6px rgba(0,47,112,0.25) !important;">
-                   <i class="fas fa-paper-plane" style="margin-right:6px;color:#ffffff !important;"></i> Submit Adjustment Request
+                   <i class="fas fa-sliders-h" style="margin-right:6px;color:#ffffff !important;"></i> <?= in_array($role, ['admin','superadmin']) ? 'Apply Adjustment' : 'Submit Adjustment Request' ?>
                  </button>
                </div>
              </form>
@@ -15424,7 +15459,7 @@ setTimeout(function() {
           <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);margin:auto;max-height:min(88vh, 580px);display:flex;flex-direction:column;overflow:hidden;">
              <div style="background:#dc2626;color:#ffffff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
                <h3 style="margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;color:#ffffff !important;">
-                  <i class="fas fa-ban" style="color:#ffffff !important;"></i> <span id="reqVoidTitleText">REQUEST VOID</span>
+                  <i class="fas fa-ban" style="color:#ffffff !important;"></i> <span id="reqVoidTitleText"><?= in_array($role, ['admin','superadmin']) ? 'VOID TRANSACTION' : 'REQUEST VOID' ?></span>
                </h3>
              </div>
              <form id="requestVoidForm" onsubmit="submitRequestVoid(event)" style="display:flex;flex-direction:column;flex:1;min-height:0;margin:0;overflow:hidden;">
@@ -15490,7 +15525,7 @@ setTimeout(function() {
                  </button>
                  <button type="submit" id="reqVoidSubmitBtn"
                          style="height:38px !important;padding:0 22px !important;background:#dc2626 !important;color:#ffffff !important;border:none !important;border-radius:8px !important;font-size:13px !important;font-weight:700 !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;box-shadow:0 2px 6px rgba(220,38,38,0.25) !important;">
-                   <i class="fas fa-paper-plane" style="margin-right:6px;color:#ffffff !important;"></i> Submit Void Request
+                   <i class="fas fa-ban" style="margin-right:6px;color:#ffffff !important;"></i> <?= in_array($role, ['admin','superadmin']) ? 'Void Now' : 'Submit Void Request' ?>
                  </button>
                </div>
              </form>

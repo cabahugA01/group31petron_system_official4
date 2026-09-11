@@ -563,7 +563,7 @@ if ($just_sent && empty($error)) {
     <div class="login-wrap">
         <div class="login-card">
             <div class="brand">
-                <img src="<?php echo '../' . get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0)); ?>" alt="Petron Logo" class="brand-logo">
+                <img src="<?php echo htmlspecialchars('../' . get_system_logo_url(isset($station_id) ? (int)$station_id : (isset($user['station_id']) ? (int)$user['station_id'] : 0))); ?>" alt="Petron Logo" class="brand-logo" onerror="this.onerror=null;this.src='../assets/img/petron_logo.png';">
                 <span class="brand-tagline">Station Management System</span>
             </div>
 

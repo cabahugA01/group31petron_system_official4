@@ -111,6 +111,132 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->beginTransaction();
 
+        $isAdmin = in_array($role, ['admin', 'superadmin'], true);
+
+        if ($isAdmin) {
+            // ── DIRECT AUTO-APPROVAL FOR ADMIN ──────────────────────────────
+            $stmt = $pdo->prepare("
+                INSERT INTO master_data_requests 
+                    (category, source_module, requested_by, reviewed_by, station_id, status, data_payload, created_at, updated_at)
+                VALUES 
+                    (?, ?, ?, ?, ?, 'Approved', ?, NOW(), NOW())
+            ");
+            $stmt->execute([
+                $category,
+                $sourceModule,
+                $me['id'],
+                $me['id'],
+                $stationId,
+                json_encode($requestData)
+            ]);
+
+            $requestId = $pdo->lastInsertId();
+            $requestNo = sprintf('MDR-%05d', $requestId);
+
+            $update = $pdo->prepare("UPDATE master_data_requests SET request_no = ? WHERE id = ?");
+            $update->execute([$requestNo, $requestId]);
+
+            // Insert into production tables immediately
+            $newId = null;
+            $reqStationId = !empty($stationId) ? (int)$stationId : 1;
+
+            if ($reqType === 'product') {
+                $sku = !empty($requestData['sku'])
+                    ? $requestData['sku']
+                    : ('SKU-' . strtoupper(substr(md5(($requestData['product_name'] ?? '') . time()), 0, 8)));
+
+                $unitPrice = floatval(
+                    $requestData['unit_price'] ??
+                    $requestData['selling_price'] ??
+                    $requestData['suggested_price'] ??
+                    0.00
+                );
+                $unitCost = $unitPrice * 0.70;
+
+                $pStmt = $pdo->prepare("
+                    INSERT INTO inventory_products
+                        (product_name, category, sku, unit_price, unit_cost, selling_price, stock, stock_quantity, status, station_id, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 0, 0, 'active', ?, NOW(), NOW())
+                ");
+                $pStmt->execute([
+                    $requestData['product_name'] ?? '',
+                    $requestData['category']      ?? 'Lubricants',
+                    $sku,
+                    $unitPrice,
+                    $unitCost,
+                    $unitPrice,
+                    $reqStationId
+                ]);
+                $newId = $pdo->lastInsertId();
+
+                if ($newId) {
+                    try {
+                        $siStmt = $pdo->prepare("
+                            INSERT INTO station_inventory (station_id, product_id, stock_level, status, last_updated)
+                            VALUES (?, ?, 0, 'active', NOW())
+                        ");
+                        $siStmt->execute([$reqStationId, $newId]);
+                    } catch (PDOException $e) {}
+                }
+
+            } elseif ($reqType === 'service_type') {
+                $serviceName = $requestData['service_name'] ?? '';
+                $serviceKey  = strtolower(preg_replace('/[^a-z0-9]+/i', '_', $serviceName));
+                $serviceKey  = trim($serviceKey, '_') . '_' . time();
+                $suggestedPrice = isset($requestData['default_price']) ? floatval($requestData['default_price']) : (isset($requestData['suggested_price']) ? floatval($requestData['suggested_price']) : 0.00);
+
+                $sStmt = $pdo->prepare("
+                    INSERT INTO job_order_service_types
+                        (service_key, service_name, category, service_price, pricing_notes, sort_order, status, submitted_by, reviewed_by, active, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order),0)+1 FROM job_order_service_types j2), 'approved', ?, ?, 1, NOW(), NOW())
+                ");
+                $sStmt->execute([
+                    $serviceKey,
+                    $serviceName,
+                    $requestData['service_category'] ?? $requestData['category'] ?? 'Others',
+                    $suggestedPrice,
+                    $requestData['estimated_duration'] ?? null,
+                    $me['id'],
+                    $me['id']
+                ]);
+                $newId = $pdo->lastInsertId();
+
+            } elseif ($reqType === 'vehicle_type') {
+                $vehicleName = trim(($requestData['vehicle_brand'] ?? '') . ' ' . ($requestData['vehicle_model'] ?? ''));
+
+                $vStmt = $pdo->prepare("
+                    INSERT INTO vehicle_types
+                        (category, vehicle_name, status, submitted_by, reviewed_by, is_active, created_at, updated_at)
+                    VALUES (?, ?, 'approved', ?, ?, 1, NOW(), NOW())
+                ");
+                $vStmt->execute([
+                    $requestData['vehicle_type'] ?? 'Sedan',
+                    $vehicleName,
+                    $me['id'],
+                    $me['id']
+                ]);
+                $newId = $pdo->lastInsertId();
+            }
+
+            $pdo->commit();
+
+            if (function_exists('log_activity')) {
+                log_activity($pdo, $me['id'], "Admin Direct Master Data Add", "Category: {$category} | Request: {$requestNo}");
+            }
+
+            echo json_encode([
+                'success'       => true,
+                'auto_approved' => true,
+                'request_id'    => $requestId,
+                'request_no'    => $requestNo,
+                'category'      => $category,
+                'new_record_id' => $newId ?? null,
+                'message'       => "{$category} added and automatically approved successfully."
+            ]);
+            exit;
+        }
+
+        // ── STANDARD PENDING SUBMISSION FOR REGULAR STAFF ───────────────────
         $stmt = $pdo->prepare("
             INSERT INTO master_data_requests 
                 (category, source_module, requested_by, station_id, status, data_payload, created_at)
