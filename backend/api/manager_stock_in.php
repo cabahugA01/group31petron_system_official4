@@ -361,7 +361,7 @@ function approve_merchandise_stock_in(PDO $pdo, array $me, int $station_id, arra
         $role_name = (string)($me['role'] ?? 'manager');
         mark_deliveries_complete($pdo, $ids, $station_id, (int)$me['id'], $batch_id, $role_name);
         update_merchandise_po_status($pdo, $station_id, $po_key, $completed_status, (int)$me['id']);
-        notify_stock_in_users($pdo, $station_id, $staff_ids, 'Merchandise Stock-In Completed', "PO {$po_key} has been stocked in. Batch {$batch_id}.", 'admin_inventory_history.php?tab=stock_in');
+        notify_stock_in_users($pdo, $station_id, $staff_ids, 'Merchandise Stock-In Completed', "PO {$po_key} has been stocked in. Batch {$batch_id}.", 'merchandise');
         audit_stock_in($pdo, $me, 'Merchandise Stock-In', "Approved merchandise stock-in for {$po_key}; batch {$batch_id}; total qty {$total_received}.", 'deliveries_oversight', $ids[0] ?? null);
 
         if (function_exists('log_activity')) {
@@ -463,7 +463,7 @@ function approve_fuel_stock_in(PDO $pdo, array $me, int $station_id, array $inpu
 
         $role_name = (string)($me['role'] ?? 'manager');
         mark_deliveries_complete($pdo, $ids, $station_id, (int)$me['id'], $batch_id, $role_name);
-        notify_stock_in_users($pdo, $station_id, $staff_ids, 'Fuel Stock-In Completed', "Fuel PO {$po_key} has been stocked in. Batch {$batch_id}.", 'admin_inventory_history.php?tab=stock_in');
+        notify_stock_in_users($pdo, $station_id, $staff_ids, 'Fuel Stock-In Completed', "Fuel PO {$po_key} has been stocked in. Batch {$batch_id}.", 'fuel');
         audit_stock_in($pdo, $me, 'Fuel Stock-In', "Approved fuel stock-in for {$po_key}; batch {$batch_id}; total liters {$total_received}.", 'deliveries_oversight', $ids[0] ?? null);
 
         if (function_exists('log_activity')) {
@@ -1133,7 +1133,7 @@ function update_merchandise_po_status(PDO $pdo, int $station_id, string $po_key,
     }
 }
 
-function notify_stock_in_users(PDO $pdo, int $station_id, array $staff_ids, string $title, string $message, string $redirect_url): void
+function notify_stock_in_users(PDO $pdo, int $station_id, array $staff_ids, string $title, string $message, string $stock_type = 'fuel'): void
 {
     $user_ids = [];
     $stmt = $pdo->prepare("
@@ -1151,12 +1151,27 @@ function notify_stock_in_users(PDO $pdo, int $station_id, array $staff_ids, stri
         return;
     }
 
+    $in_ph = implode(',', array_fill(0, count($user_ids), '?'));
+    $role_stmt = $pdo->prepare("SELECT id, role FROM users WHERE id IN ($in_ph)");
+    $role_stmt->execute($user_ids);
+    $user_roles = $role_stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
+    $is_fuel = (stripos($stock_type, 'fuel') !== false || stripos($title, 'fuel') !== false);
+
     $stmt = $pdo->prepare("
         INSERT INTO notifications
             (user_id, type, title, message, event_type, severity, redirect_url, status, created_at)
         VALUES (?, 'success', ?, ?, 'stock_in', 'high', ?, 'unread', NOW())
     ");
     foreach ($user_ids as $user_id) {
+        $u_role = strtolower(trim($user_roles[$user_id] ?? 'staff'));
+        if (in_array($u_role, ['admin', 'superadmin'])) {
+            $redirect_url = $is_fuel ? 'admin_inventory_fuel.php' : 'admin_inventory_merchandise.php';
+        } elseif (in_array($u_role, ['manager', 'supervisor'])) {
+            $redirect_url = $is_fuel ? 'manager_inventory_fuel.php' : 'manager_inventory_merchandise.php';
+        } else {
+            $redirect_url = $is_fuel ? 'staff_inventory_fuel.php' : 'staff_inventory_merchandise.php';
+        }
         $stmt->execute([$user_id, $title, $message, $redirect_url]);
     }
 }
