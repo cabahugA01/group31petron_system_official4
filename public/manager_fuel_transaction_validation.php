@@ -539,12 +539,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
                     
-                    // Verify that beginning reading matches validated preceding shift ending reading
-                    $prev_ending = get_preceding_shift_validated_ending($pdo, $station_id, $tx['pump_id'], $tx['shift_period'], $tx_date_str);
-                    if (abs($beginning - $prev_ending) > 0.01) {
-                        throw new Exception("Invalid Beginning Reading: Adjusted Beginning Reading (" . number_format($beginning, 2) . ") must match the preceding shift's validated ending reading (" . number_format($prev_ending, 2) . ").");
-                    }
+                    // Note: Beginning reading mismatch is allowed for manager adjustments.
+                    // Managers may intentionally adjust beginning readings to correct errors
+                    // (e.g., forgotten calibration, wrong carry-over, etc.)
                 }
+                // end if ($tx['pump_id'] > 0)
 
                 // Perform calculations
                 $liters_sold = $ending - $beginning - $calibration;
