@@ -2877,8 +2877,11 @@ function showCustomAlert(message, type, callback) {
     if (!container) {
         container = document.createElement('div');
         container.id = 'rightToastContainer';
-        container.style.cssText = 'position:fixed;top:24px;right:24px;z-index:999999;display:flex;flex-direction:column;gap:10px;max-width:380px;width:calc(100% - 48px);pointer-events:none;';
+        container.style.cssText = 'position:fixed;top:85px;right:24px;z-index:2147483647;display:flex;flex-direction:column;gap:10px;max-width:400px;width:calc(100% - 48px);pointer-events:none;';
         document.body.appendChild(container);
+    } else {
+        container.style.top = '85px';
+        container.style.zIndex = '2147483647';
     }
 
     var toast = document.createElement('div');
@@ -2888,12 +2891,12 @@ function showCustomAlert(message, type, callback) {
         background: #ffffff;
         border-radius: 10px;
         padding: 14px 18px;
-        box-shadow: 0 12px 30px rgba(0, 47, 108, 0.15), 0 2px 8px rgba(0, 0, 0, 0.06);
+        box-shadow: 0 16px 36px rgba(0, 47, 108, 0.22), 0 4px 12px rgba(0, 0, 0, 0.08);
         display: flex;
         align-items: flex-start;
         gap: 12px;
         border: 1px solid #e2e8f0;
-        ${isError ? 'border-left: 5px solid #dc2626;' : ''}
+        ${isError ? 'border-left: 5px solid #dc2626;' : 'border-left: 5px solid #16a34a;'}
         transform: translateX(120%);
         opacity: 0;
         transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -2903,7 +2906,7 @@ function showCustomAlert(message, type, callback) {
     var iconBg = isError ? '#fee2e2' : '#dcfce7';
     var iconColor = isError ? '#dc2626' : '#16a34a';
     var iconClass = isError ? 'fa-exclamation-triangle' : 'fa-check-circle';
-    var titleText = isError ? 'Notice / Error' : 'Submitted to Admin';
+    var titleText = isError ? 'Notice / Error' : 'Action Successful';
 
     toast.innerHTML = `
         <div style="width:34px;height:34px;border-radius:50%;background:${iconBg};color:${iconColor};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;margin-top:1px;">
@@ -2923,7 +2926,7 @@ function showCustomAlert(message, type, callback) {
         toast.style.opacity = '1';
     }, 20);
 
-    var delay = (typeof callback === 'function') ? 1500 : 4000;
+    var delay = (typeof callback === 'function') ? 2200 : 4000;
     setTimeout(function() {
         toast.style.transform = 'translateX(120%)';
         toast.style.opacity = '0';
@@ -3172,8 +3175,8 @@ safeAddListener('addProductForm', 'submit', function(e) {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.success) {
+                closeAddProductModal();
                 showCustomAlert(data.message || 'Fuel product added successfully!', 'success', function() {
-                    closeAddProductModal();
                     location.reload();
                 });
             } else {
@@ -3205,8 +3208,8 @@ safeAddListener('editPriceForm', 'submit', function(e) {
     fetch('manager_set_prices_handler.php', { method: 'POST', body: fd })
         .then(r => r.json()).then(data => {
             if (data.success) {
+                closeEditPriceModal();
                 showCustomAlert(data.message || 'Fuel product updated!', 'success', function() {
-                    closeEditPriceModal();
                     location.reload();
                 });
             } else {
@@ -3477,9 +3480,9 @@ safeAddListener('rollbackPriceForm', 'submit', function(e) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
+            closeRollbackModal();
+            closeViewFuelModal();
             showCustomAlert('Price rolled back successfully!', 'success', function() {
-                closeRollbackModal();
-                closeViewFuelModal();
                 location.reload();
             });
         } else {
@@ -3527,9 +3530,9 @@ safeAddListener('restorePriceForm', 'submit', function(e) {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
+            closeRestorePriceModal();
+            closeViewFuelModal();
             showCustomAlert(data.message || 'Price restoration request submitted for Admin approval.', 'success', function() {
-                closeRestorePriceModal();
-                closeViewFuelModal();
                 location.reload();
             });
         } else {
@@ -3994,8 +3997,8 @@ safeAddListener('addMerchandiseForm', 'submit', function(e) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
+            closeAddMerchandiseModal();
             showCustomAlert('Product added successfully!', 'success', function() {
-                closeAddMerchandiseModal();
                 location.reload();
             });
         } else {
@@ -4049,8 +4052,8 @@ safeAddListener('editMerchPriceForm', 'submit', function(e) {
     fetch('manager_set_prices_handler.php', {method:'POST', body:fd})
         .then(r => r.json()).then(data => {
             if (data.success) {
+                closeEditMerchPriceModal();
                 showCustomAlert('Product updated successfully!', 'success', function() {
-                    closeEditMerchPriceModal();
                     location.reload();
                 });
             } else {
@@ -4339,8 +4342,8 @@ safeAddListener('addServiceForm', 'submit', function(e) {
     .then(function(r) { return r.json(); })
     .then(function(data) {
         if (data.success) {
+            closeAddServiceModal();
             showCustomAlert(data.message || 'Service added successfully!', 'success', function() {
-                closeAddServiceModal();
                 location.reload();
             });
         } else {
@@ -4471,8 +4474,8 @@ safeAddListener('editServiceForm', 'submit', function(e) {
     .then(function(r) { return r.json(); })
     .then(function(data) {
         if (data.success) {
+            closeEditServiceModal();
             showCustomAlert(data.message || 'Service updated successfully!', 'success', function() {
-                closeEditServiceModal();
                 location.reload();
             });
         } else {

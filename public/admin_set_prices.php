@@ -2614,8 +2614,11 @@ function showCustomAlert(message, type, callback) {
     if (!container) {
         container = document.createElement('div');
         container.id = 'adminToastContainer';
-        container.style.cssText = 'position:fixed;top:24px;right:24px;z-index:9999999;display:flex;flex-direction:column;gap:10px;max-width:400px;width:calc(100% - 48px);pointer-events:none;';
+        container.style.cssText = 'position:fixed;top:85px;right:24px;z-index:2147483647;display:flex;flex-direction:column;gap:10px;max-width:400px;width:calc(100% - 48px);pointer-events:none;';
         document.body.appendChild(container);
+    } else {
+        container.style.top = '85px';
+        container.style.zIndex = '2147483647';
     }
 
     var toast = document.createElement('div');
@@ -2634,7 +2637,7 @@ function showCustomAlert(message, type, callback) {
         'align-items:flex-start',
         'gap:14px',
         'border:1px solid #e2e8f0',
-        (isError ? 'border-left:5px solid ' + accentColor : ''),
+        'border-left:5px solid ' + accentColor,
         'transform:translateX(120%)',
         'opacity:0',
         'transition:all 0.35s cubic-bezier(0.16,1,0.3,1)',
@@ -2654,7 +2657,7 @@ function showCustomAlert(message, type, callback) {
     container.appendChild(toast);
     setTimeout(function() { toast.style.transform = 'translateX(0)'; toast.style.opacity = '1'; }, 20);
 
-    var delay = (typeof callback === 'function') ? 1600 : (isError || isWarning ? 6000 : 4500);
+    var delay = (typeof callback === 'function') ? 2200 : (isError || isWarning ? 6000 : 4500);
     setTimeout(function() {
         toast.style.transform = 'translateX(120%)';
         toast.style.opacity = '0';
@@ -4058,8 +4061,8 @@ safeAddListener('addProductForm', 'submit', function(e) {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.success) {
+                closeAddProductModal();
                 showCustomAlert(data.message || 'Fuel product added successfully!', 'success', function() {
-                    closeAddProductModal();
                     location.reload();
                 });
             } else {
@@ -4175,8 +4178,8 @@ safeAddListener('addMerchandiseForm', 'submit', function(e) {
     .then(function(response) { return response.json(); })
     .then(function(data) {
         if (data.success) {
+            closeAddMerchandiseModal();
             showCustomAlert('Product added successfully!', 'success', function() {
-                closeAddMerchandiseModal();
                 location.reload();
             });
         } else {
@@ -4368,8 +4371,8 @@ safeAddListener('addServiceForm', 'submit', function(e) {
     .then(function(r) { return r.json(); })
     .then(function(data) {
         if (data.success) {
+            closeAddServiceModal();
             showCustomAlert(data.message || 'Service added successfully!', 'success', function() {
-                closeAddServiceModal();
                 location.reload();
             });
         } else {
