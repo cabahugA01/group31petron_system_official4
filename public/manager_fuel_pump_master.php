@@ -770,13 +770,102 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .badge-st.bg-gray::before { background: #64748b; }
 
 /* Modal Window styles */
-.modal { display: none; position: fixed; inset: 0; z-index: 9999; background: rgba(15,23,42,0.55); backdrop-filter: blur(4px); align-items: center; justify-content: center; }
-.modal-content { background: #fff; border-radius: 12px; width: 92%; max-width: 560px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); overflow: hidden; animation: modalIn 0.2s ease; }
-@keyframes modalIn { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
-.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
-.modal-header h3 { margin: 0; font-size: 16px; color: #00264D; font-weight: 800; text-transform: uppercase; }
-.modal-body { padding: 22px; }
-.modal-footer { display: flex; gap: 8px; justify-content: flex-end; padding: 14px 22px; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+.modal { 
+    display: none; 
+    position: fixed !important; 
+    top: 70px !important; 
+    left: 0 !important; 
+    right: 0 !important; 
+    bottom: 40px !important; 
+    z-index: 9999 !important; 
+    background: rgba(15, 23, 42, 0.55) !important; 
+    backdrop-filter: blur(4px) !important; 
+    -webkit-backdrop-filter: blur(4px) !important; 
+    align-items: center !important; 
+    justify-content: center !important; 
+    overflow-y: auto !important; 
+    overflow-x: hidden !important; 
+    padding: 35px 20px 25px 20px !important; 
+    box-sizing: border-box !important; 
+}
+
+@media (max-width: 991px) {
+    .modal { 
+        top: 60px !important; 
+        bottom: 0 !important; 
+        padding: 20px 12px !important; 
+    }
+}
+
+.modal.show,
+.modal[style*="display: flex"],
+.modal[style*="display: block"],
+.modal[style*="display:flex"],
+.modal[style*="display:block"] {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.modal-content { 
+    background: #fff; 
+    border-radius: 14px; 
+    width: 92%; 
+    max-width: 580px; 
+    max-height: calc(100vh - 170px) !important; 
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.35); 
+    overflow: hidden !important; 
+    animation: modalIn 0.2s ease; 
+    box-sizing: border-box !important; 
+    margin: auto !important; 
+    display: flex; 
+    flex-direction: column; 
+}
+
+@keyframes modalIn { 
+    from { opacity: 0; transform: translateY(-12px); } 
+    to { opacity: 1; transform: none; } 
+}
+
+.modal-header { 
+    display: flex; 
+    align-items: center; 
+    justify-content: space-between; 
+    padding: 18px 24px; 
+    background: #f8fafc; 
+    border-bottom: 1.5px solid #e2e8f0; 
+    box-sizing: border-box; 
+    flex-shrink: 0; 
+}
+
+.modal-header h3 { 
+    margin: 0; 
+    font-size: 16px !important; 
+    color: #00264D; 
+    font-weight: 800 !important; 
+    text-transform: uppercase; 
+    letter-spacing: 0.3px; 
+}
+
+.modal-body { 
+    padding: 22px 24px; 
+    overflow-y: auto !important; 
+    overflow-x: hidden !important; 
+    box-sizing: border-box !important; 
+    flex: 1 1 auto; 
+    min-height: 0; 
+}
+
+.modal-footer { 
+    display: flex; 
+    gap: 8px; 
+    justify-content: flex-end; 
+    padding: 14px 24px; 
+    border-top: 1.5px solid #e2e8f0; 
+    background: #f8fafc; 
+    box-sizing: border-box; 
+    flex-shrink: 0; 
+}
 
 .modal-fg { display: flex; flex-direction: column; gap: 5px; margin-bottom: 16px; }
 .modal-fg label { font-size: 13px; font-weight: 800; color: #002F70; text-transform: uppercase; }
@@ -1001,7 +1090,6 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
             
             <div class="modal-header">
                 <h3>Adjust Calibration & Readings</h3>
-                <button type="button" onclick="closeModal('adjustModal')" style="border:none;background:none;font-size:20px;cursor:pointer;">&times;</button>
             </div>
             
             <div class="modal-body">
@@ -1061,7 +1149,6 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
             
             <div class="modal-header">
                 <h3>Reject Reading Entry</h3>
-                <button type="button" onclick="closeModal('rejectModal')" style="border:none;background:none;font-size:20px;cursor:pointer;">&times;</button>
             </div>
             
             <div class="modal-body">
