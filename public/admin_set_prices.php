@@ -4701,7 +4701,7 @@ safeAddListener('addServiceForm', 'submit', function(e) {
                     <input type="text" id="newUgtNo" list="ugtSuggestionsList" maxlength="20" required
                            style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;background:#fff;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
-                           placeholder="e.g. UGT #<?= $next_ugt_num ?> (Type or select)"
+                           placeholder="e.g. UGT #<?= $next_ugt_num ?>"
                            autocomplete="off">
                     <datalist id="ugtSuggestionsList">
                         <?php
@@ -4719,15 +4719,6 @@ safeAddListener('addServiceForm', 'submit', function(e) {
                             <option value="UGT #<?= $i ?>">UGT #<?= $i ?><?= $i === $next_ugt_num ? ' (Next Available)' : '' ?></option>
                         <?php endfor; ?>
                     </datalist>
-                    <div style="margin-top:5px;font-size:12px;color:#64748b;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                        <span>Suggested:</span>
-                        <button type="button" onclick="document.getElementById('newUgtNo').value='UGT #<?= $next_ugt_num ?>'"
-                                style="background:#eff6ff;color:#002F6C;border:1px solid #bfdbfe;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700;cursor:pointer;">
-                            UGT #<?= $next_ugt_num ?>
-                        </button>
-                        <span style="color:#94a3b8;">•</span>
-                        <span style="color:#475569;">Pwede nimo i-type ang bisan unsang UGT number.</span>
-                    </div>
                 </div>
             </div>
 
