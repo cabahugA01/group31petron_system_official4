@@ -340,13 +340,14 @@ try {
         global $last_readings_by_pump;
 
         try {
-            // Fetch latest present_reading (ending meter) for each pump from COMPLETED/FINALIZED closings only
+            // Fetch latest present_reading (ending meter) for each pump from any valid/completed submission
             $latest_stmt = $pdo->prepare("
                 SELECT ft.id, COALESCE(fp.pump_number, ft.fuel_type) AS pump_label, ft.fuel_type, ft.present_reading
                 FROM fuel_transactions ft
                 LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
                 WHERE ft.station_id = ?
-                  AND LOWER(COALESCE(ft.status, '')) IN ('closing_completed', 'completed', 'reported', 'approved', 'verified', 'adjusted', 'saved')
+                  AND LOWER(COALESCE(ft.status, '')) NOT IN ('voided', 'rejected', 'cancelled', 'canceled')
+                  AND ft.present_reading > 0
                 ORDER BY ft.transaction_date DESC, ft.id DESC
             ");
             $latest_stmt->execute([$station_id]);
@@ -398,21 +399,43 @@ if (isset($__fetch_prev_readings) && is_callable($__fetch_prev_readings)) {
 $today_date = date('Y-m-d');
 $current_shift_status = 'DRAFT';
 $today_saved_readings = [];
+$is_closing_completed = false;
 
 try {
+    $shift_like_val = '%' . strtolower($fuel_shift_key) . '%';
     $stmt_cstat = $pdo->prepare("
         SELECT status FROM fuel_sales_closing
-        WHERE station_id = ? AND report_date = ? AND (shift = ? OR shift_period = ?)
+        WHERE station_id = ? AND report_date = ? AND (shift = ? OR shift_period = ? OR LOWER(shift) LIKE ?)
         ORDER BY id DESC LIMIT 1
     ");
-    $stmt_cstat->execute([$station_id, $today_date, $fuel_shift_name, $fuel_shift_key]);
+    $stmt_cstat->execute([$station_id, $today_date, $fuel_shift_name, $fuel_shift_key, $shift_like_val]);
     $found_cstat = $stmt_cstat->fetchColumn();
     if ($found_cstat) {
         $current_shift_status = strtoupper(trim($found_cstat));
     }
 } catch (Exception $e) {}
 
-if ($current_shift_status === 'DRAFT' || empty($current_shift_status)) {
+// Check if closing is already completed for today's shift (either in DB or via query flag)
+if (in_array($current_shift_status, ['CLOSING_COMPLETED', 'SAVED', 'REPORTED']) || isset($_GET['closing_saved'])) {
+    $is_closing_completed = true;
+    $current_shift_status = 'CLOSING_COMPLETED';
+} else {
+    try {
+        $stmt_chk_done = $pdo->prepare("
+            SELECT COUNT(*) FROM fuel_sales_closing
+            WHERE station_id = ? AND report_date = ?
+              AND (shift = ? OR shift_period = ? OR LOWER(shift) LIKE ?)
+              AND status = 'CLOSING_COMPLETED'
+        ");
+        $stmt_chk_done->execute([$station_id, $today_date, $fuel_shift_name, $fuel_shift_key, '%' . strtolower($fuel_shift_key) . '%']);
+        if ((int)$stmt_chk_done->fetchColumn() > 0) {
+            $is_closing_completed = true;
+            $current_shift_status = 'CLOSING_COMPLETED';
+        }
+    } catch (Exception $e) {}
+}
+
+if (!$is_closing_completed && ($current_shift_status === 'DRAFT' || empty($current_shift_status))) {
     try {
         $stmt_txstat = $pdo->prepare("
             SELECT status FROM fuel_transactions
@@ -436,10 +459,11 @@ try {
         LEFT JOIN fuel_pumps fp ON ft.pump_id = fp.id
         WHERE ft.station_id = ?
           AND DATE(ft.transaction_date) = ?
-          AND ft.shift_period = ?
+          AND (ft.shift_period = ? OR ft.shift_name = ?)
           AND LOWER(COALESCE(ft.status,'')) NOT IN ('rejected','voided','cancelled','canceled')
+        ORDER BY ft.id ASC
     ");
-    $st_readings->execute([$station_id, $today_date, $fuel_shift_key]);
+    $st_readings->execute([$station_id, $today_date, $fuel_shift_key, $fuel_shift_name]);
     $saved_rows = $st_readings->fetchAll(PDO::FETCH_ASSOC);
     foreach ($saved_rows as $sr) {
         $lbl_u = strtoupper(trim($sr['pump_label'] ?? ''));
@@ -450,8 +474,9 @@ try {
 } catch (Exception $e) {}
 
 // Check if current shift has submitted readings awaiting closing input
+// The Fuel Sales Closing button only appears when readings have been submitted AND closing is not completed!
 $has_submitted_readings_unclosed = false;
-if (!in_array($current_shift_status, ['CLOSING_COMPLETED', 'SAVED', 'REPORTED'])) {
+if (!$is_closing_completed) {
     foreach ($today_saved_readings as $sr) {
         if ((float)($sr['present_reading'] ?? 0) > 0) {
             $has_submitted_readings_unclosed = true;
@@ -4468,21 +4493,21 @@ setTimeout(function() {
                                 $lbl_key   = strtoupper(trim($display_name));
                                 $saved_row = $today_saved_readings[$lbl_key] ?? null;
 
-                                if (in_array($current_shift_status, ['CLOSING_COMPLETED', 'SAVED', 'REPORTED'])) {
-                                    // Shift closing completed! Use completed present_reading as new beginning reading, reset ending inputs
-                                    $pump_prev_reading = ($saved_row && (float)$saved_row['present_reading'] > 0)
-                                        ? (float)$saved_row['present_reading']
-                                        : (isset($last_readings_by_pump[$lbl_key]) ? (float)$last_readings_by_pump[$lbl_key] : null);
-                                    $saved_ending_val = '';
-                                    $saved_calib_val  = '0.00';
+                                // Determine Beginning reading:
+                                // If a reading was already submitted for this pump, its Ending reading (present_reading) becomes the new Beginning reading!
+                                // Otherwise, fetch the latest recorded present_reading from previous shifts/transactions.
+                                if ($saved_row && (float)($saved_row['present_reading'] ?? 0) > 0) {
+                                    $pump_prev_reading = (float)$saved_row['present_reading'];
+                                } elseif (isset($last_readings_by_pump[$lbl_key]) && (float)$last_readings_by_pump[$lbl_key] > 0) {
+                                    $pump_prev_reading = (float)$last_readings_by_pump[$lbl_key];
                                 } else {
-                                    $pump_prev_reading = ($saved_row && isset($saved_row['previous_reading']) && (float)$saved_row['previous_reading'] > 0)
-                                        ? (float)$saved_row['previous_reading']
-                                        : (isset($last_readings_by_pump[$lbl_key]) ? (float)$last_readings_by_pump[$lbl_key] : null);
-                                    $saved_ending_val = ($saved_row && (float)$saved_row['present_reading'] > 0) ? number_format((float)$saved_row['present_reading'], 2, '.', ',') : '';
-                                    $saved_calib_val  = ($saved_row && isset($saved_row['calibration'])) ? number_format((float)$saved_row['calibration'], 2, '.', ',') : '0.00';
+                                    $pump_prev_reading = 0.00;
                                 }
-                                $has_prev_reading = ($pump_prev_reading !== null && (float)$pump_prev_reading > 0);
+
+                                // Input fields are ALWAYS empty and ready for encoding after submission or closing:
+                                $saved_ending_val = '';
+                                $saved_calib_val  = '0.00';
+                                $has_prev_reading = true;
                     ?>
                     <tr id="fuelRow_<?= $ft_id ?>" style="border-bottom:1px solid #e2e8f0;">
                         <!-- NAME Column (plain text, no icon) -->
@@ -4490,35 +4515,17 @@ setTimeout(function() {
                             <span style="font-weight:700;font-size:12.5px;color:#002F70;"><?= $display_name ?></span>
                         </td>
 
-                        <!-- BEGINNING Column — Auto-fetched (Read-only) if previous record exists, or Manual Input (Editable) for first shift -->
+                        <!-- BEGINNING Column — Auto-carried over from previous Ending Reading (Strictly Read-Only) -->
                         <td style="border:1px solid #e2e8f0;padding:6px 6px;">
-                            <?php if ($has_prev_reading): ?>
-                                <input type="text"
-                                       form="fuelForm_<?= $ft_id ?>"
-                                       name="beginning_reading"
-                                       id="beginning_<?= $ft_id ?>"
-                                       style="width:100%;box-sizing:border-box;padding:7px 8px;font-size:12.5px;height:34px;border:1.5px solid #86efac;border-radius:6px;text-align:right;background:#f0fdf4;font-weight:700;font-family:monospace;color:#15803d;cursor:not-allowed;"
-                                       value="<?= number_format((float)$pump_prev_reading, 2, '.', ',') ?>"
-                                       readonly
-                                       title="Auto-fetched from previous meter reading (<?= number_format((float)$pump_prev_reading, 2, '.', ',') ?>). Read-only."
-                                       data-pump="<?= htmlspecialchars($display_name) ?>">
-                            <?php else: ?>
-                                <!-- Initial meter reading / first shift — Editable manual input -->
-                                <input type="text"
-                                       form="fuelForm_<?= $ft_id ?>"
-                                       name="beginning_reading"
-                                       id="beginning_<?= $ft_id ?>"
-                                       style="width:100%;box-sizing:border-box;padding:7px 8px;font-size:12.5px;height:34px;border:1.5px solid #3b82f6;border-radius:6px;text-align:right;background:#ffffff;font-weight:700;font-family:monospace;color:#1e293b;"
-                                       value=""
-                                       placeholder="0.00"
-                                       autocomplete="off"
-                                       oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
-                                       onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')"
-                                       onkeydown="handleMeterKeydown(event, this)"
-                                       onfocus="this.select()"
-                                       title="First shift / No previous record: Enter beginning meter reading manually."
-                                       data-pump="<?= htmlspecialchars($display_name) ?>">
-                            <?php endif; ?>
+                            <input type="text"
+                                   form="fuelForm_<?= $ft_id ?>"
+                                   name="beginning_reading"
+                                   id="beginning_<?= $ft_id ?>"
+                                   style="width:100%;box-sizing:border-box;padding:7px 8px;font-size:12.5px;height:34px;border:1.5px solid #86efac;border-radius:6px;text-align:right;background:#f0fdf4;font-weight:700;font-family:monospace;color:#15803d;cursor:not-allowed;"
+                                   value="<?= number_format((float)$pump_prev_reading, 2, '.', ',') ?>"
+                                   readonly
+                                   title="Beginning reading: <?= number_format((float)$pump_prev_reading, 2, '.', ',') ?> (Auto-carried over from latest Ending Reading. Read-only)."
+                                   data-pump="<?= htmlspecialchars($display_name) ?>">
                         </td>
 
                         <!-- ENDING Column * -->
@@ -4778,8 +4785,9 @@ setTimeout(function() {
                         class="fet-reset-btn">
                     <i class="fas fa-undo"></i> Reset All
                 </button>
-                <?php if (!empty($has_submitted_readings_unclosed)): ?>
+                <?php if (!empty($has_submitted_readings_unclosed) && empty($is_closing_completed)): ?>
                 <a href="staff_fuel_sales_closing.php?date=<?= date('Y-m-d') ?>&shift=<?= urlencode($fuel_shift_name) ?>"
+                   id="fuelSalesClosingBtn"
                    style="background:#002F70; color:#ffffff; padding:10px 20px; border:none; border-radius:6px; font-weight:700; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; text-decoration:none; box-shadow:0 2px 6px rgba(0,47,112,0.25); transition:all 0.2s;"
                    onmouseover="this.style.background='#001f4d'"
                    onmouseout="this.style.background='#002F70'"
