@@ -139,7 +139,7 @@ function is_pending_validation_status($status_str) {
     if ($s === 'readings_submitted' || $s === 'draft' || empty($s)) {
         return false;
     }
-    return str_contains($s, 'pending') || in_array($s, ['closing_completed', 'submitted']);
+    return str_contains($s, 'pending') || in_array($s, ['closing_completed', 'submitted', 'adjusted']);
 }
 
 // ─── Filters & Inputs ──────────────────────────────────────────
@@ -359,20 +359,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (in_array($_POST['action'] ?? '', [
             ");
             $up->execute([$prev_reading, $present_reading, $liters_sold, $total_amount, $me['id'], $manager_remarks ?: null, $tx['id']]);
 
-            // Deduct inventory
-            $base_fuel_type = preg_replace('/\s*-\s*\d+$/i', '', trim($tx['fuel_type']));
-            $up_stock = $pdo->prepare("
-                UPDATE fuel_inventory 
-                SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
-                    current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
-                    last_updated   = NOW()
-                WHERE station_id = ? 
-                  AND (
-                      LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                   OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                  )
-            ");
-            $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type'], $base_fuel_type]);
+            // Deduct inventory only if not already deducted during adjustment
+            $was_adjusted = (strtolower(trim($tx['status'] ?? '')) === 'adjusted');
+            if (!$was_adjusted) {
+                $base_fuel_type = preg_replace('/\s*-\s*\d+$/i', '', trim($tx['fuel_type']));
+                $up_stock = $pdo->prepare("
+                    UPDATE fuel_inventory 
+                    SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
+                        current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
+                        last_updated   = NOW()
+                    WHERE station_id = ? 
+                      AND (
+                          LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                       OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                      )
+                ");
+                $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type'], $base_fuel_type]);
+            }
 
             log_activity($pdo, $me['id'], 'Fuel Reading Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | {$liters_sold} L");
             $validated_count++;
@@ -445,22 +448,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $up = $pdo->prepare("UPDATE fuel_transactions SET previous_reading = ?, present_reading = ?, liters_sold = ?, total_amount = ?, status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
             $up->execute([$prev_reading, $present_reading, $liters_sold, $total_amount, $me['id'], $remarks ?: null, $tx_id]);
 
-            // Deduct stock from fuel_inventory (matching exact fuel_type or base fuel_type without pump suffix)
-            $base_fuel_type = preg_replace('/\s*-\s*\d+$/i', '', trim($tx['fuel_type']));
-            $up_stock = $pdo->prepare("UPDATE fuel_inventory 
-                                       SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
-                                           current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
-                                           last_updated   = NOW()
-                                       WHERE station_id = ? 
-                                         AND (
-                                             LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                                          OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                                         )");
-            $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type'], $base_fuel_type]);
+            // Deduct stock from fuel_inventory only if not already deducted during adjustment
+            $was_adjusted = (strtolower(trim($tx['status'] ?? '')) === 'adjusted');
+            if (!$was_adjusted) {
+                $base_fuel_type = preg_replace('/\s*-\s*\d+$/i', '', trim($tx['fuel_type']));
+                $up_stock = $pdo->prepare("UPDATE fuel_inventory 
+                                           SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
+                                               current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
+                                               last_updated   = NOW()
+                                           WHERE station_id = ? 
+                                             AND (
+                                                 LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                                              OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+                                             )");
+                $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type'], $base_fuel_type]);
 
-            // Safety check: ensure the fuel type was found in inventory
-            if ($up_stock->rowCount() === 0) {
-                error_log("FUEL INVENTORY WARNING: No fuel_inventory row matched fuel_type='{$tx['fuel_type']}' station_id={$station_id} for TXN {$tx['transaction_id']}");
+                // Safety check: ensure the fuel type was found in inventory
+                if ($up_stock->rowCount() === 0) {
+                    error_log("FUEL INVENTORY WARNING: No fuel_inventory row matched fuel_type='{$tx['fuel_type']}' station_id={$station_id} for TXN {$tx['transaction_id']}");
+                }
             }
 
             // Log activity
@@ -733,14 +739,13 @@ $total_sales_today = 0.0;
 
 try {
     // 1. Pending Transactions (Total overall currently awaiting manager validation)
-    // Only CLOSING_COMPLETED = fuel sales closing done, ready for manager
-    // READINGS_SUBMITTED = staff not yet done with closing, do NOT show to manager
-    $sp = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND (LOWER(status) LIKE '%pending%' OR LOWER(status) IN ('closing_completed', 'submitted'))");
+    // CLOSING_COMPLETED and ADJUSTED transactions are awaiting manager validation/approval
+    $sp = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND (LOWER(status) LIKE '%pending%' OR LOWER(status) IN ('closing_completed', 'submitted', 'adjusted'))");
     $sp->execute([$station_id]);
     $pending_count = (int)$sp->fetchColumn();
 
     // 2. Validated Transactions (Filtered by date range)
-    $sv = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND LOWER(status) IN ('verified', 'approved', 'adjusted') AND DATE(transaction_date) BETWEEN ? AND ?");
+    $sv = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND LOWER(status) IN ('verified', 'approved') AND DATE(transaction_date) BETWEEN ? AND ?");
     $sv->execute([$station_id, $date_from, $date_to]);
     $validated_count = (int)$sv->fetchColumn();
 
@@ -796,8 +801,8 @@ if ($fuel_type_filter !== '') {
 // Status filter
 if ($status_filter !== 'all') {
     if ($status_filter === 'pending') {
-        // Only show CLOSING_COMPLETED (fuel sales closing done) - NOT readings_submitted (closing not yet done)
-        $where[] = "(LOWER(ft.status) LIKE '%pending%' OR LOWER(ft.status) IN ('closing_completed', 'submitted'))";
+        // Show pending closing and adjusted transactions awaiting manager's final approval
+        $where[] = "(LOWER(ft.status) LIKE '%pending%' OR LOWER(ft.status) IN ('closing_completed', 'submitted', 'adjusted'))";
     } elseif ($status_filter === 'validated') {
         $where[] = "LOWER(ft.status) IN ('verified', 'approved')";
     } elseif ($status_filter === 'adjusted') {
@@ -867,9 +872,9 @@ try {
         $st = strtolower(trim($tx['status'] ?? ''));
         $total_liters_today += (float)($tx['liters_sold'] ?? 0);
         $total_sales_today += (float)($tx['total_amount'] ?? 0);
-        if (str_contains($st, 'pending')) {
+        if (str_contains($st, 'pending') || in_array($st, ['closing_completed', 'submitted', 'adjusted'])) {
             $pending_count++;
-        } elseif (in_array($st, ['verified', 'approved', 'adjusted', 'validated'])) {
+        } elseif (in_array($st, ['verified', 'approved', 'validated'])) {
             $validated_count++;
         } elseif ($st === 'rejected') {
             $rejected_count++;
@@ -3416,21 +3421,14 @@ async function confirmBatchAdjust() {
         }
     }
     
-    // Build redirect URL: keep existing params but switch status_filter to 'adjusted'
-    const redirectUrl = (() => {
-        const url = new URL(window.location.href);
-        url.searchParams.set('status_filter', 'adjusted');
-        return url.toString();
-    })();
-
     if (errorCount === 0) {
         sessionStorage.setItem('petron_post_reload_toast_msg', `${successCount} transaction(s) adjusted successfully.`);
         sessionStorage.setItem('petron_post_reload_toast_type', 'info');
-        window.location.href = redirectUrl;
+        location.reload();
     } else {
         sessionStorage.setItem('petron_post_reload_toast_msg', `Adjusted with ${errorCount} error(s): ` + errors.join(', '));
         sessionStorage.setItem('petron_post_reload_toast_type', 'error');
-        window.location.href = redirectUrl;
+        location.reload();
     }
 }
 
