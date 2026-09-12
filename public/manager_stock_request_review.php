@@ -3120,7 +3120,7 @@ function addDirectMerchRow() {
             <input type="number" step="0.01" min="0.01" name="unit_costs[]" oninput="calcDirectMerchTotal()" onchange="calcDirectMerchTotal()" onkeyup="calcDirectMerchTotal()" class="direct-merch-cost-input" style="width: 100%; padding: 7px 8px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 600; box-sizing: border-box;" placeholder="0.00" required>
         </td>
         <td style="padding: 10px 12px; text-align: center;">
-            <input type="number" step="1" min="1" name="quantities[]" value="1" oninput="calcDirectMerchTotal()" onchange="calcDirectMerchTotal()" onkeyup="calcDirectMerchTotal()" class="direct-merch-qty-input" style="width: 100%; padding: 7px 8px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: center; font-weight: 700; color: #002F6C; box-sizing: border-box;" required>
+            <input type="number" step="1" min="1" name="quantities[]" value="" oninput="calcDirectMerchTotal()" onchange="calcDirectMerchTotal()" onkeyup="calcDirectMerchTotal()" class="direct-merch-qty-input" placeholder="0" style="width: 100%; padding: 7px 8px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: center; font-weight: 700; color: #002F6C; box-sizing: border-box;" required>
         </td>
         <td style="padding: 10px 18px 10px 8px; text-align: right; font-weight: 700; color: #002F6C; font-family: monospace;" class="direct-merch-line-total">
             ₱ 0.00
