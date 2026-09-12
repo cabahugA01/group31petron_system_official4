@@ -1883,14 +1883,17 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 <!-- View Fuel Details Modal (Matches Add Fuel Product Modal Centering & Dimensions Exactly) -->
-<div id="viewFuelModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;overflow-y:auto;">
+<div id="viewFuelModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;overflow:hidden;">
     <div style="background:#fff;border-radius:12px;width:94%;max-width:1000px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:0 auto;overflow:hidden;max-height:calc(100% - 20px);display:flex;flex-direction:column;">
         <!-- Header -->
-        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:flex-start;flex-shrink:0;">
-            <h3 style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;letter-spacing:0.3px;">
+        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <h3 style="margin:0;font-size:16.5px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;letter-spacing:0.3px;">
                 <i class="fas fa-gas-pump" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:18px;"></i>
                 <span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;">FUEL PRODUCT SPECIFICATION &amp; HISTORY</span>
             </h3>
+            <button type="button" onclick="closeViewFuelModal()" title="Close" style="background:rgba(255,255,255,0.18) !important;border:none !important;color:#ffffff !important;width:32px;height:32px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;transition:background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.35)'" onmouseout="this.style.background='rgba(255,255,255,0.18)'">
+                <i class="fas fa-times" style="color:#ffffff !important;"></i>
+            </button>
         </div>
 
         <!-- Body Content -->

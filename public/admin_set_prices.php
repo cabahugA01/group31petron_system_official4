@@ -1291,14 +1291,41 @@ table.pricing-table tbody tr:hover {
 /* ── Modal Layout Centering Fix (Excluding Sidebar Navigation from Centering) ── */
 .admin-layout-modal {
     position: fixed !important;
-    top: 0 !important;
+    top: 70px !important;
     bottom: 0 !important;
     left: 0 !important;
     right: 0 !important;
     width: 100% !important;
-    height: 100% !important;
+    height: calc(100vh - 70px) !important;
     box-sizing: border-box !important;
     z-index: 9999 !important;
+    overflow: hidden !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 20px !important;
+}
+
+.admin-modal-close-x {
+    background: rgba(255, 255, 255, 0.18) !important;
+    border: none !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 15px !important;
+    box-shadow: none !important;
+    transition: background 0.15s ease !important;
+}
+.admin-modal-close-x:hover {
+    background: rgba(255, 255, 255, 0.35) !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    border: none !important;
 }
 
 @media (min-width: 992px) {
@@ -2325,13 +2352,16 @@ table.pricing-table tbody tr:hover {
 </div>
 
 <!-- VIEW ADMIN SERVICE DETAILS MODAL -->
-<div id="viewAdminServiceModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:flex-start;justify-content:center;padding:85px 20px 70px 20px;box-sizing:border-box;overflow-y:auto;">
-    <div style="background:#fff;border-radius:12px;width:92%;max-width:680px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:0 auto;overflow:hidden;max-height:calc(100vh - 155px);display:flex;flex-direction:column;">
-        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;flex-shrink:0;">
+<div id="viewAdminServiceModal" class="admin-layout-modal" style="display:none;position:fixed;top:70px;bottom:0;left:250px;width:calc(100% - 250px);height:calc(100vh - 70px);background:rgba(15,23,42,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;overflow:hidden;">
+    <div style="background:#fff;border-radius:12px;width:92%;max-width:680px;box-shadow:0 20px 50px rgba(0,0,0,0.35);margin:auto;overflow:hidden;height:min(86vh, 700px);max-height:calc(100vh - 110px);display:flex;flex-direction:column;">
+        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
             <h3 style="margin:0;font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
                 <i class="fas fa-wrench" style="color:#fff;font-size:16px;"></i>
                 <span id="adm_vs_title" style="color:#fff;">SERVICE SPECIFICATION &amp; DETAILS</span>
             </h3>
+            <button type="button" class="admin-modal-close-x" onclick="closeAdminViewServiceModal()" title="Close">
+                <i class="fas fa-times"></i>
+            </button>
         </div>
         <div style="padding:22px 24px;overflow-y:auto;overflow-x:hidden;flex:1 1 auto;background:#fff;box-sizing:border-box;">
             <!-- Overview Card -->
@@ -2439,13 +2469,16 @@ table.pricing-table tbody tr:hover {
 </div>
 
 <!-- VIEW ADMIN MERCHANDISE DETAILS MODAL -->
-<div id="viewAdminMerchModal" class="admin-layout-modal" style="display:none;position:fixed;top:0;left:250px;width:calc(100% - 250px);background:rgba(0,0,0,.65);z-index:9999;align-items:flex-start;justify-content:center;padding:75px 20px 60px 20px;box-sizing:border-box;overflow-y:auto;">
-    <div style="background:#fff;border-radius:12px;width:96%;max-width:1100px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:0 auto;overflow:hidden;max-height:calc(100vh - 110px);display:flex;flex-direction:column;">
-        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;flex-shrink:0;">
-            <h3 style="margin:0;font-size:17px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
-                <i class="fas fa-box" style="color:#fff;font-size:18px;"></i>
+<div id="viewAdminMerchModal" class="admin-layout-modal" style="display:none;position:fixed;top:70px;bottom:0;left:250px;width:calc(100% - 250px);height:calc(100vh - 70px);background:rgba(15,23,42,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;overflow:hidden;">
+    <div style="background:#fff;border-radius:12px;width:96%;max-width:1050px;box-shadow:0 20px 50px rgba(0,0,0,0.35);margin:auto;overflow:hidden;height:min(86vh, 760px);max-height:calc(100vh - 110px);display:flex;flex-direction:column;">
+        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <h3 style="margin:0;font-size:16.5px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-box" style="color:#fff;font-size:17px;"></i>
                 <span id="adm_vm_title" style="color:#fff;">MERCHANDISE SPECIFICATION &amp; HISTORY</span>
             </h3>
+            <button type="button" class="admin-modal-close-x" onclick="closeAdminViewMerchModal()" title="Close">
+                <i class="fas fa-times"></i>
+            </button>
         </div>
         <div style="padding:20px 24px;overflow-y:auto;overflow-x:hidden;flex:1 1 auto;background:#fff;min-height:0;box-sizing:border-box;">
             <!-- Overview -->
@@ -3388,8 +3421,12 @@ function filterAdminFuelByCard(type) {
 // ── Admin View Fuel Modal ──────────────────────────────────────────────────
 function openViewFuelModalAdmin(id) {
     var contentEl = document.getElementById('viewFuelModalAdminContent');
-    contentEl.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:28px;"></i><br><br>Loading fuel product specifications & history...</div>';
-    document.getElementById('viewFuelModalAdmin').style.display = 'flex';
+    if (contentEl) {
+        contentEl.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:28px;"></i><br><br>Loading fuel product specifications & history...</div>';
+        contentEl.scrollTop = 0;
+    }
+    var modal = document.getElementById('viewFuelModalAdmin');
+    if (modal) modal.style.display = 'flex';
 
     fetch('admin_set_prices_handler.php?action=get_fuel_details_admin&id=' + id)
         .then(function(r) {
@@ -3637,6 +3674,7 @@ function openViewFuelModalAdmin(id) {
                     </div>
                 </div>
             `;
+            contentEl.scrollTop = 0;
         })
         .catch(function(err) {
             contentEl.innerHTML = '<div style="color:#dc2626;text-align:center;padding:30px;"><i class="fas fa-exclamation-triangle" style="font-size:24px;display:block;margin-bottom:10px;"></i>Could not load fuel details.<br><small style="color:#94a3b8;font-size:14px;margin-top:6px;display:block;">' + (err.message || err) + '</small></div>';
@@ -4547,20 +4585,23 @@ safeAddListener('addServiceForm', 'submit', function(e) {
 </script>
 
 <!-- Admin View Fuel Product & History Modal -->
-<div id="viewFuelModalAdmin" class="admin-layout-modal" style="display:none;position:fixed;top:0;left:250px;width:calc(100% - 250px);background:rgba(0,0,0,.65);z-index:9999;align-items:flex-start;justify-content:center;padding:75px 20px 60px 20px;box-sizing:border-box;overflow-y:auto;">
-    <div style="background:#fff;border-radius:12px;width:96%;max-width:1100px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:0 auto;overflow:hidden;max-height:calc(100vh - 110px);display:flex;flex-direction:column;">
-        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:flex-start;flex-shrink:0;">
-            <h3 style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;">
-                <i class="fas fa-gas-pump" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:18px;"></i>
+<div id="viewFuelModalAdmin" class="admin-layout-modal" style="display:none;position:fixed;top:70px;bottom:0;left:250px;width:calc(100% - 250px);height:calc(100vh - 70px);background:rgba(15,23,42,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;overflow:hidden;">
+    <div style="background:#fff;border-radius:12px;width:96%;max-width:1050px;box-shadow:0 20px 50px rgba(0,0,0,0.35);margin:auto;overflow:hidden;height:min(86vh, 760px);max-height:calc(100vh - 110px);display:flex;flex-direction:column;">
+        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <h3 style="margin:0;font-size:16.5px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;letter-spacing:0.3px;">
+                <i class="fas fa-gas-pump" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:17px;"></i>
                 <span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;">FUEL PRODUCT SPECIFICATION &amp; HISTORY</span>
             </h3>
+            <button type="button" class="admin-modal-close-x" onclick="closeViewFuelModalAdmin()" title="Close">
+                <i class="fas fa-times"></i>
+            </button>
         </div>
-        <div id="viewFuelModalAdminContent" style="padding:20px 24px 24px 24px;overflow-y:auto;overflow-x:hidden;flex:1 1 auto;background:#ffffff;min-height:0;box-sizing:border-box;">
+        <div id="viewFuelModalAdminContent" style="padding:20px 24px;overflow-y:auto;overflow-x:hidden;flex:1 1 auto;background:#ffffff;min-height:0;box-sizing:border-box;">
         </div>
         <!-- Footer with Close Button -->
-        <div style="display:flex;justify-content:flex-end;padding:14px 24px;border-top:1px solid #e2e8f0;background:#ffffff;flex-shrink:0;">
-            <button type="button" onclick="closeViewFuelModalAdmin()" style="background:transparent !important;background-color:transparent !important;color:#1e293b !important;-webkit-text-fill-color:#1e293b !important;border:1.5px solid #cbd5e1 !important;padding:9px 26px;border-radius:8px;font-size:15px;font-weight:700 !important;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:none !important;transition:all 0.15s ease;" onmouseover="this.style.background='#f1f5f9';this.style.borderColor='#94a3b8';" onmouseout="this.style.background='transparent';this.style.borderColor='#cbd5e1';">
-                <i class="fas fa-times" style="color:#64748b !important;-webkit-text-fill-color:#64748b !important;"></i> Close
+        <div style="display:flex;justify-content:flex-end;padding:12px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;flex-shrink:0;">
+            <button type="button" onclick="closeViewFuelModalAdmin()" style="background:#ffffff !important;color:#1e293b !important;border:1.5px solid #cbd5e1 !important;padding:8px 24px;border-radius:8px;font-size:14.5px;font-weight:700 !important;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:none !important;transition:all 0.15s ease;" onmouseover="this.style.background='#f1f5f9';this.style.borderColor='#94a3b8';" onmouseout="this.style.background='#ffffff';this.style.borderColor='#cbd5e1';">
+                <i class="fas fa-times" style="color:#64748b !important;"></i> Close
             </button>
         </div>
     </div>
