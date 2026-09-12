@@ -4493,11 +4493,12 @@ require_once __DIR__ . '/rbac_menu.php';
                         <?php
                         $is_superadmin_dev_role = in_array($role, ['superadmin', 'developer']);
                         if ($is_superadmin_dev_role) {
-                            $search_input_placeholder = 'Search Station, User, Module, Setting, or System Reference No...';
+                            $search_input_placeholder = 'Search Station, User, Module, Setting, Audit Log, or System Reference...';
                         } elseif (in_array($role, ['admin', 'manager'])) {
-                            $search_input_placeholder = 'Search Customer, Transaction, JO, Product, PO, or Reference No...';
+                            $search_input_placeholder = 'Search Customer, Transaction, JO, Product, Delivery, PO, AR, Stock Request, or Reference No...';
                         } else {
-                            $search_input_placeholder = 'Search Customer, Transaction, JO, Product, or Reference No...';
+                            // Staff: can search Transactions, Customers, Vehicles, Products, Job Orders, Fuel Readings, Deliveries, Calendar, Reports, POs, AR, Stock Requests
+                            $search_input_placeholder = 'Search Customer, Transaction, JO, Product, Delivery, PO, or Reference No...';
                         }
                         ?>
                         <input type="search" id="searchInput" 
