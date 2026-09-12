@@ -2519,13 +2519,13 @@ document.addEventListener('DOMContentLoaded', function() {
           </div>
           <div>
             <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins)</label>
-            <input type="number" id="addSvcDuration" min="5" max="480" step="5" value="60" placeholder="60"
+            <input type="number" id="addSvcDuration" min="5" max="480" step="5"
               style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
           </div>
           <div>
             <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics</label>
-            <input type="number" id="addSvcMechanics" min="1" max="10" value="1" placeholder="1"
+            <input type="number" id="addSvcMechanics" min="1" max="10"
               style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
           </div>
@@ -4393,9 +4393,22 @@ function openAddServiceModal() {
     var modal = document.getElementById('addServiceModal');
     if (!modal) return;
     document.getElementById('addServiceForm').reset();
-    // Explicitly clear category
+    // Explicitly clear all fields for clean manual input
+    var nameEl = document.getElementById('addSvcName');
+    if (nameEl) nameEl.value = '';
     var catEl = document.getElementById('addSvcCategory');
     if (catEl) catEl.value = '';
+    var durEl = document.getElementById('addSvcDuration');
+    if (durEl) durEl.value = '';
+    var mechEl = document.getElementById('addSvcMechanics');
+    if (mechEl) mechEl.value = '';
+    var feeEl = document.getElementById('addSvcServiceFee');
+    if (feeEl) feeEl.value = '';
+    var laborEl = document.getElementById('addSvcLaborFee');
+    if (laborEl) laborEl.value = '';
+    var descEl = document.getElementById('addSvcDescription');
+    if (descEl) descEl.value = '';
+
     hideSvcCatDrop('add');
     modal.style.display = 'flex';
     var f = document.getElementById('addSvcName');
@@ -4409,6 +4422,10 @@ function closeAddServiceModal() {
     if (form) form.reset();
     var catEl = document.getElementById('addSvcCategory');
     if (catEl) catEl.value = '';
+    var durEl = document.getElementById('addSvcDuration');
+    if (durEl) durEl.value = '';
+    var mechEl = document.getElementById('addSvcMechanics');
+    if (mechEl) mechEl.value = '';
     hideSvcCatDrop('add');
 }
 
