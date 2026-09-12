@@ -4247,8 +4247,9 @@ function openAddServiceModal() {
     var modal = document.getElementById('addServiceModal');
     if (!modal) return;
     document.getElementById('addServiceForm').reset();
-    var wrap = document.getElementById('addSvcCustomWrap');
-    if (wrap) wrap.style.display = 'none';
+    // Explicitly clear category (browser may retain previous value)
+    var catEl = document.getElementById('addSvcCategory');
+    if (catEl) catEl.value = '';
     modal.style.display = 'flex';
     var f = document.getElementById('addSvcName');
     if (f) setTimeout(function() { f.focus(); }, 80);
@@ -4259,8 +4260,8 @@ function closeAddServiceModal() {
     if (modal) modal.style.display = 'none';
     var form = document.getElementById('addServiceForm');
     if (form) form.reset();
-    var wrap = document.getElementById('addSvcCustomWrap');
-    if (wrap) wrap.style.display = 'none';
+    var catEl = document.getElementById('addSvcCategory');
+    if (catEl) catEl.value = '';
 }
 
 safeAddListener('addServiceForm', 'submit', function(e) {
