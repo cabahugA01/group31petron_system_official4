@@ -983,27 +983,72 @@ if (!empty($query)) {
         // 7. REPORTS  (Reports Module)
         // ════════════════════════════════════════════════════════
         if (is_module_enabled('reports') || $is_admin) {
+
+            // 7-A: Static list of actual report pages per role
+            //      These are the real pages the user navigates to — not activity log noise.
+            if ($role === 'staff') {
+                $report_pages = [
+                    ['title' => 'Sales Reports',              'desc' => 'Fuel & merchandise sales summary by shift and date range', 'link' => 'staff_fuel_sales_summary.php'],
+                    ['title' => 'Fuel Reconciliation Report', 'desc' => 'Fuel delivery reconciliation, variance, and tank readings',  'link' => 'staff_deliveries_report.php'],
+                    ['title' => 'Shift Turnover Report',      'desc' => 'Shift-end closing summary and cash turnover details',        'link' => 'staff_payments_report.php'],
+                    ['title' => 'My Activity Report',         'desc' => 'Personal transaction history and shift activity log',        'link' => 'staff_activity_report.php'],
+                ];
+            } elseif ($role === 'manager') {
+                $report_pages = [
+                    ['title' => 'Sales Summary Report',       'desc' => 'Daily/weekly/monthly fuel and merchandise sales overview',  'link' => 'manager_reports.php'],
+                    ['title' => 'Fuel Operations Report',     'desc' => 'Fuel delivery, variance, and tank level analysis',          'link' => 'manager_reports.php?tab=fuel'],
+                    ['title' => 'Staff Performance Report',   'desc' => 'Staff transaction counts and shift performance summary',    'link' => 'manager_reports.php?tab=staff'],
+                    ['title' => 'Financial Summary Report',   'desc' => 'Revenue, collections, and accounts receivable overview',   'link' => 'manager_reports.php?tab=financial'],
+                ];
+            } else {
+                // admin
+                $report_pages = [
+                    ['title' => 'Sales & Revenue Report',    'desc' => 'Full station sales, revenue, and shift summaries',           'link' => 'admin_reports.php'],
+                    ['title' => 'Fuel Operations Report',    'desc' => 'Fuel delivery, pump readings, and variance analysis',        'link' => 'admin_reports.php?tab=fuel'],
+                    ['title' => 'Staff Activity Report',     'desc' => 'Staff login, transaction, and performance report',           'link' => 'admin_reports.php?tab=staff'],
+                ];
+            }
+            foreach ($report_pages as $rp) {
+                if (stripos($rp['title'], $query) !== false
+                    || stripos($rp['desc'],  $query) !== false
+                    || stripos('report',     $query) !== false) {
+                    $results[] = [
+                        'type'     => 'Report',
+                        'title'    => $rp['title'],
+                        'subtitle' => $rp['desc'],
+                        'meta'     => 'Report',
+                        'link'     => $rp['link'],
+                        'icon'     => $ICONS['Report'],
+                        'color'    => $COLORS['Report'],
+                    ];
+                }
+            }
+
+            // 7-B: Recent real report activity from logs (Exports, Summaries, Completions).
+            //      Strictly exclude search events, login/logout, and generic detail matches
+            //      that would cause "Global Search (Ajax)" to appear here.
             try {
                 $stmt = $pdo->prepare(
                     "SELECT al.id, al.action, al.details, al.reference, al.created_at,
                             COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'System') AS user_name
                      FROM activity_logs al
                      LEFT JOIN users u ON u.id = al.user_id
-                     WHERE (al.action LIKE ? OR al.details LIKE ? OR al.reference LIKE ?)
-                       AND (al.action LIKE '%Summary%'
+                     WHERE (al.action LIKE ? OR al.reference LIKE ?)
+                       AND al.action NOT LIKE '%Search%'
+                       AND al.action NOT LIKE '%Login%'
+                       AND al.action NOT LIKE '%Logout%'
+                       AND al.action NOT LIKE '%View%'
+                       AND (al.action LIKE '%Export%'
+                         OR al.action LIKE '%Summary%'
                          OR al.action LIKE '%Report%'
                          OR al.action LIKE '%Completion%'
-                         OR al.details LIKE '%daily%'
-                         OR al.details LIKE '%summary%'
-                         OR al.details LIKE '%report%'
                          OR al.reference LIKE 'REP-%')
                        AND (u.station_id = ? OR u.station_id IS NULL OR al.user_id IS NULL)
-                     ORDER BY al.created_at DESC LIMIT 8"
+                     ORDER BY al.created_at DESC LIMIT 4"
                 );
-                $stmt->execute([$like, $like, $like, $station_id]);
+                $stmt->execute([$like, $like, $station_id]);
                 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                     $ts = date('M d, Y H:i', strtotime($r['created_at']));
-
                     if ($is_admin) {
                         $report_link = 'admin_reports.php';
                     } elseif ($role === 'manager') {
@@ -1011,7 +1056,6 @@ if (!empty($query)) {
                     } else {
                         $report_link = 'staff_fuel_sales_summary.php';
                     }
-
                     $results[] = [
                         'type'     => 'Report',
                         'title'    => $r['action'],
