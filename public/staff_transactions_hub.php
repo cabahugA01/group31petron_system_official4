@@ -435,6 +435,23 @@ if (in_array($current_shift_status, ['CLOSING_COMPLETED', 'SAVED', 'REPORTED']) 
     } catch (Exception $e) {}
 }
 
+// Also check fuel_transactions if closing is completed
+if (!$is_closing_completed) {
+    try {
+        $stmt_tx_closed = $pdo->prepare("
+            SELECT COUNT(*) FROM fuel_transactions
+            WHERE station_id = ? AND DATE(transaction_date) = ?
+              AND (shift_period = ? OR shift_name = ?)
+              AND status = 'CLOSING_COMPLETED'
+        ");
+        $stmt_tx_closed->execute([$station_id, $today_date, $fuel_shift_key, $fuel_shift_name]);
+        if ((int)$stmt_tx_closed->fetchColumn() > 0) {
+            $is_closing_completed = true;
+            $current_shift_status = 'CLOSING_COMPLETED';
+        }
+    } catch (Exception $e) {}
+}
+
 if (!$is_closing_completed && ($current_shift_status === 'DRAFT' || empty($current_shift_status))) {
     try {
         $stmt_txstat = $pdo->prepare("
