@@ -4933,10 +4933,6 @@ setTimeout(function() {
 
             <!-- Table Body Container (Full Width) -->
             <div id="todayEntriesBody" style="padding:0; width:100%; min-height:200px;">
-                <div style="text-align:center; padding:40px; color:#94a3b8; font-size:14px;">
-                    <i class="fas fa-spinner fa-spin" style="font-size:24px; display:block; margin-bottom:12px; color:var(--petron-blue);"></i>
-                    Loading today's entries…
-                </div>
             </div>
         </div><!-- /txn-card todayEntriesCard -->
 
@@ -5593,7 +5589,7 @@ setTimeout(function() {
                 if (elPending) elPending.textContent = pendingCount;
 
                 if (!json.success) {
-                    if (body && (!window.todayEntriesData || window.todayEntriesData.length === 0)) {
+                    if (body) {
                         body.innerHTML = `<div style="text-align:center;padding:40px;color:#ef4444;font-size:14px;background:#ffffff;">
                             <i class="fas fa-exclamation-circle" style="font-size:28px;display:block;margin-bottom:10px;color:#f87171;"></i>
                             Failed to load history entries.
@@ -5605,10 +5601,18 @@ setTimeout(function() {
 
                 window.todayEntriesData = readings;
                 if (!keepPage) window.todayEntriesPage = 1;
-                renderTodayEntriesTable();
+                try {
+                    renderTodayEntriesTable();
+                } catch(renderErr) {
+                    console.error('renderTodayEntriesTable error:', renderErr);
+                    if (body) body.innerHTML = `<div style="text-align:center;padding:40px;color:#ef4444;font-size:13px;background:#ffffff;">
+                        <i class="fas fa-exclamation-circle" style="display:block;margin-bottom:6px;font-size:20px;"></i>
+                        Error rendering entries. Please refresh the page.
+                    </div>`;
+                }
             } catch(e) {
                 console.error('loadTodayEntries error:', e);
-                if (body && (!window.todayEntriesData || window.todayEntriesData.length === 0)) {
+                if (body) {
                     body.innerHTML = `<div style="text-align:center;padding:30px;color:#ef4444;font-size:13px;background:#ffffff;">
                         <i class="fas fa-exclamation-circle" style="display:block;margin-bottom:6px;font-size:20px;"></i>
                         Could not load entries. Please check your connection or refresh the page.
