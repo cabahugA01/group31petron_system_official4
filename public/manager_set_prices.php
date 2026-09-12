@@ -2196,42 +2196,17 @@ document.addEventListener('DOMContentLoaded', function() {
           <input type="text" id="newMerchBrand" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coca-Cola, Petron" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
         </div>
       </div>
-      <!-- Row 3: UOM + Barcode -->
+      <!-- Row 3: UOM + Default Selling Price -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
           <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit of Measure (UOM)</label>
           <input type="text" id="newMerchSize" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Bottle, Box, pcs, 500ml" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
         </div>
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Barcode <span style="color:#94a3b8;font-weight:400;text-transform:none;">(optional)</span></label>
-          <div style="position:relative;display:flex;align-items:center;">
-            <i class="fas fa-barcode" style="position:absolute;left:10px;color:#64748b;font-size:16px;z-index:1;pointer-events:none;"></i>
-            <input type="text" id="newMerchBarcode"
-              style="width:100%;padding:9px 11px 9px 34px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;font-family:monospace;"
-              onfocus="this.style.borderColor='#002F6C'"
-              onblur="this.style.borderColor='#d1d5db'"
-              placeholder="Scan barcode or type manually"
-              autocomplete="off"
-              onkeydown="handleBarcodeKeydown(event, 'add')"
-              oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\-\_]/g, '');">
-            <button type="button" id="newMerchBarcodeScanBtn"
-              onclick="activateBarcodeScan('newMerchBarcode', 'add')"
-              title="Click then scan with barcode gun"
-              style="position:absolute;right:6px;background:#002F6C;color:#fff;border:none;border-radius:5px;padding:4px 9px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;">
-              <i class="fas fa-crosshairs"></i> Scan
-            </button>
-          </div>
-          <div id="newMerchBarcodeStatus" style="font-size:14px;margin-top:4px;min-height:16px;"></div>
-        </div>
-      </div>
-      <!-- Row 4: Default Selling Price -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-        <div>
           <label style="display:block;font-size:14px;font-weight:700;color:#002F6C;text-transform:uppercase;margin-bottom:4px;">Default Selling Price (&#8369;) <span style="color:#dc2626;">*</span></label>
           <input type="number" id="newMerchPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:2px solid #002F6C;border-radius:7px;font-size:14px;font-weight:600;box-sizing:border-box;" onfocus="this.style.borderColor='#004494'" onblur="this.style.borderColor='#002F6C'" placeholder="0.00">
           <small style="color:#64748b;font-size:14px;">Cost price will be set per delivery batch (Record Delivery)</small>
         </div>
-        <div></div>
       </div>
       <!-- Row 5: Reorder Level + Critical Level -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
@@ -2267,25 +2242,8 @@ document.addEventListener('DOMContentLoaded', function() {
           <input type="text" id="editMerchName" required style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&]/g, '');">
         </div>
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Barcode <span style="color:#94a3b8;font-weight:400;text-transform:none;">(optional)</span></label>
-          <div style="position:relative;display:flex;align-items:center;">
-            <i class="fas fa-barcode" style="position:absolute;left:10px;color:#64748b;font-size:16px;z-index:1;pointer-events:none;"></i>
-            <input type="text" id="editMerchBarcode"
-              style="width:100%;padding:9px 11px 9px 34px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;font-family:monospace;"
-              onfocus="this.style.borderColor='#002F6C'"
-              onblur="this.style.borderColor='#d1d5db'"
-              placeholder="Scan barcode or type manually"
-              autocomplete="off"
-              onkeydown="handleBarcodeKeydown(event, 'edit')"
-              oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\-\_]/g, '');">
-            <button type="button" id="editMerchBarcodeScanBtn"
-              onclick="activateBarcodeScan('editMerchBarcode', 'edit')"
-              title="Click then scan with barcode gun"
-              style="position:absolute;right:6px;background:#002F6C;color:#fff;border:none;border-radius:5px;padding:4px 9px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;">
-              <i class="fas fa-crosshairs"></i> Scan
-            </button>
-          </div>
-          <div id="editMerchBarcodeStatus" style="font-size:14px;margin-top:4px;min-height:16px;"></div>
+          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">SKU / Product Code <span style="color:#94a3b8;font-weight:400;text-transform:none;">(read-only)</span></label>
+          <input type="text" id="editMerchSku" readonly style="width:100%;padding:9px 11px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:15.5px;background:#f8fafc;color:#4f46e5;font-weight:700;box-sizing:border-box;font-family:monospace;">
         </div>
       </div>
       <!-- Row 2: Category + Brand -->
@@ -2299,23 +2257,23 @@ document.addEventListener('DOMContentLoaded', function() {
           <input type="text" id="editMerchBrand" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coca-Cola, Petron" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
         </div>
       </div>
-      <!-- Row 3: UOM + SKU -->
+      <!-- Row 3: UOM + Default Selling Price -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
           <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit of Measure (UOM)</label>
           <input type="text" id="editMerchSize" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Bottle, Box, pcs" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
         </div>
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">SKU / Product Code <span style="color:#94a3b8;font-weight:400;text-transform:none;">(read-only)</span></label>
-          <input type="text" id="editMerchSku" readonly style="width:100%;padding:9px 11px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:15.5px;background:#f8fafc;color:#4f46e5;font-weight:700;box-sizing:border-box;font-family:monospace;">
-        </div>
-      </div>
-      <!-- Row 4: Default Selling Price -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-        <div>
           <label style="display:block;font-size:14px;font-weight:700;color:#002F6C;text-transform:uppercase;margin-bottom:4px;">Default Selling Price (&#8369;) <span style="color:#dc2626;">*</span></label>
           <input type="number" id="editMerchPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:2px solid #002F6C;border-radius:7px;font-size:14px;font-weight:600;box-sizing:border-box;" onfocus="this.style.borderColor='#004494'" onblur="this.style.borderColor='#002F6C'" placeholder="0.00" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
           <small style="color:#64748b;font-size:14px;">Cost price is managed per delivery batch</small>
+        </div>
+      </div>
+      <!-- Row 4: Reorder Level + Status -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
+        <div>
+          <label style="display:block;font-size:14px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:4px;">Reorder Level</label>
+          <input type="number" id="editMerchReorder" min="0" style="width:100%;padding:9px 11px;border:1.5px solid #fde68a;border-radius:7px;font-size:15.5px;background:#fffbeb;box-sizing:border-box;" onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#fde68a'" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
         </div>
         <div>
           <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Status</label>
@@ -2323,13 +2281,6 @@ document.addEventListener('DOMContentLoaded', function() {
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
-        </div>
-      </div>
-      <!-- Row 5: Reorder Level + Critical Level -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
-        <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:4px;">Reorder Level</label>
-          <input type="number" id="editMerchReorder" min="0" style="width:100%;padding:9px 11px;border:1.5px solid #fde68a;border-radius:7px;font-size:15.5px;background:#fffbeb;box-sizing:border-box;" onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#fde68a'" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
         </div>
         <input type="hidden" id="editMerchCritical" value="0">
       </div>
@@ -2367,7 +2318,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </h4>
                 <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;font-size:14.5px;">
                     <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">SKU / Code:</span><br><code id="vm_sku" style="font-weight:800;color:#4f46e5;">-</code></div>
-                    <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Barcode:</span><br><strong id="vm_barcode" style="color:#0f172a;">-</strong></div>
+                    
                     <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Product Name:</span><br><strong id="vm_name" style="color:#0f172a;">-</strong></div>
                     <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Category:</span><br><strong id="vm_category" style="color:#0f172a;">-</strong></div>
                     <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Brand:</span><br><strong id="vm_brand" style="color:#0f172a;">-</strong></div>
@@ -3783,7 +3734,7 @@ function openEditMerchModal(id) {
                 document.getElementById('editMerchCategory').value  = i.category || '';
                 document.getElementById('editMerchBrand').value     = i.brand || '';
                 document.getElementById('editMerchSize').value      = i.size || i.unit || '';
-                document.getElementById('editMerchBarcode').value   = i.barcode || '';
+                if (document.getElementById('editMerchBarcode')) document.getElementById('editMerchBarcode').value = i.barcode || '';
                 document.getElementById('editMerchPrice').value     = parseFloat(i.unit_price || 0);
                 document.getElementById('editMerchReorder').value   = parseInt(i.reorder_level || 24);
                 document.getElementById('editMerchCritical').value  = parseInt(i.critical_level || 10);
@@ -3963,7 +3914,7 @@ safeAddListener('addMerchandiseForm', 'submit', function(e) {
     var sku      = document.getElementById('newMerchSku').value.trim();
     var brand    = document.getElementById('newMerchBrand').value.trim();
     var size     = document.getElementById('newMerchSize').value.trim();
-    var barcode  = document.getElementById('newMerchBarcode').value.trim();
+    var barcode  = (document.getElementById('newMerchBarcode') ? document.getElementById('newMerchBarcode').value.trim() : '');
     var reorder  = parseInt(document.getElementById('newMerchReorder').value) || 24;
     var critical = parseInt(document.getElementById('newMerchCritical').value) || 10;
 
@@ -4049,7 +4000,7 @@ safeAddListener('editMerchPriceForm', 'submit', function(e) {
     fd.append('category',       document.getElementById('editMerchCategory').value.trim());
     fd.append('brand',          document.getElementById('editMerchBrand').value.trim());
     fd.append('size',           document.getElementById('editMerchSize').value.trim());
-    fd.append('barcode',        document.getElementById('editMerchBarcode').value.trim());
+    fd.append('barcode', (document.getElementById('editMerchBarcode') ? document.getElementById('editMerchBarcode').value.trim() : ''));
     fd.append('unit_price',     document.getElementById('editMerchPrice').value);
     fd.append('unit_cost',      0); // cost managed per delivery batch
     fd.append('reorder_level',  document.getElementById('editMerchReorder').value);

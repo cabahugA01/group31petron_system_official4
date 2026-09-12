@@ -2405,7 +2405,7 @@ table.pricing-table tbody tr:hover {
                 <h4 style="margin:0 0 14px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;"><i class="fas fa-info-circle"></i> Product Specification &amp; Overview</h4>
                 <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;font-size:15.5px;">
                     <div><span style="color:#64748b;font-weight:600;">SKU / Code:</span><br><code id="adm_vm_sku" style="font-weight:800;color:#4f46e5;">-</code></div>
-                    <div><span style="color:#64748b;font-weight:600;">Barcode:</span><br><strong id="adm_vm_barcode">-</strong></div>
+                    
                     <div><span style="color:#64748b;font-weight:600;">Product Name:</span><br><strong id="adm_vm_name" style="color:#0f172a;">-</strong></div>
                     <div><span style="color:#64748b;font-weight:600;">Category:</span><br><strong id="adm_vm_category">-</strong></div>
                     <div><span style="color:#64748b;font-weight:600;">Brand:</span><br><strong id="adm_vm_brand">-</strong></div>
@@ -4761,42 +4761,17 @@ safeAddListener('addServiceForm', 'submit', function(e) {
           <input type="text" id="newMerchBrand" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Coca-Cola, Petron" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
         </div>
       </div>
-      <!-- Row 3: UOM + Barcode -->
+      <!-- Row 3: UOM + Default Selling Price -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
           <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Unit of Measure (UOM)</label>
           <input type="text" id="newMerchSize" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="e.g. Bottle, Box, pcs, 500ml" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\/]/g, '');">
         </div>
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Barcode <span style="color:#94a3b8;font-weight:400;text-transform:none;">(optional)</span></label>
-          <div style="position:relative;display:flex;align-items:center;">
-            <i class="fas fa-barcode" style="position:absolute;left:10px;color:#64748b;font-size:16px;z-index:1;pointer-events:none;"></i>
-            <input type="text" id="newMerchBarcode"
-              style="width:100%;padding:9px 11px 9px 34px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;font-family:monospace;"
-              onfocus="this.style.borderColor='#002F6C'"
-              onblur="this.style.borderColor='#d1d5db'"
-              placeholder="Scan barcode or type manually"
-              autocomplete="off"
-              onkeydown="handleBarcodeKeydown(event, 'add')"
-              oninput="this.value = this.value.toUpperCase().replace(/[^a-zA-Z0-9\-\_]/g, '');">
-            <button type="button" id="newMerchBarcodeScanBtn"
-              onclick="activateBarcodeScan('newMerchBarcode', 'add')"
-              title="Click then scan with barcode gun"
-              style="position:absolute;right:6px;background:#002F6C;color:#fff;border:none;border-radius:5px;padding:4px 9px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;">
-              <i class="fas fa-crosshairs"></i> Scan
-            </button>
-          </div>
-          <div id="newMerchBarcodeStatus" style="font-size:14px;margin-top:4px;min-height:16px;"></div>
-        </div>
-      </div>
-      <!-- Row 4: Default Selling Price -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-        <div>
           <label style="display:block;font-size:14px;font-weight:700;color:#002F6C;text-transform:uppercase;margin-bottom:4px;">Default Selling Price (₱) <span style="color:#dc2626;">*</span></label>
           <input type="number" id="newMerchPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:2px solid #002F6C;border-radius:7px;font-size:14px;font-weight:600;box-sizing:border-box;" onfocus="this.style.borderColor='#004494'" onblur="this.style.borderColor='#002F6C'" placeholder="0.00">
           <small style="color:#64748b;font-size:14px;">Cost price will be set per delivery batch (Record Delivery)</small>
         </div>
-        <div></div>
       </div>
       <!-- Row 5: Reorder Level + Critical Level -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
