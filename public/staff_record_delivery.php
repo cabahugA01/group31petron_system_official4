@@ -2766,7 +2766,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <?php include __DIR__ . '/../partials/footer.php'; ?>
 
 <div id="deliveryViewModal" style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(15,23,42,0.65); backdrop-filter:blur(5px); -webkit-backdrop-filter:blur(5px); align-items:flex-start; justify-content:center; padding:95px 20px 35px 20px; box-sizing:border-box; overflow-y:auto;">
-    <div style="background:#fff; border-radius:14px; width:100%; max-width:860px; max-height:calc(100vh - 130px); display:flex; flex-direction:column; box-shadow:0 25px 60px rgba(0,0,0,0.35); overflow:hidden; margin:0 auto;">
+    <div style="background:#fff; border-radius:14px; width:96%; max-width:920px; max-height:calc(100vh - 130px); display:flex; flex-direction:column; box-shadow:0 25px 60px rgba(0,0,0,0.35); overflow:hidden; margin:0 auto;">
         <div style="background:#002F70; padding:18px 24px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
             <div style="display:flex; align-items:center; gap:12px;">
                 <i class="fas fa-truck-loading" style="color:#fff; font-size:18px;"></i>
@@ -2793,19 +2793,26 @@ document.addEventListener('DOMContentLoaded', function() {
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px;">
                 <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px;background:#fff;"><div style="font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;margin-bottom:5px;">Total Products</div><div style="font-size:22px;font-weight:900;color:#002F70;" id="dv_total_products">0</div></div>
                 <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px;background:#fff;"><div style="font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;margin-bottom:5px;">Total Quantity</div><div style="font-size:22px;font-weight:900;color:#0f172a;" id="dv_total_qty">0</div></div>
-                <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px;background:#fff;"><div style="font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;margin-bottom:5px;">Total Cost</div><div style="font-size:22px;font-weight:900;color:#16a34a;" id="dv_total_cost">PHP 0.00</div></div>
+                <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px;background:#fff;"><div style="font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;margin-bottom:5px;">Total Cost</div><div style="font-size:22px;font-weight:900;color:#16a34a;" id="dv_total_cost">₱ 0.00</div></div>
             </div>
 
             <div style="font-size:11px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;"><i class="fas fa-list" style="margin-right:5px;"></i>Delivered Items</div>
-            <div style="border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; margin-bottom:16px;">
-                <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <div style="border:1px solid #e2e8f0; border-radius:10px; overflow-x:auto; -webkit-overflow-scrolling:touch; margin-bottom:16px; background:#fff;">
+                <table style="width:100%; min-width:680px; border-collapse:collapse; font-size:13px; table-layout:fixed;">
+                    <colgroup>
+                        <col style="width:35%;">
+                        <col style="width:15%;">
+                        <col style="width:15%;">
+                        <col style="width:17%;">
+                        <col style="width:18%;">
+                    </colgroup>
                     <thead style="background:#002F70;">
                         <tr>
-                            <th style="padding:10px 12px;text-align:left;color:#fff;font-size:10.5px;font-weight:800;text-transform:uppercase;">Item</th>
-                            <th style="padding:10px 12px;text-align:right;color:#fff;font-size:10.5px;font-weight:800;text-transform:uppercase;">Expected</th>
-                            <th style="padding:10px 12px;text-align:right;color:#fff;font-size:10.5px;font-weight:800;text-transform:uppercase;">Received</th>
-                            <th style="padding:10px 12px;text-align:right;color:#fff;font-size:10.5px;font-weight:800;text-transform:uppercase;">Unit Price</th>
-                            <th style="padding:10px 12px;text-align:right;color:#fff;font-size:10.5px;font-weight:800;text-transform:uppercase;">Total</th>
+                            <th style="padding:11px 14px;text-align:left;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px;">Item</th>
+                            <th style="padding:11px 12px;text-align:right;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px;">Expected</th>
+                            <th style="padding:11px 12px;text-align:right;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px;">Received</th>
+                            <th style="padding:11px 12px;text-align:right;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px;">Unit Price</th>
+                            <th style="padding:11px 14px;text-align:right;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px;">Total</th>
                         </tr>
                     </thead>
                     <tbody id="dv_items_body"></tbody>
@@ -2825,7 +2832,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <script>
 function moneyPH(value) {
     const amount = parseFloat(value) || 0;
-    return 'PHP ' + amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return '₱ ' + amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function qtyPH(value) {
@@ -2860,11 +2867,11 @@ function openDeliveryView(data) {
     const rows = (data.items || []).map(function(item) {
         const unit = item.unit || (data.type === 'Fuel' ? 'L' : 'pcs');
         return '<tr>' +
-            '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;font-weight:700;color:#1e293b;">' + escH(item.name) + '</td>' +
-            '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:right;color:#475569;font-weight:700;">' + qtyPH(item.expected) + ' ' + escH(unit) + '</td>' +
-            '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:right;color:#002F70;font-weight:800;">' + qtyPH(item.actual || item.qty) + ' ' + escH(unit) + '</td>' +
-            '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:right;color:#475569;">' + moneyPH(item.unit_price) + '</td>' +
-            '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:right;color:#16a34a;font-weight:800;">' + moneyPH(item.total) + '</td>' +
+            '<td style="padding:10px 14px;border-bottom:1px solid #f1f5f9;font-weight:700;color:#1e293b;word-break:break-word;line-height:1.35;">' + escH(item.name) + '</td>' +
+            '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:right;color:#475569;font-weight:700;white-space:nowrap;">' + qtyPH(item.expected) + ' ' + escH(unit) + '</td>' +
+            '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:right;color:#002F70;font-weight:800;white-space:nowrap;">' + qtyPH(item.actual || item.qty) + ' ' + escH(unit) + '</td>' +
+            '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:right;color:#475569;font-weight:600;white-space:nowrap;">' + moneyPH(item.unit_price) + '</td>' +
+            '<td style="padding:10px 14px;border-bottom:1px solid #f1f5f9;text-align:right;color:#16a34a;font-weight:800;white-space:nowrap;">' + moneyPH(item.total) + '</td>' +
             '</tr>';
     }).join('');
     document.getElementById('dv_items_body').innerHTML = rows || '<tr><td colspan="5" style="padding:20px;text-align:center;color:#94a3b8;">No items found.</td></tr>';
