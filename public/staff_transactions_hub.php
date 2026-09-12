@@ -4050,8 +4050,7 @@ setTimeout(function() {
         }
         #todayReadingsTable {
             width: 100% !important;
-            max-width: 100% !important;
-            min-width: 0 !important;
+            min-width: 1050px !important;
             table-layout: fixed !important;
             border-collapse: collapse !important;
             box-sizing: border-box !important;
@@ -4060,8 +4059,8 @@ setTimeout(function() {
             background: #002F70 !important;
         }
         #todayReadingsTable th {
-            padding: 10px 8px !important;
-            font-size: 11.5px !important;
+            padding: 10px 6px !important;
+            font-size: 11px !important;
             font-weight: 800 !important;
             color: #ffffff !important;
             text-transform: uppercase !important;
@@ -4069,14 +4068,12 @@ setTimeout(function() {
             border: 1px solid #00264D !important;
             white-space: nowrap !important;
             vertical-align: middle !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
             box-sizing: border-box !important;
             line-height: 1.25 !important;
         }
         #todayReadingsTable td {
-            padding: 8px 8px !important;
-            font-size: 12.5px !important;
+            padding: 8px 6px !important;
+            font-size: 12px !important;
             font-weight: 600 !important;
             border: 1px solid #e2e8f0 !important;
             vertical-align: middle !important;
@@ -4086,7 +4083,7 @@ setTimeout(function() {
         }
         #todayReadingsTable th:last-child,
         #todayReadingsTable td:last-child {
-            padding-right: 14px !important;
+            padding: 8px 6px !important;
             text-align: center !important;
             overflow: visible !important;
         }
@@ -4096,7 +4093,7 @@ setTimeout(function() {
             word-break: normal !important;
             overflow-wrap: break-word !important;
             line-height: 1.25 !important;
-            font-size: 12px !important;
+            font-size: 11.5px !important;
             font-weight: 700 !important;
             color: #1e293b !important;
             overflow: hidden !important;
@@ -4146,10 +4143,11 @@ setTimeout(function() {
 
         <style>
         /* ── Fuel Encoding Table ─────────────────────────────────── */
-        .fet-wrap { overflow-x: hidden; }
+        .fet-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; }
 
         .fet {
             width: 100%;
+            min-width: 900px;
             border-collapse: collapse;
             font-size: 12.5px;
             table-layout: fixed;
@@ -4405,8 +4403,8 @@ setTimeout(function() {
             endforeach; // End fuel type loop
             ?>
 
-            <div class="fet-wrap" style="overflow-x:hidden; width:100%;">
-                <table class="fet report-table no-min-width print-table" style="width:100%; table-layout:fixed; border-collapse:collapse;">
+            <div class="fet-wrap" style="overflow-x:auto; width:100%; -webkit-overflow-scrolling:touch;">
+                <table class="fet report-table no-min-width print-table" style="width:100%; min-width:900px; table-layout:fixed; border-collapse:collapse;">
                     <colgroup>
                         <col style="width:17%;"><!-- NAME -->
                         <col style="width:14%;"><!-- BEGINNING -->
@@ -5721,11 +5719,14 @@ setTimeout(function() {
                 'readings_submitted': {color:'#0284c7',label:'Submitted'},
                 'readings submitted': {color:'#0284c7',label:'Submitted'},
                 'submitted':          {color:'#0284c7',label:'Submitted'},
+                'closing_completed':  {color:'#16a34a',label:'Closing Completed'},
+                'closing completed':  {color:'#16a34a',label:'Closing Completed'},
+                'closed':             {color:'#16a34a',label:'Closing Completed'},
             };
             function badge(s) {
                 const k = (s||'').toLowerCase().trim();
                 const c = statusMap[k] || {color:'#64748b',label:(s||'—').replace(/_/g, ' ')};
-                return `<span style="background:${c.color}18; color:${c.color}; border:1.5px solid ${c.color}50; font-weight:800; font-size:12.5px; padding:4px 10px; border-radius:20px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; display:inline-block; vertical-align:middle;" title="${c.label}">${c.label}</span>`;
+                return `<span style="background:${c.color}18; color:${c.color}; border:1.5px solid ${c.color}50; font-weight:800; font-size:11.5px; padding:3px 8px; border-radius:20px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; display:inline-block; vertical-align:middle;" title="${c.label}">${c.label}</span>`;
             }
             function fmt(n,d=2){ return Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:d,maximumFractionDigits:d}); }
 
@@ -5767,23 +5768,23 @@ setTimeout(function() {
                 return shiftPeriod;
             }
 
-            const TH  = 'padding:10px 8px; font-size:11.5px; font-weight:800; color:#ffffff; text-transform:uppercase; letter-spacing:.2px; line-height:1.25; white-space:nowrap; vertical-align:middle; box-sizing:border-box; border:1px solid #00264D;';
+            const TH  = 'padding:10px 6px; font-size:11px; font-weight:800; color:#ffffff; text-transform:uppercase; letter-spacing:.2px; line-height:1.25; white-space:nowrap; vertical-align:middle; box-sizing:border-box; border:1px solid #00264D;';
             const THR = TH + ' text-align:right;';
 
-            let html = `<div style="overflow-x:hidden; width:100%; border-bottom:1.5px solid #cbd5e1; background:#ffffff;">
-                <table id="todayReadingsTable" class="report-table no-min-width print-table" style="width:100% !important; max-width:100% !important; min-width:0 !important; table-layout:fixed !important; border-collapse:collapse !important; text-align:left; box-sizing:border-box;">
+            let html = `<div style="overflow-x:auto; width:100%; border-bottom:1.5px solid #cbd5e1; background:#ffffff; -webkit-overflow-scrolling:touch;">
+                <table id="todayReadingsTable" class="report-table no-min-width print-table" style="width:100% !important; min-width:1050px !important; table-layout:fixed !important; border-collapse:collapse !important; text-align:left; box-sizing:border-box;">
                     <colgroup>
-                        <col style="width: 9%;">   <!-- Date -->
-                        <col style="width: 7%;">   <!-- Shift -->
-                        <col style="width: 12%;">  <!-- Name -->
-                        <col style="width: 7.5%;"> <!-- Beginning -->
-                        <col style="width: 7.5%;"> <!-- Ending -->
-                        <col style="width: 7.5%;"> <!-- Calibration -->
-                        <col style="width: 8%;">   <!-- Volume (L) -->
-                        <col style="width: 7.5%;"> <!-- Price/L -->
-                        <col style="width: 9%;">   <!-- Amount -->
-                        <col style="width: 14.5%;"><!-- Encoded By -->
-                        <col style="width: 10.5%;"><!-- Status -->
+                        <col style="width: 8.5%;">  <!-- Date -->
+                        <col style="width: 6.5%;">  <!-- Shift -->
+                        <col style="width: 11.5%;"> <!-- Name -->
+                        <col style="width: 7.5%;">  <!-- Beginning -->
+                        <col style="width: 7.5%;">  <!-- Ending -->
+                        <col style="width: 8.5%;">  <!-- Calibration -->
+                        <col style="width: 7.5%;">  <!-- Volume (L) -->
+                        <col style="width: 6.5%;">  <!-- Price/L -->
+                        <col style="width: 9.0%;">  <!-- Amount -->
+                        <col style="width: 11.0%;"> <!-- Encoded By -->
+                        <col style="width: 16.0%;"> <!-- Status -->
                     </colgroup>
                     <thead>
                         <tr style="background:#002F70; border-bottom:2px solid #00264D;">
@@ -5797,7 +5798,7 @@ setTimeout(function() {
                             <th style="${THR}" title="Price/L">Price/L</th>
                             <th style="${THR}" title="Amount">Amount</th>
                             <th style="${TH}" title="Encoded By">Encoded By</th>
-                            <th style="${TH} text-align:center; padding-right:14px;" title="Status">Status</th>
+                            <th style="${TH} text-align:center;" title="Status">Status</th>
                         </tr>
                     </thead>
                     <tbody>`;
@@ -5826,17 +5827,17 @@ setTimeout(function() {
                 const staffStr = r.staff_name || '—';
 
                 html += `<tr style="border-bottom:1px solid #e2e8f0; background:#ffffff; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='#f0f5ff';" onmouseout="this.style.backgroundColor='#ffffff';">
-                    <td style="padding:8px 8px; color:#0f172a; font-size:12.5px; font-weight:700; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${dateStr}">${dateStr}</td>
-                    <td style="padding:8px 8px; color:#334155; font-size:12.5px; font-weight:700; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${shiftStr}">${shiftStr}</td>
-                    <td style="padding:8px 8px; font-weight:700; color:#002F70; font-size:12.5px; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${fuelStr}">${fuelStr}</td>
-                    <td style="padding:8px 8px; text-align:right; font-variant-numeric:tabular-nums; font-family:system-ui,-apple-system,sans-serif; color:#0f172a; font-size:12.5px; font-weight:700; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
-                    <td style="padding:8px 8px; text-align:right; font-variant-numeric:tabular-nums; font-family:system-ui,-apple-system,sans-serif; color:#0f172a; font-weight:700; font-size:12.5px; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
-                    <td style="padding:8px 8px; text-align:right; font-variant-numeric:tabular-nums; font-family:system-ui,-apple-system,sans-serif; color:#475569; font-size:12.5px; font-weight:700; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
-                    <td style="padding:8px 8px; text-align:right; font-weight:700; font-variant-numeric:tabular-nums; color:#0f172a; font-size:12.5px; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${fmt(r.volume_liters)} L">${fmt(r.volume_liters)} L</td>
-                    <td style="padding:8px 8px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:12.5px; font-weight:700; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="₱${fmt(r.price_per_liter)}">₱${fmt(r.price_per_liter)}</td>
-                    <td style="padding:8px 8px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#002F70; font-size:12.5px; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
-                    <td class="cell-encoded-by" style="padding:8px 8px; color:#1e293b; font-weight:700; font-size:12px; line-height:1.25 !important; white-space:normal !important; word-break:normal !important; overflow-wrap:break-word !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${staffStr}">${staffStr}</td>
-                    <td style="padding:8px 14px 8px 8px; font-size:12px; text-align:center; vertical-align:middle; white-space:nowrap !important; box-sizing:border-box; border:1px solid #e2e8f0;">${badge(r.status)}</td>
+                    <td style="padding:8px 6px; color:#0f172a; font-size:12px; font-weight:700; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${dateStr}">${dateStr}</td>
+                    <td style="padding:8px 6px; color:#334155; font-size:12px; font-weight:700; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${shiftStr}">${shiftStr}</td>
+                    <td style="padding:8px 6px; font-weight:700; color:#002F70; font-size:12px; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${fuelStr}">${fuelStr}</td>
+                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; font-family:system-ui,-apple-system,sans-serif; color:#0f172a; font-size:12px; font-weight:700; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${fmt(r.beginning)}">${fmt(r.beginning)}</td>
+                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; font-family:system-ui,-apple-system,sans-serif; color:#0f172a; font-weight:700; font-size:12px; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${fmt(r.ending)}">${fmt(r.ending)}</td>
+                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; font-family:system-ui,-apple-system,sans-serif; color:#475569; font-size:12px; font-weight:700; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${fmt(r.cal,3)}">${fmt(r.cal,3)}</td>
+                    <td style="padding:8px 6px; text-align:right; font-weight:700; font-variant-numeric:tabular-nums; color:#0f172a; font-size:12px; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${fmt(r.volume_liters)} L">${fmt(r.volume_liters)} L</td>
+                    <td style="padding:8px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#334155; font-size:12px; font-weight:700; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="₱${fmt(r.price_per_liter)}">₱${fmt(r.price_per_liter)}</td>
+                    <td style="padding:8px 6px; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; color:#002F70; font-size:12px; white-space:nowrap !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="₱${fmt(r.amount)}">₱${fmt(r.amount)}</td>
+                    <td class="cell-encoded-by" style="padding:8px 6px; color:#1e293b; font-weight:700; font-size:11.5px; line-height:1.25 !important; white-space:normal !important; word-break:normal !important; overflow-wrap:break-word !important; overflow:hidden !important; vertical-align:middle; box-sizing:border-box; border:1px solid #e2e8f0;" title="${staffStr}">${staffStr}</td>
+                    <td style="padding:8px 6px; font-size:12px; text-align:center; vertical-align:middle; white-space:nowrap !important; box-sizing:border-box; border:1px solid #e2e8f0;">${badge(r.status)}</td>
                 </tr>`;
             });
 
