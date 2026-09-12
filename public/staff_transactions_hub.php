@@ -416,7 +416,7 @@ try {
 } catch (Exception $e) {}
 
 // Check if closing is already completed for today's shift (either in DB or via query flag)
-if (in_array($current_shift_status, ['CLOSING_COMPLETED', 'SAVED', 'REPORTED']) || isset($_GET['closing_saved'])) {
+if (in_array($current_shift_status, ['CLOSING_COMPLETED', 'SAVED', 'REPORTED', 'VERIFIED', 'APPROVED', 'VALIDATED']) || isset($_GET['closing_saved'])) {
     $is_closing_completed = true;
     $current_shift_status = 'CLOSING_COMPLETED';
 } else {
@@ -425,7 +425,7 @@ if (in_array($current_shift_status, ['CLOSING_COMPLETED', 'SAVED', 'REPORTED']) 
             SELECT COUNT(*) FROM fuel_sales_closing
             WHERE station_id = ? AND report_date = ?
               AND (shift = ? OR shift_period = ? OR LOWER(shift) LIKE ?)
-              AND status = 'CLOSING_COMPLETED'
+              AND status IN ('CLOSING_COMPLETED', 'VERIFIED', 'APPROVED', 'VALIDATED', 'SAVED', 'REPORTED')
         ");
         $stmt_chk_done->execute([$station_id, $today_date, $fuel_shift_name, $fuel_shift_key, '%' . strtolower($fuel_shift_key) . '%']);
         if ((int)$stmt_chk_done->fetchColumn() > 0) {
@@ -442,7 +442,7 @@ if (!$is_closing_completed) {
             SELECT COUNT(*) FROM fuel_transactions
             WHERE station_id = ? AND DATE(transaction_date) = ?
               AND (shift_period = ? OR shift_name = ?)
-              AND status = 'CLOSING_COMPLETED'
+              AND status IN ('CLOSING_COMPLETED', 'VERIFIED', 'APPROVED', 'VALIDATED')
         ");
         $stmt_tx_closed->execute([$station_id, $today_date, $fuel_shift_key, $fuel_shift_name]);
         if ((int)$stmt_tx_closed->fetchColumn() > 0) {

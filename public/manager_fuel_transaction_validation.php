@@ -150,7 +150,7 @@ $date_to            = trim($_GET['date_to']            ?? date('Y-m-d'));
 $shift_filter       = trim($_GET['shift_filter']       ?? 'all');
 $fuel_type_filter   = trim($_GET['fuel_type']          ?? '');
 $status_filter      = trim($_GET['status_filter']      ?? 'pending');
-$search_query       = trim($_GET['search_query']       ?? '');
+$search_query       = trim($_GET['search_query']       ?? $_GET['search'] ?? $_GET['q'] ?? '');
 $export             = trim($_GET['export']             ?? '');
 
 // ─── AJAX Action: Get Fuel Closing for Review ─────────────────
@@ -738,10 +738,15 @@ try {
 $where = ["ft.station_id = ?"];
 $params = [$station_id];
 
-// Date filter
-$where[] = "DATE(ft.transaction_date) BETWEEN ? AND ?";
-$params[] = $date_from;
-$params[] = $date_to;
+// Date filter: if search query is provided without explicit date range, do not restrict date so searched transaction is found immediately
+$has_explicit_date_from = isset($_GET['date_from']) && $_GET['date_from'] !== '';
+$has_explicit_date_to   = isset($_GET['date_to']) && $_GET['date_to'] !== '';
+
+if ($search_query === '' || $has_explicit_date_from || $has_explicit_date_to) {
+    $where[] = "DATE(ft.transaction_date) BETWEEN ? AND ?";
+    $params[] = $date_from;
+    $params[] = $date_to;
+}
 
 // Shift filter
 if ($shift_filter !== 'all') {
@@ -756,13 +761,17 @@ if ($fuel_type_filter !== '') {
     $params[] = strtolower($fuel_type_filter);
 }
 
-// Status filter
+// Status filter: if search query is provided without explicit status filter, show all so searched txn is found
+if ($search_query !== '' && !isset($_GET['status_filter'])) {
+    $status_filter = 'all';
+}
+
 if ($status_filter !== 'all') {
     if ($status_filter === 'pending') {
         // Show pending closing and adjusted transactions awaiting manager's final approval
-        $where[] = "(LOWER(ft.status) LIKE '%pending%' OR LOWER(ft.status) IN ('closing_completed', 'submitted', 'adjusted'))";
+        $where[] = "(LOWER(ft.status) LIKE '%pending%' OR LOWER(ft.status) IN ('closing_completed', 'submitted', 'adjusted', 'readings_submitted'))";
     } elseif ($status_filter === 'validated') {
-        $where[] = "LOWER(ft.status) IN ('verified', 'approved')";
+        $where[] = "LOWER(ft.status) IN ('verified', 'approved', 'validated')";
     } elseif ($status_filter === 'adjusted') {
         $where[] = "LOWER(ft.status) = 'adjusted'";
     } elseif ($status_filter === 'rejected') {

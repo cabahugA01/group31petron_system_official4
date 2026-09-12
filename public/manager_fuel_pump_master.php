@@ -185,29 +185,43 @@ if (!function_exists('normalizeFuelType')) {
     }
 }
 
-// â”€â”€ GET Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Default date: if no date provided in URL, use the most recent date with transactions.
-// Falls back to today if nothing found.
-if (isset($_GET['date']) && $_GET['date'] !== '') {
-    $date_filter = trim($_GET['date']);
-} else {
-    // Find most recent date with any fuel transactions for this station
-    try {
-        $latest_stmt = $pdo->prepare("SELECT DATE(transaction_date) FROM fuel_transactions WHERE station_id = ? ORDER BY transaction_date DESC, id DESC LIMIT 1");
-        $latest_stmt->execute([$station_id]);
-        $latest_date = $latest_stmt->fetchColumn();
-        $date_filter = $latest_date ?: date('Y-m-d');
-    } catch (Exception $e) {
-        $date_filter = date('Y-m-d');
-    }
-}
+// ── GET Filters ──────────────────────────────────────────────────────────
+$search_query       = trim($_GET['search'] ?? $_GET['q'] ?? $_GET['search_query'] ?? '');
+$status_filter      = trim($_GET['status'] ?? 'pending');
 $shift_filter       = trim($_GET['shift']     ?? 'all');
 $fuel_type_filter   = trim($_GET['fuel_type'] ?? 'all');
 $staff_filter       = trim($_GET['staff']     ?? '');
 $export             = trim($_GET['export']    ?? '');
 
+// Default date: if explicit date provided, use it.
+// If search query is provided without explicit date, search across all dates.
+// If browsing pending by default, show all pending dates; otherwise use most recent date.
+$has_explicit_date = isset($_GET['date']) && $_GET['date'] !== '';
+$date_filter = '';
+if ($has_explicit_date) {
+    $date_filter = trim($_GET['date']);
+} elseif ($search_query !== '') {
+    $date_filter = '';
+    if (!isset($_GET['status'])) {
+        $status_filter = 'all';
+    }
+} else {
+    if ($status_filter === 'pending') {
+        $date_filter = ''; // Show all pending items across dates so none are hidden
+    } else {
+        try {
+            $latest_stmt = $pdo->prepare("SELECT DATE(transaction_date) FROM fuel_transactions WHERE station_id = ? ORDER BY transaction_date DESC, id DESC LIMIT 1");
+            $latest_stmt->execute([$station_id]);
+            $latest_date = $latest_stmt->fetchColumn();
+            $date_filter = $latest_date ?: date('Y-m-d');
+        } catch (Exception $e) {
+            $date_filter = date('Y-m-d');
+        }
+    }
+}
 
-// â”€â”€ POST Actions (Verify / Adjust / Reject) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+// ── POST Actions (Verify / Adjust / Reject) ───────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $export === '') {
     $action  = trim($_POST['action'] ?? '');
     $tx_id   = (int)($_POST['id'] ?? 0);
@@ -241,7 +255,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $export === '') {
 
         // 1. VERIFY ACTION
         if ($action === 'verify') {
-            if (!str_contains(strtolower($tx['status']), 'pending')) {
+            $curr_st = strtolower($tx['status'] ?? '');
+            if (!str_contains($curr_st, 'pending') && !in_array($curr_st, ['closing_completed', 'submitted', 'readings_submitted', 'adjusted'])) {
                 throw new Exception("Transaction has already been processed.");
             }
 
@@ -414,13 +429,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $export === '') {
     header('Location: ' . $redirect_url); exit;
 }
 
-// â”€â”€ Fetch Filtered Calibration Records â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Fetch Filtered Calibration Records ────────────────────────────────────
 $where = ["ft.station_id = ?"];
 $params = [$station_id];
 
+// Search filter
+if ($search_query !== '') {
+    $where[] = "(LOWER(ft.transaction_id) LIKE ? OR LOWER(ft.fuel_type) LIKE ? OR LOWER(fp.pump_number) LIKE ? OR LOWER(staff.username) LIKE ? OR LOWER(staff.first_name) LIKE ? OR LOWER(staff.last_name) LIKE ? OR LOWER(ft.notes) LIKE ? OR LOWER(ft.reject_reason) LIKE ?)";
+    $like_val = '%' . strtolower($search_query) . '%';
+    $params = array_merge($params, [$like_val, $like_val, $like_val, $like_val, $like_val, $like_val, $like_val, $like_val]);
+}
+
+// Status filter: Pending by default so completed ones disappear automatically!
+if ($status_filter !== 'all') {
+    if ($status_filter === 'pending') {
+        $where[] = "(LOWER(ft.status) LIKE '%pending%' OR LOWER(ft.status) IN ('closing_completed', 'submitted', 'adjusted', 'readings_submitted'))";
+    } elseif ($status_filter === 'verified') {
+        $where[] = "LOWER(ft.status) IN ('verified', 'approved', 'validated')";
+    } elseif ($status_filter === 'adjusted') {
+        $where[] = "LOWER(ft.status) = 'adjusted'";
+    } elseif ($status_filter === 'rejected') {
+        $where[] = "LOWER(ft.status) = 'rejected'";
+    }
+}
+
 // Date Filter
-$where[] = "DATE(ft.transaction_date) = ?";
-$params[] = $date_filter;
+if ($date_filter !== '' && $date_filter !== 'all') {
+    $where[] = "DATE(ft.transaction_date) = ?";
+    $params[] = $date_filter;
+}
 
 // Shift Filter
 if ($shift_filter !== 'all') {
@@ -428,10 +465,15 @@ if ($shift_filter !== 'all') {
     $params[] = strtolower($shift_filter);
 }
 
-// Fuel Type Filter — use LIKE so 'Diesel' matches stored 'DIESEL 1 - 1', etc.
+// Fuel Type Filter — handle Diesel without colliding with Turbo Diesel
 if ($fuel_type_filter !== 'all') {
-    $where[] = "LOWER(ft.fuel_type) LIKE ?";
-    $params[] = '%' . strtolower($fuel_type_filter) . '%';
+    $clean_ft = strtolower($fuel_type_filter);
+    if ($clean_ft === 'diesel') {
+        $where[] = "(LOWER(ft.fuel_type) LIKE '%diesel%' AND LOWER(ft.fuel_type) NOT LIKE '%turbo%')";
+    } else {
+        $where[] = "LOWER(ft.fuel_type) LIKE ?";
+        $params[] = '%' . $clean_ft . '%';
+    }
 }
 
 // Staff Filter
@@ -461,23 +503,14 @@ try {
             LEFT JOIN users validator ON ft.validated_by = validator.id
             WHERE " . implode(" AND ", $where) . "
             ORDER BY
-                CASE
-                    WHEN TRIM(UPPER(ft.fuel_type)) = 'DIESEL'                                          THEN 1
-                    WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 1%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 1%' THEN 2
-                    WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 2%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 2%' THEN 3
-                    WHEN UPPER(ft.fuel_type) LIKE '%TURBO%DIESEL%'                                      THEN 4
-                    WHEN UPPER(ft.fuel_type) LIKE '%KEROSENE%'                                          THEN 5
-                    WHEN UPPER(ft.fuel_type) LIKE '%XCS%PLUS%' OR UPPER(ft.fuel_type) LIKE 'XCS PLUS%' THEN 6
-                    WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%1%'                                       THEN 7
-                    WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%2%'                                       THEN 8
-                    WHEN UPPER(ft.fuel_type) LIKE '%XTRA%UNL%'                                         THEN 9
-                    WHEN UPPER(ft.fuel_type) LIKE '%DIESEL%'                                           THEN 10
-                    ELSE 99
-                END ASC,
-                ft.fuel_type ASC,
+                ft.transaction_date DESC,
+                CASE 
+                    WHEN LOWER(ft.shift_period) = 'second' THEN 2
+                    WHEN LOWER(ft.shift_period) = 'first' THEN 1
+                    ELSE 0
+                END DESC,
                 fp.pump_number ASC,
-                ft.transaction_date ASC,
-                ft.created_at ASC";
+                ft.id DESC";
     
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
@@ -487,19 +520,40 @@ try {
     $_SESSION['error'] = "Error loading calibration records: " . $e->getMessage();
 }
 
-// â”€â”€ Metrics Calculations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Metrics Calculations ──────────────────────────────────────────
 $total_calibration_liters = 0.0;
 $pending_reviews_count = 0;
 $total_liters_validated = 0.0;
 
-foreach ($records as $r) {
-    $st = strtolower(trim($r['status'] ?? ''));
-    if (in_array($st, ['verified', 'approved', 'adjusted', 'validated'])) {
-        $total_calibration_liters += (float)($r['calibration'] ?? 0.0);
-        $total_liters_validated += (float)($r['liters_sold'] ?? 0.0);
-    } elseif (str_contains($st, 'pending')) {
-        $pending_reviews_count++;
+try {
+    $kpi_where = ["station_id = ?"];
+    $kpi_params = [$station_id];
+    if ($date_filter !== '' && $date_filter !== 'all') {
+        $kpi_where[] = "DATE(transaction_date) = ?";
+        $kpi_params[] = $date_filter;
     }
+    $kpi_sql = "
+        SELECT 
+            COALESCE(SUM(CASE WHEN LOWER(status) IN ('verified','approved','validated','adjusted') THEN calibration ELSE 0 END), 0) as tot_cal,
+            COALESCE(SUM(CASE WHEN LOWER(status) IN ('verified','approved','validated','adjusted') THEN liters_sold ELSE 0 END), 0) as tot_val
+        FROM fuel_transactions
+        WHERE " . implode(" AND ", $kpi_where);
+    $kpi_stmt = $pdo->prepare($kpi_sql);
+    $kpi_stmt->execute($kpi_params);
+    $kpi_row = $kpi_stmt->fetch(PDO::FETCH_ASSOC);
+    if ($kpi_row) {
+        $total_calibration_liters = (float)$kpi_row['tot_cal'];
+        $total_liters_validated   = (float)$kpi_row['tot_val'];
+    }
+
+    $pend_stmt = $pdo->prepare("
+        SELECT COUNT(*) FROM fuel_transactions
+        WHERE station_id = ? AND (LOWER(status) LIKE '%pending%' OR LOWER(status) IN ('closing_completed','submitted','adjusted','readings_submitted'))
+    ");
+    $pend_stmt->execute([$station_id]);
+    $pending_reviews_count = (int)$pend_stmt->fetchColumn();
+} catch (Exception $e) {
+    error_log("KPI calculation error: " . $e->getMessage());
 }
 
 // â”€â”€ Fetch dynamic filters data (from fuel_transactions for accurate type list) â”€
@@ -524,9 +578,9 @@ try {
     $fuel_types = array_unique($ft_stmt->fetchAll(PDO::FETCH_COLUMN));
 } catch (Exception $e) {}
 
-// â”€â”€ EXPORTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── EXPORTS ───────────────────────────────────────────────────────────
 if (in_array($export, ['excel', 'pdf'])) {
-    $headers = ['Date', 'Shift', 'Fuel Type', 'Staff Encoder', 'Beginning', 'Ending', 'Staff Calibration', 'Manager Calibration', 'Liters Sold', 'Status', 'Validated By', 'Date Validated'];
+    $headers = ['Date', 'Shift', 'Pump / Nozzle', 'Fuel Type', 'Staff Encoder', 'Beginning', 'Ending', 'Staff Calibration', 'Manager Calibration', 'Liters Sold', 'Status', 'Validated By', 'Date Validated'];
     $rows_fmt = [];
     foreach ($records as $r) {
         // Normalize fuel type for export
@@ -552,6 +606,7 @@ if (in_array($export, ['excel', 'pdf'])) {
         $rows_fmt[] = [
             date('Y-m-d', strtotime($r['transaction_date'])),
             formatShiftLabel($r['shift_period']),
+            $r['pump_number'] ?: $r['fuel_type'],
             $fuel_normalized,
             $r['staff_name'] ?? '—',
             number_format($r['previous_reading'], 2),
@@ -564,7 +619,7 @@ if (in_array($export, ['excel', 'pdf'])) {
             $r['validated_at'] ? date('Y-m-d H:i', strtotime($r['validated_at'])) : '—'
         ];
     }
-    $filename = 'calibration_review_' . $date_filter;
+    $filename = 'calibration_review_' . ($date_filter ?: 'all');
 
     if ($export === 'excel') {
         header('Content-Type: application/vnd.ms-excel; charset=utf-8');
@@ -906,6 +961,20 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 
     <!-- Filters Form -->
     <form method="get" class="mcr-filter">
+        <div class="mcr-fg" style="flex: 1; min-width: 180px;">
+            <label>Search</label>
+            <input type="text" name="search" value="<?= htmlspecialchars($search_query) ?>" placeholder="TXN, pump, staff...">
+        </div>
+        <div class="mcr-fg">
+            <label>Status</label>
+            <select name="status">
+                <option value="pending" <?= $status_filter === 'pending' ? 'selected' : '' ?>>Pending Review (Active)</option>
+                <option value="verified" <?= $status_filter === 'verified' ? 'selected' : '' ?>>Verified / Approved</option>
+                <option value="adjusted" <?= $status_filter === 'adjusted' ? 'selected' : '' ?>>Adjusted</option>
+                <option value="rejected" <?= $status_filter === 'rejected' ? 'selected' : '' ?>>Rejected</option>
+                <option value="all" <?= $status_filter === 'all' ? 'selected' : '' ?>>All Statuses</option>
+            </select>
+        </div>
         <div class="mcr-fg">
             <label>Review Date</label>
             <input type="date" name="date" value="<?= htmlspecialchars($date_filter) ?>">
@@ -948,6 +1017,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                     <tr>
                         <th>Date</th>
                         <th>Shift</th>
+                        <th>Pump / Nozzle</th>
                         <th>Fuel Type</th>
                         <th>Staff</th>
                         <th style="text-align:right;">Beginning</th>
@@ -961,7 +1031,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                 <tbody>
                     <?php if (empty($records)): ?>
                         <tr>
-                            <td colspan="10" style="text-align:center;padding:40px;color:#94a3b8;">
+                            <td colspan="11" style="text-align:center;padding:40px;color:#94a3b8;">
                                 <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>
                                 No calibration/readings records found for the selected filters.
                             </td>
@@ -972,20 +1042,33 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                             $tx_date = date('Y-m-d', strtotime($r['transaction_date']));
                             $preceding_ok = true;
                             
+                            $is_pending_action = str_contains($status, 'pending') || in_array($status, ['closing_completed', 'submitted', 'readings_submitted', 'adjusted']);
+                            
                             // Check sequence validation for active validation actions
-                            if ($status === 'pending validation' && $r['pump_id'] > 0) {
+                            if ($is_pending_action && $r['pump_id'] > 0) {
                                 $preceding_ok = is_preceding_shift_validated($pdo, $station_id, $r['pump_id'], $r['shift_period'], $tx_date);
                             }
                             
                             $shift_lbl = formatShiftLabel($r['shift_period']);
+                            $pump_lbl = $r['pump_number'] ?: $r['fuel_type'];
                         ?>
                             <tr>
                                 <td><?= date('M d, Y', strtotime($r['transaction_date'])) ?></td>
                                 <td><strong><?= htmlspecialchars($shift_lbl) ?></strong></td>
-                                <td><?= htmlspecialchars(normalizeFuelType($r['fuel_type'])) ?></td>
+                                <td>
+                                    <span style="display:inline-flex; align-items:center; gap:6px; font-weight:700; color:#002F70;">
+                                        <i class="fas fa-gas-pump" style="color:#0284c7; font-size:12px;"></i>
+                                        <?= htmlspecialchars($pump_lbl) ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <span style="font-weight:600; color:#334155;">
+                                        <?= htmlspecialchars(normalizeFuelType($r['fuel_type'])) ?>
+                                    </span>
+                                </td>
                                 <td><?= htmlspecialchars($r['staff_name']) ?></td>
                                 <td style="text-align:right; font-family: monospace;"><?= number_format($r['previous_reading'], 2) ?></td>
-                                <td style="text-align:right; font-family: monospace;"><?= number_format($r['present_reading'], 2) ?></td>
+                                <td style="text-align:right; font-family: monospace; font-weight: 600;"><?= number_format($r['present_reading'], 2) ?></td>
                                 <td style="text-align:right; font-family: monospace; color: #475569;"><?= number_format($r['staff_calibration'], 2) ?> L</td>
                                 <td style="text-align:right; font-family: monospace; font-weight: bold;"><?= number_format($r['calibration'], 2) ?> L</td>
                                 <td style="text-align:center;">
@@ -993,7 +1076,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                                 </td>
                                 <td style="text-align:center; padding: 8px 10px; vertical-align:middle;">
                                     <div style="display:flex; flex-direction:column; gap:5px; align-items:stretch; min-width:90px;">
-                                    <?php if ($status === 'pending validation'): ?>
+                                    <?php if ($is_pending_action): ?>
                                         <?php if ($preceding_ok): ?>
                                             <!-- Verify -->
                                             <form method="post" style="margin:0;" onsubmit="return confirm('Verify and approve this entry? Beginning reading will match preceding shift ending.');">
@@ -1005,7 +1088,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                                             <button class="act-btn act-btn-edit" onclick="openAdjustModal(<?= htmlspecialchars(json_encode([
                                                 'id' => $r['id'],
                                                 'txn_id' => $r['transaction_id'],
-                                                'pump' => $r['pump_number'] ?? '—',
+                                                'pump' => $pump_lbl,
                                                 'fuel_type' => $r['fuel_type'],
                                                 'beginning' => get_preceding_shift_validated_ending($pdo, $station_id, $r['pump_id'], $r['shift_period'], $tx_date),
                                                 'ending' => $r['present_reading'],
@@ -1020,12 +1103,12 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                                                 $prec_lbl = $preceding ? (formatShiftLabel($preceding['shift_key']) . ' on ' . $preceding['date']) : 'Shift 1';
                                             ?>
                                             <button class="act-btn disabled" disabled title="Waiting for preceding shift (<?= $prec_lbl ?>) validation"><i class="fas fa-lock"></i> Locked</button>
-                                            <span style="font-size:9px; color:#dc2626; text-align:center; display:block;">âš ï¸ Check preceding shift</span>
+                                            <span style="font-size:9px; color:#dc2626; text-align:center; display:block;">⚠️ Check preceding shift</span>
                                         <?php endif; ?>
                                     <?php else: ?>
                                         <button class="act-btn act-btn-view" onclick="openViewModal(<?= htmlspecialchars(json_encode([
                                             'txn_id' => $r['transaction_id'],
-                                            'pump' => $r['pump_number'] ?? '—',
+                                            'pump' => $pump_lbl,
                                             'fuel_type' => $r['fuel_type'],
                                             'beginning' => number_format($r['previous_reading'], 2),
                                             'ending' => number_format($r['present_reading'], 2),

@@ -1129,8 +1129,8 @@ if (!empty($query)) {
                 $stmt->execute([$like, $like, $like]);
                 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                     $fuel_mgmt_link = $is_admin
-                        ? 'admin_fuel_transactions_oversight.php'
-                        : 'manager_fuel_pump_master.php';
+                        ? 'admin_fuel_transactions_oversight.php?search=' . urlencode($r['pump_number'])
+                        : 'manager_fuel_pump_master.php?search=' . urlencode($r['pump_number']) . '&status=all';
 
                     $results[] = [
                         'type'     => 'Fuel Management',
