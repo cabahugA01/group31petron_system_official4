@@ -629,7 +629,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $po_number = manager_next_po_number($pdo);
+
+            // Generate a PR number for this Direct PO (no staff request exists)
+            $pr_number_direct = 'PR-' . date('Y') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+            // Try to get a sequential PR number if possible
+            try {
+                $max_pr = $pdo->query("SELECT MAX(CAST(SUBSTRING_INDEX(request_no, '-', -1) AS UNSIGNED)) FROM stock_requests WHERE station_id = $station_id")->fetchColumn();
+                $pr_number_direct = 'PR-' . date('Y') . '-' . str_pad((int)$max_pr + 1, 4, '0', STR_PAD_LEFT);
+            } catch (Exception $e2) { /* use random fallback */ }
+
             $po_notes = "Direct PO created by Manager\n"
+                . "Source PR: " . $pr_number_direct . "\n"
                 . "Expected Delivery: " . $expected_delivery . "\n"
                 . "Remarks: " . ($remarks !== '' ? $remarks : 'None');
             $total_qty = array_sum(array_column($items_to_insert, 'quantity'));
@@ -739,7 +749,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $po_number = manager_next_po_number($pdo);
+
+            // Generate a PR number for this Direct Fuel PO (no staff request exists)
+            $pr_number_direct_fuel = 'PR-' . date('Y') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+            try {
+                $max_fpr = $pdo->query("SELECT MAX(CAST(SUBSTRING_INDEX(request_no, '-', -1) AS UNSIGNED)) FROM fuel_stock_requests WHERE station_id = $station_id")->fetchColumn();
+                $pr_number_direct_fuel = 'PR-' . date('Y') . '-' . str_pad((int)$max_fpr + 1, 4, '0', STR_PAD_LEFT);
+            } catch (Exception $e2) { /* use random fallback */ }
+
             $po_notes = "Direct Fuel PO created by Manager\n"
+                . "Source PR: " . $pr_number_direct_fuel . "\n"
                 . "Expected Delivery: " . $expected_delivery . "\n"
                 . "Remarks: " . ($remarks !== '' ? $remarks : 'None');
             $line_count = count($items_to_insert);

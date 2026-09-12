@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 $page_id = 'staff_record_delivery';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -810,7 +810,9 @@ try {
                CONCAT(u_app.first_name, ' ', u_app.last_name) AS approved_by_name,
                COALESCE(
                    (SELECT sr.request_no FROM stock_requests sr WHERE sr.id = po.request_id AND sr.request_no IS NOT NULL AND sr.request_no != '' LIMIT 1),
-                   '—'
+                   CASE WHEN po.notes LIKE '%Source PR:%' THEN NULLIF(TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(po.notes, 'Source PR: ', -1), CHAR(10), 1)), '') ELSE NULL END,
+                   CASE WHEN po.remarks LIKE '%Source PR:%' THEN NULLIF(TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(po.remarks, 'Source PR: ', -1), CHAR(10), 1)), '') ELSE NULL END,
+                   '-'
                ) AS pr_number
         FROM purchase_orders po
         LEFT JOIN suppliers s ON po.supplier_id = s.id
@@ -942,7 +944,7 @@ try {
                ft.name as fuel_type_name, s.name as supplier_name,
                CONCAT(u_app.first_name, ' ', u_app.last_name) AS approved_by_name,
                COALESCE(fi.ugt_no, '') AS ugt_no,
-               COALESCE((SELECT request_no FROM fuel_stock_requests WHERE station_id = fpo.station_id AND LOWER(fuel_type) = LOWER(ft.name) ORDER BY id DESC LIMIT 1), '') AS pr_number
+               COALESCE((SELECT request_no FROM fuel_stock_requests WHERE station_id = fpo.station_id AND LOWER(fuel_type) = LOWER(ft.name) ORDER BY id DESC LIMIT 1), CASE WHEN fpo.notes LIKE '%Source PR:%' THEN NULLIF(TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(fpo.notes, 'Source PR: ', -1), CHAR(10), 1)), '') ELSE NULL END, '') AS pr_number
         FROM fuel_purchase_orders fpo
         LEFT JOIN fuel_types ft ON fpo.fuel_type_id = ft.id
         LEFT JOIN suppliers s ON fpo.supplier_id = s.id
