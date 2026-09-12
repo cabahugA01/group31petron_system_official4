@@ -912,7 +912,6 @@ table.afto-tbl.report-table.no-min-width.print-table {
     <div class="modal-content">
         <div class="modal-header">
             <h3>Transaction Adjustment Details</h3>
-            <button onclick="closeModal('txModal')" style="border:none;background:none;font-size:20px;cursor:pointer;color:#64748b;">&times;</button>
         </div>
         <div class="modal-body">
             <div class="details-grid">
@@ -990,7 +989,6 @@ table.afto-tbl.report-table.no-min-width.print-table {
     <div class="modal-content">
         <div class="modal-header">
             <h3>Delivery Adjustment Details</h3>
-            <button onclick="closeModal('delModal')" style="border:none;background:none;font-size:20px;cursor:pointer;color:#64748b;">&times;</button>
         </div>
         <div class="modal-body">
             <div class="details-grid">
