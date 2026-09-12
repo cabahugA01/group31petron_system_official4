@@ -2797,22 +2797,22 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
 
             <div style="font-size:11px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;"><i class="fas fa-list" style="margin-right:5px;"></i>Delivered Items</div>
-            <div style="border:1px solid #e2e8f0; border-radius:10px; overflow-x:auto; -webkit-overflow-scrolling:touch; margin-bottom:16px; background:#fff;">
-                <table style="width:100%; min-width:680px; border-collapse:collapse; font-size:13px; table-layout:fixed;">
+            <div style="border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; margin-bottom:16px; background:#fff;">
+                <table style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
                     <colgroup>
-                        <col style="width:35%;">
+                        <col style="width:32%;">
                         <col style="width:15%;">
                         <col style="width:15%;">
-                        <col style="width:17%;">
                         <col style="width:18%;">
+                        <col style="width:20%;">
                     </colgroup>
                     <thead style="background:#002F70;">
                         <tr>
-                            <th style="padding:11px 14px;text-align:left;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px;">Item</th>
-                            <th style="padding:11px 12px;text-align:right;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px;">Expected</th>
-                            <th style="padding:11px 12px;text-align:right;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px;">Received</th>
-                            <th style="padding:11px 12px;text-align:right;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px;">Unit Price</th>
-                            <th style="padding:11px 14px;text-align:right;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px;">Total</th>
+                            <th style="padding:9px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.2px;">Item</th>
+                            <th style="padding:9px 6px;text-align:right;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.2px;">Expected</th>
+                            <th style="padding:9px 6px;text-align:right;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.2px;">Received</th>
+                            <th style="padding:9px 6px;text-align:right;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.2px;">Unit Price</th>
+                            <th style="padding:9px 8px;text-align:right;color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.2px;">Total</th>
                         </tr>
                     </thead>
                     <tbody id="dv_items_body"></tbody>
@@ -2840,6 +2840,14 @@ function qtyPH(value) {
     return amount.toLocaleString('en-PH', { maximumFractionDigits: 2 });
 }
 
+function compactUnit(u) {
+    if (!u) return 'pcs';
+    const s = String(u).trim();
+    if (s.toLowerCase().includes('piece') || s.toLowerCase() === 'pc') return 'pc';
+    if (s.toLowerCase().includes('liter') || s.toLowerCase() === 'l') return 'L';
+    return s;
+}
+
 function openDeliveryView(data) {
     const modal = document.getElementById('deliveryViewModal');
     if (!modal) return;
@@ -2865,13 +2873,14 @@ function openDeliveryView(data) {
     setText('dv_total_cost', moneyPH(data.total_cost));
 
     const rows = (data.items || []).map(function(item) {
-        const unit = item.unit || (data.type === 'Fuel' ? 'L' : 'pcs');
+        const rawUnit = item.unit || (data.type === 'Fuel' ? 'L' : 'pcs');
+        const unit = compactUnit(rawUnit);
         return '<tr>' +
-            '<td style="padding:10px 14px;border-bottom:1px solid #f1f5f9;font-weight:700;color:#1e293b;word-break:break-word;line-height:1.35;">' + escH(item.name) + '</td>' +
-            '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:right;color:#475569;font-weight:700;white-space:nowrap;">' + qtyPH(item.expected) + ' ' + escH(unit) + '</td>' +
-            '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:right;color:#002F70;font-weight:800;white-space:nowrap;">' + qtyPH(item.actual || item.qty) + ' ' + escH(unit) + '</td>' +
-            '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:right;color:#475569;font-weight:600;white-space:nowrap;">' + moneyPH(item.unit_price) + '</td>' +
-            '<td style="padding:10px 14px;border-bottom:1px solid #f1f5f9;text-align:right;color:#16a34a;font-weight:800;white-space:nowrap;">' + moneyPH(item.total) + '</td>' +
+            '<td style="padding:8px 8px;border-bottom:1px solid #f1f5f9;font-weight:700;color:#1e293b;word-break:break-word;line-height:1.3;font-size:12px;">' + escH(item.name) + '</td>' +
+            '<td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;text-align:right;color:#475569;font-weight:700;white-space:nowrap;font-size:12px;">' + qtyPH(item.expected) + ' ' + escH(unit) + '</td>' +
+            '<td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;text-align:right;color:#002F70;font-weight:800;white-space:nowrap;font-size:12px;">' + qtyPH(item.actual || item.qty) + ' ' + escH(unit) + '</td>' +
+            '<td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;text-align:right;color:#475569;font-weight:600;white-space:nowrap;font-size:12px;">' + moneyPH(item.unit_price) + '</td>' +
+            '<td style="padding:8px 8px;border-bottom:1px solid #f1f5f9;text-align:right;color:#16a34a;font-weight:800;white-space:nowrap;font-size:12px;">' + moneyPH(item.total) + '</td>' +
             '</tr>';
     }).join('');
     document.getElementById('dv_items_body').innerHTML = rows || '<tr><td colspan="5" style="padding:20px;text-align:center;color:#94a3b8;">No items found.</td></tr>';
