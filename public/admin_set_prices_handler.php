@@ -408,8 +408,10 @@ try {
             $service_key        = trim($_POST['service_key'] ?? '');
             $service_price      = (float)($_POST['service_price'] ?? 0);
             $labor_fee          = (float)($_POST['labor_fee'] ?? 0);
-            $estimated_duration = (int)($_POST['estimated_duration'] ?? 60);
-            $required_mechanics = (int)($_POST['required_mechanics'] ?? 1);
+            $dur_raw            = trim((string)($_POST['estimated_duration'] ?? ''));
+            $estimated_duration = ($dur_raw !== '' && is_numeric($dur_raw) && (int)$dur_raw > 0) ? (int)$dur_raw : 60;
+            $mech_raw           = trim((string)($_POST['required_mechanics'] ?? ''));
+            $required_mechanics = ($mech_raw !== '' && is_numeric($mech_raw) && (int)$mech_raw > 0) ? (int)$mech_raw : 1;
             $description        = sanitize_optional_field($_POST['description'] ?? '');
 
             if (empty($service_name) || empty($category)) {

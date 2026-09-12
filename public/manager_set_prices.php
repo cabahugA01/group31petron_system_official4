@@ -2520,13 +2520,13 @@ document.addEventListener('DOMContentLoaded', function() {
             <small style="color:#94a3b8;font-size:12.5px;">Mechanic labor fee</small>
           </div>
           <div>
-            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins)</label>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins) <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
             <input type="number" id="addSvcDuration" min="5" max="480" step="5"
               style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
           </div>
           <div>
-            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics</label>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
             <input type="number" id="addSvcMechanics" min="1" max="10"
               style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
@@ -2614,14 +2614,14 @@ document.addEventListener('DOMContentLoaded', function() {
             <small style="color:#94a3b8;font-size:12.5px;">Mechanic labor fee</small>
           </div>
           <div>
-            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins)</label>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins) <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
             <input type="number" id="editSvcDuration" min="5" max="480" step="5"
               style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
               oninput="this.value = this.value.replace(/[^0-9]/g, '');">
           </div>
           <div>
-            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics</label>
+            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
             <input type="number" id="editSvcMechanics" min="1" max="10"
               style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
@@ -4436,9 +4436,10 @@ safeAddListener('addServiceForm', 'submit', function(e) {
     var category = (document.getElementById('addSvcCategory')    || {}).value || '';
 
     var svcFee   = parseFloat((document.getElementById('addSvcServiceFee') || {}).value) || 0;
-    var laborFee = parseFloat((document.getElementById('addSvcLaborFee')   || {}).value) || 0;
-    var duration = parseInt((document.getElementById('addSvcDuration')     || {}).value) || 60;
-    var mechs    = parseInt((document.getElementById('addSvcMechanics')    || {}).value) || 1;
+    var durationVal = ((document.getElementById('addSvcDuration')  || {}).value || '').trim();
+    var duration = (durationVal !== '' && !isNaN(parseInt(durationVal))) ? parseInt(durationVal) : 60;
+    var mechsVal    = ((document.getElementById('addSvcMechanics') || {}).value || '').trim();
+    var mechs    = (mechsVal !== '' && !isNaN(parseInt(mechsVal))) ? parseInt(mechsVal) : 1;
     var desc     = (document.getElementById('addSvcDescription')  || {}).value || '';
 
     name     = name.trim();
@@ -4550,11 +4551,13 @@ safeAddListener('editServiceForm', 'submit', function(e) {
     var name     = document.getElementById('editSvcName').value.trim();
     var category = document.getElementById('editSvcCategory').value.trim();
 
-    var svcFee   = parseFloat(document.getElementById('editSvcServiceFee').value) || 0;
-    var laborFee = parseFloat(document.getElementById('editSvcLaborFee').value)   || 0;
-    var duration = parseInt(document.getElementById('editSvcDuration').value)    || 60;
-    var mechs    = parseInt(document.getElementById('editSvcMechanics').value)   || 1;
-    var desc     = document.getElementById('editSvcDescription').value || '';
+    var svcFee      = parseFloat(document.getElementById('editSvcServiceFee').value) || 0;
+    var laborFee    = parseFloat(document.getElementById('editSvcLaborFee').value)   || 0;
+    var durationVal = ((document.getElementById('editSvcDuration')  || {}).value || '').trim();
+    var duration    = (durationVal !== '' && !isNaN(parseInt(durationVal))) ? parseInt(durationVal) : 60;
+    var mechsVal    = ((document.getElementById('editSvcMechanics') || {}).value || '').trim();
+    var mechs       = (mechsVal !== '' && !isNaN(parseInt(mechsVal))) ? parseInt(mechsVal) : 1;
+    var desc        = document.getElementById('editSvcDescription').value || '';
     var active   = document.getElementById('editSvcActive').value;
 
     var placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
