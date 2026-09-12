@@ -2485,30 +2485,25 @@ document.addEventListener('DOMContentLoaded', function() {
           </div>
           <div>
             <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Category <span style="color:#dc2626;">*</span></label>
-            <select id="addSvcCategory" required onchange="toggleCustomCategoryInput('add')" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
+            <input type="text" id="addSvcCategory" required list="svcCategoryList"
+              placeholder="e.g. Lubrication, Engine Services..."
+              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:500;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
-              <option value="">-- Select Category --</option>
-              <option value="Lubrication">Lubrication</option>
-              <option value="Preventive Maintenance">Preventive Maintenance</option>
-              <option value="Engine Services">Engine Services</option>
-              <option value="Brake Services">Brake Services</option>
-              <option value="Tire Services">Tire Services</option>
-              <option value="Battery Services">Battery Services</option>
-              <option value="Cooling System">Cooling System</option>
-              <option value="Electrical Services">Electrical Services</option>
-              <option value="Air Conditioning">Air Conditioning</option>
-              <option value="Undercarriage Services">Undercarriage Services</option>
-              <option value="Cleaning Services">Cleaning Services</option>
-              <option value="Emergency Services">Emergency Services</option>
-              <option value="Others">Others</option>
-              <option value="Custom Services">Custom Services</option>
-            </select>
-            <!-- Custom Category Input -->
-            <div id="addSvcCustomWrap" style="display:none;margin-top:8px;">
-              <input type="text" id="addSvcCustomCategory" placeholder="Type custom category name (e.g. Car Audio & Accessories)..."
-                style="width:100%;padding:8px 12px;border:1.5px solid #0284c7;border-radius:8px;font-size:14.5px;background:#f0f9ff;box-sizing:border-box;color:#0369a1;font-weight:600;"
-                oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
-            </div>
+            <datalist id="svcCategoryList">
+              <option value="Lubrication">
+              <option value="Preventive Maintenance">
+              <option value="Engine Services">
+              <option value="Brake Services">
+              <option value="Tire Services">
+              <option value="Battery Services">
+              <option value="Cooling System">
+              <option value="Electrical Services">
+              <option value="Air Conditioning">
+              <option value="Undercarriage Services">
+              <option value="Cleaning Services">
+              <option value="Emergency Services">
+              <option value="Others">
+            </datalist>
           </div>
           <div>
             <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Fee (₱) <span style="color:#dc2626;">*</span></label>
@@ -2587,30 +2582,10 @@ document.addEventListener('DOMContentLoaded', function() {
           </div>
           <div>
             <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Category <span style="color:#dc2626;">*</span></label>
-            <select id="editSvcCategory" required onchange="toggleCustomCategoryInput('edit')" style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
+            <input type="text" id="editSvcCategory" required list="svcCategoryList"
+              placeholder="e.g. Lubrication, Engine Services..."
+              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:500;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
-              <option value="">-- Select Category --</option>
-              <option value="Lubrication">Lubrication</option>
-              <option value="Preventive Maintenance">Preventive Maintenance</option>
-              <option value="Engine Services">Engine Services</option>
-              <option value="Brake Services">Brake Services</option>
-              <option value="Tire Services">Tire Services</option>
-              <option value="Battery Services">Battery Services</option>
-              <option value="Cooling System">Cooling System</option>
-              <option value="Electrical Services">Electrical Services</option>
-              <option value="Air Conditioning">Air Conditioning</option>
-              <option value="Undercarriage Services">Undercarriage Services</option>
-              <option value="Cleaning Services">Cleaning Services</option>
-              <option value="Emergency Services">Emergency Services</option>
-              <option value="Others">Others</option>
-              <option value="Custom Services">Custom Services</option>
-            </select>
-            <!-- Custom Category Input -->
-            <div id="editSvcCustomWrap" style="display:none;margin-top:8px;">
-              <input type="text" id="editSvcCustomCategory" placeholder="Type custom category name..."
-                style="width:100%;padding:8px 12px;border:1.5px solid #0284c7;border-radius:8px;font-size:14.5px;background:#f0f9ff;box-sizing:border-box;color:#0369a1;font-weight:600;"
-                oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\&]/g, '');">
-            </div>
           </div>
           <div>
             <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Fee (₱) <span style="color:#dc2626;">*</span></label>
@@ -4293,11 +4268,6 @@ safeAddListener('addServiceForm', 'submit', function(e) {
 
     var name     = (document.getElementById('addSvcName')        || {}).value || '';
     var category = (document.getElementById('addSvcCategory')    || {}).value || '';
-    var custom   = ((document.getElementById('addSvcCustomCategory') || {}).value || '').trim();
-
-    if ((category === 'Custom Services' || category === 'Others') && custom) {
-        category = custom;
-    }
 
     var svcFee   = parseFloat((document.getElementById('addSvcServiceFee') || {}).value) || 0;
     var laborFee = parseFloat((document.getElementById('addSvcLaborFee')   || {}).value) || 0;
@@ -4367,26 +4337,10 @@ function openEditServiceModal(svc) {
     document.getElementById('editSvcId').value           = svc.id        || '';
     document.getElementById('editSvcName').value         = svc.service_name || '';
 
-    // Handle Custom vs Preset Category
-    var presetCategories = ['Lubrication','Preventive Maintenance','Engine Services','Brake Services','Tire Services','Battery Services','Cooling System','Electrical Services','Air Conditioning','Undercarriage Services','Cleaning Services','Emergency Services'];
+    // Set category directly into the text input
     var catVal = svc.category || '';
-    var selEl  = document.getElementById('editSvcCategory');
-    var wrapEl = document.getElementById('editSvcCustomWrap');
-    var inpEl  = document.getElementById('editSvcCustomCategory');
-
-    if (presetCategories.indexOf(catVal) !== -1) {
-        selEl.value = catVal;
-        if (wrapEl) wrapEl.style.display = 'none';
-        if (inpEl)  inpEl.value = '';
-    } else if (catVal) {
-        selEl.value = 'Custom Services';
-        if (wrapEl) wrapEl.style.display = 'block';
-        if (inpEl)  inpEl.value = catVal;
-    } else {
-        selEl.value = '';
-        if (wrapEl) wrapEl.style.display = 'none';
-        if (inpEl)  inpEl.value = '';
-    }
+    var catInput = document.getElementById('editSvcCategory');
+    if (catInput) catInput.value = catVal;
 
     document.getElementById('editSvcServiceFee').value   = _svcOriginalFee.toFixed(2);
     document.getElementById('editSvcLaborFee').value     = _svcOriginalLabor.toFixed(2);
@@ -4429,11 +4383,6 @@ safeAddListener('editServiceForm', 'submit', function(e) {
     var id       = document.getElementById('editSvcId').value;
     var name     = document.getElementById('editSvcName').value.trim();
     var category = document.getElementById('editSvcCategory').value.trim();
-    var custom   = ((document.getElementById('editSvcCustomCategory') || {}).value || '').trim();
-
-    if ((category === 'Custom Services' || category === 'Others') && custom) {
-        category = custom;
-    }
 
     var svcFee   = parseFloat(document.getElementById('editSvcServiceFee').value) || 0;
     var laborFee = parseFloat(document.getElementById('editSvcLaborFee').value)   || 0;
