@@ -2236,6 +2236,88 @@ function record_return_movement(PDO $pdo, int $station_id, $product_id_or_name, 
 }
 }
 
+if (!function_exists('resolve_fuel_inventory_tank_id')) {
+function resolve_fuel_inventory_tank_id(PDO $pdo, int $station_id, $label, $fuel_type = ''): ?int {
+    $raw = strtoupper(trim((string)$label));
+    if (empty($raw) && !empty($fuel_type)) {
+        $raw = strtoupper(trim((string)$fuel_type));
+    }
+    
+    $target_tank_num = 0;
+    if (strpos($raw, 'TURBO') !== false) {
+        $target_tank_num = 5; // UGT-05 / Turbo Diesel
+    } elseif (strpos($raw, 'DIESEL 2') !== false || strpos($raw, 'DIESEL - 2') !== false || strpos($raw, 'DSL 2') !== false || strpos($raw, 'DSL - 2') !== false) {
+        $target_tank_num = 2; // UGT-02 / Diesel 2
+    } elseif (strpos($raw, 'DIESEL 1') !== false || strpos($raw, 'DIESEL - 1') !== false || strpos($raw, 'DSL 1') !== false || strpos($raw, 'DSL - 1') !== false || strpos($raw, 'DIESEL') !== false || strpos($raw, 'DSL') !== false) {
+        $target_tank_num = 1; // UGT-01 / Diesel 1
+    } elseif (strpos($raw, 'XCS') !== false) {
+        $target_tank_num = 3; // UGT-03 / XCS Plus
+    } elseif (strpos($raw, 'XTRA UNL 1') !== false || strpos($raw, 'ADVANCE 1') !== false || strpos($raw, 'UNL 1') !== false) {
+        $target_tank_num = 4; // UGT-04 / Xtra UNL 1
+    } elseif (strpos($raw, 'XTRA UNL 2') !== false || strpos($raw, 'ADVANCE 2') !== false || strpos($raw, 'UNL 2') !== false) {
+        $target_tank_num = 6; // UGT-06 / Xtra UNL 2
+    } elseif (strpos($raw, 'XTRA') !== false || strpos($raw, 'UNL') !== false || strpos($raw, 'ADVANCE') !== false) {
+        $target_tank_num = 4; // Default to UGT-04 if unspecified
+    } elseif (strpos($raw, 'KERO') !== false) {
+        $target_tank_num = 7; // UGT-07 / Kerosene
+    }
+
+    if ($target_tank_num > 0) {
+        $ugt_tag1 = 'UGT #' . $target_tank_num;
+        $ugt_tag2 = 'UGT-' . str_pad($target_tank_num, 2, '0', STR_PAD_LEFT);
+        $ugt_tag3 = '#' . $target_tank_num;
+
+        $stmt = $pdo->prepare("
+            SELECT id FROM fuel_inventory
+            WHERE station_id = ?
+              AND (
+                  UPPER(TRIM(ugt_no)) = ?
+                  OR UPPER(TRIM(ugt_no)) = ?
+                  OR fuel_type LIKE ?
+                  OR fuel_type LIKE ?
+              )
+            ORDER BY id ASC LIMIT 1
+        ");
+        $stmt->execute([$station_id, strtoupper($ugt_tag1), strtoupper($ugt_tag2), "%{$ugt_tag3}%", "%UGT-0{$target_tank_num}%"]);
+        $tid = $stmt->fetchColumn();
+        if ($tid) return (int)$tid;
+    }
+
+    $clean = function_exists('clean_fuel_display_name') ? clean_fuel_display_name($fuel_type ?: $label) : ($fuel_type ?: $label);
+    $stmt2 = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) LIKE ? ORDER BY id ASC LIMIT 1");
+    $stmt2->execute([$station_id, '%' . strtolower(trim($clean)) . '%']);
+    $tid2 = $stmt2->fetchColumn();
+    return $tid2 ? (int)$tid2 : null;
+}
+}
+
+if (!function_exists('deduct_fuel_inventory_stock')) {
+function deduct_fuel_inventory_stock(PDO $pdo, int $station_id, $label, $fuel_type, float $liters, int $user_id = 0): bool {
+    if (abs($liters) < 0.0001) return true;
+    $tank_id = resolve_fuel_inventory_tank_id($pdo, $station_id, $label, $fuel_type);
+    if (!$tank_id) {
+        error_log("deduct_fuel_inventory_stock: Could not resolve tank for station_id=$station_id, label=$label, fuel_type=$fuel_type");
+        return false;
+    }
+    $stmt = $pdo->prepare("
+        UPDATE fuel_inventory
+        SET current_level = GREATEST(0, LEAST(capacity, COALESCE(current_level, 0) - ?)),
+            current_stock  = GREATEST(0, LEAST(capacity, COALESCE(current_stock, 0) - ?)),
+            last_updated   = NOW(),
+            updated_by     = ?
+        WHERE id = ? AND station_id = ?
+    ");
+    return $stmt->execute([$liters, $liters, $user_id, $tank_id, $station_id]);
+}
+}
+
+if (!function_exists('refund_fuel_inventory_stock')) {
+function refund_fuel_inventory_stock(PDO $pdo, int $station_id, $label, $fuel_type, float $liters, int $user_id = 0): bool {
+    if (abs($liters) < 0.0001) return true;
+    return deduct_fuel_inventory_stock($pdo, $station_id, $label, $fuel_type, -$liters, $user_id);
+}
+}
+
 function get_system_logo_url($station_id = null) {
     global $pdo;
     if ($station_id === null) {

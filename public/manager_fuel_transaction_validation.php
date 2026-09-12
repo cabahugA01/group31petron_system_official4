@@ -89,6 +89,7 @@ function get_preceding_shift_validated_ending($pdo, $station_id, $pump_id, $curr
     return $val_fallback !== false ? (float)$val_fallback : 0.0;
 }
 
+if (!function_exists('resolve_fuel_inventory_tank_id')) {
 function resolve_fuel_inventory_tank_id($pdo, $station_id, $fuel_type_str) {
     $raw = strtoupper(trim((string)$fuel_type_str));
     // Strip pump suffix (e.g. "DIESEL 1 - 1" -> "DIESEL 1")
@@ -132,6 +133,7 @@ function resolve_fuel_inventory_tank_id($pdo, $station_id, $fuel_type_str) {
     $stmt2->execute([$station_id, '%' . $q . '%']);
     $tid = $stmt2->fetchColumn();
     return $tid ? (int)$tid : null;
+}
 }
 
 function is_pending_validation_status($status_str) {
@@ -359,23 +361,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (in_array($_POST['action'] ?? '', [
             ");
             $up->execute([$prev_reading, $present_reading, $liters_sold, $total_amount, $me['id'], $manager_remarks ?: null, $tx['id']]);
 
-            // Deduct inventory only if not already deducted during adjustment
-            $was_adjusted = (strtolower(trim($tx['status'] ?? '')) === 'adjusted');
-            if (!$was_adjusted) {
-                $base_fuel_type = preg_replace('/\s*-\s*\d+$/i', '', trim($tx['fuel_type']));
-                $up_stock = $pdo->prepare("
-                    UPDATE fuel_inventory 
-                    SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
-                        current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
-                        last_updated   = NOW()
-                    WHERE station_id = ? 
-                      AND (
-                          LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                       OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                      )
-                ");
-                $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type'], $base_fuel_type]);
+            // Deduct inventory only if not already deducted during reading submission or adjustment
+            $already_deducted = !empty($tx['inventory_deducted']) || (strtolower(trim($tx['status'] ?? '')) === 'adjusted');
+            if (!$already_deducted && $liters_sold > 0) {
+                deduct_fuel_inventory_stock($pdo, (int)$station_id, $tx['fuel_type'], $tx['fuel_type'], $liters_sold, (int)$me['id']);
             }
+            $pdo->prepare("UPDATE fuel_transactions SET inventory_deducted = 1 WHERE id = ?")->execute([$tx['id']]);
 
             log_activity($pdo, $me['id'], 'Fuel Reading Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | {$liters_sold} L");
             $validated_count++;
@@ -448,26 +439,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $up = $pdo->prepare("UPDATE fuel_transactions SET previous_reading = ?, present_reading = ?, liters_sold = ?, total_amount = ?, status = 'Verified', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
             $up->execute([$prev_reading, $present_reading, $liters_sold, $total_amount, $me['id'], $remarks ?: null, $tx_id]);
 
-            // Deduct stock from fuel_inventory only if not already deducted during adjustment
-            $was_adjusted = (strtolower(trim($tx['status'] ?? '')) === 'adjusted');
-            if (!$was_adjusted) {
-                $base_fuel_type = preg_replace('/\s*-\s*\d+$/i', '', trim($tx['fuel_type']));
-                $up_stock = $pdo->prepare("UPDATE fuel_inventory 
-                                           SET current_level = GREATEST(0, COALESCE(current_level, 0) - ?),
-                                               current_stock  = GREATEST(0, COALESCE(current_stock, 0) - ?),
-                                               last_updated   = NOW()
-                                           WHERE station_id = ? 
-                                             AND (
-                                                 LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                                              OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                                             )");
-                $up_stock->execute([$liters_sold, $liters_sold, $station_id, $tx['fuel_type'], $base_fuel_type]);
-
-                // Safety check: ensure the fuel type was found in inventory
-                if ($up_stock->rowCount() === 0) {
-                    error_log("FUEL INVENTORY WARNING: No fuel_inventory row matched fuel_type='{$tx['fuel_type']}' station_id={$station_id} for TXN {$tx['transaction_id']}");
-                }
+            // Deduct stock from fuel_inventory only if not already deducted during reading submission or adjustment
+            $already_deducted = !empty($tx['inventory_deducted']) || (strtolower(trim($tx['status'] ?? '')) === 'adjusted');
+            if (!$already_deducted && $liters_sold > 0) {
+                deduct_fuel_inventory_stock($pdo, (int)$station_id, $tx['fuel_type'], $tx['fuel_type'], $liters_sold, (int)$me['id']);
             }
+            $pdo->prepare("UPDATE fuel_transactions SET inventory_deducted = 1 WHERE id = ?")->execute([$tx_id]);
 
             // Log activity
             log_activity($pdo, $me['id'], 'Fuel Reading Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | {$liters_sold} L");
@@ -480,25 +457,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception("Rejection remarks/reason is required.");
             }
 
-            $was_verified = in_array(strtolower(trim($tx['status'] ?? '')), ['verified', 'approved', 'adjusted']);
+            $was_deducted = !empty($tx['inventory_deducted']) || in_array(strtolower(trim($tx['status'] ?? '')), ['verified', 'approved', 'adjusted']);
 
             // Update status to Rejected
-            $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Rejected', validated_by = ?, validated_at = NOW(), reject_reason = ? WHERE id = ?");
+            $up = $pdo->prepare("UPDATE fuel_transactions SET status = 'Rejected', validated_by = ?, validated_at = NOW(), reject_reason = ?, inventory_deducted = 0 WHERE id = ?");
             $up->execute([$me['id'], $remarks, $tx_id]);
 
-            // If it was already verified/adjusted, revert the deducted liters back to the tank!
-            if ($was_verified && (float)$tx['liters_sold'] > 0) {
-                $matched_tank_id = resolve_fuel_inventory_tank_id($pdo, $station_id, $tx['fuel_type']);
-                if ($matched_tank_id) {
-                    $up_stock = $pdo->prepare("
-                        UPDATE fuel_inventory 
-                        SET current_level = LEAST(capacity, COALESCE(current_level, 0) + ?),
-                            current_stock  = LEAST(capacity, COALESCE(current_stock, 0) + ?),
-                            last_updated   = NOW()
-                        WHERE id = ? AND station_id = ?
-                    ");
-                    $up_stock->execute([(float)$tx['liters_sold'], (float)$tx['liters_sold'], $matched_tank_id, $station_id]);
-                }
+            // If it was already deducted, revert the deducted liters back to the tank!
+            if ($was_deducted && (float)$tx['liters_sold'] > 0) {
+                refund_fuel_inventory_stock($pdo, (int)$station_id, $tx['fuel_type'], $tx['fuel_type'], (float)$tx['liters_sold'], (int)$me['id']);
             }
 
             // Log activity
@@ -576,23 +543,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $up->execute([$beginning, $ending, $calibration, $liters_sold, $total_amount, $me['id'], $remarks, $tx_id]);
 
                 // Apply delta deduction/reversal to fuel_inventory matching exact tank
-                $matched_tank_id = resolve_fuel_inventory_tank_id($pdo, $station_id, $tx['fuel_type']);
-                if ($matched_tank_id) {
-                    $was_verified = in_array(strtolower(trim($tx['status'] ?? '')), ['verified', 'approved', 'adjusted']);
-                    $old_liters = (float)($tx['liters_sold'] ?? 0);
-                    $liters_diff = $was_verified ? ($liters_sold - $old_liters) : $liters_sold;
+                $was_deducted = !empty($tx['inventory_deducted']) || in_array(strtolower(trim($tx['status'] ?? '')), ['verified', 'approved', 'adjusted']);
+                $old_liters = (float)($tx['liters_sold'] ?? 0);
+                $liters_diff = $was_deducted ? ($liters_sold - $old_liters) : $liters_sold;
 
-                    if (abs($liters_diff) > 0.0001) {
-                        $up_stock = $pdo->prepare("
-                            UPDATE fuel_inventory 
-                            SET current_level = GREATEST(0, LEAST(capacity, COALESCE(current_level, 0) - ?)),
-                                current_stock  = GREATEST(0, LEAST(capacity, COALESCE(current_stock, 0) - ?)),
-                                last_updated   = NOW()
-                            WHERE id = ? AND station_id = ?
-                        ");
-                        $up_stock->execute([$liters_diff, $liters_diff, $matched_tank_id, $station_id]);
-                    }
+                if (abs($liters_diff) > 0.0001) {
+                    deduct_fuel_inventory_stock($pdo, (int)$station_id, $tx['fuel_type'], $tx['fuel_type'], $liters_diff, (int)$me['id']);
                 }
+                $pdo->prepare("UPDATE fuel_transactions SET inventory_deducted = 1 WHERE id = ?")->execute([$tx_id]);
 
                 // Fetch fuel_type_id for the adjustment record
                 $fuel_type_id = null;
