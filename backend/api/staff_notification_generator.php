@@ -354,7 +354,7 @@ try {
             "Daily Transaction Summary Ready",
             "Daily transaction summary ready at {$ts}.",
             $key,
-            'staff_reports.php'
+            'staff_fuel_sales_summary.php'
         );
     }
 } catch (Exception $e) {}

@@ -1,9 +1,22 @@
 <?php
 /**
- * STAFF REPORTS & ADD-ONS MODULE
- * Professional implementation matching Manager Reports theme and styling.
+ * STAFF REPORTS (Legacy Redirect)
+ * This page has been replaced by the new Staff Fuel & Merchandise Sales Summary.
+ * All traffic is forwarded to staff_fuel_sales_summary.php.
+ *
+ * Old page: staff_reports.php  (no longer shows data — obsolete query targets)
+ * New page: staff_fuel_sales_summary.php (live data from fuel_transactions, merchandise_transactions)
  */
 if (session_status() === PHP_SESSION_NONE) session_start();
+
+// ── FORWARD to the new reporting module ──────────────────────────────────────
+$_qs = !empty($_SERVER['QUERY_STRING']) ? '?' . $_SERVER['QUERY_STRING'] : '';
+header('Location: staff_fuel_sales_summary.php' . $_qs, true, 302);
+exit;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Everything below is kept for reference only; it is never executed.
+// ─────────────────────────────────────────────────────────────────────────────
 
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';

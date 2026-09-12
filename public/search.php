@@ -1000,7 +1000,7 @@ if (!empty($query)) {
                     } elseif ($role === 'manager') {
                         $report_link = 'manager_reports.php';
                     } else {
-                        $report_link = 'staff_reports.php';
+                        $report_link = 'staff_fuel_sales_summary.php';
                     }
 
                     $results[] = [

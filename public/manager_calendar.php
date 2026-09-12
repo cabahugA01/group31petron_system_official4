@@ -626,7 +626,7 @@ try {
             case 'report_schedule':
                 if ($role === 'admin') return 'admin_reports.php';
                 if ($role === 'manager') return 'manager_reports.php';
-                return 'staff_reports.php';
+                return 'staff_fuel_sales_summary.php';
             case 'staff_shift':
                 if ($role === 'admin') return 'users.php';
                 return 'staff_schedules.php';

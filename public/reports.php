@@ -17,7 +17,7 @@ if (in_array($role, ['admin', 'superadmin'])) {
 } elseif ($role === 'manager') {
     header('Location: manager_reports.php');
 } else {
-    header('Location: staff_reports.php');
+    header('Location: staff_fuel_sales_summary.php');
 }
 exit;
 ?>

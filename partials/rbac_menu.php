@@ -39,7 +39,7 @@ $master_menu = [
     ['id'=>'calendar','label'=>'Calendar','ico'=>'fas fa-calendar-alt','href'=>'staff_calendar.php','permissions'=>['view_dashboard','create_transactions','encode_fuel','manage_job_orders','create_job_orders','approve_transactions'],'station_specific'=>true],
 
     // Reports - Staff, Manager, Admin
-    ['id'=>'reports','label'=>'Reports','ico'=>'fas fa-chart-bar','href'=>'staff_reports.php','permissions'=>['view_personal_reports', 'view_operational_reports', 'view_financial_reports', 'view_all_reports'],'station_specific'=>true,'sub_items'=>[
+    ['id'=>'reports','label'=>'Reports','ico'=>'fas fa-chart-bar','href'=>'staff_fuel_sales_summary.php','permissions'=>['view_personal_reports', 'view_operational_reports', 'view_financial_reports', 'view_all_reports'],'station_specific'=>true,'sub_items'=>[
         ['id'=>'report_daily_sales',      'label'=>'Sales Reports',                    'href'=>'staff_fuel_sales_summary.php',       'permissions'=>['view_personal_reports','view_operational_reports']],
         ['id'=>'report_deliveries',       'label'=>'Fuel Reconciliation Report',       'href'=>'staff_deliveries_report.php',           'permissions'=>['view_personal_reports','view_operational_reports']],
         ['id'=>'report_payments',         'label'=>'Shift Turnover Report',                'href'=>'staff_payments_report.php',    'permissions'=>['view_personal_reports','view_operational_reports']],
