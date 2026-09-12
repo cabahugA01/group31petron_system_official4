@@ -233,8 +233,8 @@ try {
         INSERT INTO fuel_transactions (
             transaction_id, station_id, pump_id, fuel_type, present_reading, previous_reading,
             calibration, price_per_liter, liters_sold, total_amount,
-            shift_period, staff_id, transaction_date, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            shift_period, staff_id, transaction_date, status, inventory_deducted
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     ");
     $stmt->execute([
         $transaction_id,
@@ -253,14 +253,7 @@ try {
         'pending'
     ]);
 
-    $stmt = $pdo->prepare("
-        UPDATE fuel_inventory
-        SET current_level = current_level - ?,
-            last_updated = NOW()
-        WHERE station_id = ?
-          AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-    ");
-    $stmt->execute([$liters_sold, $station_id, $fuel_type]);
+    deduct_fuel_inventory_stock($pdo, (int)$station_id, $fuel_type, $fuel_type, (float)$liters_sold, (int)($me['id'] ?? 0));
 
     $stmt = $pdo->prepare("SELECT COALESCE(current_level, 0) FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1");
     $stmt->execute([$station_id, $fuel_type]);

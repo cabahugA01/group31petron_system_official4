@@ -402,8 +402,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                  present_reading, previous_reading, calibration, staff_calibration,
                                  liters_sold, price_per_liter, total_amount,
                                  staff_id, transaction_date,
-                                 shift_period, shift_name, shift_id, notes, status)
-                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Encoded via Reading Form','Pending Validation')
+                                 shift_period, shift_name, shift_id, notes, status, inventory_deducted)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Encoded via Reading Form','Pending Validation',1)
                         ")->execute([
                             $txn_id, $station_id, $pump_id, $fuel_type,
                             $present_reading, $previous_reading, $calibration_value, $calibration_value,
@@ -411,6 +411,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $me['id'], date('Y-m-d H:i:s'),
                             $shift_period, '', null,
                         ]);
+
+                        if ($difference > 0) {
+                            deduct_fuel_inventory_stock($pdo, (int)$station_id, $pump_number, $fuel_type, (float)$difference, (int)$me['id']);
+                        }
                     } catch (Exception $e) {
                         error_log('fuel_readings_encoding: could not insert fuel_transactions: ' . $e->getMessage());
                     }

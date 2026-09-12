@@ -174,6 +174,13 @@ try {
             $shift_name   = trim($_POST['shift_name']   ?? '');
             $shift_id     = (int)($_POST['shift_id'] ?? 0) ?: null;
 
+            $posted_sid = (int)($_POST['station_id'] ?? 0);
+            if ($posted_sid > 0) {
+                $station_id = $posted_sid;
+            } elseif (empty($station_id)) {
+                $station_id = (int)(user_station_id() ?: 1253);
+            }
+
             if (empty($fuel_type)) respond(false, 'Fuel type is required.');
             if ($present  <= 0)   respond(false, 'Ending meter reading must be greater than 0.');
             if ($tanker_num <= 0) respond(false, 'Tanker/pump number is required.');
@@ -448,6 +455,9 @@ try {
                     $existing_tx_id = $chk_tx->fetchColumn();
                 } catch (Exception $e) {}
 
+                $is_admin_user = in_array($role, ['admin', 'superadmin', 'developer']);
+                $reading_status = $is_admin_user ? 'Verified' : 'READINGS_SUBMITTED';
+
                 if ($existing_tx_id) {
                     $pdo->prepare("
                         UPDATE fuel_transactions SET
@@ -461,13 +471,18 @@ try {
                             payment_method = ?,
                             staff_id = ?,
                             notes = ?,
-                            status = 'READINGS_SUBMITTED',
-                            inventory_deducted = 1
+                            status = ?,
+                            inventory_deducted = 1,
+                            validated_by = CASE WHEN ? THEN ? ELSE validated_by END,
+                            validated_at = CASE WHEN ? THEN NOW() ELSE validated_at END
                         WHERE id = ?
                     ")->execute([
                         $present, $previous, $calibration, $calibration,
                         $liters_sold, $price, $total_amount,
                         $payment_method_safe, $me['id'], $notes,
+                        $reading_status,
+                        $is_admin_user ? 1 : 0, $me['id'],
+                        $is_admin_user ? 1 : 0,
                         $existing_tx_id
                     ]);
                 } else {
@@ -477,18 +492,23 @@ try {
                              present_reading, previous_reading, calibration, staff_calibration,
                              liters_sold, price_per_liter, total_amount,
                              payment_method, staff_id, transaction_date,
-                             shift_period, shift_name, shift_id, notes, status, inventory_deducted)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'READINGS_SUBMITTED',1)
+                             shift_period, shift_name, shift_id, notes, status, inventory_deducted,
+                             validated_by, validated_at)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, ?)
                     ")->execute([
                         $txn_id, $station_id, $fuel_type_to_save, $resolved_pump_id,
                         $present, $previous, $calibration, $calibration,
                         $liters_sold, $price, $total_amount,
                         $payment_method_safe, $me['id'], $reading_date . ' ' . date('H:i:s'),
                         $shift_period_safe, $shift_name_safe, $shift_id, $notes,
+                        $reading_status, 1,
+                        $is_admin_user ? $me['id'] : null,
+                        $is_admin_user ? date('Y-m-d H:i:s') : null
                     ]);
                 }
 
-                // ── Upsert stub in fuel_sales_closing to record READINGS_SUBMITTED status ──
+                // ── Upsert stub in fuel_sales_closing ──────────────────────────────────
+                $closing_stub_status = $is_admin_user ? 'Verified' : 'READINGS_SUBMITTED';
                 try {
                     $chk_cls = $pdo->prepare("
                         SELECT id, status FROM fuel_sales_closing
@@ -502,16 +522,16 @@ try {
                         if (($cls_row['status'] ?? '') !== 'CLOSING_COMPLETED' && ($cls_row['status'] ?? '') !== 'REPORTED') {
                             $pdo->prepare("
                                 UPDATE fuel_sales_closing
-                                SET status = 'READINGS_SUBMITTED', shift = ?, shift_period = ?
+                                SET status = ?, shift = ?, shift_period = ?
                                 WHERE id = ?
-                            ")->execute([$shift_name_safe, $shift_period_safe, $cls_row['id']]);
+                            ")->execute([$closing_stub_status, $shift_name_safe, $shift_period_safe, $cls_row['id']]);
                         }
                     } else {
                         $pdo->prepare("
                             INSERT INTO fuel_sales_closing
                                 (station_id, report_date, shift, shift_period, status, encoded_by, encoded_at)
-                            VALUES (?, ?, ?, ?, 'READINGS_SUBMITTED', ?, NOW())
-                        ")->execute([$station_id, $reading_date, $shift_name_safe, $shift_period_safe, $me['id']]);
+                            VALUES (?, ?, ?, ?, ?, ?, NOW())
+                        ")->execute([$station_id, $reading_date, $shift_name_safe, $shift_period_safe, $closing_stub_status, $me['id']]);
                     }
                 } catch (Exception $e_cls) {}
 
@@ -578,7 +598,10 @@ try {
                 }
             } catch (Exception $e) {}
 
-            respond(true, 'Entry submitted successfully. Pending Manager validation.', [
+            $success_msg = $is_admin_user
+                ? 'Entry submitted and verified successfully.'
+                : 'Entry submitted successfully. Pending Manager validation.';
+            respond(true, $success_msg, [
                 'transaction_id'  => $txn_id,
                 'previous_reading'=> $previous,
                 'calibration'     => $calibration,
