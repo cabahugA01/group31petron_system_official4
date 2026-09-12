@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 $page_id = 'staff_record_delivery';
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
@@ -1477,8 +1477,8 @@ body[data-page="staff_record_delivery"] .main {
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
     overflow-y: auto;
-    padding: 40px 20px;
-    align-items: center;
+    padding: 95px 20px 35px 20px !important;
+    align-items: flex-start !important;
     justify-content: center;
     pointer-events: auto !important;
 }
@@ -1493,12 +1493,12 @@ body[data-page="staff_record_delivery"] .main {
     background: #ffffff;
     max-width: 860px;
     width: calc(100vw - 40px);
-    margin: auto;
+    margin: 0 auto;
     border-radius: 14px;
     box-shadow: 0 25px 50px -12px rgba(0,0,0,0.35), 0 12px 24px rgba(0,0,0,0.15);
     overflow: hidden;
     animation: modalSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-    max-height: calc(100vh - 60px);
+    max-height: calc(100vh - 130px);
     display: flex;
     flex-direction: column;
 }
@@ -2765,9 +2765,9 @@ document.addEventListener('DOMContentLoaded', function() {
 </div> <!-- /stock-page -->
 <?php include __DIR__ . '/../partials/footer.php'; ?>
 
-<div id="deliveryViewModal" style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,0.55); backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:20px;">
-    <div style="background:#fff; border-radius:14px; width:100%; max-width:860px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 25px 60px rgba(0,0,0,0.35); overflow:hidden;">
-        <div style="background:#002F70; padding:16px 24px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
+<div id="deliveryViewModal" style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(15,23,42,0.65); backdrop-filter:blur(5px); -webkit-backdrop-filter:blur(5px); align-items:flex-start; justify-content:center; padding:95px 20px 35px 20px; box-sizing:border-box; overflow-y:auto;">
+    <div style="background:#fff; border-radius:14px; width:100%; max-width:860px; max-height:calc(100vh - 130px); display:flex; flex-direction:column; box-shadow:0 25px 60px rgba(0,0,0,0.35); overflow:hidden; margin:0 auto;">
+        <div style="background:#002F70; padding:18px 24px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
             <div style="display:flex; align-items:center; gap:12px;">
                 <i class="fas fa-truck-loading" style="color:#fff; font-size:18px;"></i>
                 <div>
