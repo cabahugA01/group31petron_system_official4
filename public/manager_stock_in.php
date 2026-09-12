@@ -383,7 +383,81 @@ body .main,
 #stockToast.stock-toast.is-visible{display:block!important;opacity:1;transform:translateX(-50%) translateY(0)!important;}
 #stockToast.stock-toast.toast-ok{background:#16a34a!important;}
 #stockToast.stock-toast.toast-err{background:#dc2626!important;}
-@media print{#stockToast.stock-toast{display:none!important;}}
+/* Confirm Modal Overlay and Buttons (Override global button styling) */
+#siConfirmOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.65) !important;
+    z-index: 99999 !important;
+    align-items: center;
+    justify-content: center;
+}
+#siConfirmOverlay .confirm-card {
+    background: #ffffff !important;
+    border-radius: 12px !important;
+    padding: 26px 30px !important;
+    max-width: 440px !important;
+    width: 90% !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35) !important;
+    position: relative !important;
+}
+#siConfirmOverlay .confirm-close-btn {
+    position: absolute !important;
+    top: 14px !important;
+    right: 14px !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    color: #94a3b8 !important;
+    font-size: 18px !important;
+    cursor: pointer !important;
+    padding: 4px 8px !important;
+    line-height: 1 !important;
+}
+#siConfirmOverlay .confirm-close-btn:hover {
+    color: #dc2626 !important;
+}
+#siConfirmOverlay #siConfirmCancelBtn {
+    padding: 10px 22px !important;
+    border: 1.5px solid #dc2626 !important;
+    border-radius: 7px !important;
+    background: #dc2626 !important;
+    background-color: #dc2626 !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 13.5px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 7px !important;
+    box-shadow: 0 2px 6px rgba(220, 38, 38, 0.25) !important;
+    transition: all 0.15s ease !important;
+}
+#siConfirmOverlay #siConfirmCancelBtn:hover {
+    background: #b91c1c !important;
+    background-color: #b91c1c !important;
+    border-color: #b91c1c !important;
+}
+#siConfirmOverlay #siConfirmOkBtn {
+    padding: 10px 22px !important;
+    border: 1.5px solid #16a34a !important;
+    border-radius: 7px !important;
+    background: #16a34a !important;
+    background-color: #16a34a !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    font-weight: 800 !important;
+    font-size: 13.5px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 7px !important;
+    box-shadow: 0 2px 6px rgba(22, 163, 74, 0.25) !important;
+    transition: all 0.15s ease !important;
+}
+@media print{#stockToast.stock-toast,#siConfirmOverlay{display:none!important;}}
 @media(max-width:900px){
     .stock-page{padding:16px 12px 48px;}
     .filter-grid{grid-template-columns:1fr;}
@@ -667,13 +741,14 @@ body .main,
 <div class="stock-toast" id="stockToast" role="status" aria-live="polite"></div>
 
 <!-- Custom Confirm Modal (replaces window.confirm which Edge may block) -->
-<div id="siConfirmOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99998;align-items:center;justify-content:center;">
-    <div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+<div id="siConfirmOverlay" onclick="if(event.target===this) siConfirmCancel();">
+    <div class="confirm-card">
+        <button type="button" class="confirm-close-btn" onclick="siConfirmCancel()" title="Close">&times;</button>
         <div style="font-size:16px;font-weight:800;color:#002F70;margin-bottom:10px;"><i class="fas fa-check-circle" style="color:#16a34a;margin-right:8px;"></i>Confirm Stock-In Approval</div>
         <div id="siConfirmMsg" style="font-size:13.5px;color:#374151;line-height:1.6;margin-bottom:22px;"></div>
-        <div style="display:flex;justify-content:flex-end;gap:10px;">
-            <button type="button" onclick="siConfirmCancel()" style="padding:9px 20px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#475569;font-weight:700;font-size:13px;cursor:pointer;">Cancel</button>
-            <button type="button" id="siConfirmOkBtn" style="padding:9px 20px;border:none;border-radius:7px;background:#16a34a;color:#fff;font-weight:800;font-size:13px;cursor:pointer;"><i class="fas fa-check"></i> Yes, Approve</button>
+        <div style="display:flex;justify-content:flex-end;gap:12px;">
+            <button type="button" id="siConfirmCancelBtn" onclick="siConfirmCancel()" style="padding:10px 22px!important;border:1.5px solid #dc2626!important;border-radius:7px!important;background:#dc2626!important;background-color:#dc2626!important;color:#ffffff!important;-webkit-text-fill-color:#ffffff!important;font-weight:700!important;font-size:13.5px!important;cursor:pointer!important;display:inline-flex!important;align-items:center!important;gap:7px!important;"><i class="fas fa-times"></i> Cancel</button>
+            <button type="button" id="siConfirmOkBtn" style="padding:10px 22px!important;border:1.5px solid #16a34a!important;border-radius:7px!important;background:#16a34a!important;background-color:#16a34a!important;color:#ffffff!important;-webkit-text-fill-color:#ffffff!important;font-weight:800!important;font-size:13.5px!important;cursor:pointer!important;display:inline-flex!important;align-items:center!important;gap:7px!important;"><i class="fas fa-check"></i> Yes, Approve</button>
         </div>
     </div>
 </div>
@@ -716,8 +791,15 @@ function siConfirm(message, onYes) {
 }
 
 function siConfirmCancel() {
-    document.getElementById('siConfirmOverlay').style.display = 'none';
+    var overlay = document.getElementById('siConfirmOverlay');
+    if (overlay) overlay.style.display = 'none';
 }
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        siConfirmCancel();
+    }
+});
 
 function approveStockIn(type, groupId, poKey) {
     var rows = stockRows(groupId);
