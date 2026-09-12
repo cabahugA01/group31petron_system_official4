@@ -4321,11 +4321,10 @@ function _renderSvcCatItems(mode, query) {
             var esc = cat.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             html += '<div class="svc-cat-opt" data-index="' + idx + '" data-value="' + esc + '" ' +
                 'onmousedown="selectSvcCat(\'' + mode + '\', \'' + esc + '\')" ' +
-                'style="padding:10px 14px;cursor:pointer;font-size:14px;color:#1e293b;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;transition:background 0.15s, color 0.15s;" ' +
+                'style="padding:10px 16px;cursor:pointer;font-size:14.5px;color:#1e293b;border-bottom:1px solid #f1f5f9;transition:background 0.12s, color 0.12s;" ' +
                 'onmouseover="this.style.background=\'#f0f7ff\';this.style.color=\'#002F6C\';this.style.fontWeight=\'600\';" ' +
                 'onmouseout="this.style.background=\'\';this.style.color=\'#1e293b\';this.style.fontWeight=\'500\';">' +
-                '<span><i class="fas fa-tag" style="margin-right:9px;color:#002F6C;font-size:12px;opacity:0.75;"></i>' + cat + '</span>' +
-                '<span style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Category</span>' +
+                cat +
                 '</div>';
         });
     }
@@ -5052,11 +5051,10 @@ safeAddListener('addServiceForm', 'submit', function(e) {
                 onfocus="showSvcCatDrop('add')"
                 oninput="filterSvcCatDrop('add', this.value)"
                 onkeydown="handleSvcCatKey(event, 'add')">
-              <button type="button" id="addSvcCatChevronBtn" onclick="toggleSvcCatDrop('add')"
-                tabindex="-1"
-                style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#64748b;padding:6px;display:flex;align-items:center;justify-content:center;">
-                <i class="fas fa-chevron-down" id="addSvcCatChevron" style="font-size:12px;transition:transform 0.2s ease;"></i>
-              </button>
+              <span id="addSvcCatChevronBtn" onclick="toggleSvcCatDrop('add')"
+                style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:transparent !important;border:none !important;cursor:pointer;padding:4px;display:flex;align-items:center;justify-content:center;user-select:none;line-height:1;">
+                <i class="fas fa-chevron-down" id="addSvcCatChevron" style="font-size:12px;color:#64748b !important;transition:transform 0.2s ease;"></i>
+              </span>
               <div id="addSvcCatDrop"
                 style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#ffffff;border:1.5px solid #002F6C;border-radius:8px;box-shadow:0 10px 25px -5px rgba(0,47,108,0.2), 0 8px 10px -6px rgba(0,47,108,0.1);z-index:99999;max-height:220px;overflow-y:auto;">
               </div>
