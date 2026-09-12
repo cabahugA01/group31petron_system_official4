@@ -2150,10 +2150,10 @@ body.sidebar-collapsed .modal,
 </div>
 <!-- Fuel Meter Reading Adjustment Modal -->
 <div id="batchAdjustModal" class="modal" style="display:none; align-items:center; justify-content:center;">
-    <div class="modal-content" style="max-width: 960px; width: 95%; max-height: calc(100vh - 140px) !important; height: calc(100vh - 140px); display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 50px -10px rgba(0,0,0,0.35); border: 1.5px solid #cbd5e1; background: #F1F5F9; padding: 0;">
+    <div class="modal-content" style="max-width: 1180px; width: 96%; max-height: calc(100vh - 80px) !important; height: auto; display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 60px -10px rgba(0,0,0,0.4); border: 1.5px solid #cbd5e1; background: #F1F5F9; padding: 0;">
         
         <!-- Steady Fixed Header Box with generous spacing and distinct bottom border -->
-        <div class="modal-header" style="background: linear-gradient(135deg, #002F70 0%, #001F4D 100%); color: #ffffff; padding: 26px 32px !important; display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #001838 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.2); flex-shrink: 0; margin-bottom: 0; z-index: 10;">
+        <div class="modal-header" style="background: linear-gradient(135deg, #002F70 0%, #001F4D 100%); color: #ffffff; padding: 22px 30px !important; display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #001838 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.2); flex-shrink: 0; margin-bottom: 0; z-index: 10;">
             <div style="display: flex; align-items: center; gap: 14px;">
                 <div style="width: 44px; height: 44px; background: rgba(56, 189, 248, 0.2); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(56, 189, 248, 0.3);">
                     <i class="fas fa-sliders-h" style="color: #38BDF8; font-size: 22px;"></i>
@@ -2169,23 +2169,34 @@ body.sidebar-collapsed .modal,
         </div>
 
         <!-- Scrollable Middle Body Container (with generous top and bottom breathing room) -->
-        <div class="modal-body" style="padding: 28px 32px 28px 32px !important; overflow-y: auto; flex: 1; background: #F1F5F9; box-sizing: border-box;">
-            <p id="batchAdjustPrompt" style="font-size: 13px; color: #334155; margin: 0 0 18px; font-weight: 600; line-height: 1.5;"></p>
+        <div class="modal-body" style="padding: 24px 30px !important; overflow-y: auto; flex: 1; background: #F1F5F9; box-sizing: border-box;">
+            <p id="batchAdjustPrompt" style="font-size: 13px; color: #334155; margin: 0 0 16px; font-weight: 600; line-height: 1.5;"></p>
 
             <!-- Scrollable Meter Reading Values Table Card -->
-            <div style="max-height: 340px; overflow-y: auto; border: 1px solid #E2E8F0; border-radius: 12px; background: #ffffff; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
-                <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+            <div style="max-height: 380px; overflow-x: auto; overflow-y: auto; border: 1.5px solid #E2E8F0; border-radius: 10px; background: #ffffff; margin-bottom: 18px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); -webkit-overflow-scrolling: touch;">
+                <table id="batchAdjustTable" style="width: 100%; min-width: 1020px; table-layout: fixed; border-collapse: collapse; font-size: 12px; text-align: left; box-sizing: border-box;">
+                    <colgroup>
+                        <col style="width: 3.5%;">  <!-- 1: # -->
+                        <col style="width: 20.0%;"> <!-- 2: Txn ID / Pump / Shift -->
+                        <col style="width: 11.5%;"> <!-- 3: Fuel Type -->
+                        <col style="width: 12.0%;"> <!-- 4: Beginning -->
+                        <col style="width: 12.0%;"> <!-- 5: Ending -->
+                        <col style="width: 11.0%;"> <!-- 6: Cal (L) -->
+                        <col style="width: 8.0%;">  <!-- 7: Price / L -->
+                        <col style="width: 10.0%;"> <!-- 8: Liters Sold -->
+                        <col style="width: 12.0%;"> <!-- 9: Total Amount -->
+                    </colgroup>
                     <thead style="background: #002F70; color: #ffffff; position: sticky; top: 0; z-index: 2;">
-                        <tr>
-                            <th style="padding: 10px 8px; text-align: center; width: 3%;">#</th>
-                            <th style="padding: 10px 10px; width: 23%;">Txn ID / Pump / Shift</th>
-                            <th style="padding: 10px 8px; width: 11%;">Fuel Type</th>
-                            <th style="padding: 10px 8px; text-align: right; width: 14%;">Beginning <i class="fas fa-edit" style="font-size:10px; margin-left:3px; opacity:0.8;"></i></th>
-                            <th style="padding: 10px 8px; text-align: right; width: 14%;">Ending <i class="fas fa-edit" style="font-size:10px; margin-left:3px; opacity:0.8;"></i></th>
-                            <th style="padding: 10px 8px; text-align: right; width: 10%;">Cal (L) <i class="fas fa-edit" style="font-size:10px; margin-left:3px; opacity:0.8;"></i></th>
-                            <th style="padding: 10px 8px; text-align: right; width: 9%;">Price / L</th>
-                            <th style="padding: 10px 8px; text-align: right; width: 12%;">Liters Sold</th>
-                            <th style="padding: 10px 10px; text-align: right; width: 14%;">Total Amount</th>
+                        <tr style="border-bottom: 2px solid #001F4D;">
+                            <th style="padding: 11px 6px; text-align: center; font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; white-space: nowrap !important; vertical-align: middle; box-sizing: border-box;">#</th>
+                            <th style="padding: 11px 10px; text-align: left; font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; white-space: nowrap !important; vertical-align: middle; box-sizing: border-box;">Txn ID / Pump / Shift</th>
+                            <th style="padding: 11px 8px; text-align: left; font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; white-space: nowrap !important; vertical-align: middle; box-sizing: border-box;">Fuel Type</th>
+                            <th style="padding: 11px 8px; text-align: right; font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; white-space: nowrap !important; vertical-align: middle; box-sizing: border-box;">Beginning <i class="fas fa-edit" style="font-size:10px; margin-left:3px; opacity:0.8;"></i></th>
+                            <th style="padding: 11px 8px; text-align: right; font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; white-space: nowrap !important; vertical-align: middle; box-sizing: border-box;">Ending <i class="fas fa-edit" style="font-size:10px; margin-left:3px; opacity:0.8;"></i></th>
+                            <th style="padding: 11px 8px; text-align: right; font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; white-space: nowrap !important; vertical-align: middle; box-sizing: border-box;">Cal (L) <i class="fas fa-edit" style="font-size:10px; margin-left:3px; opacity:0.8;"></i></th>
+                            <th style="padding: 11px 8px; text-align: right; font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; white-space: nowrap !important; vertical-align: middle; box-sizing: border-box;">Price / L</th>
+                            <th style="padding: 11px 10px; text-align: right; font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; white-space: nowrap !important; vertical-align: middle; box-sizing: border-box;">Liters Sold</th>
+                            <th style="padding: 11px 12px; text-align: right; font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; white-space: nowrap !important; vertical-align: middle; box-sizing: border-box;">Total Amount</th>
                         </tr>
                     </thead>
                     <tbody id="batchAdjustTableBody">
@@ -3279,29 +3290,29 @@ function openBatchAdjust(specificTxs) {
         const shiftDisp  = tx.shift_name || (tx.shift_period === 'second' ? 'Second Shift' : (tx.shift_period ? tx.shift_period : '—'));
 
         tbodyHtml += `
-            <tr data-tx-id="${tx.id}" style="border-bottom: 1px solid #e2e8f0; background: #ffffff;">
-                <td style="padding: 8px 6px; text-align: center; font-weight: 700; color: #64748b;">${idx + 1}</td>
-                <td style="padding: 8px 10px;">
-                    <div style="font-weight: 800; color: #002F70; font-size: 12px;">${escapeHtml(txCode)}</div>
-                    <div style="font-size: 11px; font-weight: 700; color: #334155;">${escapeHtml(nozzleName)} • <span style="color:#64748b;">${escapeHtml(shiftDisp)}</span></div>
+            <tr data-tx-id="${tx.id}" style="border-bottom: 1px solid #e2e8f0; background: #ffffff; transition: background 0.15s ease;" onmouseover="this.style.background='#f8fafc';" onmouseout="this.style.background='#ffffff';">
+                <td style="padding: 8px 6px; text-align: center; font-weight: 700; color: #64748b; white-space: nowrap !important; vertical-align: middle; box-sizing: border-box;">${idx + 1}</td>
+                <td style="padding: 8px 10px; white-space: nowrap !important; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box;">
+                    <div style="font-weight: 800; color: #002F70; font-size: 12px; line-height: 1.3;" title="${escapeHtml(txCode)}">${escapeHtml(txCode)}</div>
+                    <div style="font-size: 11px; font-weight: 700; color: #334155; line-height: 1.3; margin-top: 1px;" title="${escapeHtml(nozzleName)} • ${escapeHtml(shiftDisp)}">${escapeHtml(nozzleName)} • <span style="color:#64748b;">${escapeHtml(shiftDisp)}</span></div>
                 </td>
-                <td style="padding: 8px 8px; font-size: 11px; font-weight: 700; color: #002F70;">${escapeHtml(tx.fuel_type || '')}</td>
-                <td style="padding: 6px 4px;">
-                    <input type="text" inputmode="decimal" class="adj-row-beg" id="adj_beg_${tx.id}" data-id="${tx.id}" value="${begVal.toFixed(2)}" oninput="formatAutoCommaDot(this); recalcAdjRow(${tx.id}, ${prcVal});" onblur="formatAutoCommaDotOnBlur(this); recalcAdjRow(${tx.id}, ${prcVal});" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; text-align:right; color:#0f172a; box-sizing:border-box;">
+                <td style="padding: 8px 8px; font-size: 11.5px; font-weight: 700; color: #002F70; white-space: nowrap !important; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box;" title="${escapeHtml(tx.fuel_type || '')}">${escapeHtml(tx.fuel_type || '')}</td>
+                <td style="padding: 6px 6px; vertical-align: middle; box-sizing: border-box;">
+                    <input type="text" inputmode="decimal" class="adj-row-beg" id="adj_beg_${tx.id}" data-id="${tx.id}" value="${begVal.toFixed(2)}" oninput="formatAutoCommaDot(this); recalcAdjRow(${tx.id}, ${prcVal});" onblur="formatAutoCommaDotOnBlur(this); recalcAdjRow(${tx.id}, ${prcVal});" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; text-align:right; color:#0f172a; box-sizing:border-box; font-family:system-ui,-apple-system,sans-serif;">
                 </td>
-                <td style="padding: 6px 4px;">
-                    <input type="text" inputmode="decimal" class="adj-row-end" id="adj_end_${tx.id}" data-id="${tx.id}" value="${endVal.toFixed(2)}" oninput="formatAutoCommaDot(this); recalcAdjRow(${tx.id}, ${prcVal});" onblur="formatAutoCommaDotOnBlur(this); recalcAdjRow(${tx.id}, ${prcVal});" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; text-align:right; color:#0f172a; box-sizing:border-box;">
+                <td style="padding: 6px 6px; vertical-align: middle; box-sizing: border-box;">
+                    <input type="text" inputmode="decimal" class="adj-row-end" id="adj_end_${tx.id}" data-id="${tx.id}" value="${endVal.toFixed(2)}" oninput="formatAutoCommaDot(this); recalcAdjRow(${tx.id}, ${prcVal});" onblur="formatAutoCommaDotOnBlur(this); recalcAdjRow(${tx.id}, ${prcVal});" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; text-align:right; color:#0f172a; box-sizing:border-box; font-family:system-ui,-apple-system,sans-serif;">
                 </td>
-                <td style="padding: 6px 4px;">
-                    <input type="text" inputmode="decimal" class="adj-row-cal" id="adj_cal_${tx.id}" data-id="${tx.id}" value="${calVal.toFixed(2)}" oninput="formatAutoCommaDot(this); recalcAdjRow(${tx.id}, ${prcVal});" onblur="formatAutoCommaDotOnBlur(this); recalcAdjRow(${tx.id}, ${prcVal});" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; text-align:right; color:#0f172a; box-sizing:border-box;">
+                <td style="padding: 6px 6px; vertical-align: middle; box-sizing: border-box;">
+                    <input type="text" inputmode="decimal" class="adj-row-cal" id="adj_cal_${tx.id}" data-id="${tx.id}" value="${calVal.toFixed(2)}" oninput="formatAutoCommaDot(this); recalcAdjRow(${tx.id}, ${prcVal});" onblur="formatAutoCommaDotOnBlur(this); recalcAdjRow(${tx.id}, ${prcVal});" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; text-align:right; color:#0f172a; box-sizing:border-box; font-family:system-ui,-apple-system,sans-serif;">
                 </td>
-                <td style="padding: 8px 8px; text-align: right; font-weight: 700; color: #475569; font-size: 11px;">
+                <td style="padding: 8px 8px; text-align: right; font-weight: 700; color: #475569; font-size: 11.5px; white-space: nowrap !important; vertical-align: middle; font-variant-numeric: tabular-nums; box-sizing: border-box;">
                     ₱${prcVal.toFixed(2)}
                 </td>
-                <td style="padding: 8px 8px; text-align: right; font-weight: 800; color: #1e3a8a;" id="adj_liters_${tx.id}">
+                <td style="padding: 8px 10px; text-align: right; font-weight: 800; color: #1e3a8a; font-size: 12px; white-space: nowrap !important; vertical-align: middle; font-variant-numeric: tabular-nums; box-sizing: border-box;" id="adj_liters_${tx.id}">
                     0.00 L
                 </td>
-                <td style="padding: 8px 10px; text-align: right; font-weight: 800; color: #15803d;" id="adj_amount_${tx.id}">
+                <td style="padding: 8px 12px; text-align: right; font-weight: 800; color: #15803d; font-size: 12.5px; white-space: nowrap !important; vertical-align: middle; font-variant-numeric: tabular-nums; box-sizing: border-box;" id="adj_amount_${tx.id}">
                     ₱0.00
                 </td>
             </tr>
