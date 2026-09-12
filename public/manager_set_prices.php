@@ -2485,25 +2485,22 @@ document.addEventListener('DOMContentLoaded', function() {
           </div>
           <div>
             <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Category <span style="color:#dc2626;">*</span></label>
-            <input type="text" id="addSvcCategory" required list="svcCategoryList"
-              placeholder="e.g. Lubrication, Engine Services..."
-              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:500;box-sizing:border-box;"
-              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
-            <datalist id="svcCategoryList">
-              <option value="Lubrication">
-              <option value="Preventive Maintenance">
-              <option value="Engine Services">
-              <option value="Brake Services">
-              <option value="Tire Services">
-              <option value="Battery Services">
-              <option value="Cooling System">
-              <option value="Electrical Services">
-              <option value="Air Conditioning">
-              <option value="Undercarriage Services">
-              <option value="Cleaning Services">
-              <option value="Emergency Services">
-              <option value="Others">
-            </datalist>
+            <div style="position:relative;" id="addSvcCatContainer">
+              <input type="text" id="addSvcCategory" required autocomplete="off"
+                placeholder="Select or type category..."
+                style="width:100%;padding:9px 36px 9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:500;box-sizing:border-box;background:#fff;"
+                onfocus="showSvcCatDrop('add')"
+                oninput="filterSvcCatDrop('add', this.value)"
+                onkeydown="handleSvcCatKey(event, 'add')">
+              <button type="button" id="addSvcCatChevronBtn" onclick="toggleSvcCatDrop('add')"
+                tabindex="-1"
+                style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#64748b;padding:6px;display:flex;align-items:center;justify-content:center;">
+                <i class="fas fa-chevron-down" id="addSvcCatChevron" style="font-size:12px;transition:transform 0.2s ease;"></i>
+              </button>
+              <div id="addSvcCatDrop"
+                style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#ffffff;border:1.5px solid #002F6C;border-radius:8px;box-shadow:0 10px 25px -5px rgba(0,47,108,0.2), 0 8px 10px -6px rgba(0,47,108,0.1);z-index:99999;max-height:220px;overflow-y:auto;">
+              </div>
+            </div>
           </div>
           <div>
             <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Fee (₱) <span style="color:#dc2626;">*</span></label>
@@ -2582,10 +2579,22 @@ document.addEventListener('DOMContentLoaded', function() {
           </div>
           <div>
             <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Category <span style="color:#dc2626;">*</span></label>
-            <input type="text" id="editSvcCategory" required list="svcCategoryList"
-              placeholder="e.g. Lubrication, Engine Services..."
-              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:500;box-sizing:border-box;"
-              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+            <div style="position:relative;" id="editSvcCatContainer">
+              <input type="text" id="editSvcCategory" required autocomplete="off"
+                placeholder="Select or type category..."
+                style="width:100%;padding:9px 36px 9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:500;box-sizing:border-box;background:#fff;"
+                onfocus="showSvcCatDrop('edit')"
+                oninput="filterSvcCatDrop('edit', this.value)"
+                onkeydown="handleSvcCatKey(event, 'edit')">
+              <button type="button" id="editSvcCatChevronBtn" onclick="toggleSvcCatDrop('edit')"
+                tabindex="-1"
+                style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#64748b;padding:6px;display:flex;align-items:center;justify-content:center;">
+                <i class="fas fa-chevron-down" id="editSvcCatChevron" style="font-size:12px;transition:transform 0.2s ease;"></i>
+              </button>
+              <div id="editSvcCatDrop"
+                style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#ffffff;border:1.5px solid #002F6C;border-radius:8px;box-shadow:0 10px 25px -5px rgba(0,47,108,0.2), 0 8px 10px -6px rgba(0,47,108,0.1);z-index:99999;max-height:220px;overflow-y:auto;">
+              </div>
+            </div>
           </div>
           <div>
             <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Service Fee (₱) <span style="color:#dc2626;">*</span></label>
@@ -4220,36 +4229,174 @@ function filterServiceTable() {
     if (noRes) noRes.style.display = visible === 0 && rows.length > 0 ? 'block' : 'none';
 }
 
-// ── Custom Category Input Toggle ─────────────────────────────────────────
-function toggleCustomCategoryInput(mode) {
-    var selId  = mode === 'add' ? 'addSvcCategory' : 'editSvcCategory';
-    var wrapId = mode === 'add' ? 'addSvcCustomWrap' : 'editSvcCustomWrap';
-    var inpId  = mode === 'add' ? 'addSvcCustomCategory' : 'editSvcCustomCategory';
+// ── Service Category Professional Custom Dropdown ────────────────────────
+var _svcPresetCategories = [
+    'Lubrication',
+    'Preventive Maintenance',
+    'Engine Services',
+    'Brake Services',
+    'Tire Services',
+    'Battery Services',
+    'Cooling System',
+    'Electrical Services',
+    'Air Conditioning',
+    'Undercarriage Services',
+    'Cleaning Services',
+    'Emergency Services',
+    'Others'
+];
 
-    var sel  = document.getElementById(selId);
-    var wrap = document.getElementById(wrapId);
-    var inp  = document.getElementById(inpId);
+var _svcActiveIndex = { add: -1, edit: -1 };
 
-    if (!sel || !wrap) return;
+function _renderSvcCatItems(mode, query) {
+    var drop = document.getElementById(mode === 'add' ? 'addSvcCatDrop' : 'editSvcCatDrop');
+    if (!drop) return;
 
-    var val = sel.value;
-    if (val === 'Custom Services' || val === 'Others') {
-        wrap.style.display = 'block';
-        if (inp) setTimeout(function() { inp.focus(); }, 50);
+    query = (query || '').trim().toLowerCase();
+    var filtered = query 
+        ? _svcPresetCategories.filter(function(c) { return c.toLowerCase().indexOf(query) !== -1; })
+        : _svcPresetCategories;
+
+    _svcActiveIndex[mode] = -1;
+
+    var html = '';
+    if (filtered.length > 0) {
+        filtered.forEach(function(cat, idx) {
+            var esc = cat.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            html += '<div class="svc-cat-opt" data-index="' + idx + '" data-value="' + esc + '" ' +
+                'onmousedown="selectSvcCat(\'' + mode + '\', \'' + esc + '\')" ' +
+                'style="padding:10px 14px;cursor:pointer;font-size:14px;color:#1e293b;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;transition:background 0.15s, color 0.15s;" ' +
+                'onmouseover="this.style.background=\'#f0f7ff\';this.style.color=\'#002F6C\';this.style.fontWeight=\'600\';" ' +
+                'onmouseout="this.style.background=\'\';this.style.color=\'#1e293b\';this.style.fontWeight=\'500\';">' +
+                '<span><i class="fas fa-tag" style="margin-right:9px;color:#002F6C;font-size:12px;opacity:0.75;"></i>' + cat + '</span>' +
+                '<span style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Category</span>' +
+                '</div>';
+        });
+    }
+
+    if (query) {
+        var exactMatch = _svcPresetCategories.some(function(c) { return c.toLowerCase() === query; });
+        if (!exactMatch) {
+            var escQuery = query.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            html += '<div style="padding:10px 14px;font-size:13px;color:#0284c7;background:#f0f9ff;display:flex;align-items:center;">' +
+                '<i class="fas fa-pencil-alt" style="margin-right:8px;font-size:11.5px;"></i>' +
+                '<span>Using custom category: <strong>' + escQuery + '</strong></span>' +
+                '</div>';
+        }
+    }
+
+    drop.innerHTML = html;
+    drop.style.display = 'block';
+}
+
+function showSvcCatDrop(mode) {
+    var inp = document.getElementById(mode === 'add' ? 'addSvcCategory' : 'editSvcCategory');
+    var chevron = document.getElementById(mode === 'add' ? 'addSvcCatChevron' : 'editSvcCatChevron');
+    if (inp) inp.style.borderColor = '#002F6C';
+    if (chevron) chevron.style.transform = 'rotate(180deg)';
+    _renderSvcCatItems(mode, inp ? inp.value : '');
+}
+
+function filterSvcCatDrop(mode, val) {
+    showSvcCatDrop(mode);
+}
+
+function hideSvcCatDrop(mode) {
+    var drop = document.getElementById(mode === 'add' ? 'addSvcCatDrop' : 'editSvcCatDrop');
+    var inp = document.getElementById(mode === 'add' ? 'addSvcCategory' : 'editSvcCategory');
+    var chevron = document.getElementById(mode === 'add' ? 'addSvcCatChevron' : 'editSvcCatChevron');
+    if (drop) drop.style.display = 'none';
+    if (inp) inp.style.borderColor = '#d1d5db';
+    if (chevron) chevron.style.transform = 'rotate(0deg)';
+}
+
+function toggleSvcCatDrop(mode) {
+    var drop = document.getElementById(mode === 'add' ? 'addSvcCatDrop' : 'editSvcCatDrop');
+    var inp = document.getElementById(mode === 'add' ? 'addSvcCategory' : 'editSvcCategory');
+    if (!drop) return;
+    if (drop.style.display === 'none' || !drop.style.display) {
+        if (inp) inp.focus();
+        showSvcCatDrop(mode);
     } else {
-        wrap.style.display = 'none';
-        if (inp) inp.value = '';
+        hideSvcCatDrop(mode);
     }
 }
+
+function selectSvcCat(mode, val) {
+    var inp = document.getElementById(mode === 'add' ? 'addSvcCategory' : 'editSvcCategory');
+    if (inp) inp.value = val;
+    hideSvcCatDrop(mode);
+}
+
+function handleSvcCatKey(e, mode) {
+    var drop = document.getElementById(mode === 'add' ? 'addSvcCatDrop' : 'editSvcCatDrop');
+    if (!drop || drop.style.display === 'none') {
+        if (e.key === 'ArrowDown') {
+            showSvcCatDrop(mode);
+            e.preventDefault();
+        }
+        return;
+    }
+    var items = drop.querySelectorAll('.svc-cat-opt');
+    if (!items.length) return;
+
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        _svcActiveIndex[mode] = Math.min(_svcActiveIndex[mode] + 1, items.length - 1);
+        _highlightSvcCatItem(items, _svcActiveIndex[mode]);
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        _svcActiveIndex[mode] = Math.max(_svcActiveIndex[mode] - 1, 0);
+        _highlightSvcCatItem(items, _svcActiveIndex[mode]);
+    } else if (e.key === 'Enter') {
+        if (_svcActiveIndex[mode] >= 0 && items[_svcActiveIndex[mode]]) {
+            e.preventDefault();
+            var val = items[_svcActiveIndex[mode]].getAttribute('data-value');
+            if (val) selectSvcCat(mode, val);
+        } else {
+            hideSvcCatDrop(mode);
+        }
+    } else if (e.key === 'Escape') {
+        hideSvcCatDrop(mode);
+    }
+}
+
+function _highlightSvcCatItem(items, activeIdx) {
+    items.forEach(function(el, i) {
+        if (i === activeIdx) {
+            el.style.background = '#f0f7ff';
+            el.style.color = '#002F6C';
+            el.style.fontWeight = '600';
+            el.scrollIntoView({ block: 'nearest' });
+        } else {
+            el.style.background = '';
+            el.style.color = '#1e293b';
+            el.style.fontWeight = '500';
+        }
+    });
+}
+
+// Global click-outside listener to close dropdowns
+document.addEventListener('click', function(e) {
+    var addBox = document.getElementById('addSvcCatContainer');
+    if (addBox && !addBox.contains(e.target)) {
+        hideSvcCatDrop('add');
+    }
+    var editBox = document.getElementById('editSvcCatContainer');
+    if (editBox && !editBox.contains(e.target)) {
+        hideSvcCatDrop('edit');
+    }
+});
 
 // ── ADD SERVICE MODAL ─────────────────────────────────────────────────────
 function openAddServiceModal() {
     var modal = document.getElementById('addServiceModal');
     if (!modal) return;
     document.getElementById('addServiceForm').reset();
-    // Explicitly clear category (browser may retain previous value)
+    // Explicitly clear category
     var catEl = document.getElementById('addSvcCategory');
     if (catEl) catEl.value = '';
+    hideSvcCatDrop('add');
     modal.style.display = 'flex';
     var f = document.getElementById('addSvcName');
     if (f) setTimeout(function() { f.focus(); }, 80);
@@ -4262,6 +4409,7 @@ function closeAddServiceModal() {
     if (form) form.reset();
     var catEl = document.getElementById('addSvcCategory');
     if (catEl) catEl.value = '';
+    hideSvcCatDrop('add');
 }
 
 safeAddListener('addServiceForm', 'submit', function(e) {
@@ -4342,6 +4490,7 @@ function openEditServiceModal(svc) {
     var catVal = svc.category || '';
     var catInput = document.getElementById('editSvcCategory');
     if (catInput) catInput.value = catVal;
+    hideSvcCatDrop('edit');
 
     document.getElementById('editSvcServiceFee').value   = _svcOriginalFee.toFixed(2);
     document.getElementById('editSvcLaborFee').value     = _svcOriginalLabor.toFixed(2);
@@ -4365,8 +4514,7 @@ function openEditServiceModal(svc) {
 function closeEditServiceModal() {
     var modal = document.getElementById('editServiceModal');
     if (modal) modal.style.display = 'none';
-    var wrap = document.getElementById('editSvcCustomWrap');
-    if (wrap) wrap.style.display = 'none';
+    hideSvcCatDrop('edit');
 }
 
 // Show approval notice if fee fields changed
