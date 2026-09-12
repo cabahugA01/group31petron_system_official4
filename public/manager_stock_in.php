@@ -25,6 +25,12 @@ try {
     $pdo->exec("ALTER TABLE fuel_purchase_orders ADD COLUMN IF NOT EXISTS batch_id VARCHAR(100) NULL DEFAULT NULL");
 } catch (Exception $ignored) {}
 
+$session_success = $_SESSION['success'] ?? '';
+unset($_SESSION['success']);
+if (!empty($_GET['success_msg'])) {
+    $session_success = trim($_GET['success_msg']);
+}
+
 $filters = [
     'search' => trim($_GET['search'] ?? ''),
     'supplier' => trim($_GET['supplier'] ?? ''),
@@ -477,13 +483,119 @@ body .main,
     box-shadow: 0 2px 6px rgba(22, 163, 74, 0.25) !important;
     transition: all 0.15s ease !important;
 }
-@media print{#stockToast.stock-toast,#siConfirmOverlay{display:none!important;}}
+/* Stock-In Success Banner */
+.stock-banner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    border-radius: 8px;
+    margin-bottom: 22px;
+    position: relative;
+    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.14);
+    animation: stockBannerSlideDown 0.3s ease-out;
+}
+@keyframes stockBannerSlideDown {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.stock-banner-success {
+    background: #f0fdf4 !important;
+    border: 1.5px solid #86efac !important;
+    color: #166534 !important;
+}
+.stock-banner-icon {
+    font-size: 28px;
+    color: #16a34a;
+    flex-shrink: 0;
+}
+.stock-banner-content {
+    flex: 1;
+    min-width: 0;
+}
+.stock-banner-title {
+    font-size: 15.5px;
+    font-weight: 800;
+    color: #14532d;
+    margin-bottom: 3px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.stock-banner-desc {
+    font-size: 13.5px;
+    color: #166534;
+    line-height: 1.45;
+    font-weight: 600;
+}
+.stock-banner-meta {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.stock-banner-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #dcfce7;
+    border: 1px solid #bbf7d0;
+    color: #15803d;
+    padding: 3px 9px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: Consolas, monospace;
+}
+.stock-banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+.stock-banner-btn {
+    padding: 7px 15px;
+    background: #16a34a !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-weight: 700;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.15s ease;
+    border: 1px solid #15803d;
+}
+.stock-banner-btn:hover {
+    background: #15803d !important;
+    text-decoration: none;
+}
+.stock-banner-dismiss-btn {
+    background: transparent;
+    border: 1.5px solid #86efac;
+    color: #15803d;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 6px 14px;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+}
+.stock-banner-dismiss-btn:hover {
+    background: #dcfce7;
+    color: #14532d;
+}
+@media print{#stockToast.stock-toast,#siConfirmOverlay,#stockSuccessBanner{display:none!important;}}
 @media(max-width:900px){
     .stock-page{padding:16px 12px 48px;}
     .filter-grid{grid-template-columns:1fr;}
     .filter-actions{justify-content:flex-start;}
     .detail-summary{align-items:stretch;justify-content:flex-start;}
     .approve-btn{width:100%;}
+    .stock-banner{flex-direction:column;align-items:flex-start;gap:12px;}
+    .stock-banner-actions{width:100%;justify-content:flex-end;}
 }
 </style>
 
@@ -491,6 +603,26 @@ body .main,
     <div class="stock-head">
         <div>
             <h1 class="stock-title"><i class="fas fa-dolly"></i> Stock-In</h1>
+        </div>
+    </div>
+
+    <!-- Stock-In Success Banner -->
+    <div class="stock-banner stock-banner-success" id="stockSuccessBanner" style="<?= !empty($session_success) ? 'display:flex;' : 'display:none;' ?>">
+        <div class="stock-banner-icon">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        <div class="stock-banner-content">
+            <div class="stock-banner-title" id="stockBannerTitle">Stock-In Approved Successfully!</div>
+            <div class="stock-banner-desc" id="stockBannerDesc">
+                <?= !empty($session_success) ? htmlspecialchars($session_success) : 'The delivery stock-in has been approved. Official station inventory and prices have been updated.' ?>
+            </div>
+            <div class="stock-banner-meta" id="stockBannerMeta" style="display:none;"></div>
+        </div>
+        <div class="stock-banner-actions">
+            <a id="stockBannerPrintBtn" href="#" target="_blank" class="stock-banner-btn" style="display:none;">
+                <i class="fas fa-print"></i> Print Invoice
+            </a>
+            <button type="button" class="stock-banner-dismiss-btn" onclick="dismissStockBanner()">Dismiss</button>
         </div>
     </div>
 
@@ -913,10 +1045,23 @@ function approveStockIn(type, groupId, poKey) {
             })
             .then(function(data) {
                 if (data.success) {
-                    showStockToast(data.message || ('Approved ' + label + ' stock-in! Opening printable invoice...'), 'ok');
                     var invoiceUrl = 'print_supplier_invoice.php?batch_id=' + encodeURIComponent(data.batch_id || poKey) + '&type=' + encodeURIComponent(type);
+                    var successObj = {
+                        title: 'Stock-In Approved Successfully!',
+                        message: data.message || ('Successfully approved ' + label + ' stock-in for ' + poKey + '. Official station inventory and prices have been updated.'),
+                        batch_id: data.batch_id || '',
+                        po_key: poKey,
+                        invoice_url: invoiceUrl,
+                        time: Date.now()
+                    };
+                    try {
+                        sessionStorage.setItem('petron_stock_in_success', JSON.stringify(successObj));
+                    } catch(e) {}
+
+                    showStockBanner(successObj);
+                    showStockToast(data.message || ('Approved ' + label + ' stock-in! Opening printable invoice...'), 'ok');
                     window.open(invoiceUrl, '_blank');
-                    setTimeout(function() { window.location.reload(); }, 1800);
+                    setTimeout(function() { window.location.reload(); }, 1400);
                 } else {
                     showStockToast(data.message || 'Unable to approve stock-in.', 'err');
                     if (button) {
@@ -1029,8 +1174,78 @@ window.siChangePerPage = function() {
     }
 };
 
+function showStockBanner(data) {
+    var banner = document.getElementById('stockSuccessBanner');
+    if (!banner) return;
+    
+    var titleEl = document.getElementById('stockBannerTitle');
+    var descEl = document.getElementById('stockBannerDesc');
+    var metaEl = document.getElementById('stockBannerMeta');
+    var printBtn = document.getElementById('stockBannerPrintBtn');
+    
+    if (titleEl && data.title) titleEl.textContent = data.title;
+    if (descEl && data.message) descEl.textContent = data.message;
+    
+    if (metaEl) {
+        metaEl.innerHTML = '';
+        if (data.po_key) {
+            metaEl.innerHTML += '<span class="stock-banner-tag"><i class="fas fa-file-invoice"></i> PO: ' + siEscapeHtml(data.po_key) + '</span>';
+        }
+        if (data.batch_id) {
+            metaEl.innerHTML += '<span class="stock-banner-tag"><i class="fas fa-layer-group"></i> Batch: ' + siEscapeHtml(data.batch_id) + '</span>';
+        }
+        metaEl.style.display = metaEl.innerHTML ? 'flex' : 'none';
+    }
+    
+    if (printBtn) {
+        if (data.invoice_url) {
+            printBtn.href = data.invoice_url;
+            printBtn.style.display = 'inline-flex';
+        } else {
+            printBtn.style.display = 'none';
+        }
+    }
+    
+    banner.style.display = 'flex';
+    try {
+        banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch(e) {}
+}
+
+function dismissStockBanner() {
+    var banner = document.getElementById('stockSuccessBanner');
+    if (banner) {
+        banner.style.display = 'none';
+    }
+    try {
+        sessionStorage.removeItem('petron_stock_in_success');
+    } catch(e) {}
+}
+
+function siEscapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     siRender();
+
+    // Check for stored success banner from previous stock-in
+    try {
+        var stored = sessionStorage.getItem('petron_stock_in_success');
+        if (stored) {
+            var data = JSON.parse(stored);
+            if (data && (Date.now() - (data.time || 0) < 600000)) {
+                showStockBanner(data);
+            }
+            sessionStorage.removeItem('petron_stock_in_success');
+        }
+    } catch (e) {}
 });
 </script>
 
