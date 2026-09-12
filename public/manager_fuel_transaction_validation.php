@@ -2170,8 +2170,6 @@ body.sidebar-collapsed .modal,
 
         <!-- Scrollable Middle Body Container (with generous top and bottom breathing room) -->
         <div class="modal-body" style="padding: 24px 30px !important; overflow-y: auto; flex: 1; background: #F1F5F9; box-sizing: border-box;">
-            <p id="batchAdjustPrompt" style="font-size: 13px; color: #334155; margin: 0 0 16px; font-weight: 600; line-height: 1.5;"></p>
-
             <!-- Scrollable Meter Reading Values Table Card -->
             <div style="max-height: 380px; overflow-x: auto; overflow-y: auto; border: 1.5px solid #E2E8F0; border-radius: 10px; background: #ffffff; margin-bottom: 18px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); -webkit-overflow-scrolling: touch;">
                 <table id="batchAdjustTable" style="width: 100%; min-width: 1020px; table-layout: fixed; border-collapse: collapse; font-size: 12px; text-align: left; box-sizing: border-box;">
@@ -3265,11 +3263,6 @@ function openBatchAdjust(specificTxs) {
     if (!selected || selected.length === 0) {
         notifySelectWarning('Please select at least one transaction to adjust.');
         return;
-    }
-    
-    const promptEl = document.getElementById('batchAdjustPrompt');
-    if (promptEl) {
-        promptEl.innerHTML = `Edit the <strong>Beginning Reading</strong>, <strong>Ending Reading</strong>, or <strong>Calibration</strong> below. Liters Sold and Amount will automatically recalculate.`;
     }
     
     const reasonEl = document.getElementById('batchAdjustReason');
