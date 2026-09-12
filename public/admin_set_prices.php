@@ -3956,8 +3956,13 @@ safeAddListener('confirmationModal', 'click', function(e) { if (e.target === thi
 function openAddProductModal() {
     var modal = document.getElementById('addProductModal');
     if (modal) modal.style.display = 'flex';
+    var ugtEl = document.getElementById('newUgtNo');
+    if (ugtEl) ugtEl.value = '';
     var nameInput = document.getElementById('newFuelName');
-    if (nameInput) setTimeout(function() { nameInput.focus(); }, 80);
+    if (nameInput) {
+        nameInput.value = '';
+        setTimeout(function() { nameInput.focus(); }, 80);
+    }
 }
 
 function closeAddProductModal() {
@@ -3965,6 +3970,8 @@ function closeAddProductModal() {
     if (modal) modal.style.display = 'none';
     var form = document.getElementById('addProductForm');
     if (form) form.reset();
+    var ugtEl = document.getElementById('newUgtNo');
+    if (ugtEl) ugtEl.value = '';
 }
 
 // Auto-format UGT number on blur if user typed just digits or 'ugt X'
@@ -4671,54 +4678,11 @@ safeAddListener('addServiceForm', 'submit', function(e) {
                     <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         UGT Number <span style="color:#dc2626;">*</span>
                     </label>
-                    <?php
-                    // Fetch assigned UGT numbers for this station
-                    $assigned_ugt_numbers = [];
-                    if (!empty($fuel_products) && is_array($fuel_products)) {
-                        foreach ($fuel_products as $fp) {
-                            if (!empty($fp['id']) || !empty($fp['raw_fuel_type'])) {
-                                $numOnly = preg_replace('/[^0-9]/', '', $fp['ugt_no'] ?? '');
-                                if ($numOnly !== '') {
-                                    $assigned_ugt_numbers[intval($numOnly)] = true;
-                                }
-                            }
-                        }
-                    }
-                    try {
-                        $ugt_stmt = $pdo->prepare("SELECT ugt_no FROM fuel_inventory WHERE station_id = ? AND ugt_no IS NOT NULL AND ugt_no != ''");
-                        $ugt_stmt->execute([$station_id]);
-                        while ($ur = $ugt_stmt->fetch(PDO::FETCH_ASSOC)) {
-                            $numOnly = preg_replace('/[^0-9]/', '', $ur['ugt_no']);
-                            if ($numOnly !== '') {
-                                $assigned_ugt_numbers[intval($numOnly)] = true;
-                            }
-                        }
-                    } catch (Exception $e) {}
-
-                    $max_assigned = !empty($assigned_ugt_numbers) ? max(array_keys($assigned_ugt_numbers)) : 0;
-                    $next_ugt_num = max(1, $max_assigned + 1);
-                    ?>
-                    <input type="text" id="newUgtNo" list="ugtSuggestionsList" maxlength="20" required
-                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;background:#fff;"
+                    <input type="text" id="newUgtNo" maxlength="20" required value=""
+                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
-                           placeholder="e.g. UGT #<?= $next_ugt_num ?>"
+                           placeholder="e.g. UGT #8"
                            autocomplete="off">
-                    <datalist id="ugtSuggestionsList">
-                        <?php
-                        // Show any available unassigned UGTs in 1..7 first
-                        for ($i = 1; $i <= max(7, $max_assigned); $i++):
-                            if (!isset($assigned_ugt_numbers[$i])):
-                        ?>
-                            <option value="UGT #<?= $i ?>">UGT #<?= $i ?> (Available)</option>
-                        <?php
-                            endif;
-                        endfor;
-                        // Show next sequential numbers
-                        for ($i = $next_ugt_num; $i <= $next_ugt_num + 3; $i++):
-                        ?>
-                            <option value="UGT #<?= $i ?>">UGT #<?= $i ?><?= $i === $next_ugt_num ? ' (Next Available)' : '' ?></option>
-                        <?php endfor; ?>
-                    </datalist>
                 </div>
             </div>
 
