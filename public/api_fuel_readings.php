@@ -712,6 +712,8 @@ try {
                 LEFT JOIN fuel_pumps fp  ON ft.pump_id     = fp.id
                 WHERE {$base_where}
                 ORDER BY
+                    DATE(ft.transaction_date) DESC,
+                    ft.shift_period DESC,
                     CASE
                         WHEN TRIM(UPPER(ft.fuel_type)) = 'DIESEL'                                          THEN 1
                         WHEN UPPER(ft.fuel_type) LIKE 'DIESEL 1%' OR UPPER(ft.fuel_type) LIKE '%DIESEL 1%' THEN 2
@@ -727,7 +729,7 @@ try {
                     END ASC,
                     ft.fuel_type ASC,
                     fp.pump_number ASC,
-                    ft.transaction_date ASC
+                    ft.id ASC
             ";
             $mr_stmt = $pdo->prepare($mr_sql);
             $mr_stmt->execute($base_params);
