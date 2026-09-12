@@ -438,22 +438,6 @@ body .main,
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35) !important;
     position: relative !important;
 }
-#siConfirmOverlay .confirm-close-btn {
-    position: absolute !important;
-    top: 14px !important;
-    right: 14px !important;
-    background: transparent !important;
-    background-color: transparent !important;
-    border: none !important;
-    color: #94a3b8 !important;
-    font-size: 18px !important;
-    cursor: pointer !important;
-    padding: 4px 8px !important;
-    line-height: 1 !important;
-}
-#siConfirmOverlay .confirm-close-btn:hover {
-    color: #dc2626 !important;
-}
 #siConfirmOverlay #siConfirmCancelBtn {
     padding: 10px 22px !important;
     border: 1.5px solid #dc2626 !important;
@@ -785,11 +769,10 @@ body .main,
 <!-- Custom Confirm Modal (replaces window.confirm which Edge may block) -->
 <div id="siConfirmOverlay" onclick="if(event.target===this) siConfirmCancel();">
     <div class="confirm-card">
-        <button type="button" class="confirm-close-btn" onclick="siConfirmCancel()" title="Close">&times;</button>
         <div style="font-size:16px;font-weight:800;color:#002F70;margin-bottom:10px;"><i class="fas fa-check-circle" style="color:#16a34a;margin-right:8px;"></i>Confirm Stock-In Approval</div>
         <div id="siConfirmMsg" style="font-size:13.5px;color:#374151;line-height:1.6;margin-bottom:22px;"></div>
         <div style="display:flex;justify-content:flex-end;gap:12px;">
-            <button type="button" id="siConfirmCancelBtn" onclick="siConfirmCancel()" style="padding:10px 22px!important;border:1.5px solid #dc2626!important;border-radius:7px!important;background:#dc2626!important;background-color:#dc2626!important;color:#ffffff!important;-webkit-text-fill-color:#ffffff!important;font-weight:700!important;font-size:13.5px!important;cursor:pointer!important;display:inline-flex!important;align-items:center!important;gap:7px!important;"><i class="fas fa-times"></i> Cancel</button>
+            <button type="button" id="siConfirmCancelBtn" onclick="siConfirmCancel()" style="padding:10px 22px!important;border:1.5px solid #dc2626!important;border-radius:7px!important;background:#dc2626!important;background-color:#dc2626!important;color:#ffffff!important;-webkit-text-fill-color:#ffffff!important;font-weight:700!important;font-size:13.5px!important;cursor:pointer!important;display:inline-flex!important;align-items:center!important;gap:7px!important;">Cancel</button>
             <button type="button" id="siConfirmOkBtn" style="padding:10px 22px!important;border:1.5px solid #16a34a!important;border-radius:7px!important;background:#16a34a!important;background-color:#16a34a!important;color:#ffffff!important;-webkit-text-fill-color:#ffffff!important;font-weight:800!important;font-size:13.5px!important;cursor:pointer!important;display:inline-flex!important;align-items:center!important;gap:7px!important;"><i class="fas fa-check"></i> Yes, Approve</button>
         </div>
     </div>
