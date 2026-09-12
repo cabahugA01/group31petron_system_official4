@@ -800,7 +800,9 @@ if ($status_filter !== 'all') {
         // Only show CLOSING_COMPLETED (fuel sales closing done) - NOT readings_submitted (closing not yet done)
         $where[] = "(LOWER(ft.status) LIKE '%pending%' OR LOWER(ft.status) IN ('closing_completed', 'submitted'))";
     } elseif ($status_filter === 'validated') {
-        $where[] = "LOWER(ft.status) IN ('verified', 'approved', 'adjusted')";
+        $where[] = "LOWER(ft.status) IN ('verified', 'approved')";
+    } elseif ($status_filter === 'adjusted') {
+        $where[] = "LOWER(ft.status) = 'adjusted'";
     } elseif ($status_filter === 'rejected') {
         $where[] = "LOWER(ft.status) = 'rejected'";
     }
@@ -1531,6 +1533,7 @@ body.sidebar-collapsed .modal,
                 <option value="all" <?= $status_filter === 'all' ? 'selected' : '' ?>>All Statuses</option>
                 <option value="pending" <?= $status_filter === 'pending' ? 'selected' : '' ?>>Awaiting Validation</option>
                 <option value="validated" <?= $status_filter === 'validated' ? 'selected' : '' ?>>Validated</option>
+                <option value="adjusted" <?= $status_filter === 'adjusted' ? 'selected' : '' ?>>Adjusted</option>
                 <option value="rejected" <?= $status_filter === 'rejected' ? 'selected' : '' ?>>Rejected</option>
             </select>
         </div>
