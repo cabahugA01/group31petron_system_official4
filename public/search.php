@@ -689,27 +689,36 @@ if (!empty($query)) {
                     ];
                 }
 
-                // Also search fuel_inventory tanks
+                // Also search fuel_inventory tanks (price-aware)
                 try {
-                    $sw_fi = $station_id ? "WHERE fi.station_id = {$station_id}" : '';
+                    // Build WHERE correctly — avoids "FROM tbl AND ..." broken SQL when no station_id
+                    $sw_fi_where = $station_id ? "WHERE fi.station_id = {$station_id} AND" : 'WHERE';
                     $stmt_fuel = $pdo->prepare(
                         "SELECT fi.id, fi.fuel_type, fi.current_level, fi.capacity, fi.price_per_liter
                          FROM fuel_inventory fi
-                         {$sw_fi}
-                         AND (fi.fuel_type LIKE ? OR CAST(fi.current_level AS CHAR) LIKE ?)
-                         ORDER BY fi.fuel_type ASC LIMIT 5"
+                         {$sw_fi_where} (
+                             fi.fuel_type                    LIKE ?
+                             OR CAST(fi.current_level   AS CHAR) LIKE ?
+                             OR CAST(fi.price_per_liter AS CHAR) LIKE ?
+                             OR ? LIKE '%pric%'
+                             OR ? LIKE '%fuel%'
+                         )
+                         ORDER BY fi.fuel_type ASC LIMIT 8"
                     );
-                    $stmt_fuel->execute([$like, $like]);
+                    $stmt_fuel->execute([$like, $like, $like, $like, $like]);
                     foreach ($stmt_fuel->fetchAll(PDO::FETCH_ASSOC) as $fr) {
-                        $fq  = urlencode($fr['fuel_type']);
-                        $pct = $fr['capacity'] > 0 ? round(($fr['current_level'] / $fr['capacity']) * 100) : 0;
+                        $fq          = urlencode($fr['fuel_type']);
+                        $pct         = $fr['capacity'] > 0 ? round(($fr['current_level'] / $fr['capacity']) * 100) : 0;
+                        $price_disp  = (float)($fr['price_per_liter'] ?? 0) > 0
+                            ? ' · Price: ₱' . number_format((float)$fr['price_per_liter'], 2) . '/L'
+                            : '';
                         $fuel_inv_link = $is_admin
-                            ? 'admin_inventory_fuel.php?search=' . $fq
+                            ? 'admin_inventory_fuel.php?search='   . $fq
                             : ($role === 'manager' ? 'manager_inventory_fuel.php?search=' . $fq : 'staff_inventory_fuel.php?search=' . $fq);
                         $results[] = [
                             'type'     => 'Product',
-                            'title'    => "Fuel Tank — {$fr['fuel_type']}",
-                            'subtitle' => "Fuel Inventory · Current Level: {$fr['current_level']}L / {$fr['capacity']}L ({$pct}%)",
+                            'title'    => "Fuel — {$fr['fuel_type']}",
+                            'subtitle' => "Fuel Inventory · Level: {$fr['current_level']}L / {$fr['capacity']}L ({$pct}%){$price_disp}",
                             'meta'     => 'Fuel',
                             'link'     => $fuel_inv_link,
                             'icon'     => 'fas fa-gas-pump',
