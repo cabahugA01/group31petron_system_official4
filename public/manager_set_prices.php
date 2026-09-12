@@ -1528,6 +1528,13 @@ body, html { overflow-x: hidden; max-width: 100%; }
 </div>
 
 <script>
+// ── Helper: sanitize decimal inputs (avoids regex in HTML attributes which breaks draft engine) ──
+function sanitizeDecimalInput(el) {
+    var v = el.value.replace(/[^0-9.]/g, '');
+    var parts = v.split('.');
+    if (parts.length > 2) { v = parts[0] + '.' + parts.slice(1).join(''); }
+    el.value = v;
+}
 // ── Tab switching — updates URL & sessionStorage so refresh stays on same tab ─
 // ── Export Product & Pricing Report ─────────────────────────────────────────
 function exportPricing(format) {
@@ -2279,7 +2286,7 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
         <div>
           <label style="display:block;font-size:14px;font-weight:700;color:#002F6C;text-transform:uppercase;margin-bottom:4px;">Default Selling Price (&#8369;) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="editMerchPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:2px solid #002F6C;border-radius:7px;font-size:14px;font-weight:600;box-sizing:border-box;" onfocus="this.style.borderColor='#004494'" onblur="this.style.borderColor='#002F6C'" placeholder="0.00" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
+          <input type="number" id="editMerchPrice" step="0.01" min="0" required style="width:100%;padding:9px 11px;border:2px solid #002F6C;border-radius:7px;font-size:14px;font-weight:600;box-sizing:border-box;" onfocus="this.style.borderColor='#004494'" onblur="this.style.borderColor='#002F6C'" placeholder="0.00" oninput="sanitizeDecimalInput(this)">
           <small style="color:#64748b;font-size:14px;">Cost price is managed per delivery batch</small>
         </div>
       </div>
@@ -2509,7 +2516,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <input type="number" id="addSvcServiceFee" step="0.01" min="0" required placeholder="0.00"
               style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
-              oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
+              oninput="sanitizeDecimalInput(this)">
             <small style="color:#94a3b8;font-size:12.5px;">Parts/materials fee</small>
           </div>
           <div>
@@ -2638,8 +2645,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Description</label>
             <textarea id="editSvcDescription" rows="1"
               style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;resize:vertical;box-sizing:border-box;"
-              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
-              oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\(\)\/\,\.\&\:\;'\"]/g, '');"></textarea>
+              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"></textarea>
           </div>
         </div>
       </div>
@@ -4435,12 +4441,16 @@ safeAddListener('addServiceForm', 'submit', function(e) {
     var name     = (document.getElementById('addSvcName')        || {}).value || '';
     var category = (document.getElementById('addSvcCategory')    || {}).value || '';
 
-    var svcFee   = parseFloat((document.getElementById('addSvcServiceFee') || {}).value) || 0;
+    var svcFee   = parseFloat((document.getElementById('addSvcServiceFee') || {}).value);
+    var laborFee = parseFloat((document.getElementById('addSvcLaborFee')    || {}).value);
+    if (isNaN(svcFee))   svcFee   = 0;
+    if (isNaN(laborFee)) laborFee = 0;
+
     var durationVal = ((document.getElementById('addSvcDuration')  || {}).value || '').trim();
-    var duration = (durationVal !== '' && !isNaN(parseInt(durationVal))) ? parseInt(durationVal) : 60;
+    var duration    = (durationVal !== '' && !isNaN(parseInt(durationVal))) ? parseInt(durationVal) : null;
     var mechsVal    = ((document.getElementById('addSvcMechanics') || {}).value || '').trim();
-    var mechs    = (mechsVal !== '' && !isNaN(parseInt(mechsVal))) ? parseInt(mechsVal) : 1;
-    var desc     = (document.getElementById('addSvcDescription')  || {}).value || '';
+    var mechs       = (mechsVal !== '' && !isNaN(parseInt(mechsVal))) ? parseInt(mechsVal) : null;
+    var desc        = ((document.getElementById('addSvcDescription') || {}).value || '').trim();
 
     name     = name.trim();
     category = category.trim();
@@ -4465,14 +4475,14 @@ safeAddListener('addServiceForm', 'submit', function(e) {
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...'; }
 
     var fd = new FormData();
-    fd.append('action',               'add_service');
-    fd.append('service_name',         name);
-    fd.append('category',             category);
-    fd.append('service_price',        svcFee);
-    fd.append('labor_fee',            laborFee);
-    fd.append('estimated_duration',   duration);
-    fd.append('required_mechanics',   mechs);
-    fd.append('description',          desc);
+    fd.append('action',             'add_service');
+    fd.append('service_name',       name);
+    fd.append('category',           category);
+    fd.append('service_price',      svcFee);
+    fd.append('labor_fee',          laborFee);
+    fd.append('estimated_duration', duration !== null ? duration : '');
+    fd.append('required_mechanics', mechs    !== null ? mechs    : '');
+    fd.append('description',        desc);
 
     fetch('manager_set_prices_handler.php', { method: 'POST', body: fd })
     .then(function(r) { return r.json(); })
@@ -4512,8 +4522,10 @@ function openEditServiceModal(svc) {
 
     document.getElementById('editSvcServiceFee').value   = _svcOriginalFee.toFixed(2);
     document.getElementById('editSvcLaborFee').value     = _svcOriginalLabor.toFixed(2);
-    document.getElementById('editSvcDuration').value     = svc.estimated_duration  || 60;
-    document.getElementById('editSvcMechanics').value    = svc.required_mechanics  || 1;
+    var durVal  = (svc.estimated_duration  !== null && svc.estimated_duration  !== undefined && svc.estimated_duration  !== '') ? svc.estimated_duration  : '';
+    var mechVal = (svc.required_mechanics  !== null && svc.required_mechanics  !== undefined && svc.required_mechanics  !== '') ? svc.required_mechanics  : '';
+    document.getElementById('editSvcDuration').value     = durVal;
+    document.getElementById('editSvcMechanics').value    = mechVal;
     document.getElementById('editSvcDescription').value  = svc.description || '';
     document.getElementById('editSvcActive').value       = svc.active ? '1' : '0';
 
@@ -4554,9 +4566,9 @@ safeAddListener('editServiceForm', 'submit', function(e) {
     var svcFee      = parseFloat(document.getElementById('editSvcServiceFee').value) || 0;
     var laborFee    = parseFloat(document.getElementById('editSvcLaborFee').value)   || 0;
     var durationVal = ((document.getElementById('editSvcDuration')  || {}).value || '').trim();
-    var duration    = (durationVal !== '' && !isNaN(parseInt(durationVal))) ? parseInt(durationVal) : 60;
+    var duration    = (durationVal !== '' && !isNaN(parseInt(durationVal))) ? parseInt(durationVal) : null;
     var mechsVal    = ((document.getElementById('editSvcMechanics') || {}).value || '').trim();
-    var mechs       = (mechsVal !== '' && !isNaN(parseInt(mechsVal))) ? parseInt(mechsVal) : 1;
+    var mechs       = (mechsVal !== '' && !isNaN(parseInt(mechsVal))) ? parseInt(mechsVal) : null;
     var desc        = document.getElementById('editSvcDescription').value || '';
     var active   = document.getElementById('editSvcActive').value;
 
@@ -4576,16 +4588,16 @@ safeAddListener('editServiceForm', 'submit', function(e) {
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...'; }
 
     var fd = new FormData();
-    fd.append('action',               'edit_service_full');
-    fd.append('id',                   id);
-    fd.append('service_name',         name);
-    fd.append('category',             category);
-    fd.append('service_price',        svcFee);
-    fd.append('labor_fee',            laborFee);
-    fd.append('estimated_duration',   duration);
-    fd.append('required_mechanics',   mechs);
-    fd.append('description',          desc);
-    fd.append('active',               active);
+    fd.append('action',             'edit_service_full');
+    fd.append('id',                 id);
+    fd.append('service_name',       name);
+    fd.append('category',           category);
+    fd.append('service_price',      svcFee);
+    fd.append('labor_fee',          laborFee);
+    fd.append('estimated_duration', duration !== null ? duration : '');
+    fd.append('required_mechanics', mechs    !== null ? mechs    : '');
+    fd.append('description',        desc);
+    fd.append('active',             active);
 
     fetch('manager_set_prices_handler.php', { method: 'POST', body: fd })
     .then(function(r) { return r.json(); })
@@ -4616,9 +4628,16 @@ function openViewServiceModal(svc) {
     var laborFee = parseFloat(svc.labor_fee)     || 0;
     var total    = svcFee + laborFee;
 
-    var hrs  = Math.floor((svc.estimated_duration || 60) / 60);
-    var mins = (svc.estimated_duration || 60) % 60;
-    var durStr = (hrs > 0 ? hrs + 'h ' : '') + (mins > 0 ? mins + 'm' : (hrs === 0 ? '0m' : ''));
+    var hasDur = svc.estimated_duration !== null && svc.estimated_duration !== undefined && svc.estimated_duration !== '' && svc.estimated_duration !== '0';
+    var durStr;
+    if (hasDur) {
+        var durMin = parseInt(svc.estimated_duration) || 0;
+        var hrs  = Math.floor(durMin / 60);
+        var mins = durMin % 60;
+        durStr = (hrs > 0 ? hrs + 'h ' : '') + (mins > 0 ? mins + 'm' : (hrs === 0 ? '0m' : ''));
+    } else {
+        durStr = 'N/A';
+    }
 
     // Populate
     document.getElementById('viewSvcCodeDisplay').textContent  = svc.service_code ? 'Code: ' + svc.service_code : '';
@@ -4629,7 +4648,8 @@ function openViewServiceModal(svc) {
     document.getElementById('viewSvcLaborFee').textContent     = '₱' + laborFee.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     document.getElementById('viewSvcTotalFee').textContent     = '₱' + total.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     document.getElementById('viewSvcDuration').textContent     = durStr;
-    document.getElementById('viewSvcMechanics').textContent    = (svc.required_mechanics || 1) + ' mechanic(s)';
+    var hasMech = svc.required_mechanics !== null && svc.required_mechanics !== undefined && svc.required_mechanics !== '';
+    document.getElementById('viewSvcMechanics').textContent    = hasMech ? (parseInt(svc.required_mechanics) + ' mechanic(s)') : 'N/A';
 
     var statusEl = document.getElementById('viewSvcStatus');
     if (statusEl) {

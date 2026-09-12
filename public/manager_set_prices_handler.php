@@ -218,7 +218,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'GET') {
                   INDEX (`fuel_inventory_id`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-                $stmt = $pdo->prepare("SELECT ch.*, COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.name, u.username, ch.updated_by_name, 'Manager') as updated_by_name FROM fuel_config_history ch LEFT JOIN users u ON ch.updated_by=u.id WHERE ch.fuel_inventory_id IN ($in_clause) AND ch.field_name IN ('Fuel Name', 'Tank Capacity', 'Capacity', 'Critical Level', 'Reorder Level') ORDER BY ch.created_at DESC LIMIT 30");
+                $stmt = $pdo->prepare("SELECT ch.*, COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.name, u.username, ch.updated_by_name, 'Manager') as updated_by_name FROM fuel_config_history ch LEFT JOIN users u ON ch.updated_by=u.id WHERE ch.fuel_inventory_id IN ($in_clause) AND ch.field_name IN ('Fuel Name', 'Tank Capacity', 'Capacity', 'Critical Level', 'Reorder Level', 'UGT No', 'UGT Number') ORDER BY ch.created_at DESC LIMIT 30");
                 $stmt->execute($matching_ids);
                 $config_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 foreach ($config_history as &$ch) {
@@ -1631,9 +1631,9 @@ try {
             $service_price      = (float)($_POST['service_price'] ?? 0);
             $labor_fee          = (float)($_POST['labor_fee'] ?? 0);
             $dur_raw            = trim((string)($_POST['estimated_duration'] ?? ''));
-            $estimated_duration = ($dur_raw !== '' && is_numeric($dur_raw) && (int)$dur_raw > 0) ? (int)$dur_raw : 60;
+            $estimated_duration = ($dur_raw !== '' && is_numeric($dur_raw) && (int)$dur_raw > 0) ? (int)$dur_raw : null;
             $mech_raw           = trim((string)($_POST['required_mechanics'] ?? ''));
-            $required_mechanics = ($mech_raw !== '' && is_numeric($mech_raw) && (int)$mech_raw > 0) ? (int)$mech_raw : 1;
+            $required_mechanics = ($mech_raw !== '' && is_numeric($mech_raw) && (int)$mech_raw > 0) ? (int)$mech_raw : null;
             $description        = sanitize_optional_field($_POST['description'] ?? '');
 
             if (empty($service_name) || empty($category)) {
@@ -1715,9 +1715,9 @@ try {
             $service_price      = (float)($_POST['service_price'] ?? 0);
             $labor_fee          = (float)($_POST['labor_fee'] ?? 0);
             $dur_raw            = trim((string)($_POST['estimated_duration'] ?? ''));
-            $estimated_duration = ($dur_raw !== '' && is_numeric($dur_raw) && (int)$dur_raw > 0) ? (int)$dur_raw : 60;
+            $estimated_duration = ($dur_raw !== '' && is_numeric($dur_raw) && (int)$dur_raw > 0) ? (int)$dur_raw : null;
             $mech_raw           = trim((string)($_POST['required_mechanics'] ?? ''));
-            $required_mechanics = ($mech_raw !== '' && is_numeric($mech_raw) && (int)$mech_raw > 0) ? (int)$mech_raw : 1;
+            $required_mechanics = ($mech_raw !== '' && is_numeric($mech_raw) && (int)$mech_raw > 0) ? (int)$mech_raw : null;
             $description        = sanitize_optional_field($_POST['description'] ?? '');
             $active             = (int)($_POST['active'] ?? 1);
 

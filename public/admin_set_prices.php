@@ -252,6 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action === 'admin_edit_fuel_direct') {
         $id             = (int)($_POST['id'] ?? 0);
+        $ugt_no         = trim($_POST['ugt_no'] ?? '');
         $fuel_name      = trim($_POST['fuel_name'] ?? '');
         $price          = (float)($_POST['price'] ?? 0);
         $capacity       = (float)($_POST['capacity'] ?? 0);
@@ -259,6 +260,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $reorder_level  = (float)($_POST['reorder_level'] ?? 0);
         $status_val     = trim($_POST['status'] ?? 'active');
 
+        if ($id <= 0) throw new Exception('Invalid fuel product ID.');
+        if (empty($fuel_name)) throw new Exception('Fuel product name cannot be empty.');
         if ($price <= 0) throw new Exception('Price per liter must be a positive number greater than 0.');
         if ($capacity <= 0) throw new Exception('Tank capacity must be a positive number greater than 0.');
         if ($critical_level <= 0) throw new Exception('Critical level must be a positive number greater than 0.');
@@ -269,73 +272,120 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt_f = $pdo->prepare("SELECT * FROM fuel_inventory WHERE id=? AND station_id=? LIMIT 1");
         $stmt_f->execute([$id, $station_id]);
         $old_fuel = $stmt_f->fetch(PDO::FETCH_ASSOC);
+        if (!$old_fuel) {
+            $stmt_f = $pdo->prepare("SELECT * FROM fuel_inventory WHERE id=? LIMIT 1");
+            $stmt_f->execute([$id]);
+            $old_fuel = $stmt_f->fetch(PDO::FETCH_ASSOC);
+        }
 
         if ($old_fuel) {
+            $fuel_station_id = (int)($old_fuel['station_id'] ?? $station_id);
+            $old_ugt     = trim($old_fuel['ugt_no'] ?? '');
             $old_price   = (float)($old_fuel['price_per_liter'] ?? 0);
-            $old_name    = $old_fuel['fuel_type'] ?? '';
-            $matching_ids = get_matching_fuel_ids($pdo, $station_id, $id, $old_name);
-            $in_clause   = implode(',', array_fill(0, count($matching_ids), '?'));
-
-            $user_name   = $me['username'] ?? ($me['first_name'] ?? 'Admin');
+            $old_name    = trim($old_fuel['fuel_type'] ?? '');
             $old_cap     = (float)($old_fuel['capacity'] ?? 0);
             $old_crit    = (float)($old_fuel['critical_level'] ?? 0);
             $old_reorder = (float)($old_fuel['reorder_level'] ?? 0);
             $old_status  = strtolower($old_fuel['status'] ?? 'active');
+            $user_name   = $me['username'] ?? ($me['first_name'] ?? 'Admin');
+
+            $target_fuel_name = !empty($fuel_name) ? $fuel_name : $old_name;
+            $target_ugt       = !empty($ugt_no) ? $ugt_no : $old_ugt;
+
+            $matching_ids = get_matching_fuel_ids($pdo, $fuel_station_id, $id, $old_name);
+            if (empty($matching_ids)) $matching_ids = [$id];
+            $in_clause   = implode(',', array_fill(0, count($matching_ids), '?'));
 
             // ── Admin is owner: cancel any pending price requests for this fuel ──
-            // Admin direct edit supersedes any pending manager request
             try {
-                $cancel_params = array_merge([$station_id], $matching_ids);
+                $cancel_params = array_merge([$fuel_station_id], $matching_ids);
                 $pdo->prepare("UPDATE pending_price_approvals SET status='cancelled', updated_at=NOW() WHERE station_id=? AND product_type IN ('fuel','fuel_inventory') AND product_id IN ($in_clause) AND status='pending'")
                     ->execute($cancel_params);
             } catch (Exception $e) { /* column may not exist — silently ignore */ }
 
+            // Ensure table fuel_config_history exists
+            try {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `fuel_config_history` (
+                  `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                  `station_id` INT(11) NOT NULL,
+                  `fuel_inventory_id` INT(11) NOT NULL,
+                  `fuel_type` VARCHAR(100) NOT NULL,
+                  `field_name` VARCHAR(50) NOT NULL,
+                  `old_value` VARCHAR(255) NULL,
+                  `new_value` VARCHAR(255) NULL,
+                  `updated_by` INT(11) NULL,
+                  `updated_by_name` VARCHAR(255) NULL,
+                  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  INDEX (`station_id`),
+                  INDEX (`fuel_inventory_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            } catch (Exception $e) {}
+
             // ── Log configuration changes (non-price fields) ──
+            if (!empty($ugt_no) && strcasecmp($old_ugt, $ugt_no) !== 0) {
+                $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'UGT No', ?, ?, ?, ?, NOW())")
+                    ->execute([$fuel_station_id, $id, $target_fuel_name, $old_ugt ?: 'None', $ugt_no, $me['id'], $user_name]);
+            }
             if (!empty($fuel_name) && strcasecmp($old_name, $fuel_name) !== 0) {
                 $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'Fuel Name', ?, ?, ?, ?, NOW())")
-                    ->execute([$station_id, $id, $fuel_name, $old_name, $fuel_name, $me['id'], $user_name]);
+                    ->execute([$fuel_station_id, $id, $target_fuel_name, $old_name, $fuel_name, $me['id'], $user_name]);
             }
             if (abs($old_cap - $capacity) > 0.001) {
                 $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'Capacity', ?, ?, ?, ?, NOW())")
-                    ->execute([$station_id, $id, $old_name, number_format($old_cap, 2) . ' L', number_format($capacity, 2) . ' L', $me['id'], $user_name]);
+                    ->execute([$fuel_station_id, $id, $target_fuel_name, number_format($old_cap, 2) . ' L', number_format($capacity, 2) . ' L', $me['id'], $user_name]);
             }
             if (abs($old_crit - $critical_level) > 0.001) {
                 $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'Critical Level', ?, ?, ?, ?, NOW())")
-                    ->execute([$station_id, $id, $old_name, number_format($old_crit, 2) . ' L', number_format($critical_level, 2) . ' L', $me['id'], $user_name]);
+                    ->execute([$fuel_station_id, $id, $target_fuel_name, number_format($old_crit, 2) . ' L', number_format($critical_level, 2) . ' L', $me['id'], $user_name]);
             }
             if (abs($old_reorder - $reorder_level) > 0.001) {
                 $pdo->prepare("INSERT INTO fuel_config_history (station_id, fuel_inventory_id, fuel_type, field_name, old_value, new_value, updated_by, updated_by_name, created_at) VALUES (?, ?, ?, 'Reorder Level', ?, ?, ?, ?, NOW())")
-                    ->execute([$station_id, $id, $old_name, number_format($old_reorder, 2) . ' L', number_format($reorder_level, 2) . ' L', $me['id'], $user_name]);
+                    ->execute([$fuel_station_id, $id, $target_fuel_name, number_format($old_reorder, 2) . ' L', number_format($reorder_level, 2) . ' L', $me['id'], $user_name]);
             }
             if (strcasecmp($old_status, $status_val) !== 0) {
                 $status_label = (strtolower($status_val) === 'active') ? 'Activated' : 'Deactivated';
                 $pdo->prepare("INSERT INTO fuel_status_history (station_id, fuel_inventory_id, fuel_type, old_status, new_status, status, reason, changed_by, changed_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, 'Direct Admin Edit', ?, ?, NOW())")
-                    ->execute([$station_id, $id, $old_name, ucfirst($old_status), ucfirst($status_val), $status_label, $me['id'], $user_name]);
+                    ->execute([$fuel_station_id, $id, $target_fuel_name, ucfirst($old_status), ucfirst($status_val), $status_label, $me['id'], $user_name]);
             }
 
             // ── Admin always updates ALL fields immediately — no approval needed ──
-            $upd_params = array_merge([$price, $capacity, $critical_level, $reorder_level, $status_val, $me['id']], $matching_ids);
-            $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=?, capacity=?, critical_level=?, reorder_level=?, status=?, updated_by=?, last_updated=NOW() WHERE id IN ($in_clause)")
-                ->execute($upd_params);
+            // 1. Update this specific fuel inventory record
+            $pdo->prepare("UPDATE fuel_inventory SET ugt_no=?, fuel_type=?, price_per_liter=?, capacity=?, critical_level=?, reorder_level=?, status=?, updated_by=?, last_updated=NOW() WHERE id=?")
+                ->execute([$target_ugt, $target_fuel_name, $price, $capacity, $critical_level, $reorder_level, $status_val, $me['id'], $id]);
+
+            // 2. Sync fuel_type and price_per_liter to other matching fuel tanks (if any)
+            if (count($matching_ids) > 1) {
+                $other_ids = array_values(array_filter($matching_ids, fn($mid) => (int)$mid !== (int)$id));
+                if (!empty($other_ids)) {
+                    $other_in = implode(',', array_fill(0, count($other_ids), '?'));
+                    $pdo->prepare("UPDATE fuel_inventory SET fuel_type=?, price_per_liter=?, updated_by=?, last_updated=NOW() WHERE id IN ($other_in)")
+                        ->execute(array_merge([$target_fuel_name, $price, $me['id']], $other_ids));
+                }
+            }
 
             // ── Sync to fuel_types & fuel_pricing across system ──
             $fuel_type_id = $old_fuel['fuel_type_id'] ?? null;
             if ($fuel_type_id) {
                 try {
-                    $pdo->prepare("UPDATE fuel_types SET price_per_liter = ? WHERE id = ?")
-                        ->execute([$price, $fuel_type_id]);
+                    if (!empty($fuel_name)) {
+                        $pdo->prepare("UPDATE fuel_types SET name = ?, price_per_liter = ? WHERE id = ?")
+                            ->execute([$target_fuel_name, $price, $fuel_type_id]);
+                    } else {
+                        $pdo->prepare("UPDATE fuel_types SET price_per_liter = ? WHERE id = ?")
+                            ->execute([$price, $fuel_type_id]);
+                    }
                 } catch (Exception $e) {}
 
                 try {
                     $fp_stmt = $pdo->prepare("SELECT id FROM fuel_pricing WHERE station_id = ? AND fuel_type_id = ? AND is_active = 1 LIMIT 1");
-                    $fp_stmt->execute([$station_id, $fuel_type_id]);
+                    $fp_stmt->execute([$fuel_station_id, $fuel_type_id]);
                     $fp_id = $fp_stmt->fetchColumn();
                     if ($fp_id) {
                         $pdo->prepare("UPDATE fuel_pricing SET price_per_liter = ?, updated_at = NOW() WHERE id = ?")
                             ->execute([$price, $fp_id]);
                     } else {
                         $pdo->prepare("INSERT INTO fuel_pricing (station_id, fuel_type_id, price_per_liter, effective_date, is_active, created_by, created_at, updated_at) VALUES (?, ?, ?, NOW(), 1, ?, NOW(), NOW())")
-                            ->execute([$station_id, $fuel_type_id, $price, $me['id']]);
+                            ->execute([$fuel_station_id, $fuel_type_id, $price, $me['id']]);
                     }
                 } catch (Exception $e) {}
             }
@@ -348,12 +398,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     VALUES (?, ?, ?, ?, ?, ?, 'Direct Admin Edit', ?, ?, 'Approved', NOW())");
                 foreach ($matching_ids as $m_id) {
                     $hist_stmt->execute([
-                        $station_id, $m_id, $old_name, $old_price, $price, $diff, $me['id'], $me['id']
+                        $fuel_station_id, $m_id, $target_fuel_name, $old_price, $price, $diff, $me['id'], $me['id']
                     ]);
                 }
             }
 
-            log_activity($pdo, $me['id'], 'Direct Admin Edit Fuel', "Admin directly updated {$old_name}: Price ₱{$old_price} -> ₱{$price}, Capacity {$capacity}L, Critical {$critical_level}L, Reorder {$reorder_level}L");
+            log_activity($pdo, $me['id'], 'Direct Admin Edit Fuel', "Admin directly updated fuel [ID: {$id}]: Name '{$old_name}' -> '{$target_fuel_name}', UGT '{$old_ugt}' -> '{$target_ugt}', Price ₱{$old_price} -> ₱{$price}, Capacity {$capacity}L, Critical {$critical_level}L, Reorder {$reorder_level}L, Status {$status_val}");
             $_SESSION['success'] = "Fuel product updated successfully!";
         }
         header("Location: admin_set_prices.php?tab=fuel");
@@ -1292,11 +1342,12 @@ table.pricing-table tbody tr:hover {
 .admin-layout-modal {
     position: fixed !important;
     top: 70px !important;
-    bottom: 0 !important;
+    bottom: 40px !important;
     left: 0 !important;
     right: 0 !important;
     width: 100% !important;
-    height: calc(100vh - 70px) !important;
+    height: auto !important;
+    max-height: calc(100vh - 110px) !important;
     box-sizing: border-box !important;
     z-index: 9999 !important;
     overflow: hidden !important;
@@ -1355,8 +1406,11 @@ table.pricing-table tbody tr:hover {
         left: 250px !important;
         width: calc(100% - 250px) !important;
         right: 0 !important;
+        bottom: 40px !important;
         box-sizing: border-box !important;
+        align-items: center !important;
         justify-content: center !important;
+        padding: 20px !important;
     }
 
     body.sidebar-collapsed .admin-layout-modal,
@@ -1385,7 +1439,41 @@ table.pricing-table tbody tr:hover {
         left: 70px !important;
         width: calc(100% - 70px) !important;
         right: 0 !important;
+        bottom: 40px !important;
     }
+
+    #editPriceModalAdmin,
+    #adminEditProductModal,
+    #adminEditFuelModal,
+    #adminEditServiceModal,
+    #addProductModal,
+    #addMerchandiseModal,
+    #addServiceModal {
+        align-items: flex-start !important;
+        padding-top: 25px !important;
+        overflow-y: auto !important;
+    }
+    #editPriceModalAdmin > div,
+    #adminEditProductModal > div,
+    #adminEditFuelModal > div,
+    #adminEditServiceModal > div,
+    #addProductModal > div,
+    #addMerchandiseModal > div,
+    #addServiceModal > div {
+        margin: 15px auto !important;
+    }
+}
+
+.modal-table-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.no-min-width {
+    width: 100% !important;
+    min-width: 0 !important;
 }
 </style>
 
@@ -2263,7 +2351,7 @@ table.pricing-table tbody tr:hover {
                 </div>
                 <div>
                     <label style="display:block; font-size:14.5px; font-weight:600; color:#334155; margin-bottom:4px;">Default Selling Price (₱) <span style="color:#dc2626;">*</span></label>
-                    <input type="number" step="0.01" min="0" id="adminEditPrice" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:700; color:#002F6C;" placeholder="0.00" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
+                    <input type="number" step="0.01" min="0" id="adminEditPrice" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:700; color:#002F6C;" placeholder="0.00"              oninput="sanitizeDecimalInput(this)">
                 </div>
             </div>
             <div style="margin-top:20px; display:flex; justify-content:flex-end; gap:10px;">
@@ -2333,7 +2421,7 @@ table.pricing-table tbody tr:hover {
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
                 <div>
                     <label style="display:block; font-size:14.5px; font-weight:600; color:#334155; margin-bottom:4px;">Service Price (₱) <span style="color:#dc2626;">*</span></label>
-                    <input type="number" step="0.01" min="0" id="adminEditServicePrice" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:700; color:#002F6C;" placeholder="0.00" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
+                    <input type="number" step="0.01" min="0" id="adminEditServicePrice" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:700; color:#002F6C;" placeholder="0.00"              oninput="sanitizeDecimalInput(this)">
                 </div>
                 <div>
                     <label style="display:block; font-size:14.5px; font-weight:600; color:#334155; margin-bottom:4px;">Status <span style="color:#dc2626;">*</span></label>
@@ -2352,16 +2440,13 @@ table.pricing-table tbody tr:hover {
 </div>
 
 <!-- VIEW ADMIN SERVICE DETAILS MODAL -->
-<div id="viewAdminServiceModal" class="admin-layout-modal" style="display:none;position:fixed;top:70px;bottom:0;left:250px;width:calc(100% - 250px);height:calc(100vh - 70px);background:rgba(15,23,42,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;overflow:hidden;">
-    <div style="background:#fff;border-radius:12px;width:92%;max-width:680px;box-shadow:0 20px 50px rgba(0,0,0,0.35);margin:auto;overflow:hidden;height:min(86vh, 700px);max-height:calc(100vh - 110px);display:flex;flex-direction:column;">
+<div id="viewAdminServiceModal" class="admin-layout-modal" style="display:none;position:fixed;top:70px;bottom:40px;left:250px;right:0;background:rgba(15,23,42,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;overflow:hidden;">
+    <div style="background:#fff;border-radius:12px;width:94%;max-width:900px;box-shadow:0 20px 50px rgba(0,0,0,0.35);margin:0 auto;overflow:hidden;max-height:calc(100% - 20px);display:flex;flex-direction:column;">
         <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
             <h3 style="margin:0;font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
                 <i class="fas fa-wrench" style="color:#fff;font-size:16px;"></i>
                 <span id="adm_vs_title" style="color:#fff;">SERVICE SPECIFICATION &amp; DETAILS</span>
             </h3>
-            <button type="button" class="admin-modal-close-x" onclick="closeAdminViewServiceModal()" title="Close">
-                <i class="fas fa-times"></i>
-            </button>
         </div>
         <div style="padding:22px 24px;overflow-y:auto;overflow-x:hidden;flex:1 1 auto;background:#fff;box-sizing:border-box;">
             <!-- Overview Card -->
@@ -2469,16 +2554,13 @@ table.pricing-table tbody tr:hover {
 </div>
 
 <!-- VIEW ADMIN MERCHANDISE DETAILS MODAL -->
-<div id="viewAdminMerchModal" class="admin-layout-modal" style="display:none;position:fixed;top:70px;bottom:0;left:250px;width:calc(100% - 250px);height:calc(100vh - 70px);background:rgba(15,23,42,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;overflow:hidden;">
-    <div style="background:#fff;border-radius:12px;width:96%;max-width:1050px;box-shadow:0 20px 50px rgba(0,0,0,0.35);margin:auto;overflow:hidden;height:min(86vh, 760px);max-height:calc(100vh - 110px);display:flex;flex-direction:column;">
+<div id="viewAdminMerchModal" class="admin-layout-modal" style="display:none;position:fixed;top:70px;bottom:40px;left:250px;right:0;background:rgba(15,23,42,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;overflow:hidden;">
+    <div style="background:#fff;border-radius:12px;width:94%;max-width:1000px;box-shadow:0 20px 50px rgba(0,0,0,0.35);margin:0 auto;overflow:hidden;max-height:calc(100% - 20px);display:flex;flex-direction:column;">
         <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
             <h3 style="margin:0;font-size:16.5px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;">
                 <i class="fas fa-box" style="color:#fff;font-size:17px;"></i>
                 <span id="adm_vm_title" style="color:#fff;">MERCHANDISE SPECIFICATION &amp; HISTORY</span>
             </h3>
-            <button type="button" class="admin-modal-close-x" onclick="closeAdminViewMerchModal()" title="Close">
-                <i class="fas fa-times"></i>
-            </button>
         </div>
         <div style="padding:20px 24px;overflow-y:auto;overflow-x:hidden;flex:1 1 auto;background:#fff;min-height:0;box-sizing:border-box;">
             <!-- Overview -->
@@ -2594,6 +2676,16 @@ table.pricing-table tbody tr:hover {
 
 
 <script>
+// ── Helper: sanitize decimal inputs (avoids regex with > in HTML attributes breaking draft engine) ──
+function sanitizeDecimalInput(el) {
+    var v = el.value.replace(/[^0-9.]/g, '');
+    var parts = v.split('.');
+    if (parts.length > 2) { v = parts[0] + '.' + parts.slice(1).join(''); }
+    el.value = v;
+}
+function sanitizeIntegerInput(el) {
+    el.value = el.value.replace(/[^0-9]/g, '');
+}
 // ── Admin Merchandise Filter Function ──────────────────────────────────────
 function filterAdminMerchTable() {
     var q          = (document.getElementById('adminSearchInput').value || '').toLowerCase().trim();
@@ -3418,35 +3510,34 @@ function filterAdminFuelByCard(type) {
     filterAdminFuelTable();
 }
 
+var _currentAdminViewFuel = null;
+
 // ── Admin View Fuel Modal ──────────────────────────────────────────────────
 function openViewFuelModalAdmin(id) {
-    var contentEl = document.getElementById('viewFuelModalAdminContent');
-    if (contentEl) {
-        contentEl.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:28px;"></i><br><br>Loading fuel product specifications & history...</div>';
-        contentEl.scrollTop = 0;
-    }
     var modal = document.getElementById('viewFuelModalAdmin');
-    if (modal) modal.style.display = 'flex';
+    if (!modal) return;
+    modal.style.display = 'flex';
+
+    // Clear previous or set loading state
+    var pendingCont = document.getElementById('adm_fuel_pending_container');
+    if (pendingCont) pendingCont.innerHTML = '';
+    var pBody = document.getElementById('adm_priceHistoryBody');
+    if (pBody) pBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading price history...</td></tr>';
+    var cBody = document.getElementById('adm_configHistoryBody');
+    if (cBody) cBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading configuration history...</td></tr>';
+    var sBody = document.getElementById('adm_statusHistoryBody');
+    if (sBody) sBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading status history...</td></tr>';
 
     fetch('admin_set_prices_handler.php?action=get_fuel_details_admin&id=' + id)
-        .then(function(r) {
-            if (!r.ok) throw new Error('Server error: HTTP ' + r.status);
-            return r.text();
-        })
-        .then(function(text) {
-            var data;
-            try { data = JSON.parse(text); }
-            catch(e) {
-                contentEl.innerHTML = '<div style="color:#dc2626;text-align:center;padding:30px;"><i class="fas fa-exclamation-triangle" style="font-size:24px;display:block;margin-bottom:10px;"></i>Server returned an invalid response. Check PHP logs.<br><small style="color:#94a3b8;font-size:14px;margin-top:6px;display:block;">' + text.substring(0, 200) + '</small></div>';
-                return;
-            }
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
             if (!data.success || !data.fuel) {
-                var errMsg = data.message || 'Failed to load fuel details.';
-                contentEl.innerHTML = '<div style="color:#dc2626;text-align:center;padding:30px;"><i class="fas fa-exclamation-circle" style="font-size:24px;display:block;margin-bottom:10px;"></i>' + errMsg + '</div>';
+                showCustomAlert(data.message || 'Failed to load fuel details.', 'error');
                 return;
             }
 
             var f = data.fuel;
+            _currentAdminViewFuel = f;
             var req = data.pending_request;
             var history = data.price_history || [];
             var configHist = data.config_history || [];
@@ -3460,229 +3551,161 @@ function openViewFuelModalAdmin(id) {
             var critical = parseFloat(f.critical_level || 0).toFixed(2);
             var reorder = parseFloat(f.reorder_level || 0).toFixed(2);
             var lastUpd = f.last_updated ? f.last_updated : '—';
+            var availCap = Math.max(0, parseFloat(capacity) - parseFloat(curStock)).toFixed(2);
 
-            var pendingHtml = '';
-            if (req && req.status === 'pending') {
-                var oldP = parseFloat(req.old_price || req.old_value || curPrice).toFixed(2);
-                var newP = parseFloat(req.new_price || req.new_value || 0).toFixed(2);
-                var diffVal = (newP - oldP).toFixed(2);
-                var diffBadge = diffVal > 0 
-                    ? '<span style="color:#16a34a;font-weight:700;">+₱' + diffVal + '/L</span>'
-                    : '<span style="color:#dc2626;font-weight:700;">-₱' + Math.abs(diffVal).toFixed(2) + '/L</span>';
-                var reqBy = req.requested_by_name || 'Manager';
-                var reasonText = req.reason || 'Price change requested by Manager';
+            // Populate Overview Card
+            var el = document.getElementById('adm_viewFuelType'); if (el) el.textContent = fName;
+            el = document.getElementById('adm_viewUgtNo'); if (el) el.textContent = ugt;
+            el = document.getElementById('adm_viewCurrentPrice'); if (el) el.textContent = '₱' + curPrice;
+            el = document.getElementById('adm_viewStock'); if (el) el.textContent = parseFloat(curStock).toLocaleString(undefined, {minimumFractionDigits: 2}) + ' L';
+            el = document.getElementById('adm_viewAvailableCapacity'); if (el) el.textContent = parseFloat(availCap).toLocaleString(undefined, {minimumFractionDigits: 2}) + ' L';
+            el = document.getElementById('adm_viewCapacity'); if (el) el.textContent = parseFloat(capacity).toLocaleString(undefined, {minimumFractionDigits: 2}) + ' L';
+            el = document.getElementById('adm_viewCriticalLevel'); if (el) el.textContent = parseFloat(critical).toLocaleString(undefined, {minimumFractionDigits: 2}) + ' L';
+            el = document.getElementById('adm_viewReorderLevel'); if (el) el.textContent = parseFloat(reorder).toLocaleString(undefined, {minimumFractionDigits: 2}) + ' L';
 
-                pendingHtml = `
-                    <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:16px;margin-bottom:20px;">
-                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-                            <h4 style="margin:0;font-size:14px;color:#92400e;font-weight:800;display:flex;align-items:center;gap:8px;">
-                                <i class="fas fa-clock" style="color:#d97706;"></i> PENDING PRICE CHANGE REQUEST
-                            </h4>
-                            <span style="background:#fef3c7;color:#92400e;font-size:14px;font-weight:700;padding:2px 8px;border-radius:4px;">Action Required</span>
-                        </div>
-                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:12px;font-size:15.5px;margin-bottom:14px;">
-                            <div><strong style="display:block;font-size:14px;color:#92400e;">CURRENT PRICE</strong>₱${oldP}</div>
-                            <div><strong style="display:block;font-size:14px;color:#92400e;">REQUESTED PRICE</strong><span style="font-weight:800;color:#16a34a;font-size:15px;">₱${newP}</span></div>
-                            <div><strong style="display:block;font-size:14px;color:#92400e;">DIFFERENCE</strong>${diffBadge}</div>
-                            <div><strong style="display:block;font-size:14px;color:#92400e;">REQUESTED BY</strong>${reqBy}</div>
-                            <div><strong style="display:block;font-size:14px;color:#92400e;">DATE REQUESTED</strong>${(req.created_at||'').substring(0,16)}</div>
-                        </div>
-                        <div style="font-size:14.5px;color:#78350f;margin-bottom:14px;background:#fef3c7;padding:8px 12px;border-radius:6px;">
-                            <strong>Reason:</strong> ${reasonText}
-                        </div>
-                        <div style="display:flex;justify-content:flex-end;gap:10px;">
-                            <button type="button" onclick="closeViewFuelModalAdmin(); openApprovePriceModalAdmin(${req.id}, '${fName.replace(/'/g, "\\'")}', ${oldP}, ${newP})" style="background:#16a34a;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-size:14.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-check"></i> Approve Request</button>
-                            <button type="button" onclick="closeViewFuelModalAdmin(); openRejectPriceModalAdmin(${req.id}, '${fName.replace(/'/g, "\\'")}', ${oldP}, ${newP})" style="background:#dc2626;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-size:14.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-times"></i> Reject Request</button>
-                        </div>
-                    </div>
-                `;
-            }
+            var stock = parseFloat(curStock);
+            var crit = parseFloat(critical);
+            var stockStatusText = '<span style="color:#16a34a;font-weight:700;">Normal</span>';
+            if (stock <= 0) stockStatusText = '<span style="color:#dc2626;font-weight:700;">Out of Stock</span>';
+            else if (stock <= crit) stockStatusText = '<span style="color:#dc2626;font-weight:700;">Critical</span>';
+            el = document.getElementById('adm_viewStatus'); if (el) el.innerHTML = stockStatusText;
 
-            var priceHistRows = '';
-            if (history.length === 0) {
-                priceHistRows = '<tr><td colspan="6" style="text-align:center;padding:16px;color:#94a3b8;font-size:13.5px;">No price change records found.</td></tr>';
-            } else {
-                priceHistRows = history.map(function(h) {
-                    var stBadge = (h.status === 'Approved' || h.status === 'approved')
-                        ? '<span style="background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-size:12px;font-weight:700;">Approved</span>'
-                        : '<span style="background:#fee2e2;color:#991b1b;padding:2px 6px;border-radius:4px;font-size:12px;font-weight:700;">Rejected</span>';
-                    var diffVal = parseFloat(h.difference || 0).toFixed(2);
-                    var diffStr = diffVal > 0 ? ('+₱' + diffVal) : ('-₱' + Math.abs(diffVal).toFixed(2));
-                    var tdB = 'padding:8px 10px;font-size:13px;word-break:break-word;overflow-wrap:break-word;vertical-align:top;';
-                    var tdUser = 'padding:8px 10px;font-size:12.5px;word-break:break-all;overflow-wrap:anywhere;vertical-align:top;';
-                    return `
-                        <tr style="border-bottom:1px solid #f1f5f9;">
-                            <td style="${tdB}color:#64748b;line-height:1.35;">${(h.created_at||'').substring(0,16)}</td>
-                            <td style="${tdB}font-weight:600;">₱${parseFloat(h.old_price||0).toFixed(2)}</td>
-                            <td style="${tdB}font-weight:700;color:#002F6C;">₱${parseFloat(h.new_price||0).toFixed(2)}</td>
-                            <td style="${tdB}">${diffStr}</td>
-                            <td style="${tdUser}">${h.requested_by_name || 'Manager'} / ${h.approved_by_name || 'Admin'}</td>
-                            <td style="${tdB}">${stBadge}</td>
-                        </tr>
+            var prodStatus = (f.status || 'active').toLowerCase();
+            var prodBadge = prodStatus === 'active'
+                ? '<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:12px;font-size:14px;font-weight:700;">Active</span>'
+                : '<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:12px;font-size:14px;font-weight:700;">Inactive</span>';
+            el = document.getElementById('adm_viewProductStatus'); if (el) el.innerHTML = prodBadge;
+
+            el = document.getElementById('adm_viewPriceRequestStatus'); if (el) el.textContent = (req && req.status === 'pending') ? 'Pending Admin Approval' : 'No Pending Request';
+            el = document.getElementById('adm_viewLastUpdated'); if (el) el.textContent = lastUpd;
+            el = document.getElementById('adm_viewUpdatedBy'); if (el) el.textContent = f.updated_by_name || f.last_updated_by || 'Admin';
+
+            // Pending request banner
+            if (pendingCont) {
+                if (req && req.status === 'pending') {
+                    var oldP = parseFloat(req.old_price || req.old_value || curPrice).toFixed(2);
+                    var newP = parseFloat(req.new_price || req.new_value || 0).toFixed(2);
+                    var diffVal = (newP - oldP).toFixed(2);
+                    var diffBadge = diffVal > 0 
+                        ? '<span style="color:#16a34a;font-weight:700;">+₱' + diffVal + '/L</span>'
+                        : '<span style="color:#dc2626;font-weight:700;">-₱' + Math.abs(diffVal).toFixed(2) + '/L</span>';
+                    var reqBy = req.requested_by_name || 'Manager';
+                    var reasonText = req.reason || 'Price change requested by Manager';
+
+                    pendingCont.innerHTML = `
+                        <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:16px;margin-bottom:20px;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                                <h4 style="margin:0;font-size:14px;color:#92400e;font-weight:800;display:flex;align-items:center;gap:8px;">
+                                    <i class="fas fa-clock" style="color:#d97706;"></i> PENDING PRICE CHANGE REQUEST
+                                </h4>
+                                <span style="background:#fef3c7;color:#92400e;font-size:14px;font-weight:700;padding:2px 8px;border-radius:4px;">Action Required</span>
+                            </div>
+                            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:12px;font-size:15.5px;margin-bottom:14px;">
+                                <div><strong style="display:block;font-size:14px;color:#92400e;">CURRENT PRICE</strong>₱${oldP}</div>
+                                <div><strong style="display:block;font-size:14px;color:#92400e;">REQUESTED PRICE</strong><span style="font-weight:800;color:#16a34a;font-size:15px;">₱${newP}</span></div>
+                                <div><strong style="display:block;font-size:14px;color:#92400e;">DIFFERENCE</strong>${diffBadge}</div>
+                                <div><strong style="display:block;font-size:14px;color:#92400e;">REQUESTED BY</strong>${reqBy}</div>
+                                <div><strong style="display:block;font-size:14px;color:#92400e;">DATE REQUESTED</strong>${(req.created_at||'').substring(0,16)}</div>
+                            </div>
+                            <div style="font-size:14.5px;color:#78350f;margin-bottom:14px;background:#fef3c7;padding:8px 12px;border-radius:6px;">
+                                <strong>Reason:</strong> ${reasonText}
+                            </div>
+                            <div style="display:flex;justify-content:flex-end;gap:10px;">
+                                <button type="button" onclick="closeViewFuelModalAdmin(); openApprovePriceModalAdmin(${req.id}, '${fName.replace(/'/g, "\\'")}', ${oldP}, ${newP})" style="background:#16a34a;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-size:14.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-check"></i> Approve Request</button>
+                                <button type="button" onclick="closeViewFuelModalAdmin(); openRejectPriceModalAdmin(${req.id}, '${fName.replace(/'/g, "\\'")}', ${oldP}, ${newP})" style="background:#dc2626;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-size:14.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-times"></i> Reject Request</button>
+                            </div>
+                        </div>
                     `;
-                }).join('');
+                } else {
+                    pendingCont.innerHTML = '';
+                }
             }
 
-            var configHistRows = '';
-            if (configHist.length === 0) {
-                configHistRows = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;font-size:13.5px;">No configuration change records found.</td></tr>';
-            } else {
-                configHistRows = configHist.map(function(c) {
-                    var tdB = 'padding:8px 10px;font-size:13px;word-break:break-word;overflow-wrap:break-word;vertical-align:top;';
-                    var tdUser = 'padding:8px 10px;font-size:12.5px;word-break:break-all;overflow-wrap:anywhere;vertical-align:top;';
-                    return `
-                        <tr style="border-bottom:1px solid #f1f5f9;">
-                            <td style="${tdB}color:#64748b;line-height:1.35;">${(c.created_at||'').substring(0,16)}</td>
-                            <td style="${tdB}font-weight:700;color:#002F6C;">${c.field_name}</td>
-                            <td style="${tdB}color:#dc2626;font-weight:600;line-height:1.4;">${c.old_value || '-'}</td>
-                            <td style="${tdB}font-weight:700;color:#16a34a;line-height:1.4;">${c.new_value || '-'}</td>
-                            <td style="${tdUser}">${c.updated_by_name || 'Manager'}</td>
-                        </tr>
-                    `;
-                }).join('');
+            // Price History Rows
+            if (pBody) {
+                if (history.length === 0) {
+                    pBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">No price history available</td></tr>';
+                } else {
+                    pBody.innerHTML = history.map(function(h) {
+                        var stBadge = (h.status === 'Approved' || h.status === 'approved')
+                            ? '<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:10px;font-size:13px;font-weight:700;white-space:nowrap;display:inline-block;">Approved</span>'
+                            : '<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:10px;font-size:13px;font-weight:700;white-space:nowrap;display:inline-block;">Rejected</span>';
+                        return `
+                            <tr style="border-bottom:1px solid #f1f5f9;">
+                                <td style="padding:10px 12px;color:#475569;white-space:nowrap;">${(h.created_at||'').substring(0,16)}</td>
+                                <td style="padding:10px 12px;font-weight:700;color:#002F6C;white-space:nowrap;">₱${parseFloat(h.new_price||0).toFixed(2)}</td>
+                                <td style="padding:10px 12px;word-break:break-word;">${h.requested_by_name || 'Manager'}</td>
+                                <td style="padding:10px 12px;word-break:break-word;">${h.approved_by_name || 'Admin'}</td>
+                                <td style="padding:10px 12px;white-space:nowrap;">${stBadge}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
             }
 
-            var statusHistRows = '';
-            if (statusHist.length === 0) {
-                statusHistRows = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;font-size:13.5px;">No status change records found.</td></tr>';
-            } else {
-                statusHistRows = statusHist.map(function(s) {
-                    var oldSt = (s.old_status || (s.status === 'Activated' ? 'Inactive' : (s.status === 'Deactivated' ? 'Active' : 'Active'))).toLowerCase();
-                    var newSt = (s.new_status || (s.status === 'Deactivated' ? 'Inactive' : (s.status === 'Activated' ? 'Active' : 'Inactive'))).toLowerCase();
-                    
-                    var oldBadge = oldSt === 'active'
-                        ? '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:13px;font-weight:700;white-space:nowrap;">Active</span>'
-                        : '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:13px;font-weight:700;white-space:nowrap;">Inactive</span>';
-                    
-                    var newBadge = newSt === 'active'
-                        ? '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:13px;font-weight:700;white-space:nowrap;">Active</span>'
-                        : '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:13px;font-weight:700;white-space:nowrap;">Inactive</span>';
-                    
-                    var reasonTxt = s.reason ? s.reason : '-';
-
-                    var tdB = 'padding:8px 10px;font-size:13px;word-break:break-word;overflow-wrap:break-word;vertical-align:top;';
-                    var tdUser = 'padding:8px 10px;font-size:12.5px;word-break:break-all;overflow-wrap:anywhere;vertical-align:top;';
-                    return `
-                        <tr style="border-bottom:1px solid #f1f5f9;">
-                            <td style="${tdB}color:#64748b;line-height:1.35;">${(s.created_at||'').substring(0,16)}</td>
-                            <td style="${tdB}">${oldBadge}</td>
-                            <td style="${tdB}">${newBadge}</td>
-                            <td style="${tdB}color:#64748b;">${reasonTxt}</td>
-                            <td style="${tdUser}">${s.changed_by_name || 'Manager'}</td>
-                        </tr>
-                    `;
-                }).join('');
+            // Config History Rows
+            if (cBody) {
+                if (configHist.length === 0) {
+                    cBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">No configuration changes recorded yet</td></tr>';
+                } else {
+                    cBody.innerHTML = configHist.map(function(c) {
+                        return `
+                            <tr style="border-bottom:1px solid #f1f5f9;">
+                                <td style="padding:10px 12px;color:#475569;white-space:nowrap;">${(c.created_at||'').substring(0,16)}</td>
+                                <td style="padding:10px 12px;font-weight:700;color:#002F6C;word-break:break-word;">${c.field_name || '-'}</td>
+                                <td style="padding:10px 12px;color:#dc2626;font-weight:600;word-break:break-word;">${c.old_value || '-'}</td>
+                                <td style="padding:10px 12px;color:#16a34a;font-weight:700;word-break:break-word;">${c.new_value || '-'}</td>
+                                <td style="padding:10px 12px;word-break:break-word;">${c.updated_by_name || 'Manager'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
             }
 
-            contentEl.innerHTML = `
-                <!-- Fuel Specification Overview -->
-                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:20px;">
-                    <h4 style="margin:0 0 14px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
-                        <i class="fas fa-info-circle" style="color:#002F6C;"></i> Fuel Specification & Overview
-                    </h4>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;font-size:15px;">
-                        <div><strong style="display:block;font-size:13.5px;color:#64748b;text-transform:uppercase;">UGT / Tank</strong><span style="font-weight:700;color:#002F6C;font-size:14px;">${ugt}</span></div>
-                        <div><strong style="display:block;font-size:13.5px;color:#64748b;text-transform:uppercase;">Fuel Name</strong><span style="font-weight:700;color:#002F6C;font-size:14px;">${fName}</span></div>
-                        <div><strong style="display:block;font-size:13.5px;color:#64748b;text-transform:uppercase;">Current Price</strong><span style="font-weight:800;color:#002F6C;font-size:15.5px;">₱${curPrice}</span></div>
-                        <div><strong style="display:block;font-size:13.5px;color:#64748b;text-transform:uppercase;">Current Volume</strong><span style="font-weight:700;color:#334155;">${curStock} L</span></div>
-                        <div><strong style="display:block;font-size:13.5px;color:#64748b;text-transform:uppercase;">Tank Capacity</strong><span style="font-weight:700;color:#334155;">${capacity} L</span></div>
-                        <div><strong style="display:block;font-size:13.5px;color:#64748b;text-transform:uppercase;">Critical Level</strong><span style="font-weight:700;color:#dc2626;">${critical} L</span></div>
-                        <div><strong style="display:block;font-size:13.5px;color:#64748b;text-transform:uppercase;">Reorder Level</strong><span style="font-weight:700;color:#d97706;">${reorder} L</span></div>
-                        <div><strong style="display:block;font-size:13.5px;color:#64748b;text-transform:uppercase;">Last Updated</strong><span style="font-size:14px;color:#475569;">${lastUpd}</span></div>
-                    </div>
-                </div>
-
-                ${pendingHtml}
-
-                <!-- Price Change History -->
-                <div style="margin-bottom:20px;">
-                    <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;"><i class="fas fa-history"></i> Fuel Price History</h4>
-                    <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#fff;">
-                        <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;">
-                            <colgroup>
-                                <col style="width:18%;">
-                                <col style="width:13%;">
-                                <col style="width:13%;">
-                                <col style="width:13%;">
-                                <col style="width:31%;">
-                                <col style="width:12%;">
-                            </colgroup>
-                            <thead>
-                                <tr style="background:#f1f5f9;color:#334155;font-weight:700;">
-                                    <th style="padding:8px 10px;text-align:left;">Date</th>
-                                    <th style="padding:8px 10px;text-align:left;">Old Price</th>
-                                    <th style="padding:8px 10px;text-align:left;">New Price</th>
-                                    <th style="padding:8px 10px;text-align:left;">Difference</th>
-                                    <th style="padding:8px 10px;text-align:left;">Users</th>
-                                    <th style="padding:8px 10px;text-align:left;">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>${priceHistRows}</tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Configuration Change History -->
-                <div style="margin-bottom:20px;">
-                    <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;"><i class="fas fa-sliders-h"></i> Configuration Change History</h4>
-                    <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#fff;">
-                        <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;">
-                            <colgroup>
-                                <col style="width:18%;">
-                                <col style="width:16%;">
-                                <col style="width:23%;">
-                                <col style="width:23%;">
-                                <col style="width:20%;">
-                            </colgroup>
-                            <thead>
-                                <tr style="background:#f1f5f9;color:#334155;font-weight:700;">
-                                    <th style="padding:8px 10px;text-align:left;">Date</th>
-                                    <th style="padding:8px 10px;text-align:left;">Field Changed</th>
-                                    <th style="padding:8px 10px;text-align:left;">Old Value</th>
-                                    <th style="padding:8px 10px;text-align:left;">New Value</th>
-                                    <th style="padding:8px 10px;text-align:left;">Changed By</th>
-                                </tr>
-                            </thead>
-                            <tbody>${configHistRows}</tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Status Change History -->
-                <div>
-                    <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;"><i class="fas fa-toggle-on"></i> Status Change History</h4>
-                    <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#fff;">
-                        <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;">
-                            <colgroup>
-                                <col style="width:18%;">
-                                <col style="width:16%;">
-                                <col style="width:16%;">
-                                <col style="width:26%;">
-                                <col style="width:24%;">
-                            </colgroup>
-                            <thead>
-                                <tr style="background:#f1f5f9;color:#334155;font-weight:700;">
-                                    <th style="padding:8px 10px;text-align:left;">Date</th>
-                                    <th style="padding:8px 10px;text-align:left;">Old Status</th>
-                                    <th style="padding:8px 10px;text-align:left;">New Status</th>
-                                    <th style="padding:8px 10px;text-align:left;">Reason</th>
-                                    <th style="padding:8px 10px;text-align:left;">Changed By</th>
-                                </tr>
-                            </thead>
-                            <tbody>${statusHistRows}</tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
-            contentEl.scrollTop = 0;
+            // Status History Rows
+            if (sBody) {
+                if (statusHist.length === 0) {
+                    sBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">No status history recorded yet</td></tr>';
+                } else {
+                    sBody.innerHTML = statusHist.map(function(s) {
+                        var oldSt = (s.old_status || (s.status === 'Activated' ? 'Inactive' : (s.status === 'Deactivated' ? 'Active' : 'Active'))).toLowerCase();
+                        var newSt = (s.new_status || (s.status === 'Deactivated' ? 'Inactive' : (s.status === 'Activated' ? 'Active' : 'Inactive'))).toLowerCase();
+                        var oldBadge = oldSt === 'active'
+                            ? '<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:10px;font-size:13px;font-weight:700;white-space:nowrap;display:inline-block;">Active</span>'
+                            : '<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:10px;font-size:13px;font-weight:700;white-space:nowrap;display:inline-block;">Inactive</span>';
+                        var newBadge = newSt === 'active'
+                            ? '<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:10px;font-size:13px;font-weight:700;white-space:nowrap;display:inline-block;">Active</span>'
+                            : '<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:10px;font-size:13px;font-weight:700;white-space:nowrap;display:inline-block;">Inactive</span>';
+                        var reasonTxt = s.reason ? s.reason : '-';
+                        return `
+                            <tr style="border-bottom:1px solid #f1f5f9;">
+                                <td style="padding:10px 12px;color:#475569;white-space:nowrap;">${(s.created_at||'').substring(0,16)}</td>
+                                <td style="padding:10px 12px;white-space:nowrap;">${oldBadge}</td>
+                                <td style="padding:10px 12px;white-space:nowrap;">${newBadge}</td>
+                                <td style="padding:10px 12px;color:#64748b;word-break:break-word;">${reasonTxt}</td>
+                                <td style="padding:10px 12px;word-break:break-word;">${s.changed_by_name || 'Manager'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            }
         })
         .catch(function(err) {
-            contentEl.innerHTML = '<div style="color:#dc2626;text-align:center;padding:30px;"><i class="fas fa-exclamation-triangle" style="font-size:24px;display:block;margin-bottom:10px;"></i>Could not load fuel details.<br><small style="color:#94a3b8;font-size:14px;margin-top:6px;display:block;">' + (err.message || err) + '</small></div>';
+            showCustomAlert('Could not load fuel details: ' + (err.message || err), 'error');
         });
 }
 
 function closeViewFuelModalAdmin() {
-    document.getElementById('viewFuelModalAdmin').style.display = 'none';
+    var modal = document.getElementById('viewFuelModalAdmin');
+    if (modal) modal.style.display = 'none';
+}
+
+function editFuelFromViewAdmin() {
+    if (!_currentAdminViewFuel) return;
+    var f = _currentAdminViewFuel;
+    closeViewFuelModalAdmin();
+    var fName = (f.raw_fuel_type || f.fuel_type || 'Fuel').replace(/\s*\(UGT\s*#?\d+\)/gi, '').trim();
+    openEditPriceModalAdmin(f.id, fName, f.price_per_liter, f.capacity, f.critical_level, f.reorder_level, f.ugt_no, false);
 }
 
 // Global helper: smart default based on tank capacity (mirrors PHP fallback)
@@ -3698,14 +3721,8 @@ function adminSmartDefault(val, cap, isReorder) {
 }
 
 function getCleanCanonicalFuelName(name) {
-    if (!name) return 'Fuel';
-    var lower = String(name).toLowerCase().trim();
-    if (lower.indexOf('turbo') !== -1) return 'Turbo Diesel';
-    if (lower.indexOf('diesel') !== -1) return 'Diesel';
-    if (lower.indexOf('kerosene') !== -1) return 'Kerosene';
-    if (lower.indexOf('xcs') !== -1) return 'XCS Plus';
-    if (lower.indexOf('xtra') !== -1 || lower.indexOf('unl') !== -1 || lower.indexOf('advance') !== -1) return 'XTR ADVANCE';
-    return String(name).replace(/[\s\-_#]*\d+$/gi, '').replace(/\s*\(UGT\s*#?\d+\)/gi, '').trim();
+    if (!name) return '';
+    return String(name).replace(/\s*\(UGT\s*#?[^)]*\)/gi, '').trim();
 }
 
 function openEditPriceModalAdmin(id, fuelName, currentPrice, capacity, critical, reorder, ugtNo, hasPending) {
@@ -3744,7 +3761,7 @@ function openEditPriceModalAdmin(id, fuelName, currentPrice, capacity, critical,
                 var cap = parseFloat(f.capacity || capacity || 0);
 
                 if (document.getElementById('aef_ugt_no')) document.getElementById('aef_ugt_no').value = f.ugt_no || ugtNo || '';
-                var rawName = getCleanCanonicalFuelName(f.clean_fuel_type || f.raw_fuel_type || f.fuel_type || fuelName);
+                var rawName = getCleanCanonicalFuelName(f.fuel_type || f.raw_fuel_type || fuelName || '');
                 if (document.getElementById('aef_fuel_name')) document.getElementById('aef_fuel_name').value = rawName;
 
                 // Overwrite capacity
@@ -3759,11 +3776,6 @@ function openEditPriceModalAdmin(id, fuelName, currentPrice, capacity, critical,
 
                 // Overwrite reorder level — DB first, smart default as fallback
                 document.getElementById('aef_reorder').value  = adminSmartDefault(f.reorder_level, cap, true);
-
-                // Sync fuel name
-                if (document.getElementById('aef_fuel_name')) {
-                    document.getElementById('aef_fuel_name').value = rawName;
-                }
 
                 // Sync status radio buttons
                 var liveStatus  = (f.status || 'active').toLowerCase();
@@ -3783,10 +3795,17 @@ function closeEditPriceModalAdmin() {
 }
 
 function validateEditFuelForm() {
+    const nameEl = document.getElementById('aef_fuel_name');
     const pEl  = document.getElementById('aef_price');
     const cEl  = document.getElementById('aef_capacity');
     const crEl = document.getElementById('aef_critical');
     const rEl  = document.getElementById('aef_reorder');
+
+    if (nameEl && !nameEl.value.trim()) {
+        alert('Fuel product name cannot be empty.');
+        nameEl.focus();
+        return false;
+    }
 
     const p  = parseFloat(pEl?.value || 0);
     const c  = parseFloat(cEl?.value || 0);
@@ -4586,32 +4605,189 @@ safeAddListener('addServiceForm', 'submit', function(e) {
 });
 </script>
 
-<!-- Admin View Fuel Product & History Modal -->
-<div id="viewFuelModalAdmin" class="admin-layout-modal" style="display:none;position:fixed;top:70px;bottom:0;left:250px;width:calc(100% - 250px);height:calc(100vh - 70px);background:rgba(15,23,42,0.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;overflow:hidden;">
-    <div style="background:#fff;border-radius:12px;width:96%;max-width:1050px;box-shadow:0 20px 50px rgba(0,0,0,0.35);margin:auto;overflow:hidden;height:min(86vh, 760px);max-height:calc(100vh - 110px);display:flex;flex-direction:column;">
+<!-- Admin View Fuel Product & History Modal (Matches Manager Format & Dimensions Exactly) -->
+<div id="viewFuelModalAdmin" class="admin-layout-modal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;overflow:hidden;">
+    <div style="background:#fff;border-radius:12px;width:94%;max-width:1000px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:0 auto;overflow:hidden;max-height:calc(100% - 20px);display:flex;flex-direction:column;">
+        <!-- Header -->
         <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
             <h3 style="margin:0;font-size:16.5px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;letter-spacing:0.3px;">
-                <i class="fas fa-gas-pump" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:17px;"></i>
+                <i class="fas fa-gas-pump" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:18px;"></i>
                 <span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;">FUEL PRODUCT SPECIFICATION &amp; HISTORY</span>
             </h3>
-            <button type="button" class="admin-modal-close-x" onclick="closeViewFuelModalAdmin()" title="Close">
-                <i class="fas fa-times"></i>
+        </div>
+
+        <!-- Body Content -->
+        <div id="adm_fuel_modal_body" style="padding:12px 24px 24px 24px;overflow-y:auto;overflow-x:hidden;flex:1 1 auto;background:#ffffff;min-height:0;box-sizing:border-box;width:100% !important;">
+            <!-- Pending Price Change Request Banner -->
+            <div id="adm_fuel_pending_container"></div>
+
+            <!-- Fuel Specification & Overview -->
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:20px;margin-top:4px;width:100%;box-sizing:border-box;">
+                <h4 style="margin:0 0 14px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
+                    <i class="fas fa-info-circle" style="color:#002F6C;"></i> Fuel Specification &amp; Overview
+                </h4>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;font-size:15.5px;width:100%;">
+                    <div>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Fuel Name</strong>
+                        <span style="font-weight:700;color:#002F6C;font-size:14px;" id="adm_viewFuelType">-</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">UGT Number</strong>
+                        <span style="font-weight:700;color:#1e293b;" id="adm_viewUgtNo">-</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Current Price / Liter</strong>
+                        <span style="font-weight:700;color:#16a34a;font-size:14px;" id="adm_viewCurrentPrice">₱0.00</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Current Volume</strong>
+                        <span style="font-weight:700;color:#002F6C;" id="adm_viewStock">0.00 L</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Available Capacity</strong>
+                        <span style="font-weight:700;color:#2563eb;" id="adm_viewAvailableCapacity">0.00 L</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Tank Capacity</strong>
+                        <span style="font-weight:600;color:#334155;" id="adm_viewCapacity">0.00 L</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Critical Level</strong>
+                        <span style="font-weight:600;color:#dc2626;" id="adm_viewCriticalLevel">0.00 L</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Reorder Level</strong>
+                        <span style="font-weight:600;color:#d97706;" id="adm_viewReorderLevel">0.00 L</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Stock Status</strong>
+                        <span style="font-weight:600;" id="adm_viewStatus">-</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Product Status</strong>
+                        <span style="font-weight:600;" id="adm_viewProductStatus">-</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Price Request Status</strong>
+                        <span style="font-weight:600;color:#475569;" id="adm_viewPriceRequestStatus">No Pending Request</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Last Updated</strong>
+                        <span style="font-size:14.5px;color:#475569;" id="adm_viewLastUpdated">-</span>
+                    </div>
+                    <div>
+                        <strong style="display:block;font-size:14px;color:#64748b;text-transform:uppercase;margin-bottom:2px;">Updated By</strong>
+                        <span style="font-size:14.5px;color:#475569;" id="adm_viewUpdatedBy">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Price Change History -->
+            <div style="margin-bottom:20px;width:100%;box-sizing:border-box;">
+                <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;">
+                    <i class="fas fa-history" style="color:#002F6C;"></i> Price Change History
+                </h4>
+                <div class="modal-table-wrap" style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box;">
+                    <table style="width:100% !important;min-width:100% !important;table-layout:fixed;border-collapse:collapse;font-size:13.5px;">
+                        <colgroup>
+                            <col style="width:22%;">
+                            <col style="width:14%;">
+                            <col style="width:27%;">
+                            <col style="width:24%;">
+                            <col style="width:13%;">
+                        </colgroup>
+                        <thead>
+                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:13px;letter-spacing:0.3px;">
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Effective Date</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Price</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Requested By</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Approved By</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adm_priceHistoryBody">
+                            <tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">No price history available</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Configuration Change History -->
+            <div style="margin-bottom:20px;width:100%;box-sizing:border-box;">
+                <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;">
+                    <i class="fas fa-sliders-h" style="color:#002F6C;"></i> Configuration Change History
+                </h4>
+                <div class="modal-table-wrap" style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box;">
+                    <table style="width:100% !important;min-width:100% !important;table-layout:fixed;border-collapse:collapse;font-size:13.5px;">
+                        <colgroup>
+                            <col style="width:20%;">
+                            <col style="width:20%;">
+                            <col style="width:20%;">
+                            <col style="width:20%;">
+                            <col style="width:20%;">
+                        </colgroup>
+                        <thead>
+                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:13px;letter-spacing:0.3px;">
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Date</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Field Changed</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Old Value</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">New Value</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Changed By</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adm_configHistoryBody">
+                            <tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">No configuration changes recorded yet</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Status Change History -->
+            <div style="margin-bottom:10px;width:100%;box-sizing:border-box;">
+                <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;">
+                    <i class="fas fa-toggle-on" style="color:#002F6C;"></i> Status Change History
+                </h4>
+                <div class="modal-table-wrap" style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;width:100%;box-sizing:border-box;">
+                    <table style="width:100% !important;min-width:100% !important;table-layout:fixed;border-collapse:collapse;font-size:13.5px;">
+                        <colgroup>
+                            <col style="width:20%;">
+                            <col style="width:16%;">
+                            <col style="width:16%;">
+                            <col style="width:32%;">
+                            <col style="width:16%;">
+                        </colgroup>
+                        <thead>
+                            <tr style="background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:13px;letter-spacing:0.3px;">
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Date</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Old Status</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">New Status</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Reason</th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1.5px solid #cbd5e1;white-space:nowrap;">Changed By</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adm_statusHistoryBody">
+                            <tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">No status history recorded yet</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="display:flex;justify-content:flex-end;padding:14px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;flex-shrink:0;gap:10px;">
+            <button type="button" id="adm_viewFuelEditBtn" onclick="editFuelFromViewAdmin()" style="background:#002F6C !important;color:#ffffff !important;border:none !important;padding:8px 20px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                <i class="fas fa-edit"></i> Edit Product
             </button>
-        </div>
-        <div id="viewFuelModalAdminContent" style="padding:20px 24px;overflow-y:auto;overflow-x:hidden;flex:1 1 auto;background:#ffffff;min-height:0;box-sizing:border-box;">
-        </div>
-        <!-- Footer with Close Button -->
-        <div style="display:flex;justify-content:flex-end;padding:12px 24px;border-top:1px solid #e2e8f0;background:#f8fafc;flex-shrink:0;">
-            <button type="button" onclick="closeViewFuelModalAdmin()" style="background:#ffffff !important;color:#1e293b !important;border:1.5px solid #cbd5e1 !important;padding:8px 24px;border-radius:8px;font-size:14.5px;font-weight:700 !important;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:none !important;transition:all 0.15s ease;" onmouseover="this.style.background='#f1f5f9';this.style.borderColor='#94a3b8';" onmouseout="this.style.background='#ffffff';this.style.borderColor='#cbd5e1';">
-                <i class="fas fa-times" style="color:#64748b !important;"></i> Close
+            <button type="button" onclick="closeViewFuelModalAdmin()" style="background:transparent !important;color:#1e293b !important;border:1.5px solid #cbd5e1 !important;padding:8px 20px;border-radius:6px;font-size:15px;font-weight:700;cursor:pointer;">
+                Close
             </button>
         </div>
     </div>
 </div>
 
 <!-- Admin Edit Fuel Modal (Direct Update - Option A) -->
-<div id="editPriceModalAdmin" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
-  <div style="background:#fff;border-radius:12px;width:92%;max-width:720px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;overflow:hidden;">
+<div id="editPriceModalAdmin" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.65);z-index:9999;align-items:flex-start;justify-content:center;padding:25px 20px 20px 20px;box-sizing:border-box;overflow-y:auto;">
+  <div style="background:#fff;border-radius:12px;width:92%;max-width:720px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:15px auto;overflow:hidden;">
     <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
       <h3 style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;">
         <i class="fas fa-edit" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:18px;"></i>
@@ -4639,7 +4815,7 @@ safeAddListener('addServiceForm', 'submit', function(e) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
         <div>
           <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Price / Liter (&#8369;) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="aef_price" name="price" step="0.01" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
+          <input type="number" id="aef_price" name="price" step="0.01" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"              oninput="sanitizeDecimalInput(this)">
           <div id="aef_price_notice" style="display:none;margin-top:6px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:6px 10px;align-items:center;gap:8px;">
               <i class="fas fa-lock" style="color:#92400e;font-size:14.5px;"></i>
               <span style="font-size:14px;color:#92400e;font-weight:700;">PRICE LOCKED &mdash; A pending price request exists. Approve or reject it first to change the price.</span>
@@ -4648,7 +4824,7 @@ safeAddListener('addServiceForm', 'submit', function(e) {
         </div>
         <div>
           <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Tank Capacity (L) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="aef_capacity" name="capacity" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
+          <input type="number" id="aef_capacity" name="capacity" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"              oninput="sanitizeDecimalInput(this)">
         </div>
       </div>
 
@@ -4656,11 +4832,11 @@ safeAddListener('addServiceForm', 'submit', function(e) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
         <div>
           <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Critical Level (L) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="aef_critical" name="critical_level" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
+          <input type="number" id="aef_critical" name="critical_level" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"              oninput="sanitizeDecimalInput(this)">
         </div>
         <div>
           <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Reorder Level (L) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="aef_reorder" name="reorder_level" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
+          <input type="number" id="aef_reorder" name="reorder_level" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"              oninput="sanitizeDecimalInput(this)">
         </div>
       </div>
 
@@ -5108,7 +5284,7 @@ safeAddListener('addServiceForm', 'submit', function(e) {
             <input type="number" id="addSvcServiceFee" step="0.01" min="0" required placeholder="0.00"
               style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
-              oninput="this.value = this.value.replace(/[^0-9\.]/g, ''); if ((this.value.match(/\./g) || []).length > 1) this.value = this.value.replace(/\.+$/, '');">
+                           oninput="sanitizeDecimalInput(this)">
             <small style="color:#94a3b8;font-size:14px;">Parts/materials fee</small>
           </div>
           <div>
@@ -5199,6 +5375,7 @@ safeAddListener('addServiceForm', 'submit', function(e) {
         left: 250px !important;
         width: calc(100% - 250px) !important;
         right: 0 !important;
+        bottom: 40px !important;
         box-sizing: border-box !important;
         justify-content: center !important;
     }
@@ -5208,6 +5385,7 @@ safeAddListener('addServiceForm', 'submit', function(e) {
         left: 70px !important;
         width: calc(100% - 70px) !important;
         right: 0 !important;
+        bottom: 40px !important;
     }
 }
 @media (max-width: 991px) {
@@ -5217,6 +5395,7 @@ safeAddListener('addServiceForm', 'submit', function(e) {
         left: 0 !important;
         width: 100% !important;
         right: 0 !important;
+        bottom: 40px !important;
         box-sizing: border-box !important;
         justify-content: center !important;
     }
@@ -5232,12 +5411,24 @@ function syncAdminModalLayout() {
     var leftVal = isDesktop ? (mainEl.offsetLeft || 250) : 0;
     var widthVal = isDesktop ? ('calc(100% - ' + leftVal + 'px)') : '100%';
     
-    var modals = document.querySelectorAll('.admin-layout-modal, [id*="Modal"], [id*="modal"]');
-    modals.forEach(function(m) {
+    var modalOverlays = [
+        'viewFuelModalAdmin', 'viewAdminMerchModal', 'viewAdminServiceModal',
+        'viewAdminBatchesModal', 'adminEditProductModal', 'adminEditFuelModal',
+        'adminEditServiceModal', 'addProductModal', 'addMerchandiseModal',
+        'addServiceModal', 'priceHistoryModal', 'viewRequestModal',
+        'rejectModal', 'approveConfirmModal', 'rejectReasonModal',
+        'editPriceModalAdmin', 'rejectPriceModalAdmin', 'approvePriceModalAdmin',
+        'toggleFuelStatusModal', 'toggleServiceStatusModal', 'restoreServiceFeesModal',
+        'confirmationModal'
+    ];
+    modalOverlays.forEach(function(id) {
+        var m = document.getElementById(id);
         if (!m || !m.style) return;
         m.style.setProperty('left', leftVal + 'px', 'important');
         m.style.setProperty('width', widthVal, 'important');
         m.style.setProperty('right', '0px', 'important');
+        m.style.setProperty('bottom', '40px', 'important');
+        m.style.setProperty('top', '70px', 'important');
     });
 }
 window.addEventListener('resize', syncAdminModalLayout);

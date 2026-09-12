@@ -602,10 +602,10 @@ try {
                 } catch (Exception $e) {}
             }
 
-            // 3. Fetch Configuration History (only config fields: Fuel Name, Capacity, Critical Level, Reorder Level)
+            // 3. Fetch Configuration History (UGT, Fuel Name, Capacity, Critical Level, Reorder Level)
             $config_history = [];
             try {
-                $config_stmt = $pdo->prepare("SELECT ch.*, COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.name, u.username, ch.updated_by_name, 'Manager') as updated_by_name FROM fuel_config_history ch LEFT JOIN users u ON ch.updated_by=u.id WHERE ch.station_id=? AND ch.fuel_inventory_id IN ($in_clause) AND ch.field_name IN ('Fuel Name', 'Tank Capacity', 'Capacity', 'Critical Level', 'Reorder Level') ORDER BY ch.created_at DESC LIMIT 20");
+                $config_stmt = $pdo->prepare("SELECT ch.*, COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.name, u.username, ch.updated_by_name, 'Manager') as updated_by_name FROM fuel_config_history ch LEFT JOIN users u ON ch.updated_by=u.id WHERE ch.station_id=? AND ch.fuel_inventory_id IN ($in_clause) AND ch.field_name IN ('Fuel Name', 'Tank Capacity', 'Capacity', 'Critical Level', 'Reorder Level', 'UGT No', 'UGT Number') ORDER BY ch.created_at DESC LIMIT 20");
                 $config_stmt->execute(array_merge([$fuel_station_id], $matching_ids));
                 $config_history = $config_stmt->fetchAll(PDO::FETCH_ASSOC);
             } catch (Exception $e) { $config_history = []; }
