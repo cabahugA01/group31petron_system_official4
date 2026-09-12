@@ -3023,8 +3023,14 @@ const directFuelCatalog = <?= json_encode($direct_fuel_types, JSON_HEX_TAG | JSO
 
 function openDirectPoModal() {
     openModal('directPoModal');
-    autoPopulateLowStockRows();
-    autoPopulateLowStockFuelRows();
+    // Start clean — order items column only appears when user clicks "+ Add Item"
+    const merchTbody = document.getElementById('directMerchTbody');
+    if (merchTbody) merchTbody.innerHTML = '';
+    calcDirectMerchTotal();
+
+    const fuelTbody = document.getElementById('directFuelTbody');
+    if (fuelTbody) fuelTbody.innerHTML = '';
+    calcDirectFuelTotal();
 }
 
 // Auto-fill Order Items with LOW STOCK & OUT OF STOCK products
@@ -3109,7 +3115,7 @@ function switchDirectPoType(type) {
         fuelForm.style.display  = 'block';
         fuelBtn.classList.add('active');
         merchBtn.classList.remove('active');
-        autoPopulateLowStockFuelRows();
+        calcDirectFuelTotal();
     }
 }
 
@@ -3224,6 +3230,20 @@ function calcDirectMerchTotal() {
     if (grandText) {
         grandText.textContent = '₱ ' + grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
+
+    // Toggle table column headers vs empty state
+    const rowCount = tbody.querySelectorAll('tr').length;
+    const tableWrap = document.getElementById('directMerchTableWrap');
+    const emptyState = document.getElementById('directMerchEmptyState');
+    if (tableWrap && emptyState) {
+        if (rowCount > 0) {
+            tableWrap.style.display = 'block';
+            emptyState.style.display = 'none';
+        } else {
+            tableWrap.style.display = 'none';
+            emptyState.style.display = 'block';
+        }
+    }
 }
 
 function calcDirectFuelTotal() {
@@ -3260,6 +3280,21 @@ function calcDirectFuelTotal() {
     const grandText = document.getElementById('directFuelGrandTotalText');
     if (grandText) {
         grandText.textContent = '₱ ' + grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // Toggle fuel table column headers vs empty state
+    const fuelTbody = document.getElementById('directFuelTbody');
+    const fuelRowCount = fuelTbody ? fuelTbody.querySelectorAll('tr').length : 0;
+    const fuelTableWrap = document.getElementById('directFuelTableWrap');
+    const fuelEmptyState = document.getElementById('directFuelEmptyState');
+    if (fuelTableWrap && fuelEmptyState) {
+        if (fuelRowCount > 0) {
+            fuelTableWrap.style.display = 'block';
+            fuelEmptyState.style.display = 'none';
+        } else {
+            fuelTableWrap.style.display = 'none';
+            fuelEmptyState.style.display = 'block';
+        }
     }
 }
 
@@ -3492,7 +3527,13 @@ function onDirectFuelSelect(selectElem) {
                     </button>
                 </div>
 
-                <div style="border: 1px solid #e2e8f0; border-radius: 10px; overflow-x: hidden; margin-bottom: 18px;">
+                <!-- Empty State Message (shown when no items added) -->
+                <div id="directMerchEmptyState" style="text-align: center; padding: 26px 16px; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 10px; color: #64748b; font-size: 13px; margin-bottom: 18px;">
+                    <i class="fas fa-boxes" style="font-size: 26px; color: #94a3b8; display: block; margin-bottom: 8px;"></i>
+                    No items added yet. Click <strong>"+ Add Item"</strong> above to start adding products.
+                </div>
+
+                <div id="directMerchTableWrap" style="display: none; border: 1px solid #e2e8f0; border-radius: 10px; overflow-x: hidden; margin-bottom: 18px;">
                     <table id="directMerchTable" style="width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed;">
                         <colgroup>
                             <col style="width:34%;">
@@ -3572,7 +3613,13 @@ function onDirectFuelSelect(selectElem) {
                     </button>
                 </div>
 
-                <div style="border: 1px solid #e2e8f0; border-radius: 10px; overflow-x: hidden; margin-bottom: 18px; width: 100%; box-sizing: border-box;">
+                <!-- Empty State Message (shown when no fuel added) -->
+                <div id="directFuelEmptyState" style="text-align: center; padding: 26px 16px; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 10px; color: #64748b; font-size: 13px; margin-bottom: 18px;">
+                    <i class="fas fa-gas-pump" style="font-size: 26px; color: #94a3b8; display: block; margin-bottom: 8px;"></i>
+                    No fuel tanks added yet. Click <strong>"+ Add Fuel Tank"</strong> above to start adding fuel orders.
+                </div>
+
+                <div id="directFuelTableWrap" style="display: none; border: 1px solid #e2e8f0; border-radius: 10px; overflow-x: hidden; margin-bottom: 18px; width: 100%; box-sizing: border-box;">
                     <table style="width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed;">
                         <colgroup>
                             <col style="width: 26%;">
