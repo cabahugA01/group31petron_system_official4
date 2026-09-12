@@ -105,9 +105,168 @@ function notify_manager_delivery_recorded(PDO $pdo, int $station_id, string $tit
     }
 }
 
-/* ══════════════════════════════════════════════════════════
-   POST — Record Merchandise Delivery
-   ══════════════════════════════════════════════════════════ */
+/**
+ * Admin Auto Stock-In: Fuel
+ * Called when admin records a fuel delivery — updates fuel_inventory directly.
+ */
+function admin_auto_stockin_fuel(PDO $pdo, array $me, int $station_id, int $delivery_id, string $fuel_type, float $liters, float $unit_price, string $po_number, string $dr_number, string $delivery_date, string $supplier, string $delivery_ref): void
+{
+    try {
+        // Resolve fuel_type_id
+        $stmt = $pdo->prepare("SELECT fuel_type_id FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1");
+        $stmt->execute([$station_id, $fuel_type]);
+        $fuel_type_id = (int)($stmt->fetchColumn() ?: 0);
+        if ($fuel_type_id <= 0) {
+            $stmt2 = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
+            $stmt2->execute([$fuel_type]);
+            $fuel_type_id = (int)($stmt2->fetchColumn() ?: 0);
+        }
+        if ($fuel_type_id <= 0) {
+            error_log("Admin auto stock-in: fuel_type_id not found for '{$fuel_type}'");
+            return;
+        }
+
+        // Get current level (FOR UPDATE so no race condition)
+        $inv_stmt = $pdo->prepare("SELECT id, COALESCE(current_level,0) AS lvl FROM fuel_inventory WHERE station_id = ? AND (fuel_type_id = ? OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))) LIMIT 1 FOR UPDATE");
+        $inv_stmt->execute([$station_id, $fuel_type_id, $fuel_type]);
+        $inv_row = $inv_stmt->fetch(PDO::FETCH_ASSOC);
+        $level_before = $inv_row ? (float)$inv_row['lvl'] : 0.0;
+        $level_after = $level_before + $liters;
+
+        // Update fuel_inventory
+        if ($inv_row) {
+            $pdo->prepare("
+                UPDATE fuel_inventory
+                SET current_level = COALESCE(current_level, 0) + ?,
+                    current_stock  = COALESCE(current_stock, 0) + ?,
+                    price_per_liter = CASE WHEN ? > 0 THEN ? ELSE price_per_liter END,
+                    updated_by = ?,
+                    status = 'Normal',
+                    last_updated = NOW()
+                WHERE station_id = ? AND (fuel_type_id = ? OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)))
+            ")->execute([$liters, $liters, $unit_price, $unit_price, $me['id'], $station_id, $fuel_type_id, $fuel_type]);
+        } else {
+            $pdo->prepare("
+                INSERT INTO fuel_inventory (station_id, fuel_type_id, fuel_type, current_level, current_stock, capacity, reorder_level, critical_level, price_per_liter, latest_calibration, status, last_updated, updated_by)
+                VALUES (?, ?, ?, ?, ?, 0, 500, 200, ?, 0, 'Normal', NOW(), ?)
+            ")->execute([$station_id, $fuel_type_id, $fuel_type, $liters, $liters, $unit_price, $me['id']]);
+        }
+
+        // Generate batch ID
+        $date = date('Ymd');
+        $last_batch = $pdo->query("SELECT batch_ref FROM fuel_stock_in WHERE station_id = {$station_id} AND batch_ref LIKE 'BT-{$date}-%' ORDER BY batch_ref DESC LIMIT 1")->fetchColumn();
+        $next_num = 1;
+        if ($last_batch && preg_match('/-(\d+)$/', $last_batch, $m)) { $next_num = ((int)$m[1]) + 1; }
+        $batch_id = 'BT-' . $date . '-' . str_pad($next_num, 4, '0', STR_PAD_LEFT);
+
+        // Insert fuel_stock_in record
+        $pdo->prepare("
+            INSERT INTO fuel_stock_in (delivery_id, invoice_no, station_id, fuel_type, qty_expected, qty_received, qty_variance, condition_flag, remarks, level_before, level_after, encoded_by, encoded_at, batch_ref, delivery_ref, selling_price_per_liter)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'Good', ?, ?, ?, ?, NOW(), ?, ?, ?)
+        ")->execute([$delivery_id, $dr_number, $station_id, $fuel_type, $liters, $liters, 0, "Admin auto stock-in | PO: {$po_number}", $level_before, $level_after, $me['id'], $batch_id, $delivery_ref, $unit_price]);
+
+        // Insert fuel movement log
+        try {
+            $pdo->prepare("
+                INSERT INTO fuel_adjustments (station_id, fuel_type_id, fuel_type, adjustment_type, liters, previous_value, new_value, reason, user_id, status, approved_by, approved_at, adjustment_date, created_at)
+                VALUES (?, ?, ?, 'stock_in', ?, ?, ?, ?, ?, 'Approved', ?, NOW(), CURDATE(), NOW())
+            ")->execute([$station_id, $fuel_type_id, $fuel_type, $liters, $level_before, $level_after, "Admin Fuel Stock-In | Batch: {$batch_id} | DR: {$dr_number}", $me['id'], $me['id']]);
+        } catch (Exception $e) { error_log('Fuel adjustment insert failed: ' . $e->getMessage()); }
+
+        // Mark delivery as Stock-In Complete
+        $pdo->prepare("
+            UPDATE deliveries_oversight
+            SET status = 'Stock-In Complete',
+                manager_id = ?,
+                manager_action_at = NOW(),
+                manager_notes = ?,
+                finalized_at = NOW(),
+                finalized_by = ?,
+                updated_at = NOW()
+            WHERE id = ? AND station_id = ?
+        ")->execute([$me['id'], "Admin auto-approved stock-in | Batch: {$batch_id}", $me['id'], $delivery_id, $station_id]);
+
+        // Update fuel PO status to Completed
+        try {
+            $pdo->prepare("
+                UPDATE fuel_purchase_orders
+                SET actual_volume = COALESCE(actual_volume, 0) + ?,
+                    delivery_date = ?,
+                    status = 'Completed',
+                    updated_at = NOW()
+                WHERE station_id = ? AND (po_number = ? OR batch_id = ?) AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+            ")->execute([$liters, $delivery_date, $station_id, $po_number, $po_number, $fuel_type]);
+        } catch (Exception $e) { error_log('FPO status update failed: ' . $e->getMessage()); }
+
+    } catch (Exception $e) {
+        error_log('Admin auto fuel stock-in failed: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Admin Auto Stock-In: Merchandise
+ * Called when admin records a merchandise delivery — updates station_inventory directly.
+ */
+function admin_auto_stockin_merchandise(PDO $pdo, array $me, int $station_id, int $delivery_id, string $product_name, int $qty, float $unit_price, string $po_number, string $dr_number, string $delivery_date, string $supplier, string $delivery_ref): void
+{
+    try {
+        // Resolve product_id from inventory_products or products
+        $product_id = 0;
+        try {
+            $find = $pdo->prepare("SELECT id FROM inventory_products WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(?)) AND LOWER(COALESCE(category,'')) NOT IN ('fuel','fuels') ORDER BY id ASC LIMIT 1");
+            $find->execute([$product_name]);
+            $product_id = (int)($find->fetchColumn() ?: 0);
+        } catch (Exception $ignored) {}
+
+        if ($product_id <= 0) {
+            try {
+                $find2 = $pdo->prepare("SELECT p.id FROM products p LEFT JOIN product_categories pc ON p.category_id = pc.id WHERE LOWER(TRIM(p.name)) = LOWER(TRIM(?)) AND LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services') LIMIT 1");
+                $find2->execute([$product_name]);
+                $product_id = (int)($find2->fetchColumn() ?: 0);
+            } catch (Exception $ignored) {}
+        }
+
+        if ($product_id <= 0) {
+            error_log("Admin auto stock-in merchandise: product_id not found for '{$product_name}' — skipping inventory update.");
+            // Still mark delivery as complete even if product not resolved
+        }
+
+        // Update station_inventory if product found
+        if ($product_id > 0) {
+            try {
+                $si = $pdo->prepare("SELECT id FROM station_inventory WHERE station_id = ? AND product_id = ? LIMIT 1");
+                $si->execute([$station_id, $product_id]);
+                if ($si->fetchColumn()) {
+                    $pdo->prepare("UPDATE station_inventory SET stock_level = COALESCE(stock_level,0) + ?, cost = ?, status = 'active', last_updated = NOW() WHERE station_id = ? AND product_id = ?")->execute([$qty, $unit_price, $station_id, $product_id]);
+                } else {
+                    $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, cost, price, status, last_updated) VALUES (?, ?, ?, ?, ?, 'active', NOW())")->execute([$station_id, $product_id, $qty, $unit_price, $unit_price]);
+                }
+            } catch (Exception $e) { error_log('Station inventory update failed: ' . $e->getMessage()); }
+
+            try {
+                $pdo->prepare("UPDATE inventory_products SET stock = COALESCE(stock,0) + ?, stock_quantity = COALESCE(stock_quantity,0) + ?, updated_at = NOW() WHERE id = ?")->execute([$qty, $qty, $product_id]);
+            } catch (Exception $ignored) {}
+        }
+
+        // Mark delivery as Stock-In Complete
+        $pdo->prepare("
+            UPDATE deliveries_oversight
+            SET status = 'Stock-In Complete',
+                manager_id = ?,
+                manager_action_at = NOW(),
+                manager_notes = 'Admin auto-approved stock-in',
+                finalized_at = NOW(),
+                finalized_by = ?,
+                updated_at = NOW()
+            WHERE id = ? AND station_id = ?
+        ")->execute([$me['id'], $me['id'], $delivery_id, $station_id]);
+
+    } catch (Exception $e) {
+        error_log('Admin auto merch stock-in failed: ' . $e->getMessage());
+    }
+}
+
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'record_merchandise') {
     $po_ids_raw = $_POST['po_ids'] ?? []; $po_ids = array_map('intval', (array)$po_ids_raw);
     $dr_number = trim($_POST['dr_number'] ?? '');
@@ -199,6 +358,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                     }
                     $prod_unit = $p_stmt->fetchColumn() ?: 'pcs';
 
+                    $is_admin = in_array($role, ['admin', 'superadmin'], true);
+                    $do_status = $is_admin ? 'Stock-In Complete' : 'Pending Stock-In';
+
                     $pdo->prepare("
                         INSERT INTO deliveries_oversight
                             (delivery_type, delivery_ref, supplier, product, quantity, unit, unit_price,
@@ -206,7 +368,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                              delivery_date, delivery_time, dr_number, sales_invoice_no, encoded_by, station_id,
                              status, remarks, received_shift, received_by_name,
                              source_ref, batch_id, created_at, updated_at)
-                        VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Stock-In', ?, ?, ?, ?, ?, NOW(), NOW())
+                        VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
                     ")->execute([
                         $delivery_ref,              // delivery_ref
                         $po['supplier_name'] ?? 'Unknown', // supplier
@@ -223,12 +385,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                         $invoice_number,            // sales_invoice_no
                         $encoded_by_fk,             // encoded_by (validated FK)
                         $station_id,                // station_id
+                        $do_status,                 // status
                         $full_remarks,              // remarks
                         $received_shift,            // received_shift
                         $received_by_staff,         // received_by_name
                         $po['po_number'],           // source_ref
                         $delivery_batch_no          // batch_id
                     ]);
+
+                    $new_delivery_id = (int)$pdo->lastInsertId();
+
+                    // Admin: auto stock-in immediately
+                    if ($is_admin && $new_delivery_id > 0) {
+                        admin_auto_stockin_merchandise($pdo, $me, $station_id, $new_delivery_id,
+                            $item['item_name'], (int)$actual_qty, (float)($item['unit_price'] ?? 0),
+                            $po['po_number'], $dr_number, $delivery_date,
+                            $po['supplier_name'] ?? 'Petron Corporation', $delivery_ref
+                        );
+                    }
 
                     $pdo->prepare("
                         UPDATE purchase_order_items
@@ -285,6 +459,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                     }
                     $prod_unit = $p_stmt->fetchColumn() ?: 'pcs';
 
+                    $is_admin = $is_admin ?? in_array($role, ['admin', 'superadmin'], true);
+                    $do_status_leg = $is_admin ? 'Stock-In Complete' : 'Pending Stock-In';
+
                     $pdo->prepare("
                         INSERT INTO deliveries_oversight
                             (delivery_type, delivery_ref, supplier, product, quantity, unit, unit_price,
@@ -292,7 +469,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                              delivery_date, delivery_time, dr_number, sales_invoice_no, encoded_by, station_id,
                              status, remarks, received_shift, received_by_name,
                              source_ref, batch_id, created_at, updated_at)
-                        VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Stock-In', ?, ?, ?, ?, ?, NOW(), NOW())
+                        VALUES ('merchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
                     ")->execute([
                         $delivery_ref,              // delivery_ref
                         $po['supplier_name'] ?? 'Unknown', // supplier
@@ -309,12 +486,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                         $invoice_number,            // sales_invoice_no
                         $encoded_by_fk,             // encoded_by (validated FK)
                         $station_id,                // station_id
+                        $do_status_leg,             // status
                         $full_remarks,              // remarks
                         $received_shift,            // received_shift
                         $received_by_staff,         // received_by_name
                         $leg_po['po_number'],       // source_ref
                         $delivery_batch_no          // batch_id
                     ]);
+
+                    $leg_delivery_id = (int)$pdo->lastInsertId();
+
+                    // Admin: auto stock-in immediately
+                    if ($is_admin && $leg_delivery_id > 0) {
+                        admin_auto_stockin_merchandise($pdo, $me, $station_id, $leg_delivery_id,
+                            $leg_po['product_name'], (int)$actual_qty, (float)($leg_po['unit_price'] ?? 0),
+                            $leg_po['po_number'], $dr_number, $delivery_date,
+                            $po['supplier_name'] ?? 'Petron Corporation', $delivery_ref
+                        );
+                    }
 
                     // Update legacy PO status after delivery details are recorded.
                     $pdo->prepare("UPDATE purchase_orders SET status = 'Received', updated_at = NOW() WHERE id = ?")
@@ -327,18 +516,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
             if ($recorded_count <= 0) {
                 throw new Exception('Please enter at least one received quantity.');
             }
-             
+            
+            $is_admin_final = in_array($role, ['admin', 'superadmin'], true);
             log_activity($pdo, $me['id'], 'Record Merchandise Delivery', "POs: " . implode(',', $po_ids) . " | DR: {$dr_number} | Rows: {$recorded_count}");
-            notify_manager_delivery_recorded(
-                $pdo,
-                (int)$station_id,
-                'Merchandise Delivery Pending Stock-In',
-                "Staff recorded merchandise delivery. DR {$dr_number} is pending stock-in."
-            );
+            if (!$is_admin_final) {
+                notify_manager_delivery_recorded(
+                    $pdo,
+                    (int)$station_id,
+                    'Merchandise Delivery Pending Stock-In',
+                    "Staff recorded merchandise delivery. DR {$dr_number} is pending stock-in."
+                );
+            }
              
             $pdo->commit();
             
-            $_SESSION['flash_msg'] = "Merchandise delivery recorded successfully! Status: Pending Stock-In";
+            $status_label = $is_admin_final ? 'Stock-In Complete (Auto-Processed)' : 'Pending Stock-In';
+            $_SESSION['flash_msg'] = "Merchandise delivery recorded successfully! Status: {$status_label}";
+
             $_SESSION['flash_type'] = 'success';
             header("Location: staff_record_delivery.php?tab=merchandise");
             exit;
@@ -427,6 +621,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                     $full_remarks .= " | Remarks: " . $remarks;
                 }
 
+                $is_admin_fuel = in_array($role, ['admin', 'superadmin'], true);
+                $fuel_do_status = $is_admin_fuel ? 'Stock-In Complete' : 'Pending Stock-In';
+
                 $stmt_ins = $pdo->prepare("
                     INSERT INTO deliveries_oversight
                         (delivery_type, delivery_ref, supplier, product, quantity, unit, unit_price,
@@ -434,7 +631,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                          delivery_date, delivery_time, dr_number, sales_invoice_no, encoded_by, station_id,
                          status, remarks, received_shift, received_by_name,
                          source_ref, batch_id, created_at, updated_at)
-                    VALUES ('fuel', ?, ?, ?, ?, 'L', ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 'Pending Stock-In', ?, ?, ?, ?, ?, NOW(), NOW())
+                    VALUES ('fuel', ?, ?, ?, ?, 'L', ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
                 ");
                 $stmt_ins->execute([
                     $delivery_ref,             // delivery_ref
@@ -450,6 +647,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                     $invoice_number,           // sales_invoice_no
                     $encoded_by_fk,            // encoded_by (validated FK)
                     $station_id,               // station_id
+                    $fuel_do_status,           // status
                     $full_remarks,             // remarks
                     $received_shift,           // received_shift
                     $received_by_staff,        // received_by_name
@@ -457,13 +655,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
                     $tanker_number             // batch_id
                 ]);
 
+                $fuel_delivery_id = (int)$pdo->lastInsertId();
+
+                // Admin: auto stock-in fuel inventory immediately
+                if ($is_admin_fuel && $fuel_delivery_id > 0) {
+                    admin_auto_stockin_fuel($pdo, $me, $station_id, $fuel_delivery_id,
+                        $fpo_item['fuel_type'],
+                        $received_vol,
+                        (float)($fpo_item['unit_price'] ?? 0),
+                        $po_number,
+                        $dr_number,
+                        $delivery_date,
+                        $fpo_item['supplier_name'] ?? 'Petron Corporation',
+                        $delivery_ref
+                    );
+                }
+
                 // Update specific fuel PO row status
+                $new_fpo_status = $is_admin_fuel ? 'Completed' : 'Delivered';
                 $stmt_upd = $pdo->prepare("
                     UPDATE fuel_purchase_orders 
-                    SET status = 'Delivered', actual_volume = ?, delivery_date = ?, updated_at = NOW() 
+                    SET status = ?, actual_volume = ?, delivery_date = ?, updated_at = NOW() 
                     WHERE id = ?
                 ");
-                $stmt_upd->execute([$received_vol, $delivery_date, $fpo_id]);
+                $stmt_upd->execute([$new_fpo_status, $received_vol, $delivery_date, $fpo_id]);
                 
                 $recorded_count++;
             }
@@ -472,16 +687,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'recor
             if ($recorded_count <= 0) {
                 throw new Exception('Please enter at least one received liter value.');
             }
-            notify_manager_delivery_recorded(
-                $pdo,
-                (int)$station_id,
-                'Fuel Delivery Pending Stock-In',
-                "Staff recorded fuel delivery for PO {$po_number}. DR {$dr_number} is pending stock-in."
-            );
+            $is_admin_fuel_final = in_array($role, ['admin', 'superadmin'], true);
+            if (!$is_admin_fuel_final) {
+                notify_manager_delivery_recorded(
+                    $pdo,
+                    (int)$station_id,
+                    'Fuel Delivery Pending Stock-In',
+                    "Staff recorded fuel delivery for PO {$po_number}. DR {$dr_number} is pending stock-in."
+                );
+            }
 
             $pdo->commit();
 
-            $_SESSION['flash_msg'] = "Fuel delivery recorded successfully! Status: Pending Stock-In";
+            $fuel_status_label = $is_admin_fuel_final ? 'Stock-In Complete (Auto-Processed)' : 'Pending Stock-In';
+            $_SESSION['flash_msg'] = "Fuel delivery recorded successfully! Status: {$fuel_status_label}";
+
             $_SESSION['flash_type'] = 'success';
             header("Location: staff_record_delivery.php?tab=fuel");
             exit;
