@@ -3155,12 +3155,6 @@ function addDirectMerchRow() {
 }
 
 function removeDirectMerchRow(btn) {
-    const tbody = document.getElementById('directMerchTbody');
-    if (!tbody) return;
-    if (tbody.querySelectorAll('tr').length <= 1) {
-        alert('Purchase order must have at least one product row.');
-        return;
-    }
     const tr = btn.closest('tr');
     if (tr) tr.remove();
     calcDirectMerchTotal();
