@@ -125,15 +125,51 @@ function si_fetch_pending_rows(PDO $pdo, int $station_id, string $type, array $f
                 ) AS cost_price,
                 COALESCE(
                     (SELECT fi.price_per_liter FROM fuel_inventory fi
+                     LEFT JOIN fuel_types ft ON ft.id = fi.fuel_type_id
                      WHERE fi.station_id = do2.station_id
-                       AND LOWER(TRIM(fi.fuel_type)) = LOWER(TRIM(do2.product))
+                       AND (
+                         LOWER(TRIM(fi.fuel_type)) = LOWER(TRIM(do2.product))
+                         OR LOWER(TRIM(COALESCE(ft.name, ''))) = LOWER(TRIM(do2.product))
+                         OR LOWER(TRIM(fi.fuel_type)) LIKE LOWER(CONCAT(TRIM(do2.product), ' (%'))
+                         OR LOWER(TRIM(fi.fuel_type)) LIKE LOWER(CONCAT(TRIM(do2.product), ' %'))
+                         OR fi.fuel_type_id = (
+                            SELECT fpo2.fuel_type_id FROM fuel_purchase_orders fpo2 
+                            WHERE fpo2.station_id = do2.station_id 
+                              AND (fpo2.po_number = do2.source_ref OR fpo2.batch_id = do2.source_ref) 
+                            LIMIT 1
+                         )
+                       )
+                     ORDER BY
+                       CASE
+                         WHEN LOWER(TRIM(fi.fuel_type)) = LOWER(TRIM(do2.product)) THEN 1
+                         WHEN LOWER(TRIM(COALESCE(ft.name, ''))) = LOWER(TRIM(do2.product)) THEN 2
+                         ELSE 3
+                       END
                      LIMIT 1),
                     0
                 ) AS current_selling_price,
                 COALESCE(
                     (SELECT fi.ugt_no FROM fuel_inventory fi
+                     LEFT JOIN fuel_types ft ON ft.id = fi.fuel_type_id
                      WHERE fi.station_id = do2.station_id
-                       AND LOWER(TRIM(fi.fuel_type)) = LOWER(TRIM(do2.product))
+                       AND (
+                         LOWER(TRIM(fi.fuel_type)) = LOWER(TRIM(do2.product))
+                         OR LOWER(TRIM(COALESCE(ft.name, ''))) = LOWER(TRIM(do2.product))
+                         OR LOWER(TRIM(fi.fuel_type)) LIKE LOWER(CONCAT(TRIM(do2.product), ' (%'))
+                         OR LOWER(TRIM(fi.fuel_type)) LIKE LOWER(CONCAT(TRIM(do2.product), ' %'))
+                         OR fi.fuel_type_id = (
+                            SELECT fpo2.fuel_type_id FROM fuel_purchase_orders fpo2 
+                            WHERE fpo2.station_id = do2.station_id 
+                              AND (fpo2.po_number = do2.source_ref OR fpo2.batch_id = do2.source_ref) 
+                            LIMIT 1
+                         )
+                       )
+                     ORDER BY
+                       CASE
+                         WHEN LOWER(TRIM(fi.fuel_type)) = LOWER(TRIM(do2.product)) THEN 1
+                         WHEN LOWER(TRIM(COALESCE(ft.name, ''))) = LOWER(TRIM(do2.product)) THEN 2
+                         ELSE 3
+                       END
                      LIMIT 1),
                     ''
                 ) AS ugt_no
@@ -627,9 +663,15 @@ body .main,
                                                 $received = (float)($item['actual_quantity'] !== null ? $item['actual_quantity'] : $item['quantity']);
                                                 ?>
                                                 <tr data-stock-row="<?= si_h($gid) ?>"
-                                                    data-delivery-id="<?= (int)$item['delivery_id'] ?>">
+                                                        data-delivery-id="<?= (int)$item['delivery_id'] ?>">
                                                     <td><strong><?= si_h($item['fuel_type']) ?></strong></td>
-                                                    <td><?= si_h($item['ugt_no'] ?: '-') ?></td>
+                                                    <td>
+                                                        <?php if (!empty($item['ugt_no'])): ?>
+                                                            <span style="display:inline-block;padding:3px 9px;background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;border-radius:6px;font-weight:800;font-size:12px;font-family:Consolas,monospace;letter-spacing:0.5px;"><?= si_h($item['ugt_no']) ?></span>
+                                                        <?php else: ?>
+                                                            <span style="color:#94a3b8;">-</span>
+                                                        <?php endif; ?>
+                                                    </td>
                                                     <td><?= si_qty($ordered, 2) ?> L</td>
                                                     <td>
                                                         <input class="qty-input qty-field" type="number" step="0.01" min="0"
