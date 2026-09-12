@@ -3446,13 +3446,18 @@ function onDirectFuelSelect(selectElem) {
                 <div class="field-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px; background: #f8fafc; padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0;">
                     <div class="field-group">
                         <label><i class="fas fa-truck"></i> Supplier</label>
-                        <select name="supplier_id" required>
-                            <?php foreach ($active_suppliers as $supp): ?>
-                                <option value="<?= (int)$supp['id'] ?>" <?= stripos($supp['name'], 'Petron') !== false ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($supp['name']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                        <?php
+                            $petron_supp = null;
+                            foreach ($active_suppliers as $supp) {
+                                if (stripos($supp['name'], 'Petron') !== false) { $petron_supp = $supp; break; }
+                            }
+                            $petron_supp_id = $petron_supp ? (int)$petron_supp['id'] : 0;
+                        ?>
+                        <input type="hidden" name="supplier_id" value="<?= $petron_supp_id ?>">
+                        <div style="padding: 9px 12px; background: #f1f5f9; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 13px; font-weight: 600; color: #334155; display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-building" style="color: #e53e3e;"></i>
+                            Petron Corporation
+                        </div>
                     </div>
                     <div class="field-group">
                         <label><i class="fas fa-calendar-alt"></i> Expected Delivery Date</label>
@@ -3528,13 +3533,11 @@ function onDirectFuelSelect(selectElem) {
                 <div class="field-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px; background: #f8fafc; padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0;">
                     <div class="field-group">
                         <label><i class="fas fa-truck"></i> Supplier</label>
-                        <select name="supplier_id" required>
-                            <?php foreach ($active_suppliers as $supp): ?>
-                                <option value="<?= (int)$supp['id'] ?>" <?= stripos($supp['name'], 'Petron') !== false ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($supp['name']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                        <input type="hidden" name="supplier_id" value="<?= $petron_supp_id ?>">
+                        <div style="padding: 9px 12px; background: #f1f5f9; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 13px; font-weight: 600; color: #334155; display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-building" style="color: #e53e3e;"></i>
+                            Petron Corporation
+                        </div>
                     </div>
                     <div class="field-group">
                         <label><i class="fas fa-calendar-alt"></i> Expected Delivery Date</label>
