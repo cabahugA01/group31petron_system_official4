@@ -3417,14 +3417,21 @@ async function confirmBatchAdjust() {
         }
     }
     
+    // Build redirect URL: keep existing params but switch status_filter to 'adjusted'
+    const redirectUrl = (() => {
+        const url = new URL(window.location.href);
+        url.searchParams.set('status_filter', 'adjusted');
+        return url.toString();
+    })();
+
     if (errorCount === 0) {
         sessionStorage.setItem('petron_post_reload_toast_msg', `${successCount} transaction(s) adjusted successfully.`);
         sessionStorage.setItem('petron_post_reload_toast_type', 'info');
-        location.reload();
+        window.location.href = redirectUrl;
     } else {
         sessionStorage.setItem('petron_post_reload_toast_msg', `Adjusted with ${errorCount} error(s): ` + errors.join(', '));
         sessionStorage.setItem('petron_post_reload_toast_type', 'error');
-        location.reload();
+        window.location.href = redirectUrl;
     }
 }
 
