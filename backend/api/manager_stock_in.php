@@ -167,6 +167,7 @@ function ensure_manager_stock_in_schema(PDO $pdo): void
         "ALTER TABLE merchandise_stock_in ADD COLUMN IF NOT EXISTS delivery_id INT NULL",
         "ALTER TABLE merchandise_stock_in ADD COLUMN IF NOT EXISTS selling_price DECIMAL(12,2) NOT NULL DEFAULT 0",
         "ALTER TABLE fuel_stock_in ADD COLUMN IF NOT EXISTS selling_price_per_liter DECIMAL(12,2) NOT NULL DEFAULT 0",
+        "ALTER TABLE fuel_stock_in MODIFY COLUMN delivery_id INT NULL",
         "ALTER TABLE merchandise_batches ADD COLUMN IF NOT EXISTS selling_price DECIMAL(12,2) NOT NULL DEFAULT 0",
         "ALTER TABLE fuel_batches ADD COLUMN IF NOT EXISTS selling_price_per_liter DECIMAL(12,2) NOT NULL DEFAULT 0",
         "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS stock_in_done TINYINT(1) NOT NULL DEFAULT 0",
@@ -182,6 +183,21 @@ function ensure_manager_stock_in_schema(PDO $pdo): void
             $pdo->exec($sql);
         } catch (Exception $ignored) {
         }
+    }
+
+    // Drop legacy/invalid foreign keys referencing fuel_deliveries or incompatible tables that block stock-in
+    $invalid_fks = [
+        ['table' => 'fuel_stock_in', 'fk' => 'fk_fsi_delivery'],
+        ['table' => 'fuel_batches', 'fk' => 'fk_fuel_batches_delivery_id'],
+        ['table' => 'merchandise_stock_in', 'fk' => 'fk_3nf_merchandise_stock_in_delivery_id_fuel_deliveries'],
+        ['table' => 'merchandise_batches', 'fk' => 'fk_3nf_merchandise_batches_delivery_id_fuel_deliveries'],
+        ['table' => 'merchandise_stock_in', 'fk' => 'fk_merchandise_stock_in_product_id'],
+        ['table' => 'merchandise_batches', 'fk' => 'fk_merchandise_batches_product_id'],
+    ];
+    foreach ($invalid_fks as $item) {
+        try {
+            $pdo->exec("ALTER TABLE {$item['table']} DROP FOREIGN KEY {$item['fk']}");
+        } catch (Exception $ignored) {}
     }
 }
 
@@ -342,13 +358,15 @@ function approve_merchandise_stock_in(PDO $pdo, array $me, int $station_id, arra
             $records[] = ['delivery_id' => $delivery_id, 'product' => $row['product'], 'qty_received' => $qty_received];
         }
 
-        mark_deliveries_complete($pdo, $ids, $station_id, (int)$me['id'], $batch_id);
+        $role_name = (string)($me['role'] ?? 'manager');
+        mark_deliveries_complete($pdo, $ids, $station_id, (int)$me['id'], $batch_id, $role_name);
         update_merchandise_po_status($pdo, $station_id, $po_key, $completed_status, (int)$me['id']);
         notify_stock_in_users($pdo, $station_id, $staff_ids, 'Merchandise Stock-In Completed', "PO {$po_key} has been stocked in. Batch {$batch_id}.", 'admin_inventory_history.php?tab=stock_in');
         audit_stock_in($pdo, $me, 'Merchandise Stock-In', "Approved merchandise stock-in for {$po_key}; batch {$batch_id}; total qty {$total_received}.", 'deliveries_oversight', $ids[0] ?? null);
 
         if (function_exists('log_activity')) {
-            log_activity($pdo, $me['id'], 'Manager Merchandise Stock-In', "PO {$po_key} | Batch {$batch_id} | Items " . count($records));
+            $actor = ucfirst($role_name);
+            log_activity($pdo, $me['id'], "{$actor} Merchandise Stock-In", "PO {$po_key} | Batch {$batch_id} | Items " . count($records));
         }
 
         $pdo->commit();
@@ -443,12 +461,14 @@ function approve_fuel_stock_in(PDO $pdo, array $me, int $station_id, array $inpu
             $records[] = ['delivery_id' => $delivery_id, 'fuel_type' => $row['fuel_type'], 'liters_received' => $liters_received];
         }
 
-        mark_deliveries_complete($pdo, $ids, $station_id, (int)$me['id'], $batch_id);
+        $role_name = (string)($me['role'] ?? 'manager');
+        mark_deliveries_complete($pdo, $ids, $station_id, (int)$me['id'], $batch_id, $role_name);
         notify_stock_in_users($pdo, $station_id, $staff_ids, 'Fuel Stock-In Completed', "Fuel PO {$po_key} has been stocked in. Batch {$batch_id}.", 'admin_inventory_history.php?tab=stock_in');
         audit_stock_in($pdo, $me, 'Fuel Stock-In', "Approved fuel stock-in for {$po_key}; batch {$batch_id}; total liters {$total_received}.", 'deliveries_oversight', $ids[0] ?? null);
 
         if (function_exists('log_activity')) {
-            log_activity($pdo, $me['id'], 'Manager Fuel Stock-In', "PO {$po_key} | Batch {$batch_id} | Fuel rows " . count($records));
+            $actor = ucfirst($role_name);
+            log_activity($pdo, $me['id'], "{$actor} Fuel Stock-In", "PO {$po_key} | Batch {$batch_id} | Fuel rows " . count($records));
         }
 
         $pdo->commit();
@@ -904,15 +924,15 @@ function resolve_fuel_type_id(PDO $pdo, int $station_id, string $fuel_type, int 
         return $preferred_id;
     }
 
-    $stmt = $pdo->prepare("SELECT fuel_type_id FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1");
-    $stmt->execute([$station_id, $fuel_type]);
+    $stmt = $pdo->prepare("SELECT fuel_type_id FROM fuel_inventory WHERE station_id = ? AND (LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) OR LOWER(TRIM(fuel_type)) LIKE LOWER(CONCAT(TRIM(?), '%'))) LIMIT 1");
+    $stmt->execute([$station_id, $fuel_type, $fuel_type]);
     $id = (int)($stmt->fetchColumn() ?: 0);
     if ($id > 0) {
         return $id;
     }
 
-    $stmt = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
-    $stmt->execute([$fuel_type]);
+    $stmt = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) OR LOWER(TRIM(name)) LIKE LOWER(CONCAT(TRIM(?), '%')) LIMIT 1");
+    $stmt->execute([$fuel_type, $fuel_type]);
     $id = (int)($stmt->fetchColumn() ?: 0);
     if ($id > 0) {
         return $id;
@@ -927,12 +947,12 @@ function fuel_inventory_before(PDO $pdo, int $station_id, int $fuel_type_id, str
         SELECT *
         FROM fuel_inventory
         WHERE station_id = ?
-          AND (fuel_type_id = ? OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)))
+          AND (fuel_type_id = ? OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) OR LOWER(TRIM(fuel_type)) LIKE LOWER(CONCAT(TRIM(?), '%')))
         ORDER BY CASE WHEN fuel_type_id = ? THEN 0 ELSE 1 END
         LIMIT 1
         FOR UPDATE
     ");
-    $stmt->execute([$station_id, $fuel_type_id, $fuel_type, $fuel_type_id]);
+    $stmt->execute([$station_id, $fuel_type_id, $fuel_type, $fuel_type, $fuel_type_id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($row) {
         return $row;
@@ -946,11 +966,11 @@ function upsert_fuel_inventory(PDO $pdo, int $station_id, int $fuel_type_id, str
         SELECT id
         FROM fuel_inventory
         WHERE station_id = ?
-          AND (fuel_type_id = ? OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)))
+          AND (fuel_type_id = ? OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) OR LOWER(TRIM(fuel_type)) LIKE LOWER(CONCAT(TRIM(?), '%')))
         ORDER BY CASE WHEN fuel_type_id = ? THEN 0 ELSE 1 END
         LIMIT 1
     ");
-    $find->execute([$station_id, $fuel_type_id, $fuel_type, $fuel_type_id]);
+    $find->execute([$station_id, $fuel_type_id, $fuel_type, $fuel_type, $fuel_type_id]);
     $inventory_id = (int)($find->fetchColumn() ?: 0);
 
     if ($inventory_id > 0) {
@@ -1055,13 +1075,21 @@ function update_fuel_purchase_order_row(PDO $pdo, int $station_id, string $po_ke
     }
 }
 
-function mark_deliveries_complete(PDO $pdo, array $ids, int $station_id, int $user_id, string $batch_id): void
+function mark_deliveries_complete(PDO $pdo, array $ids, int $station_id, int $user_id, string $batch_id, string $role = 'manager'): void
 {
     if (empty($ids)) {
         return;
     }
+    $role_label = ucfirst($role);
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
-    $params = array_merge(['Stock-In Complete', $user_id, "Stock-In approved. Batch: {$batch_id}", $user_id], $ids, [$station_id]);
+    $params = array_merge([
+        'Stock-In Complete',
+        $user_id,
+        "Stock-In approved by {$role_label}. Batch: {$batch_id}",
+        $user_id,
+        $user_id,
+        "Stock-In approved by {$role_label}. Batch: {$batch_id}"
+    ], $ids, [$station_id]);
     $pdo->prepare("
         UPDATE deliveries_oversight
         SET status = ?,
@@ -1070,6 +1098,9 @@ function mark_deliveries_complete(PDO $pdo, array $ids, int $station_id, int $us
             manager_notes = ?,
             finalized_at = NOW(),
             finalized_by = ?,
+            admin_id = COALESCE(admin_id, ?),
+            admin_action_at = COALESCE(admin_action_at, NOW()),
+            admin_notes = COALESCE(admin_notes, ?),
             updated_at = NOW()
         WHERE id IN ({$placeholders}) AND station_id = ?
     ")->execute($params);
