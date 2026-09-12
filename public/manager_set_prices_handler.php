@@ -635,6 +635,8 @@ try {
             $ugt_no         = trim($_POST['ugt_no'] ?? '');
             if (preg_match('/^\d+$/', $ugt_no)) {
                 $ugt_no = 'UGT #' . $ugt_no;
+            } elseif (preg_match('/^ugt\s*#?\s*(\d+)$/i', $ugt_no, $m)) {
+                $ugt_no = 'UGT #' . $m[1];
             }
             $price          = (float)($_POST['price'] ?? 0);
             $capacity       = (float)($_POST['capacity'] ?? 0);
@@ -642,7 +644,6 @@ try {
             $reorder_level  = (float)($_POST['reorder_level'] ?? 0);
             $status         = strtolower(trim($_POST['status'] ?? 'active'));
             $remarks        = trim($_POST['remarks'] ?? '');
-
 
             if ($status !== 'inactive') $status = 'active';
 
