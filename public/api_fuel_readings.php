@@ -513,12 +513,60 @@ try {
                     }
                 } catch (Exception $e_cls) {}
 
+
+                // ── Deduct liters_sold from fuel_inventory ────────────────────────
                 try {
-                    $pdo->prepare("
-                        UPDATE fuel_inventory SET last_updated = NOW()
-                        WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
-                    ")->execute([$station_id, $fuel_type]);
-                } catch (Exception $e) {}
+                    if ($liters_sold > 0) {
+                        // Get previous liters if updating existing record (to adjust difference only)
+                        $old_liters = 0.0;
+                        if ($existing_tx_id) {
+                            $old_stmt = $pdo->prepare("SELECT liters_sold FROM fuel_transactions WHERE id = ?");
+                            $old_stmt->execute([$existing_tx_id]);
+                            $old_liters = (float)($old_stmt->fetchColumn() ?: 0);
+                        }
+                        $deduct_amount = $liters_sold - $old_liters; // net change
+
+                        if (abs($deduct_amount) > 0.0001) {
+                            // Find the inventory record via pump_id → fuel_type_id
+                            $inv_id = null;
+                            if ($resolved_pump_id) {
+                                $inv_stmt = $pdo->prepare("
+                                    SELECT fi.id FROM fuel_inventory fi
+                                    INNER JOIN fuel_pumps fp ON fp.fuel_type_id = fi.fuel_type_id
+                                    WHERE fp.id = ? AND fi.station_id = ?
+                                    LIMIT 1
+                                ");
+                                $inv_stmt->execute([$resolved_pump_id, $station_id]);
+                                $inv_id = $inv_stmt->fetchColumn() ?: null;
+                            }
+                            // Fallback: match by fuel_type name
+                            if (!$inv_id) {
+                                $inv_stmt2 = $pdo->prepare("
+                                    SELECT id FROM fuel_inventory
+                                    WHERE station_id = ?
+                                      AND LOWER(TRIM(fuel_type)) LIKE CONCAT('%', LOWER(TRIM(?)), '%')
+                                    LIMIT 1
+                                ");
+                                $inv_stmt2->execute([$station_id, clean_fuel_display_name($fuel_type)]);
+                                $inv_id = $inv_stmt2->fetchColumn() ?: null;
+                            }
+
+                            if ($inv_id) {
+                                $pdo->prepare("
+                                    UPDATE fuel_inventory
+                                    SET current_level = GREATEST(0, current_level - ?),
+                                        current_stock = GREATEST(0, current_stock - ?),
+                                        last_updated  = NOW(),
+                                        updated_by    = ?
+                                    WHERE id = ?
+                                ")->execute([$deduct_amount, $deduct_amount, $me['id'], $inv_id]);
+                            }
+                        }
+                    }
+                } catch (Exception $e) {
+                    // Non-critical: log but don't fail the reading submission
+                    error_log('Fuel inventory deduction error: ' . $e->getMessage());
+                }
 
                 $pdo->commit();
             } catch (Exception $insertEx) {
