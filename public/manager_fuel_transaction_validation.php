@@ -3391,11 +3391,9 @@ async function confirmBatchAdjust() {
             formData.append('id', tx.id);
             formData.append('remarks', reason);
             
-            if (selected.length === 1) {
-                formData.append('beginning', getRawNumber('adj_beginning'));
-                formData.append('ending', getRawNumber('adj_ending'));
-                formData.append('calibration', getRawNumber('adj_calibration'));
-            }
+            formData.append('beginning',   getRawNumber(`adj_beg_${tx.id}`));
+            formData.append('ending',       getRawNumber(`adj_end_${tx.id}`));
+            formData.append('calibration',  getRawNumber(`adj_cal_${tx.id}`));
             
             const response = await fetch('', {
                 method: 'POST',
