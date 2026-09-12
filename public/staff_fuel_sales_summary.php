@@ -1150,7 +1150,7 @@ if (count($meter_readings) == 0 && $has_fuel_transactions) {
                   DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN ? AND ?
                   OR DATE(ft.created_at) BETWEEN ? AND ?
               )
-              AND LOWER(COALESCE(ft.status, '')) IN ('verified','approved','adjusted','validated','completed')
+              AND LOWER(COALESCE(ft.status, '')) IN ('verified','approved','validated')
             ORDER BY COALESCE(ft.transaction_date, ft.created_at), ft.id";
         
         $stmt = $pdo->prepare($sql);
@@ -1232,7 +1232,7 @@ if ($has_fuel_transactions) {
                   DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN ? AND ?
                   OR DATE(ft.created_at) BETWEEN ? AND ?
               )
-              AND LOWER(COALESCE(ft.status, '')) IN ('verified','approved','adjusted','validated','completed')
+              AND LOWER(COALESCE(ft.status, '')) IN ('verified','approved','validated')
             ORDER BY COALESCE(ft.transaction_date, ft.created_at), ft.id";
         
         $stmt = $pdo->prepare($sql);

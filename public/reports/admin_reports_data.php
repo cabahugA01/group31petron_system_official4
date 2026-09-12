@@ -1266,13 +1266,13 @@ if (!function_exists('getAdminReportData')) {
                             0.00 as total_discounts,
                             (COALESCE(f.fuel_rev, 0) + COALESCE(m.merch_rev, 0) + COALESCE(s.serv_rev, 0)) as net_revenue
                         FROM (
-                            SELECT DATE(transaction_date) as date FROM fuel_transactions WHERE DATE(transaction_date) BETWEEN :df1 AND :dt1
+                            SELECT DATE(transaction_date) as date FROM fuel_transactions WHERE DATE(transaction_date) BETWEEN :df1 AND :dt1 AND LOWER(COALESCE(status, '')) IN ('verified','approved','validated')
                             UNION
                             SELECT DATE(transaction_date) as date FROM merchandise_transactions WHERE DATE(transaction_date) BETWEEN :df2 AND :dt2
                         ) d
                         LEFT JOIN (
                             SELECT DATE(transaction_date) as date, SUM(total_amount) as fuel_rev
-                            FROM fuel_transactions WHERE DATE(transaction_date) BETWEEN :df3 AND :dt3 GROUP BY DATE(transaction_date)
+                            FROM fuel_transactions WHERE DATE(transaction_date) BETWEEN :df3 AND :dt3 AND LOWER(COALESCE(status, '')) IN ('verified','approved','validated') GROUP BY DATE(transaction_date)
                         ) f ON d.date = f.date
                         LEFT JOIN (
                             SELECT DATE(transaction_date) as date, SUM(total_amount) as merch_rev
@@ -1415,13 +1415,13 @@ if (!function_exists('getAdminReportData')) {
                                 COALESCE(col.total_collections, 0) as total_collections,
                                 GREATEST(COALESCE(cs.total_credit_sales, 0) - COALESCE(col.total_collections, 0), 0) as outstanding_balance
                             FROM (
-                                SELECT DATE(transaction_date) as date FROM fuel_transactions WHERE DATE(transaction_date) BETWEEN :df1 AND :dt1
+                                SELECT DATE(transaction_date) as date FROM fuel_transactions WHERE DATE(transaction_date) BETWEEN :df1 AND :dt1 AND LOWER(COALESCE(status, '')) IN ('verified','approved','validated')
                                 UNION
                                 SELECT DATE(transaction_date) as date FROM merchandise_transactions WHERE DATE(transaction_date) BETWEEN :df2 AND :dt2
                             ) d
                             LEFT JOIN (
                                 SELECT date, SUM(amount) as total_sales FROM (
-                                    SELECT DATE(transaction_date) as date, total_amount as amount FROM fuel_transactions WHERE DATE(transaction_date) BETWEEN :df3 AND :dt3
+                                    SELECT DATE(transaction_date) as date, total_amount as amount FROM fuel_transactions WHERE DATE(transaction_date) BETWEEN :df3 AND :dt3 AND LOWER(COALESCE(status, '')) IN ('verified','approved','validated')
                                     UNION ALL
                                     SELECT DATE(transaction_date) as date, total_amount as amount FROM merchandise_transactions WHERE DATE(transaction_date) BETWEEN :df4 AND :dt4
                                 ) t1 GROUP BY date
