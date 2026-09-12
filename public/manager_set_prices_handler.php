@@ -633,12 +633,16 @@ try {
         case 'add_fuel_product':
             $fuel_type      = trim($_POST['fuel_type'] ?? '');
             $ugt_no         = trim($_POST['ugt_no'] ?? '');
+            if (preg_match('/^\d+$/', $ugt_no)) {
+                $ugt_no = 'UGT #' . $ugt_no;
+            }
             $price          = (float)($_POST['price'] ?? 0);
             $capacity       = (float)($_POST['capacity'] ?? 0);
             $critical_level = (float)($_POST['critical_level'] ?? 0);
             $reorder_level  = (float)($_POST['reorder_level'] ?? 0);
             $status         = strtolower(trim($_POST['status'] ?? 'active'));
             $remarks        = trim($_POST['remarks'] ?? '');
+
 
             if ($status !== 'inactive') $status = 'active';
 

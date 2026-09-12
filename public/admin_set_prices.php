@@ -646,6 +646,10 @@ try {
             $app = $pending_approvals['name_' . $ugt_name];
         }
 
+        if ($inv_id) {
+            $used_fi_ids[(int)$inv_id] = true;
+        }
+
         $fuel_products[] = [
             'id'             => $inv_id,
             'pump_id'        => $tc['tanker_num'],
@@ -666,6 +670,54 @@ try {
             'approval_id'    => $app ? $app['approval_id'] : null
         ];
     }
+
+    // Include any custom or extra fuel products from fuel_inventory not in TANK_CONFIG_17
+    if (!empty($fi_lookup_by_id) && is_array($fi_lookup_by_id)) {
+        foreach ($fi_lookup_by_id as $custom_fi_id => $custom_row) {
+            if (empty($used_fi_ids[$custom_fi_id])) {
+                $c_ugt = !empty($custom_row['ugt_no']) ? $custom_row['ugt_no'] : 'UGT #' . $custom_fi_id;
+                $c_cap = (float)($custom_row['capacity'] ?? 14000);
+                $c_cur = (float)($custom_row['current_level'] ?? $custom_row['current_stock'] ?? 0);
+                $c_crit = (float)($custom_row['critical_level'] ?? ($c_cap * 0.10));
+                $c_reord = (float)($custom_row['reorder_level'] ?? ($c_cap * 0.20));
+                $c_status_raw = strtolower(trim($custom_row['status'] ?? 'active'));
+                if ($c_status_raw === 'inactive' || $c_status_raw === 'deactivated') {
+                    $c_status = 'Inactive';
+                } elseif ($c_cur <= 0) {
+                    $c_status = 'Out of Stock';
+                } elseif ($c_cur <= $c_crit) {
+                    $c_status = 'Critical';
+                } elseif ($c_cur <= $c_reord) {
+                    $c_status = 'Low';
+                } else {
+                    $c_status = 'Normal';
+                }
+
+                $c_app = $pending_approvals['id_' . (int)$custom_fi_id] ?? null;
+
+                $fuel_products[] = [
+                    'id'             => $custom_fi_id,
+                    'pump_id'        => (int)preg_replace('/[^0-9]/', '', $c_ugt) ?: $custom_fi_id,
+                    'ugt_no'         => $c_ugt,
+                    'tank_label'     => $c_ugt . ' (' . $custom_row['fuel_type'] . ')',
+                    'fuel_type'      => $custom_row['fuel_type'],
+                    'raw_fuel_type'  => $custom_row['fuel_type'],
+                    'capacity'       => $c_cap,
+                    'current_stock'  => $c_cur,
+                    'critical_level' => $c_crit,
+                    'reorder_level'  => $c_reord,
+                    'status'         => $c_status,
+                    'inv_status'     => $fi_status_by_id[(int)$custom_fi_id] ?? 'active',
+                    'last_updated'   => $custom_row['last_updated'] ?? null,
+                    'price_per_liter'=> (float)($custom_row['price_per_liter'] ?? 0),
+                    'pending_price'  => $c_app ? (float)$c_app['new_value'] : null,
+                    'approval_status'=> $c_app ? $c_app['status'] : null,
+                    'approval_id'    => $c_app ? $c_app['approval_id'] : null
+                ];
+            }
+        }
+    }
+
 } catch (Exception $e) {
     $fuel_products = [];
     error_log('[admin_set_prices] fuel error: ' . $e->getMessage());
@@ -3905,9 +3957,43 @@ safeAddListener('confirmationModal', 'click', function(e) { if (e.target === thi
 // ══════════════════════════════════════════════════════════════════════════
 // ADMIN ADD FUEL PRODUCT MODAL & HANDLERS
 // ══════════════════════════════════════════════════════════════════════════
+function toggleUgtModeAdmin(isCustom) {
+    var selectWrap  = document.getElementById('ugtSelectWrapAdmin');
+    var customWrap  = document.getElementById('ugtCustomWrapAdmin');
+    var toggleBtn   = document.getElementById('toggleUgtInputBtnAdmin');
+    var customInput = document.getElementById('newUgtNoCustom');
+    var selectEl    = document.getElementById('newUgtNo');
+
+    if (isCustom) {
+        if (selectWrap)  selectWrap.style.display  = 'none';
+        if (customWrap)  customWrap.style.display  = 'block';
+        if (toggleBtn)   toggleBtn.style.display   = 'none';
+        if (selectEl)    selectEl.removeAttribute('required');
+        if (customInput) {
+            customInput.setAttribute('required', 'required');
+            setTimeout(function() { customInput.focus(); }, 60);
+        }
+    } else {
+        if (selectWrap)  selectWrap.style.display  = 'block';
+        if (customWrap)  customWrap.style.display  = 'none';
+        if (toggleBtn)   toggleBtn.style.display   = 'inline-flex';
+        if (customInput) {
+            customInput.removeAttribute('required');
+            customInput.value = '';
+        }
+        if (selectEl) {
+            selectEl.setAttribute('required', 'required');
+            if (selectEl.value === '__custom__') {
+                selectEl.value = '';
+            }
+        }
+    }
+}
+
 function openAddProductModal() {
     var modal = document.getElementById('addProductModal');
     if (modal) modal.style.display = 'flex';
+    toggleUgtModeAdmin(false);
     var nameInput = document.getElementById('newFuelName');
     if (nameInput) setTimeout(function() { nameInput.focus(); }, 80);
 }
@@ -3917,6 +4003,7 @@ function closeAddProductModal() {
     if (modal) modal.style.display = 'none';
     var form = document.getElementById('addProductForm');
     if (form) form.reset();
+    toggleUgtModeAdmin(false);
 }
 
 safeAddListener('addProductForm', 'submit', function(e) {
@@ -3924,8 +4011,26 @@ safeAddListener('addProductForm', 'submit', function(e) {
 
     var fuelName = (document.getElementById('newFuelName') || {}).value || '';
     fuelName = fuelName.trim();
-    var ugtNo    = (document.getElementById('newUgtNo') || {}).value || '';
-    ugtNo = ugtNo.trim();
+
+    var ugtSelect  = document.getElementById('newUgtNo');
+    var ugtCustom  = document.getElementById('newUgtNoCustom');
+    var customWrap = document.getElementById('ugtCustomWrapAdmin');
+    var isCustom   = customWrap && customWrap.style.display !== 'none';
+    var ugtNo      = '';
+
+    if (isCustom && ugtCustom && ugtCustom.value.trim() !== '') {
+        ugtNo = ugtCustom.value.trim();
+    } else if (ugtSelect && ugtSelect.value === '__custom__' && ugtCustom && ugtCustom.value.trim() !== '') {
+        ugtNo = ugtCustom.value.trim();
+    } else if (ugtSelect) {
+        ugtNo = ugtSelect.value.trim();
+    }
+
+    // Auto-prefix if user simply entered a number (e.g. "8" -> "UGT #8")
+    if (/^\d+$/.test(ugtNo)) {
+        ugtNo = 'UGT #' + ugtNo;
+    }
+
     var priceRaw = (document.getElementById('newPrice') || {}).value || '';
     var price    = parseFloat(priceRaw);
     var capRaw   = (document.getElementById('newCapacity') || {}).value || '';
@@ -3943,8 +4048,9 @@ safeAddListener('addProductForm', 'submit', function(e) {
         showCustomAlert('Fuel Name is required.', 'error');
         return;
     }
-    if (!ugtNo) {
-        showCustomAlert('Please select a UGT Number.', 'error');
+    if (!ugtNo || ugtNo === '__custom__') {
+        showCustomAlert('Please select or enter a valid UGT Number.', 'error');
+        if (isCustom && ugtCustom) ugtCustom.focus();
         return;
     }
     if (isNaN(price) || price <= 0) {
@@ -4599,49 +4705,92 @@ safeAddListener('addServiceForm', 'submit', function(e) {
                            placeholder="e.g. Diesel, XCS Plus, Turbo Diesel">
                 </div>
                 <div>
-                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
-                        UGT Number <span style="color:#dc2626;">*</span>
-                    </label>
-                    <select id="newUgtNo" required
-                            style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;background:#fff;"
-                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
-                        <option value="">Select UGT</option>
-                        <?php
-                        // Fetch assigned UGT numbers for this station
-                        $assigned_ugt_numbers = [];
-                        if (!empty($fuel_products) && is_array($fuel_products)) {
-                            foreach ($fuel_products as $fp) {
-                                if (!empty($fp['id']) || !empty($fp['raw_fuel_type'])) {
-                                    $numOnly = preg_replace('/[^0-9]/', '', $fp['ugt_no'] ?? '');
-                                    if ($numOnly !== '') {
-                                        $assigned_ugt_numbers[intval($numOnly)] = true;
-                                    }
-                                }
-                            }
-                        }
-                        try {
-                            $ugt_stmt = $pdo->prepare("SELECT ugt_no FROM fuel_inventory WHERE station_id = ? AND ugt_no IS NOT NULL AND ugt_no != ''");
-                            $ugt_stmt->execute([$station_id]);
-                            while ($ur = $ugt_stmt->fetch(PDO::FETCH_ASSOC)) {
-                                $numOnly = preg_replace('/[^0-9]/', '', $ur['ugt_no']);
-                                if ($numOnly !== '') {
-                                    $n = intval($numOnly);
-                                    if ($n >= 1 && $n <= 7) {
-                                        $assigned_ugt_numbers[$n] = true;
-                                    }
-                                }
-                            }
-                        } catch (Exception $e) {}
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                        <label style="font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin:0;">
+                            UGT Number <span style="color:#dc2626;">*</span>
+                        </label>
+                        <button type="button" id="toggleUgtInputBtnAdmin" onclick="toggleUgtModeAdmin(true)"
+                                style="background:none;border:none;color:#002F6C;font-size:12.5px;font-weight:700;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:4px;text-decoration:underline;">
+                            <i class="fas fa-edit"></i> Type Custom UGT
+                        </button>
+                    </div>
+                    <!-- Select Dropdown Mode -->
+                    <div id="ugtSelectWrapAdmin">
+                        <select id="newUgtNo"
+                                style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;background:#fff;"
+                                onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+                                onchange="if(this.value==='__custom__') toggleUgtModeAdmin(true);">
+                            <option value="">Select UGT</option>
+                            <?php
+                            // Fetch assigned UGT numbers for this station
+                            $assigned_ugt_numbers = [];
+                            $max_ugt_num = 7;
 
-                        for ($i = 1; $i <= 7; $i++):
-                            $ugt_val = "UGT #$i";
-                            $is_assigned = isset($assigned_ugt_numbers[$i]);
-                        ?>
-                            <option value="<?php echo $ugt_val; ?>" <?php echo $is_assigned ? 'disabled style="color:#94a3b8;background:#f1f5f9;"' : ''; ?>>
-                                <?php echo $ugt_val; ?> <?php echo $is_assigned ? '(Assigned)' : ''; ?>
+                            if (!empty($fuel_products) && is_array($fuel_products)) {
+                                foreach ($fuel_products as $fp) {
+                                    if (!empty($fp['id']) || !empty($fp['raw_fuel_type'])) {
+                                        $numOnly = preg_replace('/[^0-9]/', '', $fp['ugt_no'] ?? '');
+                                        if ($numOnly !== '') {
+                                            $n = intval($numOnly);
+                                            $assigned_ugt_numbers[$n] = true;
+                                            if ($n > $max_ugt_num) $max_ugt_num = $n;
+                                        }
+                                    }
+                                }
+                            }
+
+                            try {
+                                $ugt_stmt = $pdo->prepare("SELECT ugt_no FROM fuel_inventory WHERE station_id = ? AND ugt_no IS NOT NULL AND ugt_no != ''");
+                                $ugt_stmt->execute([$station_id]);
+                                while ($ur = $ugt_stmt->fetch(PDO::FETCH_ASSOC)) {
+                                    $numOnly = preg_replace('/[^0-9]/', '', $ur['ugt_no']);
+                                    if ($numOnly !== '') {
+                                        $n = intval($numOnly);
+                                        $assigned_ugt_numbers[$n] = true;
+                                        if ($n > $max_ugt_num) $max_ugt_num = $n;
+                                    }
+                                }
+                            } catch (Exception $e) {}
+
+                            for ($i = 1; $i <= $max_ugt_num; $i++):
+                                $ugt_val = "UGT #$i";
+                                $is_assigned = isset($assigned_ugt_numbers[$i]);
+                            ?>
+                                <option value="<?php echo $ugt_val; ?>" <?php echo $is_assigned ? 'disabled style="color:#94a3b8;background:#f1f5f9;"' : 'style="color:#0f172a;font-weight:600;"'; ?>>
+                                    <?php echo $ugt_val; ?> <?php echo $is_assigned ? '(Assigned)' : '(Available)'; ?>
+                                </option>
+                            <?php endfor; ?>
+
+                            <!-- Next available sequential UGTs -->
+                            <optgroup label="── Next Available UGT Tanks ──">
+                            <?php for ($i = $max_ugt_num + 1; $i <= $max_ugt_num + 5; $i++):
+                                $ugt_val = "UGT #$i";
+                            ?>
+                                <option value="<?php echo $ugt_val; ?>" style="color:#002F6C;font-weight:600;">
+                                    <?php echo $ugt_val; ?> (Available)
+                                </option>
+                            <?php endfor; ?>
+                            </optgroup>
+
+                            <option value="__custom__" style="color:#002F6C;font-weight:700;background:#eff6ff;">
+                                ➕ Type Custom UGT...
                             </option>
-                        <?php endfor; ?>
-                    </select>
+                        </select>
+                    </div>
+                    <!-- Custom Text Input Mode -->
+                    <div id="ugtCustomWrapAdmin" style="display:none;">
+                        <div style="display:flex;gap:6px;">
+                            <input type="text" id="newUgtNoCustom" maxlength="20"
+                                   style="flex:1;padding:8px 12px;border:1.5px solid #002F6C;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
+                                   placeholder="e.g. UGT #8, Tank 8"
+                                   onfocus="this.style.borderColor='#004494'" onblur="this.style.borderColor='#002F6C'">
+                            <button type="button" onclick="toggleUgtModeAdmin(false)"
+                                    title="Switch back to list"
+                                    style="background:#f1f5f9;color:#334155;border:1.5px solid #cbd5e1;border-radius:7px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;">
+                                <i class="fas fa-list"></i> Select List
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
