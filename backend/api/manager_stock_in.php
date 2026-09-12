@@ -272,6 +272,17 @@ function approve_merchandise_stock_in(PDO $pdo, array $me, int $station_id, arra
                         WHERE id = ?
                     ")->execute([$qty_received, $qty_received, $unit_cost, $selling_price, $product_id]);
                 } catch (Exception $ignored) {}
+
+                // Also sync products.current_stock to stay consistent
+                try {
+                    $pdo->prepare("
+                        UPDATE products
+                        SET current_stock = COALESCE(current_stock, 0) + ?,
+                            price = CASE WHEN ? > 0 THEN ? ELSE price END,
+                            updated_at = NOW()
+                        WHERE id = ?
+                    ")->execute([$qty_received, $selling_price, $selling_price, $product_id]);
+                } catch (Exception $ignored) {}
             } else {
                 // Update products table as fallback
                 try {
@@ -285,13 +296,14 @@ function approve_merchandise_stock_in(PDO $pdo, array $me, int $station_id, arra
                 } catch (Exception $ignored) {}
             }
 
+
             // Insert inventory log with Global Movement Engine standards
             try {
                 $pdo->prepare("
                     INSERT INTO inventory_logs
                         (station_id, product_id, user_id, action, movement_type, reason, quantity_before, quantity_after,
                          quantity_change, reference_type, reference_id, reference_no, notes, created_at)
-                    VALUES (?, ?, ?, 'stock_in', 'IN', 'Stock-In', ?, ?, ?, 'deliveries_oversight', ?, ?, ?, NOW())
+                    VALUES (?, ?, ?, 'stock_in', 'IN', 'Stock-In', ?, ?, ?, 'deliveries_oversight', NULL, ?, ?, NOW())
                 ")->execute([
                     $station_id,
                     $product_id,
@@ -299,13 +311,13 @@ function approve_merchandise_stock_in(PDO $pdo, array $me, int $station_id, arra
                     (int)$stock_before,
                     (int)$stock_after,
                     (int)$qty_received,
-                    (int)$delivery_id,
                     $po_key ?: $batch_id,
                     "Manager Stock-In | Batch: {$batch_id} | PO: {$po_key}"
                 ]);
             } catch (Exception $log_error) {
                 error_log("Inventory log insert failed for product {$product_id}: " . $log_error->getMessage());
             }
+
 
             $pdo->prepare("
                 INSERT INTO merchandise_stock_in
