@@ -2637,7 +2637,6 @@ function showCustomAlert(message, type, callback) {
         'align-items:flex-start',
         'gap:14px',
         'border:1px solid #e2e8f0',
-        'border-left:5px solid ' + accentColor,
         'transform:translateX(120%)',
         'opacity:0',
         'transition:all 0.35s cubic-bezier(0.16,1,0.3,1)',

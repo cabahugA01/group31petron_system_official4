@@ -2896,7 +2896,6 @@ function showCustomAlert(message, type, callback) {
         align-items: flex-start;
         gap: 12px;
         border: 1px solid #e2e8f0;
-        ${isError ? 'border-left: 5px solid #dc2626;' : 'border-left: 5px solid #16a34a;'}
         transform: translateX(120%);
         opacity: 0;
         transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
