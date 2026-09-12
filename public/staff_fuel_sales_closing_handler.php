@@ -32,6 +32,15 @@ if ($station_id <= 0 && $user_id > 0) {
 }
 if ($station_id <= 0) $station_id = 1;
 
+// Detect role — admin/superadmin closings are auto-approved (no manager approval needed)
+$current_user_role = 'staff';
+try {
+    $role_stmt = $pdo->prepare("SELECT role FROM users WHERE id = ? LIMIT 1");
+    $role_stmt->execute([$user_id]);
+    $current_user_role = role_key($role_stmt->fetchColumn() ?: 'staff');
+} catch (Exception $e) {}
+$is_admin_closing = in_array($current_user_role, ['admin', 'superadmin', 'developer'], true);
+
 $action = $_REQUEST['action'] ?? '';
 
 if ($action === 'get_summary') {
@@ -222,6 +231,10 @@ if ($action === 'save_closing') {
     try {
         $pdo->beginTransaction();
 
+        // Admin/superadmin = auto-approved (Verified); Staff = needs manager review (CLOSING_COMPLETED)
+        $closing_status = $is_admin_closing ? 'Verified' : 'CLOSING_COMPLETED';
+        $txn_status     = $is_admin_closing ? 'Verified' : 'CLOSING_COMPLETED';
+
         $stmt_chk = $pdo->prepare("SELECT id FROM fuel_sales_closing WHERE station_id = ? AND report_date = ? AND (shift = ? OR shift_period = ?)");
         $stmt_chk->execute([$station_id, $report_date, $shift, $shift_key]);
         $exist_id = $stmt_chk->fetchColumn();
@@ -231,13 +244,13 @@ if ($action === 'save_closing') {
                 UPDATE fuel_sales_closing SET
                     shift = ?, shift_period = ?, total_fuel_sales = ?, total_liters = ?, cash_shift1 = ?, cash_shift2 = ?,
                     total_cash = ?, ar_shift1 = ?, ar_shift2 = ?, total_ar = ?, net_sales = ?,
-                    total_cash_bank = ?, verified_by = ?, checked_by = ?, encoded_by = ?, encoded_at = NOW(), status = 'CLOSING_COMPLETED'
+                    total_cash_bank = ?, verified_by = ?, checked_by = ?, encoded_by = ?, encoded_at = NOW(), status = ?
                 WHERE id = ?
             ");
             $stmt_upd->execute([
                 $shift, $shift_key, $total_fuel_sales, $total_liters, $cash_shift1, $cash_shift2,
                 $total_cash, $ar_shift1, $ar_shift2, $total_ar, $net_sales,
-                $total_cash_bank, $verified_by, $checked_by, $user_id, $exist_id
+                $total_cash_bank, $verified_by, $checked_by, $user_id, $closing_status, $exist_id
             ]);
             $saved_id = $exist_id;
         } else {
@@ -247,26 +260,27 @@ if ($action === 'save_closing') {
                     total_cash, ar_shift1, ar_shift2, total_ar, net_sales, total_cash_bank, verified_by, checked_by,
                     encoded_by, encoded_at, status
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'CLOSING_COMPLETED'
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?
                 )
             ");
             $stmt_ins->execute([
                 $station_id, $report_date, $shift, $shift_key, $total_fuel_sales, $total_liters, $cash_shift1, $cash_shift2,
-                $total_cash, $ar_shift1, $ar_shift2, $total_ar, $net_sales, $total_cash_bank, $verified_by, $checked_by, $user_id
+                $total_cash, $ar_shift1, $ar_shift2, $total_ar, $net_sales, $total_cash_bank, $verified_by, $checked_by, $user_id,
+                $closing_status
             ]);
             $saved_id = $pdo->lastInsertId();
         }
 
-        // Update corresponding fuel_transactions status to CLOSING_COMPLETED
+        // Update corresponding fuel_transactions status
         $shift_like = $shift_key ? "%{$shift_key}%" : "%";
         $pdo->prepare("
             UPDATE fuel_transactions
-            SET status = 'CLOSING_COMPLETED'
+            SET status = ?
             WHERE station_id = ?
               AND (DATE(transaction_date) = ? OR (transaction_date IS NULL AND DATE(created_at) = ?))
               AND (shift_period = ? OR shift_name = ? OR ? = '' OR LOWER(shift_name) LIKE ?)
               AND LOWER(COALESCE(status,'')) NOT IN ('rejected','voided','cancelled','canceled')
-        ")->execute([$station_id, $report_date, $report_date, $shift_key, $shift, $shift, $shift_like]);
+        ")->execute([$txn_status, $station_id, $report_date, $report_date, $shift_key, $shift, $shift, $shift_like]);
 
         $pdo->commit();
 
